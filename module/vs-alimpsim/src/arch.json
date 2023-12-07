@@ -1,0 +1,70 @@
+{
+  "resources": [
+    {
+      "name": "dpu",
+      "size": 4,
+      "word_input_port": 4,
+      "word_output_port": 2,
+      "bulk_input_port": 0,
+      "bulk_output_port": 0
+    },
+    {
+      "name": "rf",
+      "size": 2,
+      "word_input_port": 2,
+      "word_output_port": 2,
+      "bulk_input_port": 1,
+      "bulk_output_port": 1
+    },
+    {
+      "name": "load",
+      "size": 1,
+      "word_input_port": 0,
+      "word_output_port": 0,
+      "bulk_input_port": 1,
+      "bulk_output_port": 1
+    },
+    {
+      "name": "store",
+      "size": 1,
+      "word_input_port": 0,
+      "word_output_port": 0,
+      "bulk_input_port": 1,
+      "bulk_output_port": 1
+    }
+  ],
+  "controllers": [
+    {
+      "name": "controller_0",
+      "size": 8,
+      "iram_size": 64
+    }
+  ],
+  "cells": [
+    {
+      "name": "drra_cell_1",
+      "controller": "controller_0",
+      "resource_list": ["rf", "dpu"]
+    }
+  ],
+  "fabric": {
+    "height": 2,
+    "width": 2,
+    "cell_lists": [
+      {
+        "coordinates": [
+          { "row": 0, "col": 0 },
+          { "row": 0, "col": 1 },
+          { "row": 1, "col": 0 },
+          { "row": 1, "col": 1 }
+        ],
+        "cell_name": "drra_cell_1"
+      }
+    ],
+    "custom_properties": []
+  },
+  "interface": {
+    "input_buffer_depth": 1024,
+    "output_buffer_depth": 1024
+  }
+}

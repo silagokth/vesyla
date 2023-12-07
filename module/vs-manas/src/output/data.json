@@ -1,0 +1,586 @@
+{
+  "isa": {
+    "platform": "DRRA-2",
+    "instrBitwidth": 32,
+    "instrCodeBitwidth": 4,
+    "instructionTemplates": [
+      {
+        "name": "wait",
+        "segmentTemplates": [
+          {
+            "name": "cycle",
+            "bitwidth": 28,
+            "comment": "Number of cycles, if cycle=0 means infinite loop."
+          }
+        ]
+      },
+      {
+        "name": "act",
+        "code": 1,
+        "segmentTemplates": [
+          {
+            "name": "slots",
+            "bitwidth": 16,
+            "comment": "1-hot encoded slots that need to be activated."
+          }
+        ]
+      },
+      {
+        "name": "calc",
+        "code": 2,
+        "segmentTemplates": [
+          {
+            "name": "mode",
+            "bitwidth": 5,
+            "verboMap": [
+              {
+                "val": "idle"
+              },
+              {
+                "key": 1,
+                "val": "add"
+              },
+              {
+                "key": 2,
+                "val": "sub"
+              },
+              {
+                "key": 3,
+                "val": "shift_r"
+              },
+              {
+                "key": 4,
+                "val": "shift_l"
+              },
+              {
+                "key": 5,
+                "val": "mult"
+              },
+              {
+                "key": 6,
+                "val": "div"
+              },
+              {
+                "key": 7,
+                "val": "mod"
+              }
+            ],
+            "comment": "Calculation mode"
+          },
+          {
+            "name": "operand1_sd",
+            "bitwidth": 1,
+            "verboMap": [
+              {
+                "val": "s"
+              },
+              {
+                "key": 1,
+                "val": "d"
+              }
+            ],
+            "comment": "Is the first operand static or dynamic?"
+          },
+          {
+            "name": "operand1",
+            "bitwidth": 9,
+            "comment": "First operand."
+          },
+          {
+            "name": "operand2_sd",
+            "bitwidth": 1,
+            "verboMap": [
+              {
+                "val": "s"
+              },
+              {
+                "key": 1,
+                "val": "d"
+              }
+            ],
+            "comment": "Is the second operand static or dynamic?"
+          },
+          {
+            "name": "operand2",
+            "bitwidth": 9,
+            "comment": "Second operand."
+          },
+          {
+            "name": "result",
+            "bitwidth": 4,
+            "comment": "The RACCU register to store the result."
+          }
+        ]
+      },
+      {
+        "name": "loop",
+        "code": 3,
+        "segmentTemplates": [
+          {
+            "name": "loopid",
+            "bitwidth": 2,
+            "comment": "The id of the loop manager slot."
+          },
+          {
+            "name": "endpc",
+            "bitwidth": 7,
+            "comment": "The PC where loop ends."
+          },
+          {
+            "name": "start_sd",
+            "bitwidth": 1,
+            "verboMap": [
+              {
+                "val": "s"
+              },
+              {
+                "key": 1,
+                "val": "d"
+              }
+            ],
+            "comment": "Is the start static or dynamic?"
+          },
+          {
+            "name": "start",
+            "bitwidth": 6,
+            "comment": "The start of iterator."
+          },
+          {
+            "name": "iter",
+            "bitwidth": 6,
+            "comment": "The number of iteration."
+          },
+          {
+            "name": "step",
+            "bitwidth": 6,
+            "defaultVal": 1,
+            "comment": "The iteration step."
+          }
+        ]
+      },
+      {
+        "name": "brn",
+        "code": 4,
+        "segmentTemplates": [
+          {
+            "name": "mode",
+            "bitwidth": 2,
+            "verboMap": [
+              {
+                "val": "always"
+              },
+              {
+                "key": 1,
+                "val": "equal"
+              },
+              {
+                "key": 2,
+                "val": "not_equal"
+              },
+              {
+                "key": 3,
+                "val": "greater"
+              },
+              {
+                "key": 4,
+                "val": "less"
+              },
+              {
+                "key": 5,
+                "val": "greater_equal"
+              },
+              {
+                "key": 6,
+                "val": "less_equal"
+              }
+            ],
+            "comment": "The branch mode"
+          },
+          {
+            "name": "pc",
+            "bitwidth": 7,
+            "comment": "The PC to jump to in case the condition is true. The PC is relative to the current PC."
+          },
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "The slot that will provide the flags."
+          }
+        ]
+      },
+      {
+        "name": "swb",
+        "code": 5,
+        "segmentTemplates": [
+          {
+            "name": "channel",
+            "bitwidth": 4,
+            "comment": "Bus channel. Note: if the SWB is implemented by a crossbar, the channel is always equals to the target slot."
+          },
+          {
+            "name": "source",
+            "bitwidth": 4,
+            "comment": "Source slot."
+          },
+          {
+            "name": "target",
+            "bitwidth": 4,
+            "comment": "Target slot."
+          }
+        ]
+      },
+      {
+        "name": "route",
+        "code": 6,
+        "segmentTemplates": [
+          {
+            "name": "sr",
+            "bitwidth": 1,
+            "verboMap": [
+              {
+                "val": "send"
+              },
+              {
+                "key": 1,
+                "val": "receive"
+              }
+            ],
+            "comment": "Send or receive."
+          },
+          {
+            "name": "direction",
+            "bitwidth": 4,
+            "comment": "1-hot encoded direction: E/N/W/S. If it's a receive instruction, the direction can only have 1 bit set to 1."
+          },
+          {
+            "name": "slot",
+            "bitwidth": 16,
+            "comment": "1-hot encoded slot number. If it's a send instruction, the slot can only have 1 bit set to 1."
+          }
+        ]
+      },
+      {
+        "name": "rep",
+        "code": 8,
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "port",
+            "bitwidth": 2,
+            "verboMap": [
+              {
+                "val": "read narrow"
+              },
+              {
+                "key": 1,
+                "val": "read wide"
+              },
+              {
+                "key": 2,
+                "val": "write narrow"
+              },
+              {
+                "key": 3,
+                "val": "write wide"
+              }
+            ],
+            "comment": "The port number"
+          },
+          {
+            "name": "level",
+            "bitwidth": 4,
+            "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level."
+          },
+          {
+            "name": "iter",
+            "bitwidth": 6,
+            "comment": "level-1 iteration - 1."
+          },
+          {
+            "name": "step",
+            "bitwidth": 6,
+            "defaultVal": 1,
+            "comment": "level-1 step"
+          },
+          {
+            "name": "delay",
+            "bitwidth": 6,
+            "comment": "delay"
+          }
+        ]
+      },
+      {
+        "name": "mask",
+        "code": 9,
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "chunk",
+            "bitwidth": 3,
+            "comment": "Mask chunk of 16 elements. If each element is 16-bit, only 1 chunk is needed. If each element is 8-bit, 2 chunks are needed. If each element is 4-bit, 4 chunks are needed. If each element is 2-bit, 8 chunks are needed."
+          },
+          {
+            "name": "mask",
+            "bitwidth": 6,
+            "comment": "The mask of 16-elements. If mask-bit is 0, then the corresponding element is useful and will be written to destination memory block. If mask-bit is 1, then the corresponding element is not useful and will be ignored."
+          }
+        ]
+      },
+      {
+        "name": "dpu",
+        "code": 10,
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "bw",
+            "bitwidth": 2,
+            "verboMap": [
+              {
+                "val": "16-bit"
+              },
+              {
+                "key": 1,
+                "val": "8-bit"
+              },
+              {
+                "key": 2,
+                "val": "4-bit"
+              },
+              {
+                "key": 3,
+                "val": "2-bit"
+              }
+            ],
+            "comment": "The bit-width mode."
+          },
+          {
+            "name": "mode",
+            "bitwidth": 5,
+            "verboMap": [
+              {
+                "val": "idle"
+              },
+              {
+                "key": 1,
+                "val": "add"
+              },
+              {
+                "key": 2,
+                "val": "sum_acc"
+              },
+              {
+                "key": 3,
+                "val": "add_const"
+              },
+              {
+                "key": 4,
+                "val": "subt"
+              },
+              {
+                "key": 5,
+                "val": "subt_abs"
+              },
+              {
+                "key": 6,
+                "val": "mode_6"
+              },
+              {
+                "key": 7,
+                "val": "mult"
+              },
+              {
+                "key": 8,
+                "val": "mult_add"
+              },
+              {
+                "key": 9,
+                "val": "mult_const"
+              },
+              {
+                "key": 10,
+                "val": "mac"
+              },
+              {
+                "key": 11,
+                "val": "ld_ir"
+              },
+              {
+                "key": 12,
+                "val": "axpy"
+              },
+              {
+                "key": 13,
+                "val": "max_min_acc"
+              },
+              {
+                "key": 14,
+                "val": "max_min_const"
+              },
+              {
+                "key": 15,
+                "val": "mode_15"
+              },
+              {
+                "key": 16,
+                "val": "max_min"
+              },
+              {
+                "key": 17,
+                "val": "shift_l"
+              },
+              {
+                "key": 18,
+                "val": "shift_r"
+              },
+              {
+                "key": 19,
+                "val": "sigm"
+              },
+              {
+                "key": 20,
+                "val": "tanhyp"
+              },
+              {
+                "key": 21,
+                "val": "expon"
+              },
+              {
+                "key": 22,
+                "val": "lk_relu"
+              },
+              {
+                "key": 23,
+                "val": "relu"
+              },
+              {
+                "key": 24,
+                "val": "div"
+              },
+              {
+                "key": 25,
+                "val": "acc_softmax"
+              },
+              {
+                "key": 26,
+                "val": "div_softmax"
+              },
+              {
+                "key": 27,
+                "val": "ld_acc"
+              },
+              {
+                "key": 28,
+                "val": "scale_dw"
+              },
+              {
+                "key": 29,
+                "val": "scale_up"
+              },
+              {
+                "key": 30,
+                "val": "mac_inter"
+              },
+              {
+                "key": 31,
+                "val": "mode_31"
+              }
+            ],
+            "comment": "The DPU mode. "
+          },
+          {
+            "name": "immediate",
+            "bitwidth": 16,
+            "comment": "The immediate field used by some DPU modes."
+          }
+        ]
+      },
+      {
+        "name": "dsu",
+        "code": 14,
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "init_addr_sd",
+            "bitwidth": 1,
+            "verboMap": [
+              {
+                "val": "s"
+              },
+              {
+                "key": 1,
+                "val": "d"
+              }
+            ],
+            "comment": "Is initial address static or dynamic?"
+          },
+          {
+            "name": "init_addr",
+            "bitwidth": 16,
+            "comment": "Initial address"
+          },
+          {
+            "name": "port",
+            "bitwidth": 2,
+            "verboMap": [
+              {
+                "val": "read narrow"
+              },
+              {
+                "key": 1,
+                "val": "read wide"
+              },
+              {
+                "key": 2,
+                "val": "write narrow"
+              },
+              {
+                "key": 3,
+                "val": "write wide"
+              }
+            ],
+            "comment": "The port number"
+          },
+          {
+            "name": "level",
+            "bitwidth": 4,
+            "comment": "The level of that the init address should be applied on. [0]: inner most level, [15]: outer most level."
+          }
+        ]
+      }
+    ]
+  },
+  "pkg": {
+    "instructionLists": [
+      {
+        "label": "0_0",
+        "instructions": [
+          {
+            "name": "wait",
+            "valueMap": [
+              {
+                "key": "cycle",
+                "val": 2
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
