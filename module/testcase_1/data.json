@@ -6,6 +6,9 @@
     "instructionTemplates": [
       {
         "name": "wait",
+        "machines": [
+          "controller"
+        ],
         "segmentTemplates": [
           {
             "name": "mode",
@@ -22,6 +25,9 @@
       {
         "name": "act",
         "code": 1,
+        "machines": [
+          "controller"
+        ],
         "segmentTemplates": [
           {
             "name": "ports",
@@ -43,6 +49,9 @@
       {
         "name": "calc",
         "code": 2,
+        "machines": [
+          "controller"
+        ],
         "segmentTemplates": [
           {
             "name": "mode",
@@ -130,6 +139,9 @@
       {
         "name": "loop",
         "code": 3,
+        "machines": [
+          "controller"
+        ],
         "segmentTemplates": [
           {
             "name": "loopid",
@@ -177,6 +189,9 @@
       {
         "name": "brn",
         "code": 4,
+        "machines": [
+          "controller"
+        ],
         "segmentTemplates": [
           {
             "name": "mode",
@@ -227,6 +242,9 @@
       {
         "name": "swb",
         "code": 12,
+        "machines": [
+          "swb"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -258,6 +276,9 @@
       {
         "name": "route",
         "code": 13,
+        "machines": [
+          "swb"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -274,11 +295,11 @@
             "bitwidth": 1,
             "verboMap": [
               {
-                "val": "send"
+                "val": "s"
               },
               {
                 "key": 1,
-                "val": "receive"
+                "val": "r"
               }
             ],
             "comment": "Send or receive."
@@ -298,6 +319,75 @@
       {
         "name": "rep",
         "code": 8,
+        "machines": [
+          "swb",
+          "iosram",
+          "dpu",
+          "rf",
+          "sram"
+        ],
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "port",
+            "bitwidth": 2,
+            "verboMap": [
+              {
+                "val": "read narrow"
+              },
+              {
+                "key": 1,
+                "val": "read wide"
+              },
+              {
+                "key": 2,
+                "val": "write narrow"
+              },
+              {
+                "key": 3,
+                "val": "write wide"
+              }
+            ],
+            "comment": "The port number"
+          },
+          {
+            "name": "level",
+            "bitwidth": 4,
+            "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level."
+          },
+          {
+            "name": "iter",
+            "bitwidth": 6,
+            "comment": "level-1 iteration - 1."
+          },
+          {
+            "name": "step",
+            "bitwidth": 6,
+            "isSigned": true,
+            "defaultVal": 1,
+            "comment": "level-1 step"
+          },
+          {
+            "name": "delay",
+            "bitwidth": 6,
+            "comment": "delay"
+          }
+        ]
+      },
+      {
+        "name": "repx",
+        "code": 9,
+        "machines": [
+          "swb",
+          "iosram",
+          "dpu",
+          "rf",
+          "sram"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -352,7 +442,12 @@
       },
       {
         "name": "mask",
-        "code": 9,
+        "code": 10,
+        "machines": [
+          "iosram",
+          "rf",
+          "sram"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -373,7 +468,10 @@
       },
       {
         "name": "dpu",
-        "code": 10,
+        "code": 11,
+        "machines": [
+          "dpu"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -527,8 +625,48 @@
         ]
       },
       {
+        "name": "fsm",
+        "code": 10,
+        "machines": [
+          "swb",
+          "dpu"
+        ],
+        "segmentTemplates": [
+          {
+            "name": "slot",
+            "bitwidth": 4,
+            "comment": "Slot number"
+          },
+          {
+            "name": "port",
+            "bitwidth": 2,
+            "comment": "The port number"
+          },
+          {
+            "name": "delay_0",
+            "bitwidth": 7,
+            "comment": "Delay between state 0 and 1."
+          },
+          {
+            "name": "delay_1",
+            "bitwidth": 7,
+            "comment": "Delay between state 1 and 2."
+          },
+          {
+            "name": "delay_2",
+            "bitwidth": 7,
+            "comment": "Delay between state 2 and 3."
+          }
+        ]
+      },
+      {
         "name": "dsu",
         "code": 14,
+        "machines": [
+          "iosram",
+          "rf",
+          "sram"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -586,6 +724,9 @@
       {
         "name": "io",
         "code": 15,
+        "machines": [
+          "iosram"
+        ],
         "segmentTemplates": [
           {
             "name": "slot",
@@ -904,7 +1045,7 @@
             ]
           },
           {
-            "name": "rep",
+            "name": "fsm",
             "valueMap": [
               {
                 "key": "slot"
@@ -914,19 +1055,14 @@
                 "val": 2
               },
               {
-                "key": "level"
-              },
-              {
-                "key": "iter",
-                "val": 2
-              },
-              {
-                "key": "step",
-                "val": 1
-              },
-              {
-                "key": "delay",
+                "key": "delay_0",
                 "val": 17
+              },
+              {
+                "key": "delay_1"
+              },
+              {
+                "key": "delay_2"
               }
             ]
           },

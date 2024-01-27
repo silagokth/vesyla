@@ -38,7 +38,7 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
         storage_map = resource_pool_.get("storage_map")
         storage_resource = storage_map["rf_{}_{}_{}_{}_conf".format(
             i, j, slot, port)]
-        levels = conf["repeat"]
+        levels = resource_conf["repeat"]
         t = clk_
         for l7 in range(levels[7]["iter"]):
             addr7 = l7*levels[7]["step"]
@@ -82,6 +82,9 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     t += levels[6]["delay"]
             if l7 < levels[7]["iter"]-1:
                 t += levels[7]["delay"]
+        conf["rf_{}_{}_{}_{}_conf".format(i, j, slot, port)] = {"start": 0, "repeat": [
+            {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        resource_pool_.set("conf", conf)
     elif resource_name == 'dpu':
         handler_name = "set_curr_dpu_mode"
         conf = resource_pool_.get("conf")
@@ -134,6 +137,9 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     t += levels[6]["delay"]
             if l7 < levels[7]["iter"]-1:
                 t += levels[7]["delay"]
+        conf["dpu_{}_{}_{}_conf".format(i, j, slot)] = {
+            "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        resource_pool_.set("conf", conf)
     elif resource_name == 'swb':
         print("SWB")
         if port == 0:
@@ -192,7 +198,9 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     t += levels[6]["delay"]
             if l7 < levels[7]["iter"]-1:
                 t += levels[7]["delay"]
-        conf["swb_{}_{}_{}_{}_conf".format(i, j, slot, port)] = 
+        conf["swb_{}_{}_{}_{}_conf".format(i, j, slot, port)] = {
+            "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        resource_pool_.set("conf", conf)
     elif resource_name == 'iosram':
         print("IOSRAM")
         if port == 0:
@@ -332,12 +340,15 @@ def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
     curr_value = resource_pool_.get("curr_value")
     value = curr_value[i][j][slot][port]
-    if resource_name.startswith("rf"):
+    if port%4 == 0:
         regs = resource_pool_.get(resource_name)
         regs[addr*16:(addr+1)*16] = value
-    else:
+    elif port%4 == 2:
         regs = resource_pool_.get(resource_name)
         regs[addr] = value
+    else:
+        logger.error("Error: Unknown port for bulk write: ", port)
+        return False
     resource_pool_.set(resource_name, regs)
     logger.info("Write bulk: "+str(value) +
                 " to {}[{}]".format(resource_name, addr))
@@ -345,7 +356,6 @@ def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 
 def read_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
-    print(args)
     i = args[0]
     j = args[1]
     slot = args[2]
@@ -353,12 +363,15 @@ def read_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
     resource_name = args[4]
     addr = args[5]
 
-    if resource_name.startswith("rf"):
+    if port%4 == 1:
         regs = resource_pool_.get(resource_name)
         value = regs[addr*16:(addr+1)*16]
-    else:
+    elif port%4 == 3:
         regs = resource_pool_.get(resource_name)
         value = regs[addr]
+    else:
+        logger.error("Error: Unknown port for bulk read: ", port)
+        return False
     e = (clk_+1, "delay_signal", [i, j, slot, port, value], 100, True)
     event_pool_.post(e)
     logger.info("Read bulk: "+str(value) +
@@ -775,30 +788,34 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
 
         storage_map = resource_pool_.get("storage_map")
         resource_map = resource_pool_.get("resource_map")
+        conf = resource_pool_.get("conf")
+        resource_conf = {}
         for x in range(resource.word_input_port):
             storage_map["rf_{}_{}_{}_{}_conf".format(
                 i, j, slot+x, 0)] = "rf_{}_{}_{}_reg".format(i, j, slot)
-            resource_pool_.add("rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 0), {"start": 0, "repeat": [
-                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]})
+            conf["rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 0)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
         for x in range(resource.word_output_port):
             storage_map["rf_{}_{}_{}_{}_conf".format(
                 i, j, slot+x, 1)] = "rf_{}_{}_{}_reg".format(i, j, slot)
-            resource_pool_.add("rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 1), {"start": 0, "repeat": [
-                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]})
+            conf["rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 1)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
         for x in range(resource.bulk_input_port):
             storage_map["rf_{}_{}_{}_{}_conf".format(
                 i, j, slot+x, 2)] = "rf_{}_{}_{}_reg".format(i, j, slot)
-            resource_pool_.add("rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 2), {"start": 0, "repeat": [
-                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]})
+            conf["rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 2)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
         for x in range(resource.bulk_output_port):
             storage_map["rf_{}_{}_{}_{}_conf".format(
                 i, j, slot+x, 3)] = "rf_{}_{}_{}_reg".format(i, j, slot)
-            resource_pool_.add("rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 3), {"start": 0, "repeat": [
-                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]})
+            conf["rf_{}_{}_{}_{}_conf".format(i, j, slot+x, 3)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
+        
+        resource_pool_.set("conf", conf)
 
         resource_pool_.set("storage_map", storage_map)
         resource_pool_.set("resource_map", resource_map)
@@ -853,7 +870,7 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
         resource_map = resource_pool_.get("resource_map")
         conf = resource_pool_.get("conf")
         conf["dpu_{}_{}_{}_conf".format(i, j, slot)] = {
-            "option": [{"mode": 0, "imm": 0} for i in range(4)], "delay": [{} for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+            "option": [{"mode": 0, "imm": 0} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
         resource_pool_.set("conf", conf)
         resource_map["{}_{}_{}".format(i, j, slot)] = name
         resource_pool_.set("resource_map", resource_map)
@@ -867,9 +884,9 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
         resource_map = resource_pool_.get("resource_map")
         conf = resource_pool_.get("conf")
         conf["swb_{}_{}_{}_{}_conf".format(i, j, slot, 0)] = {
-            "option": [{} for i in range(4)], "delay": [{} for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+            "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
         conf["swb_{}_{}_{}_{}_conf".format(i, j, slot, 2)] = {
-            "option": [{} for i in range(4)], "delay": [{} for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+            "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
         resource_pool_.set("conf", conf)
         resource_map["{}_{}_{}".format(i, j, slot)] = name
         resource_pool_.set("resource_map", resource_map)
@@ -902,8 +919,9 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             if not exist:
                 logger.error("Error: Instruction without port field")
                 return False
-            resource_conf = resource_pool_.get(
-                "{}_{}_{}_{}_{}_conf".format(resource_name, i, j, slot, port))
+            conf = resource_pool_.get("conf")
+            resource_conf = conf[
+                "{}_{}_{}_{}_{}_conf".format(resource_name, i, j, slot, port)]
             exist, init_addr_sd = get_instr_field(ir, "init_addr_sd")
             if not exist:
                 logger.error("Error: Instruction without start_sd field")
@@ -916,8 +934,7 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 raccu_reg = resource_pool_.get("raccu_reg")
                 resource_conf["start"] = raccu_reg[i][j][resource_conf["start"]]
 
-            resource_pool_.set("{}_{}_{}_{}_{}_conf".format(
-                resource_name, i, j, slot, port), resource_conf)
+            resource_pool_.set("conf", conf)
             logger.info("DSU instr: start="+str(resource_conf["start"]))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
             pc = compute_npc(resource_pool_, i, j, pc, 1)
@@ -947,13 +964,12 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             if not exist:
                 logger.error("Error: Instruction without delay field")
                 return False
-            resource_conf = resource_pool_.get(
-                "{}_{}_{}_{}_{}_conf".format(resource_name, i, j, slot, port))
+            conf = resource_pool_.get("conf")
+            resource_conf = conf["{}_{}_{}_{}_{}_conf".format(resource_name, i, j, slot, port)]
             resource_conf["repeat"][level]["iter"] = iter
             resource_conf["repeat"][level]["step"] = step
             resource_conf["repeat"][level]["delay"] = delay
-            resource_pool_.set("{}_{}_{}_{}_{}_conf".format(
-                resource_name, i, j, slot, port), resource_conf)
+            resource_pool_.set("conf", conf)
             logger.info("REP instr: level="+str(level) +
                         ", iter="+str(iter)+", step="+str(step)+", delay="+str(delay))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))

@@ -6,6 +6,7 @@
     {
       "code": 0,
       "name": "wait",
+      "machines": ["controller"],
       "segment_templates": [
         {
           "name": "mode",
@@ -22,6 +23,7 @@
     {
       "code": 1,
       "name": "act",
+      "machines": ["controller"],
       "segment_templates": [
         {
           "name": "ports",
@@ -43,6 +45,7 @@
     {
       "code": 2,
       "name": "calc",
+      "machines": ["controller"],
       "segment_templates": [
         {
           "name": "mode",
@@ -97,6 +100,7 @@
     {
       "code": 3,
       "name": "loop",
+      "machines": ["controller"],
       "segment_templates": [
         {
           "name": "loopid",
@@ -139,6 +143,7 @@
     {
       "code": 4,
       "name": "brn",
+      "machines": ["controller"],
       "segment_templates": [
         {
           "name": "mode",
@@ -169,6 +174,7 @@
     {
       "code": 12,
       "name": "swb",
+      "machines": ["swb"],
       "segment_templates": [
         {
           "name": "slot",
@@ -200,6 +206,7 @@
     {
       "code": 13,
       "name": "route",
+      "machines": ["swb"],
       "segment_templates": [
         {
           "name": "slot",
@@ -216,8 +223,8 @@
           "comment": "Send or receive.",
           "bitwidth": 1,
           "verbo_map": [
-            { "key": 0, "val": "send" },
-            { "key": 1, "val": "receive" }
+            { "key": 0, "val": "s" },
+            { "key": 1, "val": "r" }
           ]
         },
         {
@@ -235,6 +242,7 @@
     {
       "code": 8,
       "name": "rep",
+      "machines": ["swb", "iosram", "dpu", "rf", "sram"],
       "segment_templates": [
         {
           "name": "slot",
@@ -278,7 +286,53 @@
     },
     {
       "code": 9,
+      "name": "repx",
+      "machines": ["swb", "iosram", "dpu", "rf", "sram"],
+      "segment_templates": [
+        {
+          "name": "slot",
+          "comment": "Slot number",
+          "bitwidth": 4
+        },
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        },
+        {
+          "name": "level",
+          "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level.",
+          "bitwidth": 4
+        },
+        {
+          "name": "iter",
+          "comment": "level-1 iteration - 1.",
+          "bitwidth": 6
+        },
+        {
+          "name": "step",
+          "comment": "level-1 step",
+          "bitwidth": 6,
+          "default_val": 1,
+          "is_signed": true
+        },
+        {
+          "name": "delay",
+          "comment": "delay",
+          "bitwidth": 6
+        }
+      ]
+    },
+    {
+      "code": 10,
       "name": "mask",
+      "machines": ["iosram", "rf", "sram"],
       "segment_templates": [
         {
           "name": "slot",
@@ -299,8 +353,9 @@
     },
 
     {
-      "code": 10,
+      "code": 11,
       "name": "dpu",
+      "machines": ["dpu"],
       "segment_templates": [
         {
           "name": "slot",
@@ -358,9 +413,43 @@
         }
       ]
     },
+
+    {
+      "code": 10,
+      "name": "fsm",
+      "machines": ["swb", "dpu"],
+      "segment_templates": [
+        {
+          "name": "slot",
+          "comment": "Slot number",
+          "bitwidth": 4
+        },
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2
+        },
+        {
+          "name": "delay_0",
+          "comment": "Delay between state 0 and 1.",
+          "bitwidth": 7
+        },
+        {
+          "name": "delay_1",
+          "comment": "Delay between state 1 and 2.",
+          "bitwidth": 7
+        },
+        {
+          "name": "delay_2",
+          "comment": "Delay between state 2 and 3.",
+          "bitwidth": 7
+        }
+      ]
+    },
     {
       "code": 14,
       "name": "dsu",
+      "machines": ["iosram", "rf", "sram"],
       "segment_templates": [
         {
           "name": "slot",
@@ -402,6 +491,7 @@
     {
       "code": 15,
       "name": "io",
+      "machines": ["iosram"],
       "segment_templates": [
         {
           "name": "slot",

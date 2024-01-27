@@ -15,7 +15,7 @@ route slot=0, option=0, sr=0, source=1, target= 16
 route slot=0, option=0, sr=1, source=4, target= 96
 route slot=0, option=1, sr=0, source=7, target= 16
 route slot=0, option=1, sr=1, source=4, target= 2
-rep slot=0, port=2, level=0, step=1, iter=2, delay=17
+fsm slot=0, port=2, delay_0=17
 
 dsu slot=1, port=3, init_addr=0
 rep slot=1, port=3, level=0, iter=2, step=4, delay=0
