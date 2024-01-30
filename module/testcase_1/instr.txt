@@ -3,9 +3,9 @@ swb slot=0, option=0, channel=0, source=5, target=8
 swb slot=0, option=0, channel=0, source=6, target=9
 swb slot=0, option=0, channel=0, source=8, target=7
 act ports=1, mode=0, param=0
-loop loopid=0, endpc=40, start_sd=0, start=0, iter=3, step=1
+loop loopid=0, endpc=40, start_sd=0, start=0, iter=4, step=1
 io slot=1, ext_addr_sd=1, ext_addr=15, int_addr=0, port=0
-rep slot=1, port=0, level=0, iter=4, step=1, delay=0
+rep slot=1, port=0, level=0, iter=8, step=1, delay=0
 act ports=1, mode=0, param=1
 route slot=0, option=0, sr=0, source=1, target=16
 route slot=0, option=0, sr=1, source=4, target=96

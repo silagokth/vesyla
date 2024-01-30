@@ -303,7 +303,9 @@ def write_word(clk_, event_pool_, resource_pool_, handler_pool_, args):
     curr_value = resource_pool_.get("curr_value")
     value = curr_value[i][j][slot][port]
 
-    print(resource_name, addr)
+    if hasattr(value, "__len__"):
+        logger.error("Error: value must be a single word")
+        exit(-1)
 
     regs = resource_pool_.get(resource_name)
     regs[addr] = value
@@ -323,6 +325,11 @@ def read_word(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
     regs = resource_pool_.get(resource_name)
     value = regs[addr]
+
+    if hasattr(value, "__len__"):
+        logger.error("Error: value must be a single word")
+        exit(-1)
+
     e = (clk_+1, "delay_signal", [i, j, slot, port, value], 100, True)
     event_pool_.post(e)
     logger.info("Read word: "+str(value) +
@@ -340,15 +347,17 @@ def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
     curr_value = resource_pool_.get("curr_value")
     value = curr_value[i][j][slot][port]
-    if port%4 == 0:
+
+    if not hasattr(value, "__len__") or len(value) != 16:
+        logger.error("Error: Bulk write value length is not 16")
+        exit(-1)
+
+    if resource_name.startswith("rf"):
         regs = resource_pool_.get(resource_name)
         regs[addr*16:(addr+1)*16] = value
-    elif port%4 == 2:
+    else:
         regs = resource_pool_.get(resource_name)
         regs[addr] = value
-    else:
-        logger.error("Error: Unknown port for bulk write: ", port)
-        return False
     resource_pool_.set(resource_name, regs)
     logger.info("Write bulk: "+str(value) +
                 " to {}[{}]".format(resource_name, addr))
@@ -363,15 +372,17 @@ def read_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
     resource_name = args[4]
     addr = args[5]
 
-    if port%4 == 1:
+    if resource_name.startswith("rf"):
         regs = resource_pool_.get(resource_name)
         value = regs[addr*16:(addr+1)*16]
-    elif port%4 == 3:
+    else:
         regs = resource_pool_.get(resource_name)
         value = regs[addr]
-    else:
-        logger.error("Error: Unknown port for bulk read: ", port)
-        return False
+    
+    if not hasattr(value, "__len__") or len(value) != 16:
+        logger.error("Error: Bulk read value length is not 16")
+        exit(-1)
+
     e = (clk_+1, "delay_signal", [i, j, slot, port, value], 100, True)
     event_pool_.post(e)
     logger.info("Read bulk: "+str(value) +

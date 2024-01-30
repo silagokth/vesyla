@@ -130,7 +130,7 @@ write wide2The port number"r
 
 start_sd
 start
-iter
+iter
 stepA
 io
 slot
@@ -143,7 +143,7 @@ write wide2The port number"r
 slot
 port
 level
-iter
+iter
 step
 delay#
 act	

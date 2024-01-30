@@ -5,10 +5,10 @@ swb slot=0, option=0, source=6, target=9
 swb slot=0, option=0, source=8, target=7
 act ports=1
 
-loop loopid=0, start_sd = s, start=0, step=1, iter=3, endpc=label1
+loop loopid=0, start_sd = s, start=0, step=1, iter=4, endpc=label1
 
 io slot=1, port=0, ext_addr_sd=d, ext_addr=15, int_addr=0
-rep slot=1, port=0, level=0, step=1, iter=4, delay=0
+rep slot=1, port=0, level=0, step=1, iter=8, delay=0
 act ports=1, param=1
 
 route slot=0, option=0, sr=0, source=1, target= 16
