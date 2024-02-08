@@ -8,6 +8,24 @@ import verboselogs
 
 logger = verboselogs.VerboseLogger('vesim')
 
+def partial_update_variable(variable, value, value_bitwidth, low_starting_bit) -> int:
+    '''update a part of a variable with a new value'''
+    if value_bitwidth <= 0:
+        logging.error("value_bitwidth must be greater than 0")
+        exit(1)
+    if low_starting_bit < 0:
+        logging.error("low_starting_bit must be greater than or equal to 0")
+        exit(1)
+    mask = int('1' * value_bitwidth, 2)
+    mask = mask << low_starting_bit
+    mask = ~mask
+    variable = variable & mask
+    # trunkate value to the value_bitwidth, remove all bits higher than value_bitwidth
+    value = value & int('1' * value_bitwidth, 2)
+    value = value << low_starting_bit
+    variable = variable | value
+    return variable
+
 
 def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
     print("Resource trigger")
@@ -795,7 +813,7 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
     if name == "rf":
         # Register file
         resource_pool_.add("rf_{}_{}_{}_reg".format(
-            i, j, slot), [0 for i in range(16)])
+            i, j, slot), [0 for i in range(64)])
 
         storage_map = resource_pool_.get("storage_map")
         resource_map = resource_pool_.get("resource_map")
@@ -977,12 +995,49 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 return False
             conf = resource_pool_.get("conf")
             resource_conf = conf["{}_{}_{}_{}_{}_conf".format(resource_name, i, j, slot, port)]
-            resource_conf["repeat"][level]["iter"] = iter
-            resource_conf["repeat"][level]["step"] = step
-            resource_conf["repeat"][level]["delay"] = delay
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 0)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 0)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 0)
             resource_pool_.set("conf", conf)
             logger.info("REP instr: level="+str(level) +
                         ", iter="+str(iter)+", step="+str(step)+", delay="+str(delay))
+            pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+            pc = compute_npc(resource_pool_, i, j, pc, 1)
+            resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+            e = (clk_+1, "fetch_decode_" +
+                 str(i)+"_"+str(j), [i, j], 100, True)
+            event_pool_.post(e)
+            return True
+        elif ir.name == "repx":
+            exist, port = get_instr_field(ir, "port")
+            if not exist:
+                logger.error("Error: Instruction without port field")
+                return False
+            exist, level = get_instr_field(ir, "level")
+            if not exist:
+                logger.error("Error: Instruction without level field")
+                return False
+            exist, iter = get_instr_field(ir, "iter")
+            if not exist:
+                logger.error("Error: Instruction without iter field")
+                return False
+            exist, step = get_instr_field(ir, "step")
+            if not exist:
+                logger.error("Error: Instruction without step field")
+                return False
+            exist, delay = get_instr_field(ir, "delay")
+            if not exist:
+                logger.error("Error: Instruction without delay field")
+                return False
+            conf = resource_pool_.get("conf")
+            resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
+                resource_name, i, j, slot, port)]
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 6)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 6)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 6)
+            resource_pool_.set("conf", conf)
+            logger.info("REP instr: level={}, iter={}, step={}, delay={}".format(
+                level, resource_conf["repeat"][level]["iter"], resource_conf["repeat"][level]["step"], resource_conf["repeat"][level]["delay"]))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
             pc = compute_npc(resource_pool_, i, j, pc, 1)
             resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
@@ -1076,9 +1131,9 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             conf = resource_pool_.get("conf")
             resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
                 resource_name, i, j, slot, port)]
-            resource_conf["repeat"][level]["iter"] = iter
-            resource_conf["repeat"][level]["step"] = step
-            resource_conf["repeat"][level]["delay"] = delay
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 0)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 0)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 0)
             resource_pool_.set("conf", conf)
             logger.info("REP instr: level="+str(level) +
                         ", iter="+str(iter)+", step="+str(step)+", delay="+str(delay))
@@ -1113,9 +1168,9 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             conf = resource_pool_.get("conf")
             resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
                 resource_name, i, j, slot, port)]
-            resource_conf["repeat"][level]["iter"] += iter * 2**6
-            resource_conf["repeat"][level]["step"] += step * 2**6
-            resource_conf["repeat"][level]["delay"] += delay * 2**6
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 6)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 6)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 6)
             resource_pool_.set("conf", conf)
             logger.info("REP instr: level={}, iter={}, step={}, delay={}".format(
                 level, resource_conf["repeat"][level]["iter"], resource_conf["repeat"][level]["step"], resource_conf["repeat"][level]["delay"]))
@@ -1173,12 +1228,49 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 return False
             conf = resource_pool_.get("conf")
             resource_conf = conf["dpu_{}_{}_{}_conf".format(i, j, slot)]
-            resource_conf["repeat"][level]["iter"] = iter
-            resource_conf["repeat"][level]["step"] = step
-            resource_conf["repeat"][level]["delay"] = delay
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 0)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 0)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 0)
             resource_pool_.set("conf", conf)
             logger.info("REP instr: level="+str(level) +
                         ", iter="+str(iter)+", step="+str(step)+", delay="+str(delay))
+            pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+            pc = compute_npc(resource_pool_, i, j, pc, 1)
+            resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+            e = (clk_+1, "fetch_decode_" +
+                 str(i)+"_"+str(j), [i, j], 100, True)
+            event_pool_.post(e)
+            return True
+        elif ir.name == "repx":
+            exist, port = get_instr_field(ir, "port")
+            if not exist:
+                logger.error("Error: Instruction without port field")
+                return False
+            exist, level = get_instr_field(ir, "level")
+            if not exist:
+                logger.error("Error: Instruction without level field")
+                return False
+            exist, iter = get_instr_field(ir, "iter")
+            if not exist:
+                logger.error("Error: Instruction without iter field")
+                return False
+            exist, step = get_instr_field(ir, "step")
+            if not exist:
+                logger.error("Error: Instruction without step field")
+                return False
+            exist, delay = get_instr_field(ir, "delay")
+            if not exist:
+                logger.error("Error: Instruction without delay field")
+                return False
+            conf = resource_pool_.get("conf")
+            resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
+                resource_name, i, j, slot, port)]
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 6)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 6)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 6)
+            resource_pool_.set("conf", conf)
+            logger.info("REP instr: level={}, iter={}, step={}, delay={}".format(
+                level, resource_conf["repeat"][level]["iter"], resource_conf["repeat"][level]["step"], resource_conf["repeat"][level]["delay"]))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
             pc = compute_npc(resource_pool_, i, j, pc, 1)
             resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
@@ -1400,12 +1492,49 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             conf = resource_pool_.get("conf")
             resource_conf = conf["swb_{}_{}_{}_{}_conf".format(
                 i, j, slot, port)]
-            resource_conf["repeat"][level]["iter"] = iter
-            resource_conf["repeat"][level]["step"] = step
-            resource_conf["repeat"][level]["delay"] = delay
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 0)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 0)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 0)
             resource_pool_.set("conf", conf)
             logger.info("REP instr: level="+str(level) +
                         ", iter="+str(iter)+", step="+str(step)+", delay="+str(delay))
+            pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+            pc = compute_npc(resource_pool_, i, j, pc, 1)
+            resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+            e = (clk_+1, "fetch_decode_" +
+                 str(i)+"_"+str(j), [i, j], 100, True)
+            event_pool_.post(e)
+            return True
+        elif ir.name == "repx":
+            exist, port = get_instr_field(ir, "port")
+            if not exist:
+                logger.error("Error: Instruction without port field")
+                return False
+            exist, level = get_instr_field(ir, "level")
+            if not exist:
+                logger.error("Error: Instruction without level field")
+                return False
+            exist, iter = get_instr_field(ir, "iter")
+            if not exist:
+                logger.error("Error: Instruction without iter field")
+                return False
+            exist, step = get_instr_field(ir, "step")
+            if not exist:
+                logger.error("Error: Instruction without step field")
+                return False
+            exist, delay = get_instr_field(ir, "delay")
+            if not exist:
+                logger.error("Error: Instruction without delay field")
+                return False
+            conf = resource_pool_.get("conf")
+            resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
+                resource_name, i, j, slot, port)]
+            resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 6)
+            resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 6)
+            resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 6)
+            resource_pool_.set("conf", conf)
+            logger.info("REP instr: level={}, iter={}, step={}, delay={}".format(
+                level, resource_conf["repeat"][level]["iter"], resource_conf["repeat"][level]["step"], resource_conf["repeat"][level]["delay"]))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
             pc = compute_npc(resource_pool_, i, j, pc, 1)
             resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
