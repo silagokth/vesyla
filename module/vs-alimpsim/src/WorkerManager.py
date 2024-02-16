@@ -1261,8 +1261,8 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 logger.error("Error: Instruction without delay field")
                 return False
             conf = resource_pool_.get("conf")
-            resource_conf = conf["{}_{}_{}_{}_{}_conf".format(
-                resource_name, i, j, slot, port)]
+            resource_conf = conf["{}_{}_{}_{}_conf".format(
+                resource_name, i, j, slot)]
             resource_conf["repeat"][level]["iter"] = partial_update_variable(resource_conf["repeat"][level]["iter"], iter, 6, 6)
             resource_conf["repeat"][level]["step"] = partial_update_variable(resource_conf["repeat"][level]["step"], step, 6, 6)
             resource_conf["repeat"][level]["delay"] = partial_update_variable(resource_conf["repeat"][level]["delay"], delay, 6, 6)
