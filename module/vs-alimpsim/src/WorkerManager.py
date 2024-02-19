@@ -240,6 +240,7 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
             i, j, slot, port)]
         levels = resource_conf["repeat"]
         t = clk_
+        int_addr = 0
         for l7 in range(levels[7]["iter"]):
             addr7 = l7*levels[7]["step"]
             for l6 in range(levels[6]["iter"]):
@@ -262,9 +263,9 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                                             # make it very low priority so that the updated data will not be immediately used
                                             e = (t, handler_name, [
                                                 i, j, slot, storage_resource, addr +
-                                                resource_conf["ext_addr"], resource_conf['int_addr']+addr], 5, True)
+                                                resource_conf["ext_addr"], int_addr], 5, True)
                                             print(
-                                                addr, resource_conf["ext_addr"], resource_conf['int_addr']+addr)
+                                                addr, resource_conf["ext_addr"], int_addr)
                                         elif port == 2 or port == 3:
                                             if handler_name.startswith("write"):
                                                 e = (t, handler_name, [
@@ -273,6 +274,7 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                                                 e = (t, handler_name, [
                                                     i, j, slot, port, storage_resource, addr+resource_conf["start"]], 80, True)
                                         event_pool_.post(e)
+                                        int_addr += 1
                                         t += 1
                                         if l0 < levels[0]["iter"]-1:
                                             t += levels[0]["delay"]
@@ -1643,14 +1645,12 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     if "{}_{}_{}".format(r, c, s) not in curr_dpu_mode:
                         continue
                     conf = curr_dpu_mode["{}_{}_{}".format(r, c, s)]
-                    
                     if conf["active"]:
                         # reset internal registers
                         dpu_internal_regs["{}_{}_{}".format(
                             r, c, s)]["acc"] = 0
                         curr_dpu_mode["{}_{}_{}".format(r, c, s)]['active']=False
                         resource_pool_.set("curr_dpu_mode", curr_dpu_mode)
-                        
                     in0 = curr_value[r][c][s][0]
                     in1 = curr_value[r][c][s+1][0]
                     out = 0
@@ -1661,7 +1661,7 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     if conf["mode"] == 0:
                         out = 0
                     elif conf["mode"] == 1:
-                        out = in0 - in1
+                        out = in0 + in1
                     elif conf["mode"] == 2:
                         acc = in0*in1 + acc
                         out = acc
@@ -1673,7 +1673,6 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                         r, c, s)]["scalar"] = scalar
 
                     print("out= " + str(out))
-                    print("acc= " +str(acc))
                     e = [clk_+1, "delay_signal", [r, c, s, 1, out], 100, False]
                     event_pool_.post(e)
     resource_pool_.set("dpu_internal_regs", dpu_internal_regs)
