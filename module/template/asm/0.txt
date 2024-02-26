@@ -1,0 +1,39 @@
+cell 0_0
+# build route
+route slot=0, option=0, sr=0, source=2, target= 0b010000000
+act mode=0, param=0, ports=0b0100
+
+# load data
+dsu slot=1, port=0, init_addr=0
+rep slot=1, port=0, level=0, iter=8, step=1, delay=0
+dsu slot=1, port=2, init_addr=0
+rep slot=1, port=2, level=0, iter=8, step=1, delay=0
+
+# read data
+dsu slot=2, port=3, init_addr=0
+rep slot=2, port=3, level=0, iter=8, step=1, delay=0
+
+act mode=0, param=1, ports=0b0101
+act mode=0, param=2, ports=0b1000
+wait
+
+
+cell 1_0
+# build route
+route slot=0, option=0, sr=1, source=1, target= 0b0000000000000100
+act mode=0, param=0, ports=0b0100
+
+# write data
+dsu slot=2, port=2, init_addr=0
+rep slot=2, port=2, level=0, iter=8, step=1, delay=0
+
+# store data
+dsu slot=1, port=3, init_addr=0
+rep slot=1, port=3, level=0, iter=8, step=1, delay=0
+dsu slot=1, port=1, init_addr=0
+rep slot=1, port=1, level=0, iter=8, step=1, delay=0
+
+wait cycle=2
+act mode=0, param=2, ports=0b0100
+act mode=0, param=1, ports=0b1010
+wait

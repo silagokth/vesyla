@@ -1,4 +1,5 @@
 import re
+import os
 import logging
 import verboselogs
 import sys
@@ -86,11 +87,7 @@ def reset_interconnection_value(clk_, event_pool_, resource_pool_, handler_pool_
     return True
 
 
-def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_, file_instr_, file_input_, file_output_):
-
-    with open(file_output_, "w+") as f:
-        f.write("\n")
-    pass
+def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_, file_instr_, file_input_, file_output_, file_state_reg_):
 
     # Load Instruction, architecture and instruction set
     db = ds.DataBase()
@@ -117,12 +114,12 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     resource_pool_.add("IAP", [])
     resource_pool_.add("OAP", [])
 
-    # Load Input, Output buffer and scratch pad memory
+    # Load Input, Output buffer and scratch pad memory     
     resource_pool_.add("input_buffer", {})
     resource_pool_.add("output_buffer", {})
     resource_pool_.add("output_buffer_active", [False
                                                 for j in range(output_buffer_depth)])
-
+    
     input_buffer = resource_pool_.get("input_buffer")
     with open(file_input_, "r") as f:
         content = f.read().split("\n")
@@ -135,6 +132,27 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
                     data[16-i-1] = int(result.group(2)[i*16:(i+1)*16], 2)
                 input_buffer[addr] = data
     resource_pool_.set("input_buffer", input_buffer)
+    
+    if os.path.exists(file_output_):
+        output_buffer = resource_pool_.get("output_buffer")
+        output_buffer_active = resource_pool_.get("output_buffer_active")
+        with open(file_output_, "r") as f:
+            content = f.read().split("\n")
+            for line in content:
+                result = re.match(r"(\d+)\s+([01]+)", line)
+                if result:
+                    addr = int(result.group(1))
+                    data = [0] * 16
+                    for i in range(16):
+                        data[16-i-1] = int(result.group(2)[i*16:(i+1)*16], 2)
+                    output_buffer[addr] = data
+                    output_buffer_active[addr] = True
+        resource_pool_.set("output_buffer", output_buffer)
+        resource_pool_.set("output_buffer_active", output_buffer_active)
+    
+    #print output buffer
+    output_buffer = resource_pool_.get("output_buffer")
+    output_buffer_active = resource_pool_.get("output_buffer_active")
 
     # add handler
     handler_pool_.add("delay_signal", wm.delay_signal)
@@ -182,6 +200,16 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
                 if not resource:
                     logger.error("Resource not found: " + resource_name)
                 current_slot = current_slot + resource.size
+
+    # read file contents as dictionary
+    if os.path.exists(file_state_reg_):
+        with open(file_state_reg_, "r") as f:
+            raccu_reg =resource_pool_.get("raccu_reg")
+            state_reg = json.load(f)
+            for label in state_reg:
+                [row, col, addr] = label.split("_")
+                raccu_reg[int(row)][int(col)][int(addr)] = state_reg[label]
+            resource_pool_.set("raccu_reg", raccu_reg)
 
     resource_map = resource_pool_.get("resource_map")
     print(resource_map)

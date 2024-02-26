@@ -28,8 +28,6 @@ def partial_update_variable(variable, value, value_bitwidth, low_starting_bit) -
 
 
 def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
-    print("Resource trigger")
-    print(args)
     i = args[0]
     j = args[1]
     db = resource_pool_.get("db")
@@ -38,7 +36,6 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
     prefix = str(i)+"_"+str(j)+"_"+str(slot)
     resource_map = resource_pool_.get("resource_map")
     resource_name = resource_map[prefix]
-    print(resource_name)
     if resource_name == "rf":
         if port == 0:
             handler_name = "write_word"
@@ -159,7 +156,6 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
             "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
         resource_pool_.set("conf", conf)
     elif resource_name == 'swb':
-        print("SWB")
         if port == 0:
             handler_name = "set_curr_swb_mode"
         elif port == 2:
@@ -170,7 +166,6 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
         conf = resource_pool_.get("conf")
         resource_conf = conf["swb_{}_{}_{}_{}_conf".format(i, j, slot, port)]
         levels = resource_conf["repeat"]
-        print(levels)
         t = clk_
         for l7 in range(levels[7]["iter"]):
             addr7 = l7*levels[7]["step"]
@@ -220,24 +215,35 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
             "option": [{} for i in range(4)], "delay": [0 for i in range(3)], "max_state": 0, "repeat": [{"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
         resource_pool_.set("conf", conf)
     elif resource_name == 'iosram':
-        print("IOSRAM")
-        if port == 0:
-            handler_name = "write_io"
-        elif port == 1:
-            handler_name = "read_io"
-        elif port == 2:
-            handler_name = "write_bulk"
-        elif port == 3:
-            handler_name = "read_bulk"
-        else:
-            logger.error("Error: Unknown port for IOSRAM resource: ", port)
-            return False
         conf = resource_pool_.get("conf")
         resource_conf = conf["iosram_{}_{}_{}_{}_conf".format(
             i, j, slot, port)]
         storage_map = resource_pool_.get("storage_map")
         storage_resource = storage_map["iosram_{}_{}_{}_{}_conf".format(
             i, j, slot, port)]
+        storage_resource_start_slot = int(storage_resource.split("_")[-2])
+
+        if slot == storage_resource_start_slot:
+            if port == 0:
+                handler_name = "read_from_io"
+            elif port == 1:
+                handler_name = "write_to_io"
+            elif port == 2:
+                handler_name = "io_write_to_sram"
+            elif port == 3:
+                handler_name = "sram_read_to_io"
+            else:
+                logger.error("Error: Unknown port for IOSRAM resource: ", port)
+                return False
+        else:
+            if port == 2:
+                handler_name = "write_bulk"
+            elif port == 3:
+                handler_name = "read_bulk"
+            else:
+                logger.error("Error: Unknown port for IOSRAM resource: ", port)
+                return False
+
         levels = resource_conf["repeat"]
         t = clk_
         int_addr = 0
@@ -259,20 +265,28 @@ def resource_trigger(clk_, event_pool_, resource_pool_, handler_pool_, args):
                                         addr0 = l0*levels[0]["step"]
                                         addr = addr7 + addr6 + \
                                             addr5+addr4+addr3+addr2+addr1+addr0
-                                        if port == 0 or port == 1:
+                                        if slot == storage_resource_start_slot:
+                                            if port == 0 or port == 3:
                                             # make it very low priority so that the updated data will not be immediately used
-                                            e = (t, handler_name, [
-                                                i, j, slot, storage_resource, addr +
-                                                resource_conf["ext_addr"], int_addr], 5, True)
-                                            print(
-                                                addr, resource_conf["ext_addr"], int_addr)
-                                        elif port == 2 or port == 3:
-                                            if handler_name.startswith("write"):
                                                 e = (t, handler_name, [
-                                                    i, j, slot, port, storage_resource, addr+resource_conf["start"]], 20, True)
+                                                i, j, slot, storage_resource, addr + resource_conf["start"]], 10, True)
+                                            elif port == 1 or port == 2:
+                                                e = (t, handler_name, [
+                                                i, j, slot, storage_resource, addr + resource_conf["start"]], 5, True)
                                             else:
+                                                logger.error("Error: Unknown port for IOSRAM resource: ", port)
+                                                return False
+                                        else:
+                                            if port == 2:
+                                                if handler_name.startswith("write"):
+                                                    e = (t, handler_name, [
+                                                    i, j, slot, port, storage_resource, addr+resource_conf["start"]], 20, True)
+                                            elif port == 3:
                                                 e = (t, handler_name, [
                                                     i, j, slot, port, storage_resource, addr+resource_conf["start"]], 80, True)
+                                            else:
+                                                logger.error("Error: Unknown port for IOSRAM resource: ", port)
+                                                return False
                                         event_pool_.post(e)
                                         int_addr += 1
                                         t += 1
@@ -356,6 +370,7 @@ def read_word(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 
 def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("write_bulk is triggered: "+str(args))
     i = args[0]
     j = args[1]
     slot = args[2]
@@ -383,6 +398,7 @@ def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 
 def read_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("read_bulk is triggered: "+str(args))
     i = args[0]
     j = args[1]
     slot = args[2]
@@ -408,53 +424,82 @@ def read_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
     return True
 
 
-def write_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
+def read_from_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("read_from_io is triggered: "+str(args))
     i = args[0]
     j = args[1]
     slot = args[2]
     resource_name = args[3]
-    ext_addr = args[4]
-    int_addr = args[5]
+    addr = args[4]
 
-    sram = resource_pool_.get(resource_name)
     input_buffer = resource_pool_.get("input_buffer")
-    print(int_addr, ext_addr)
-    print(input_buffer)
-    sram[int_addr] = input_buffer[ext_addr]
-    resource_pool_.set(resource_name, sram)
+    io_temp_var = resource_pool_.get("io_temp_var")
+    io_temp_var["input2sram"]["{}_{}_{}".format(i,j,slot)] = input_buffer[addr]
+    resource_pool_.set("io_temp_var", io_temp_var)
 
     iap = resource_pool_.get("IAP")
-    iap.append([clk_, ext_addr])
+    iap.append([clk_, addr])
     resource_pool_.set("IAP", iap)
 
-    logger.info("Read from input buffer: "+str(input_buffer[ext_addr]) +
-                " to {}[{}]".format(resource_name, int_addr))
+    logger.info("Read from input buffer: "+str(input_buffer[addr]))
+    return True
+
+def io_write_to_sram(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("io_write_to_sram is triggered: "+str(args))
+    i = args[0]
+    j = args[1]
+    slot = args[2]
+    resource_name = args[3]
+    addr = args[4]
+
+    sram = resource_pool_.get(resource_name)
+    io_temp_var = resource_pool_.get("io_temp_var")
+    sram[addr] = io_temp_var["input2sram"]["{}_{}_{}".format(i,j,slot)]
+    resource_pool_.set(resource_name, sram)
+
+    logger.info("Write to SRAM: "+str(sram[addr]))
     return True
 
 
-def read_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
+
+def write_to_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("write_to_io is triggered: "+str(args))
     i = args[0]
     j = args[1]
     slot = args[2]
     resource_name = args[3]
-    ext_addr = args[4]
-    int_addr = args[5]
+    addr = args[4]
 
-    sram = resource_pool_.get(resource_name)
     output_buffer = resource_pool_.get("output_buffer")
-    output_buffer[ext_addr] = sram[int_addr]
+    io_temp_var = resource_pool_.get("io_temp_var")
+    output_buffer[addr] = io_temp_var["sram2output"]["{}_{}_{}".format(i,j,slot)]
     resource_pool_.set("output_buffer", output_buffer)
 
     output_buffer_active = resource_pool_.get("output_buffer_active")
-    output_buffer_active[ext_addr] = True
+    output_buffer_active[addr] = True
     resource_pool_.set("output_buffer_active", output_buffer_active)
 
     oap = resource_pool_.get("OAP")
-    oap.append([clk_, ext_addr])
+    oap.append([clk_, addr])
     resource_pool_.set("OAP", oap)
 
-    logger.info("Write to output buffer: "+str(output_buffer[ext_addr]) +
-                " from {}[{}]".format(resource_name, int_addr))
+    logger.info("Write to output buffer: "+str(output_buffer[addr]))
+    return True
+
+def sram_read_to_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    logger.debug("sram_read_to_io is triggered: "+str(args))
+    i = args[0]
+    j = args[1]
+    slot = args[2]
+    resource_name = args[3]
+    addr = args[4]
+
+    sram = resource_pool_.get(resource_name)
+    io_temp_var = resource_pool_.get("io_temp_var")
+    io_temp_var["sram2output"]["{}_{}_{}".format(i,j,slot)] = sram[addr]
+    resource_pool_.set("io_temp_var", io_temp_var)
+
+    logger.info("Read from SRAM: "+str(sram[addr]))
     return True
 
 
@@ -624,7 +669,7 @@ def config_loop(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 
 def control_init(name: str, db: ds.DataBase, prefix: str, event_pool_, resource_pool_, handler_pool_):
-    if name == "controller_0":
+    if name == "controller_io" or name == "controller_normal":
         num_drra_row = db.arch.fabric.height
         num_drra_col = db.arch.fabric.width
         for r in range(num_drra_row):
@@ -812,8 +857,15 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
 
     if name == "rf":
         # Register file
+        depth = 64 # default depth
+        if len(resource.custom_properties)>0:
+            for attr in resource.custom_properties:
+                if attr.key == "depth":
+                    depth = attr.val
+                    break
+
         resource_pool_.add("rf_{}_{}_{}_reg".format(
-            i, j, slot), [0 for i in range(64)])
+            i, j, slot), [0 for i in range(depth)])
 
         storage_map = resource_pool_.get("storage_map")
         resource_map = resource_pool_.get("resource_map")
@@ -855,41 +907,67 @@ def resource_init(name: str, event_pool_, resource_pool_, handler_pool_, args):
         handler_pool_.add("read_bulk", read_bulk)
         return True
     elif name == "iosram":
+        # I/O SRAM
+        depth = 64  # default depth
+        if len(resource.custom_properties)>0:
+            for attr in resource.custom_properties:
+                if attr.key == "depth":
+                    depth = attr.val
+                    break
+
         resource_pool_.add("iosram_{}_{}_{}_data".format(
-            i, j, slot), [[0 for i in range(16)] for j in range(64)])
+            i, j, slot), [[0 for i in range(16)] for j in range(depth)])
+        resource_pool_.add("io_temp_var".format(
+            i, j, slot), {"input2sram": {}, "sram2output": {}})
+        io_temp_var = resource_pool_.get("io_temp_var")
         conf = resource_pool_.get("conf")
         storage_map = resource_pool_.get("storage_map")
         resource_map = resource_pool_.get("resource_map")
         for x in range(resource.bulk_input_port):
             storage_map["iosram_{}_{}_{}_{}_conf".format(
-                i, j, slot+x, 2)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+                i, j, slot+1+x, 2)] = "iosram_{}_{}_{}_data".format(i, j, slot)
             conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot+x, 2)] = {"start": 0, "repeat": [
                 {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
         for x in range(resource.bulk_output_port):
             storage_map["iosram_{}_{}_{}_{}_conf".format(
-                i, j, slot+x, 3)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+                i, j, slot+1+x, 3)] = "iosram_{}_{}_{}_data".format(i, j, slot)
             conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot+x, 3)] = {"start": 0, "repeat": [
                 {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
             resource_map["{}_{}_{}".format(i, j, slot+x)] = name
 
-        storage_map["iosram_{}_{}_{}_{}_conf".format(
-            i, j, slot, 0)] = "iosram_{}_{}_{}_data".format(i, j, slot)
-        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 0)] = {"ext_addr": 0, "int_addr": 0, "repeat": [
-            {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
-        storage_map["iosram_{}_{}_{}_{}_conf".format(
-            i, j, slot, 1)] = "iosram_{}_{}_{}_data".format(i, j, slot)
-        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 1)] = {"ext_addr": 0, "int_addr": 0, "repeat": [
-            {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        # define port for I/O interface and the paired bulk ports
         resource_map["{}_{}_{}".format(i, j, slot)] = name
+        storage_map["iosram_{}_{}_{}_{}_conf".format(
+                i, j, slot, 0)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 0)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        storage_map["iosram_{}_{}_{}_{}_conf".format(
+                i, j, slot, 1)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 1)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        storage_map["iosram_{}_{}_{}_{}_conf".format(
+                i, j, slot, 2)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 2)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        storage_map["iosram_{}_{}_{}_{}_conf".format(
+                i, j, slot, 3)] = "iosram_{}_{}_{}_data".format(i, j, slot)
+        conf["iosram_{}_{}_{}_{}_conf".format(i, j, slot, 3)] = {"start": 0, "repeat": [
+                {"iter": 1, "step": 0, "delay": 0} for i in range(8)]}
+        io_temp_var["input2sram"]["iosram_{}_{}_{}".format(i, j, slot)]= 0
+        io_temp_var["sram2output"]["iosram_{}_{}_{}".format(i, j, slot)]= 0
+        
 
         resource_pool_.set("storage_map", storage_map)
         resource_pool_.set("resource_map", resource_map)
+        resource_pool_.set("conf", conf)
 
         handler_pool_.add("write_bulk", write_bulk)
         handler_pool_.add("read_bulk", read_bulk)
-        handler_pool_.add("write_io", write_io)
-        handler_pool_.add("read_io", read_io)
+        handler_pool_.add("io_write_to_sram", io_write_to_sram)
+        handler_pool_.add("sram_read_to_io", sram_read_to_io)
+        handler_pool_.add("read_from_io", read_from_io)
+        handler_pool_.add("write_to_io", write_to_io)
         return True
     elif name == "dpu":
         dpu_internal_regs = resource_pool_.get("dpu_internal_regs")
@@ -1074,39 +1152,39 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                  str(i)+"_"+str(j), [i, j], 100, True)
             event_pool_.post(e)
             return True
-        elif ir.name == "io":
-            exist, port = get_instr_field(ir, "port")
-            if not exist:
-                logger.error("Error: Instruction without port field")
-                return False
-            conf = resource_pool_.get("conf")
-            resource_conf = conf["iosram_{}_{}_{}_{}_conf".format(
-                i, j, slot, port)]
-            exist, ext_addr_sd = get_instr_field(ir, "ext_addr_sd")
-            if not exist:
-                logger.error("Error: Instruction without ext_addr_sd field")
-                return False
-            exist, resource_conf["ext_addr"] = get_instr_field(ir, "ext_addr")
-            if not exist:
-                logger.error("Error: Instruction without ext_addr field")
-                return False
-            if ext_addr_sd != 0:
-                raccu_reg = resource_pool_.get("raccu_reg")
-                resource_conf["ext_addr"] = raccu_reg[i][j][resource_conf["ext_addr"]]
-            exist, resource_conf["int_addr"] = get_instr_field(ir, "int_addr")
-            if not exist:
-                logger.error("Error: Instruction without int_addr field")
-                return False
-            resource_pool_.set("conf", conf)
-            logger.info("IO instr: ext_addr="+str(resource_conf["ext_addr"]) +
-                        ", int_addr="+str(resource_conf["int_addr"]))
-            pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
-            pc = compute_npc(resource_pool_, i, j, pc, 1)
-            resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
-            e = (clk_+1, "fetch_decode_" +
-                 str(i)+"_"+str(j), [i, j], 100, True)
-            event_pool_.post(e)
-            return True
+        # elif ir.name == "io":
+        #     exist, port = get_instr_field(ir, "port")
+        #     if not exist:
+        #         logger.error("Error: Instruction without port field")
+        #         return False
+        #     conf = resource_pool_.get("conf")
+        #     resource_conf = conf["iosram_{}_{}_{}_{}_conf".format(
+        #         i, j, slot, port)]
+        #     exist, ext_addr_sd = get_instr_field(ir, "ext_addr_sd")
+        #     if not exist:
+        #         logger.error("Error: Instruction without ext_addr_sd field")
+        #         return False
+        #     exist, resource_conf["ext_addr"] = get_instr_field(ir, "ext_addr")
+        #     if not exist:
+        #         logger.error("Error: Instruction without ext_addr field")
+        #         return False
+        #     if ext_addr_sd != 0:
+        #         raccu_reg = resource_pool_.get("raccu_reg")
+        #         resource_conf["ext_addr"] = raccu_reg[i][j][resource_conf["ext_addr"]]
+        #     exist, resource_conf["int_addr"] = get_instr_field(ir, "int_addr")
+        #     if not exist:
+        #         logger.error("Error: Instruction without int_addr field")
+        #         return False
+        #     resource_pool_.set("conf", conf)
+        #     logger.info("IO instr: ext_addr="+str(resource_conf["ext_addr"]) +
+        #                 ", int_addr="+str(resource_conf["int_addr"]))
+        #     pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+        #     pc = compute_npc(resource_pool_, i, j, pc, 1)
+        #     resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+        #     e = (clk_+1, "fetch_decode_" +
+        #          str(i)+"_"+str(j), [i, j], 100, True)
+        #     event_pool_.post(e)
+        #     return True
         elif ir.name == "rep":
             exist, port = get_instr_field(ir, "port")
             if not exist:
@@ -1579,12 +1657,15 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 
 def propagate_connection(curr_value, connection_map):
+    bulk_conn = {}
+    for cell in connection_map:
+        for dest in connection_map[cell]["bulk"]:
+            bulk_conn[dest] = connection_map[cell]["bulk"][dest]
     for cell in connection_map:
         row = int(cell.split("_")[0])
         col = int(cell.split("_")[1])
         slot = int(cell.split("_")[2])
         word_conn = connection_map[cell]["word"]
-        bulk_conn = connection_map[cell]["bulk"]
         for dest in word_conn:
             dest_row = int(dest.split("_")[0])
             dest_col = int(dest.split("_")[1])
@@ -1679,6 +1760,13 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
     # set curr_value
     resource_pool_.set("curr_value", curr_value)
+
+    # clear all IO related temp var
+    io_temp_var = resource_pool_.get("io_temp_var")
+    for tag in io_temp_var["input2sram"]:
+        io_temp_var["input2sram"][tag] = 0
+    for tag in io_temp_var["sram2output"]:
+        io_temp_var["sram2output"][tag] = 0
 
     # Post a comb event again
     e = (clk_+1, "comb_callback", [], 50, False)

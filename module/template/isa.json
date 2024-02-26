@@ -480,51 +480,6 @@
             { "key": 2, "val": "write narrow" },
             { "key": 3, "val": "write wide" }
           ]
-        },
-        {
-          "name": "level",
-          "comment": "The level of that the init address should be applied on. [0]: inner most level, [15]: outer most level.",
-          "bitwidth": 4
-        }
-      ]
-    },
-    {
-      "code": 15,
-      "name": "io",
-      "machines": ["iosram"],
-      "segment_templates": [
-        {
-          "name": "slot",
-          "comment": "Slot number",
-          "bitwidth": 4
-        },
-        {
-          "name": "ext_addr_sd",
-          "comment": "Is initial address static or dynamic?",
-          "bitwidth": 1,
-          "verbo_map": [
-            { "key": 0, "val": "s" },
-            { "key": 1, "val": "d" }
-          ]
-        },
-        {
-          "name": "ext_addr",
-          "comment": "External address",
-          "bitwidth": 16
-        },
-        {
-          "name": "int_addr",
-          "comment": "Internal SRAM address",
-          "bitwidth": 6
-        },
-        {
-          "name": "port",
-          "comment": "The port number",
-          "bitwidth": 1,
-          "verbo_map": [
-            { "key": 0, "val": "write to SRAM from input buffer" },
-            { "key": 1, "val": "read from SRAM to output buffer" }
-          ]
         }
       ]
     }

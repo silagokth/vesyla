@@ -20,6 +20,7 @@
 
 #include "Array.hpp"
 #include "Stream.hpp"
+#include "json.hpp"
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -39,17 +40,7 @@ IO __output_buffer__;
 
 void init();
 void model_l0();
-void model_l1() {
-  string cmd;
-  cmd = "python3 ../../vs-manas/src/main.py -i ../org_instr.txt -s ../isa.json "
-        "-o .";
-  assert(system(cmd.c_str()) == 0);
-  cmd = "python3 ../../vs-alimpsim/src/main.py --arch ../arch.json --instr "
-        "instr.bin --isa ../isa.json --input sram_image_in.txt --output "
-        "sram_image_m1.txt "
-        "--metric metric.json";
-  assert(system(cmd.c_str()) == 0);
-}
+void model_l1();
 
 IO file_to_io(string file_) {
   IO io;
@@ -125,6 +116,33 @@ bool verify(string file0_, string file1_) {
     }
   }
   return true;
+}
+
+void set_state_reg(int row, int col, int addr, int value) {
+  nlohmann::json j;
+  // check if the file exists
+  if (ifstream("state_reg.json")) {
+    ifstream ifs("state_reg.json");
+    ifs >> j;
+  }
+  string key = to_string(row) + "_" + to_string(col) + "_" + to_string(addr);
+  j[key] = value;
+  ofstream ofs("state_reg.json");
+  ofs << j;
+  ofs.close();
+}
+
+void simulate_code_segment(int id) {
+  string cmd;
+  cmd = "python3 ../../vs-manas/src/main.py -i ../asm/" + to_string(id) +
+        ".txt -s ../isa.json "
+        "-o .";
+  assert(system(cmd.c_str()) == 0);
+  cmd = "python3 ../../vs-alimpsim/src/main.py --arch ../arch.json --instr "
+        "instr.bin --isa ../isa.json --input sram_image_in.txt --output "
+        "sram_image_m1.txt "
+        "--metric metric.json --state_reg state_reg.json";
+  assert(system(cmd.c_str()) == 0);
 }
 
 int run_simulation() {

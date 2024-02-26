@@ -8,6 +8,7 @@ cp ../Drra.hpp ./
 cp ../Array.hpp ./
 cp ../Stream.hpp ./
 cp ../Util.hpp ./
+cp ../json.hpp ./
 g++ -g -Wall -Wno-strict-aliasing -Wno-unknown-pragmas -O2 -o main main.cpp
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ./main

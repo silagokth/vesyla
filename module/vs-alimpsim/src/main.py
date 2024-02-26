@@ -18,7 +18,7 @@ coloredlogs.install(datefmt='%H:%M:%S',
 
 
 def process_arguments():
-    '''process command line arguments: --arch, --instr, --input, --output, --metric'''
+    '''process command line arguments: --arch, --instr, --input, --output, --metric, --state_reg, --step'''
     parser = argparse.ArgumentParser(description='Vesyla Simulator')
     parser.add_argument('--arch', metavar='arch', type=str, nargs=1,
                         help='architecture file')
@@ -32,6 +32,8 @@ def process_arguments():
                         help='output file')
     parser.add_argument('--metric', metavar='metric', type=str, nargs=1,
                         help='metric file')
+    parser.add_argument('--state_reg', metavar='state_reg', type=str, nargs=1,
+                        help='state register file')
     # add an argument --step to indicate it's a step-by-step simulation
     parser.add_argument('--step', action='store_true',
                         help='step-by-step simulation')
@@ -53,13 +55,14 @@ if __name__ == "__main__":
     file_input = args.input[0]
     file_output = args.output[0]
     file_metric = args.metric[0]
+    file_state_reg = args.state_reg[0]
     step = args.step
 
     ep = EventPool.EventPool()
     rp = ResourcePool.ResourcePool()
     hp = HandlerPool.HandlerPool()
     InitEvent.init_event(ep, rp, hp,
-                         file_arch, file_isa, file_instr, file_input, file_output)
+                         file_arch, file_isa, file_instr, file_input, file_output, file_state_reg)
     sch = Scheduler.Scheduler(ep, rp, hp, step)
     sch.run()
 
@@ -88,3 +91,15 @@ if __name__ == "__main__":
     }
     with open(file_metric, "w+") as f:
         json.dump(metric, f)
+    
+    # Dump state register
+    raccu_reg = rp.get("raccu_reg")
+    state_reg = {}
+    for r in range(len(raccu_reg)):
+        for c in range(len(raccu_reg[r])):
+            for addr in range(len(raccu_reg[r][c])):
+                if(raccu_reg[r][c][addr] != 0):
+                    label = str(r) + "_" + str(c) + "_" + str(addr)
+                    state_reg[label] = raccu_reg[r][c][addr]
+    with open(file_state_reg, "w+") as f:
+        json.dump(state_reg, f)

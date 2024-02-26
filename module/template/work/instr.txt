@@ -1,0 +1,25 @@
+cell 0_0
+route slot=0, option=0, sr=0, source=2, target=128
+act ports=4, mode=0, param=0
+dsu slot=1, init_addr_sd=0, init_addr=0, port=0
+rep slot=1, port=0, level=0, iter=8, step=1, delay=0
+dsu slot=1, init_addr_sd=0, init_addr=0, port=2
+rep slot=1, port=2, level=0, iter=8, step=1, delay=0
+dsu slot=2, init_addr_sd=0, init_addr=0, port=3
+rep slot=2, port=3, level=0, iter=8, step=1, delay=0
+act ports=5, mode=0, param=1
+act ports=8, mode=0, param=2
+wait mode=0, cycle=0
+cell 1_0
+route slot=0, option=0, sr=1, source=1, target=4
+act ports=4, mode=0, param=0
+dsu slot=2, init_addr_sd=0, init_addr=0, port=2
+rep slot=2, port=2, level=0, iter=8, step=1, delay=0
+dsu slot=1, init_addr_sd=0, init_addr=0, port=3
+rep slot=1, port=3, level=0, iter=8, step=1, delay=0
+dsu slot=1, init_addr_sd=0, init_addr=0, port=1
+rep slot=1, port=1, level=0, iter=8, step=1, delay=0
+wait mode=0, cycle=2
+act ports=4, mode=0, param=2
+act ports=10, mode=0, param=1
+wait mode=0, cycle=0
