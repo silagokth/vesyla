@@ -16,3 +16,6 @@ set(VERSION_PATCH 0 CACHE STRING "Project patch version number.")
 mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
 
 add_subdirectory("module/vs-manas")
+add_subdirectory("module/vs-alimpsim")
+add_subdirectory("module/vs-init")
+add_subdirectory("module/vs-testcase")

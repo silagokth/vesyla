@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package vs.alimpsim.ds;
+package vs.archvis.ds;
 
 message ArchitectureDescription {
   string platform = 1;
@@ -55,54 +55,6 @@ message CellList {
 message Coordinate {
   int32 row = 1;
   int32 col = 2;
-}
-
-message DataBase {
-  InstructionSet isa = 1;
-  InstructionPackage pkg = 2;
-  ArchitectureDescription arch = 3;
-}
-
-message InstructionSet {
-  string platform = 1;
-  int32 instr_bitwidth = 2;
-  int32 instr_code_bitwidth = 3;
-  repeated InstrctionTemplate instruction_templates = 4;
-}
-
-message InstrctionTemplate {
-  string name = 1;
-  int32 code = 2;
-  repeated string machines = 3;
-  repeated SegmentTemplate segment_templates = 4;
-}
-
-message SegmentTemplate {
-  string name = 1;
-  int32 bitwidth = 2;
-  bool is_signed = 3;
-  int32 default_val = 4;
-  repeated IntStrMap verbo_map = 5;
-  string comment = 6;
-}
-
-message InstructionPackage {
-  string name = 1;
-  string version = 2;
-  string platform = 3;
-  repeated InstructionList instruction_lists = 4;
-}
-
-message InstructionList {
-  string label = 1;
-  repeated Instruction instructions = 2;
-}
-
-message Instruction {
-  string name = 1;
-  repeated StrIntMap value_map = 2;
-  repeated StrIntMap int_info_map = 3;
-  repeated StrStrMap str_info_map = 4;
 }
 
 message StrIntMap {

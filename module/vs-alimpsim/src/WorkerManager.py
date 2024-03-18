@@ -371,6 +371,8 @@ def read_word(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
 def write_bulk(clk_, event_pool_, resource_pool_, handler_pool_, args):
     logger.debug("write_bulk is triggered: "+str(args))
+    conneciton_map = resource_pool_.get("connection_map")
+    print(conneciton_map)
     i = args[0]
     j = args[1]
     slot = args[2]
@@ -434,6 +436,7 @@ def read_from_io(clk_, event_pool_, resource_pool_, handler_pool_, args):
 
     input_buffer = resource_pool_.get("input_buffer")
     io_temp_var = resource_pool_.get("io_temp_var")
+    print(i, j, slot)
     io_temp_var["input2sram"]["{}_{}_{}".format(i,j,slot)] = input_buffer[addr]
     resource_pool_.set("io_temp_var", io_temp_var)
 
@@ -1691,6 +1694,8 @@ def propagate_connection(curr_value, connection_map):
                     if x == src:
                         src = bulk_conn[x]
                         break
+            if src.startswith("temp"):
+                continue
             src_row = int(src.split("_")[0])
             src_col = int(src.split("_")[1])
             src_slot = int(src.split("_")[2])
@@ -1746,6 +1751,8 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     elif conf["mode"] == 2:
                         acc = in0*in1 + acc
                         out = acc
+                    elif conf["mode"] == 3:
+                        out = max(in0, in1)
                     else:
                         logger.error("Error: Unknown DPU mode")
                         return False
