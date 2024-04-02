@@ -1,4 +1,4 @@
-set(CURRENT_SUBPROJECT_NAME "vs-schedule")
+set(CURRENT_SUBPROJECT_NAME "vs-sync")
 
 # Find includes in corresponding build directories
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
