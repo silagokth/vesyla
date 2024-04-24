@@ -61,6 +61,9 @@ def create_operation_table(instr_file: str):
         current_cell = None
         current_op = None
         for line in f:
+            # remove all comments starting with #
+            line = re.sub(r'#.*$', '', line)
+            line = line.lower() # case insensitive
             line = line.strip()
             if line == '':
                 continue
@@ -105,7 +108,6 @@ def create_operation_table(instr_file: str):
                 instr = match.group(1)
                 current_op['instr_list'].append(instr)
                 continue
-            
     return op_table
 
 def create_act_instr(op_list):
@@ -121,7 +123,7 @@ def create_act_instr(op_list):
         bin_str = ''.join(['1' if x in relative_port_idx else '0' for x in range(16)])
         # reverse the binary string since the port 0 is the least significant bit
         bin_str = bin_str[::-1]
-        return "act mode=%d, param=%d, ports=0b%s" % (1, offset_slot, bin_str)
+        return "act mode=%d, param=%d, ports=0b%s" % (0, offset_slot, bin_str)
     
     slot_idx = []
     port_idx = []
@@ -132,7 +134,7 @@ def create_act_instr(op_list):
         # Mode 2 (slot) ACT instruction can activate all operations in the same slot
         bin_str = ''.join(['1' if x in slot_idx else '0' for x in range(4)])
         bin_str = bin_str[::-1]
-        return "act mode=%d, param=%d, ports=0b%s" % (2, port_idx[0], bin_str)
+        return "act mode=%d, param=%d, ports=0b%s" % (1, port_idx[0], bin_str)
     
     logging.error('Cannot create ACT instruction for operations: %s' % op_list)
     return None
@@ -158,6 +160,8 @@ def insert_instr(instr_table: dict, op_table, time_table):
             op_list = activation_dict[t]
             for op in op_list:
                 instr_list = op['instr_list']
+                # reverse the order of the instructions
+                instr_list = instr_list[::-1]
                 tt = t-1
                 for instr in instr_list:
                     while tt in instr_table[key]:
@@ -229,41 +233,18 @@ def sync_instruction(instr_file: str, timing_file: str) -> dict:
     insert_instr(instr_table, op_table, time_table)
     instr_table, offset = shift_instr_table(instr_table)
     latency = latency + offset
+    
     insert_wait_instr(instr_table, latency)
     instr_lists = convert_instr_table_to_lists(instr_table)
 
     return instr_lists
 
-def main(args):
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    # Parse arguments
-    parser = argparse.ArgumentParser(description='Instruction synchronization tool for DRRA-2 instructions')
-    # -i, --instr <instr> : instruction file
-    # -t, --time <time> : timing file
-    # -o, --output <output> : output folder
-    parser.add_argument('-i', '--instr', help='Instruction file', required=True)
-    parser.add_argument('-t', '--time', help='Timing file', required=True)
-    parser.add_argument('-o', '--output', help='Output folder', default='.')
-    args = parser.parse_args(args)
-
-    # Check if the input files exist
-    if not os.path.exists(args.instr):
-        logging.error('Instruction file does not exist: %s' % args.instr)
-        sys.exit(1)
-    if not os.path.exists(args.time):
-        logging.error('Timing file does not exist: %s' % args.time)
-        sys.exit(1)
-    if not os.path.exists(args.output):
-        os.makedirs(args.output, exist_ok=True)
+def sync(proto_asm_file, timing_file, output_dir): 
+    instr_lists = sync_instruction(proto_asm_file, timing_file)
     
-    instr_lists = sync_instruction(args.instr, args.time)
-    write_instr_lists_to_file(instr_lists, args.output)
+    write_instr_lists_to_file(instr_lists, output_dir)
 
     logging.info('Instruction synchronization completed')
-    logging.info('Instruction lists are written to %s' % os.path.join(args.output, 'instr_lists.txt'))
+    logging.info('Instruction lists are written to %s' % os.path.join(output_dir, 'instr_lists.txt'))
 
-
-if __name__ == '__main__':
-    main(sys.argv[1:])
 

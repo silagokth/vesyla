@@ -1,100 +1,102 @@
+import os
 import sys
 import argparse
-import regex as re
 import logging
-import operation
-import anchor
-import constraint
-import solver
-import json
 
-def parse(file_path: str, op_table, anchor_dict, constraint_list, node_map, counter) -> None:
-    with open(file_path, "r") as file:
-        lines = file.readlines()
-        counter = 0
-        for line in lines:
-            line = line.strip()
-            if line == "":
-                continue
-            if line[0] == "#":
-                continue
-            # match the pattern for operation definition
-            pattern = re.compile(r"^operation\s+([a-zA-Z_$][\w$]*)\s+(.+)")
-            if pattern.match(line):
-                op_name = pattern.match(line).group(1)
-                expr = pattern.match(line).group(2)
-                counter = operation.add_operation(op_name, expr, op_table, node_map, counter)
-                continue
-            
-            # match the pattern for anchor definition
-            pattern = re.compile(r"^anchor\s+([a-zA-Z_$][\w$]*)\s+(.+)")
-            if pattern.match(line):
-                anchor_name = pattern.match(line).group(1)
-                expr = pattern.match(line).group(2)
-                anchor.add_anchor(anchor_name, expr, anchor_dict)
-                continue
-
-            # match the pattern for constraint definition
-            pattern = re.compile(r"^constraint\s+(.+)")
-            if pattern.match(line):
-                expr = pattern.match(line).group(1)
-                constraint.add_constraint(expr, constraint_list)
-                continue
-            
-            logging.error("Invalid line: "+line)
-            exit(1)
-    return counter
-
-
+import generate
+import schedule
+import sync
+import time
 
 def main(args):
-    # set up logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s' )
+    # record the start time
+    start_time = time.time()
+
+    # define logging format
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # parse the arguments
-    parser = argparse.ArgumentParser(description="vs-schedule")
-    # -i/--input: the input file
-    parser.add_argument("-i", "--input", help="The input file", required=True)
-    # -o/--output: the output file
-    parser.add_argument("-o", "--output", help="The output file", required=True)
-    arg_list = parser.parse_args(args)
+    parser = argparse.ArgumentParser(description='vs-schedule')
+    parser.add_argument('-s', '--step', type=str, help='step to execute: [all, generate, schedule, sync]', default='all')
+    parser.add_argument('-p', '--proto_asm', type=str, help='proto assembly file', required=False)
+    parser.add_argument('-c', '--constraint', type=str, help='proto file', required=False)
+    parser.add_argument('-m', '--model', type=str, help='timing model file', required=False)
+    parser.add_argument('-t', '--timing', type=str, help='timing table file', required=False)
+    parser.add_argument('-o', '--output', type=str, help='output directory', default='.')
+    args = parser.parse_args(args)
 
+    # if output directory does not exist, create it
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
 
-    node_map = {}
-    counter = 0
-    op_table = {}
-    anchor_dict = {}
-    constraint_list = []
-    counter = parse(arg_list.input, op_table, anchor_dict, constraint_list, node_map, counter)
-    [start_time_table, duration_table] =  operation.calculate_timing_properties(op_table, node_map)
-    event_dict = operation.extract_event_dict(op_table, node_map)
-    timing_variable_table = {}
-    operation.add_var_to_timing_var_dict(op_table, node_map, start_time_table, timing_variable_table)
-    anchor.add_anchor_to_timing_var_dict(anchor_dict, op_table, event_dict, node_map, duration_table, timing_variable_table)
+    if args.step == 'all':
+        if args.proto_asm is None:
+            logging.error("proto_asm is required")
+            sys.exit(1)
+        if args.constraint is None:
+            logging.error("constraint is required")
+            sys.exit(1)
+        # check file exist
+        if not os.path.exists(args.proto_asm):
+            logging.error("proto_asm file does not exist")
+            sys.exit(1)
+        if not os.path.exists(args.constraint):
+            logging.error("constraint file does not exist")
+            sys.exit(1)
+        generate.generate(args.proto_asm, args.constraint, args.output)
+        schedule.schedule(os.path.join(args.output, "model.txt"), args.output)
+        sync.sync(args.proto_asm, os.path.join(args.output, "timing_table.json"), args.output)
+    elif args.step == 'generate':
+        if args.proto_asm is None:
+            logging.error("proto_asm is required")
+            sys.exit(1)
+        if args.constraint is None:
+            logging.error("constraint is required")
+            sys.exit(1)
+        # check file exist
+        if not os.path.exists(args.proto_asm):
+            logging.error("proto_asm file does not exist")
+            sys.exit(1)
+        if not os.path.exists(args.constraint):
+            logging.error("constraint file does not exist")
+            sys.exit(1)
 
-    [latency, solution] = solver.solve(timing_variable_table, constraint_list, op_table, duration_table, 10000)
+        generate.generate(args.proto_asm, args.constraint, args.output)
+    elif args.step == 'schedule':
+        if args.model is None:
+            logging.error("model is required")
+            sys.exit(1)
+        # check file exist
+        if not os.path.exists(args.model):
+            logging.error("model file does not exist")
+            sys.exit(1)
 
-    output_dict = {}
-    output_dict["latency"] = latency
-    output_dict["solution"] = solution
-
-    logging.info("Schedule completed successfully!")
-    logging.info("Solution:")
+        schedule.schedule(args.model, args.output)
+    elif args.step == 'sync':
+        if args.proto_asm is None:
+            logging.error("proto_asm is required")
+            sys.exit(1)
+        if args.timing is None:
+            logging.error("timing is required")
+            sys.exit(1)
+        # check file exist
+        if not os.path.exists(args.proto_asm):
+            logging.error("proto_asm file does not exist")
+            sys.exit(1)
+        if not os.path.exists(args.timing):
+            logging.error("timing file does not exist")
+            sys.exit(1)
+        sync.sync(args.proto_asm, args.timing, args.output)
+    else:
+        logging.error("Invalid step: "+args.step)
+        sys.exit(1)
     
-    # print output_dict as a pretty table
-    print("")
-    print("+============================+")
-    print("| {:<27}|".format("Latency="+str(latency)))
-    print("+============================+")
-    print("| {:<14} | {:<10}|".format('Variable','Value'))
-    print("+----------------+-----------+")
-    for k, v in solution.items():
-        print("| {:<14} | {:<10}|".format(k, v))
-    print("+============================+")
-    print("")
+    # record the end time
+    end_time = time.time()
+    
+    # write the execution time to the log file
+    with open(os.path.join(args.output, "time.txt"), "w") as file:
+        file.write(str(end_time-start_time)+"\n")
 
-    with open(arg_list.output, "w") as file:
-        json.dump(output_dict, file, indent=4)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main(sys.argv[1:])

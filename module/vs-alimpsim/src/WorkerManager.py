@@ -1753,6 +1753,8 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                         out = acc
                     elif conf["mode"] == 3:
                         out = max(in0, in1)
+                    elif conf["mode"] == 7:
+                        out = in0*in1
                     else:
                         logger.error("Error: Unknown DPU mode")
                         return False

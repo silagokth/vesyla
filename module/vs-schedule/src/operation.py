@@ -67,15 +67,30 @@ def create_tree(node_map, counter, expr: str) -> list:
         # if it matches the pattern, then it is a transition operator
         delay_var = match.group(1)
         operands = match.group(2)
-        # it must have a comma to seperate the operands, find the comma that is not inside a pair of parentheses
+        # it must have a comma to seperate the operands, find the comma that is not inside a pair of parentheses, or square brackets, or curly brackets, or angle brackets
         comma = -1
         parentheses = 0
+        square_brackets = 0
+        curly_brackets = 0
+        angle_brackets = 0
         for i in range(len(operands)):
-            if operands[i] == "(":
+            if operands[i] == '(':
                 parentheses += 1
-            if operands[i] == ")":
+            if operands[i] == ')':
                 parentheses -= 1
-            if operands[i] == "," and parentheses == 0:
+            if operands[i] == '[':
+                square_brackets += 1
+            if operands[i] == ']':
+                square_brackets -= 1
+            if operands[i] == '{':
+                curly_brackets += 1
+            if operands[i] == '}':
+                curly_brackets -= 1
+            if operands[i] == '<':
+                angle_brackets += 1
+            if operands[i] == '>':
+                angle_brackets -= 1
+            if operands[i] == ',' and parentheses == 0 and square_brackets == 0 and curly_brackets == 0 and angle_brackets == 0:
                 comma = i
                 break
         if comma == -1:
@@ -89,7 +104,7 @@ def create_tree(node_map, counter, expr: str) -> list:
         return [node, counter]
     
     # check if it matches the pattern for event
-    pattern = re.compile(r"^([a-zA-Z_$][\w$]*)$")
+    pattern = re.compile(r"^([a-zA-Z_\.$][\w$]*)$")
     match = pattern.match(expr)
     if match:
         # if it matches the pattern, then it is an event
