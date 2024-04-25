@@ -62,7 +62,7 @@ def extract_op_expr(op):
     for instr in op['instr_list']:
         instr = instr.lower() # case insensitive
         instr = instr.strip()
-        pattern = re.compile(r'rep\s*(.*)$')
+        pattern = re.compile(r'rep\s+(.*)$')
         match = pattern.match(instr)
         if match is not None:
             level = 0
@@ -90,7 +90,7 @@ def extract_op_expr(op):
                     level = int(field_value)
             R[level] = [iter, delay]
             continue
-        pattern = re.compile(r'fsm\s*(.*)$')
+        pattern = re.compile(r'fsm\s+(.*)$')
         match = pattern.match(instr)
         if match is not None:
             T['delay_0'] = "0"

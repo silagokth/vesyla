@@ -8,6 +8,66 @@ import logging
 import json
 import re
 
+def analyze_rep_instr(instr: str) -> list:
+    # parse the instruction string and find out each fields
+    instr = instr.strip()
+    pattern = re.compile(r'rep\s+(.*)$')
+    match = pattern.match(instr)
+    if match is not None:
+        level = 0
+        iter = 1
+        delay = 0
+        step = 1
+        fields = match.group(1).split(',')
+        field_map = {}
+        for field in fields:
+            field = re.sub(r'\s+', '', field)
+            pattern = re.compile(r'(\w+)\=(.+)')
+            match = pattern.match(field)
+            if match is None:
+                logging.error('Invalid field format: %s' % field)
+                sys.exit(1)
+            field_name = match.group(1)
+            field_value = match.group(2)
+            if field_name == 'iter':
+                # check if iter is a number
+                if not field_value.isdigit():
+                    logging.error('Invalid iter value: %s. Iteration must be a number!' % iter)
+                    sys.exit(1)
+                iter = int(field_value)
+            if field_name == 'step':
+                step = int(field_value)
+            elif field_name == 'delay':
+                delay = int(field_value)
+            field_map[field_name] = field_value
+            
+        # check if iter, delay, step is equal or greater than 64
+        flag_repx = False
+        if iter >= 64 or delay >= 64 or step >= 64:
+            repx_iter = iter // 64
+            iter = iter % 64
+            repx_delay = delay // 64
+            delay = delay % 64
+            repx_step = step // 64
+            step = step % 64
+            flag_repx = True
+            
+        if flag_repx:
+            # change field map
+            field_map['iter'] = iter
+            field_map['delay'] = delay
+            field_map['step'] = step
+            rep_instr = "rep " + ','.join(['%s=%s' % (k, v) for k, v in field_map.items()])
+            field_map['iter'] = repx_iter
+            field_map['delay'] = repx_delay
+            field_map['step'] = repx_step
+            repx_instr = "repx " + ','.join(['%s=%s' % (k, v) for k, v in field_map.items()])
+            return [rep_instr, repx_instr]
+        else:
+            rep_instr = "rep "+ ','.join(['%s=%s' % (k, v) for k, v in field_map.items()])
+            return [rep_instr]
+    return []
+
 def replace_instr_field_variables(instr: str, time_table) -> str:
     # parse the instruction string:
     # it consists of a instruction name and a list of fields
@@ -160,6 +220,22 @@ def insert_instr(instr_table: dict, op_table, time_table):
             op_list = activation_dict[t]
             for op in op_list:
                 instr_list = op['instr_list']
+                # analyze the rep instruction
+                new_instr_list = []
+                for i in range(len(instr_list)):
+                    instr = instr_list[i]
+                    # check if the instruction is a rep instruction
+                    instr = instr.strip()
+                    if instr.startswith('rep'):
+                        rep_instr = analyze_rep_instr(instr)
+                        if len(rep_instr) > 0:
+                            new_instr_list.extend(rep_instr)
+                        else:
+                            logging.error('Invalid rep instruction: %s' % instr)
+                            sys.exit(1)
+                    else:
+                        new_instr_list.append(instr)
+                instr_list = new_instr_list
                 # reverse the order of the instructions
                 instr_list = instr_list[::-1]
                 tt = t-1
