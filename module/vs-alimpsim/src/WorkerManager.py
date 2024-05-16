@@ -551,30 +551,30 @@ def set_current_route_mode(clk_, event_pool_, resource_pool_, handler_pool_, arg
 
 
 def compute_npc(resource_pool_, row_, col_, pc_, pc_increment_):
-    loop_manager = resource_pool_.get("loop_manager")
-    for i in range(4):
-        curr_loop_id = 3-i
-        loop_config = loop_manager[row_][col_][curr_loop_id]
-        if loop_config["enable"]:
-            if pc_ == loop_config["pc_end"]:
-                if loop_config["iter"] <= 1:
-                    loop_config["enable"] = False
-                    loop_manager[row_][col_][curr_loop_id] = loop_config
-                    resource_pool_.set("loop_manager", loop_manager)
-                    continue
-                else:
-                    loop_config["iter"] = loop_config["iter"] - 1
-                    raccu_reg = resource_pool_.get("raccu_reg")
-                    raccu_reg[row_][col_][15 -
-                                          curr_loop_id] += loop_config["step"]
-                    resource_pool_.set("raccu_reg", raccu_reg)
-                    loop_manager[row_][col_][curr_loop_id] = loop_config
-                    resource_pool_.set("loop_manager", loop_manager)
-                    return loop_config["pc_start"]
-            else:
-                return pc_ + pc_increment_
-        else:
-            continue
+    # loop_manager = resource_pool_.get("loop_manager")
+    # for i in range(4):
+    #     curr_loop_id = 3-i
+    #     loop_config = loop_manager[row_][col_][curr_loop_id]
+    #     if loop_config["enable"]:
+    #         if pc_ == loop_config["pc_end"]:
+    #             if loop_config["iter"] <= 1:
+    #                 loop_config["enable"] = False
+    #                 loop_manager[row_][col_][curr_loop_id] = loop_config
+    #                 resource_pool_.set("loop_manager", loop_manager)
+    #                 continue
+    #             else:
+    #                 loop_config["iter"] = loop_config["iter"] - 1
+    #                 raccu_reg = resource_pool_.get("raccu_reg")
+    #                 raccu_reg[row_][col_][15 -
+    #                                       curr_loop_id] += loop_config["step"]
+    #                 resource_pool_.set("raccu_reg", raccu_reg)
+    #                 loop_manager[row_][col_][curr_loop_id] = loop_config
+    #                 resource_pool_.set("loop_manager", loop_manager)
+    #                 return loop_config["pc_start"]
+    #         else:
+    #             return pc_ + pc_increment_
+    #     else:
+    #         continue
 
     return pc_+pc_increment_
 
@@ -600,6 +600,7 @@ def is_resource_instr(name: str, isa: ds.InstructionSet) -> bool:
 
 
 def calc_regs(clk_, event_pool_, resource_pool_, handler_pool_, args):
+    print(args)
     row = args[0]
     col = args[1]
     mode = args[2]
@@ -632,43 +633,43 @@ def calc_regs(clk_, event_pool_, resource_pool_, handler_pool_, args):
     else:
         logger.fatal("Unknown RACCU mode: " + str(mode) + "!")
         exit(1)
-
+    
     resource_pool_.set("raccu_reg", raccu_reg)
 
     return True
 
 
-def config_loop(clk_, event_pool_, resource_pool_, handler_pool_, args):
-    raccu_reg = resource_pool_.get("raccu_reg")
+# def config_loop(clk_, event_pool_, resource_pool_, handler_pool_, args):
+#     raccu_reg = resource_pool_.get("raccu_reg")
 
-    row = args[0]
-    col = args[1]
-    pc_start = args[2]
-    loop_id = args[3]
-    pc_end = args[4]
-    start_sd = args[5]
-    start = args[6]
-    if start_sd:
-        start = raccu_reg[row][col][start]
-    iter = args[7]
-    step = args[8]
+#     row = args[0]
+#     col = args[1]
+#     pc_start = args[2]
+#     loop_id = args[3]
+#     pc_end = args[4]
+#     start_sd = args[5]
+#     start = args[6]
+#     if start_sd:
+#         start = raccu_reg[row][col][start]
+#     iter = args[7]
+#     step = args[8]
 
-    if iter <= 0:
-        pc = compute_npc(resource_pool_, row, col, pc_end, 1)
-        resource_pool_.set("pc_" + str(row)+"_"+str(col), pc)
-        return True
+#     if iter <= 0:
+#         pc = compute_npc(resource_pool_, row, col, pc_end, 1)
+#         resource_pool_.set("pc_" + str(row)+"_"+str(col), pc)
+#         return True
 
-    loop_manager = resource_pool_.get("loop_manager")
-    loop_manager[row][col][loop_id]["enable"] = True
-    loop_manager[row][col][loop_id]["pc_start"] = pc_start+1
-    loop_manager[row][col][loop_id]["pc_end"] = pc_end
-    loop_manager[row][col][loop_id]["iter"] = iter
-    loop_manager[row][col][loop_id]["step"] = step
-    resource_pool_.set("loop_manager", loop_manager)
+#     loop_manager = resource_pool_.get("loop_manager")
+#     loop_manager[row][col][loop_id]["enable"] = True
+#     loop_manager[row][col][loop_id]["pc_start"] = pc_start+1
+#     loop_manager[row][col][loop_id]["pc_end"] = pc_end
+#     loop_manager[row][col][loop_id]["iter"] = iter
+#     loop_manager[row][col][loop_id]["step"] = step
+#     resource_pool_.set("loop_manager", loop_manager)
 
-    raccu_reg[row][col][15-loop_id] = start
-    resource_pool_.set("raccu_reg", raccu_reg)
-    return True
+#     raccu_reg[row][col][15-loop_id] = start
+#     resource_pool_.set("raccu_reg", raccu_reg)
+#     return True
 
 
 def control_init(name: str, db: ds.DataBase, prefix: str, event_pool_, resource_pool_, handler_pool_):
@@ -691,7 +692,6 @@ def control_init(name: str, db: ds.DataBase, prefix: str, event_pool_, resource_
         # activation
         handler_pool_.add("resource_trigger", resource_trigger)
         handler_pool_.add("calc_regs", calc_regs)
-        handler_pool_.add("config_loop", config_loop)
     else:
         logger.error("Unknown control worker: ", name)
         return False
@@ -800,44 +800,62 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
              str(i)+"_"+str(j), [i, j], 100, True)
         event_pool_.post(e)
         e = (clk_, "calc_regs", [
-             i, j, operand1_sd, operand1, operand2_sd, operand2, result], 100, True)
+             i, j, mode, operand1_sd, operand1, operand2_sd, operand2, result], 100, True)
         event_pool_.post(e)
         return True
-    elif ir.name == "loop":
-        logger.info("LOOP instruction @ "+str(i)+"_"+str(j))
-        exist, loopid = get_instr_field(ir, "loopid")
+    elif ir.name == "looph":
+        logger.info("LOOPH instruction @ "+str(i)+"_"+str(j))
+        exist, loopid = get_instr_field(ir, "id")
         if not exist:
-            logger.error("LOOP instruction without loopid field")
-            return False
-        exist, endpc = get_instr_field(ir, "endpc")
-        if not exist:
-            logger.error("LOOP instruction without endpc field")
-            return False
-        exist, start_sd = get_instr_field(ir, "start_sd")
-        if not exist:
-            logger.error("LOOP instruction without start_sd field")
-            return False
-        exist, start = get_instr_field(ir, "start")
-        if not exist:
-            logger.error("LOOP instruction without start field")
+            logger.error("LOOPH instruction without id field")
             return False
         exist, iter = get_instr_field(ir, "iter")
         if not exist:
-            logger.error("LOOP instruction without iter field")
-            return False
-        exist, step = get_instr_field(ir, "step")
-        if not exist:
-            logger.error("LOOP instruction without step field")
+            logger.error("LOOPH instruction without iter field")
             return False
         pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
-        pc_start = pc
         pc = compute_npc(resource_pool_, i, j, pc, 1)
         resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
         e = (clk_+1, "fetch_decode_" +
              str(i)+"_"+str(j), [i, j], 100, True)
         event_pool_.post(e)
-        e = (clk_, "config_loop", [
-             i, j, pc_start, loopid, endpc+pc_start, start_sd, start, iter, step], 100, True)
+        loop_manager = resource_pool_.get("loop_manager")
+        if loop_manager[i][j][loopid]["enable"]:
+            logger.error("Error: LOOP instruction without corresponding LOOPT instruction")
+            sys.exit(1)
+        loop_manager[i][j][loopid]["iter"] = iter
+        loop_manager[i][j][loopid]["enable"] = True
+        resource_pool_.set("loop_manager", loop_manager)
+        return True
+    elif ir.name == "loopt":
+        logger.info("LOOPT instruction @ "+str(i)+"_"+str(j))
+        exist, loopid = get_instr_field(ir, "id")
+        if not exist:
+            logger.error("LOOPT instruction without id field")
+            return False
+        exist, loop_pc = get_instr_field(ir, "pc")
+        if not exist:
+            logger.error("LOOPT instruction without pc field")
+            return False
+
+        pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+
+        loop_manager = resource_pool_.get("loop_manager")
+        if not loop_manager[i][j][loopid]["enable"]:
+            logger.error("Error: LOOPT instruction without corresponding LOOP instruction")
+            sys.exit(1)
+        iter = loop_manager[i][j][loopid]["iter"]
+        iter -= 1
+        if iter <= 0:
+            loop_manager[i][j][loopid]["enable"] = False
+            pc = compute_npc(resource_pool_, i, j, pc, 1)
+        else:
+            loop_manager[i][j][loopid]["iter"] = iter
+            pc = compute_npc(resource_pool_, i, j, pc, loop_pc)
+        resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+        resource_pool_.set("loop_manager", loop_manager)
+        e = (clk_+1, "fetch_decode_" +
+             str(i)+"_"+str(j), [i, j], 100, True)
         event_pool_.post(e)
         return True
     return False
@@ -1749,8 +1767,10 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     elif conf["mode"] == 1:
                         out = in0 + in1
                     elif conf["mode"] == 2:
+                        print("old_acc= %d" % (acc))
                         acc = in0*in1 + acc
                         out = acc
+                        print("in0= %d, in1= %d, acc= %d, out=%d" % (in0, in1, acc, out))
                     elif conf["mode"] == 3:
                         out = max(in0, in1)
                     elif conf["mode"] == 7:

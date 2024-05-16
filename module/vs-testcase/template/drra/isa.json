@@ -50,7 +50,7 @@
         {
           "name": "mode",
           "comment": "Calculation mode",
-          "bitwidth": 5,
+          "bitwidth": 4,
           "verbo_map": [
             { "key": 0, "val": "idle" },
             { "key": 1, "val": "add" },
@@ -99,49 +99,41 @@
     },
     {
       "code": 3,
-      "name": "loop",
+      "name": "looph",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
         {
-          "name": "loopid",
+          "name": "id",
           "comment": "The id of the loop manager slot.",
           "bitwidth": 2
-        },
-        {
-          "name": "endpc",
-          "comment": "The PC where loop ends.",
-          "bitwidth": 7
-        },
-        {
-          "name": "start_sd",
-          "comment": "Is the start static or dynamic?",
-          "bitwidth": 1,
-          "verbo_map": [
-            { "key": 0, "val": "s" },
-            { "key": 1, "val": "d" }
-          ]
-        },
-        {
-          "name": "start",
-          "comment": "The start of iterator.",
-          "bitwidth": 6
         },
         {
           "name": "iter",
           "comment": "The number of iteration.",
           "bitwidth": 6
-        },
-        {
-          "name": "step",
-          "comment": "The iteration step.",
-          "bitwidth": 6,
-          "default_val": 1,
-          "is_signed": true
         }
       ]
     },
     {
       "code": 4,
+      "name": "loopt",
+      "machines": ["controller_io", "controller_normal"],
+      "segment_templates": [
+        {
+          "name": "id",
+          "comment": "The id of the loop manager slot.",
+          "bitwidth": 2
+        },
+        {
+          "name": "pc",
+          "is_signed": true,
+          "comment": "The pc offset to jump. It will be negative if it jumps back",
+          "bitwidth": 6
+        }
+      ]
+    },
+    {
+      "code": 5,
       "name": "brn",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [

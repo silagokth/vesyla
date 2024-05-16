@@ -131,10 +131,11 @@ def create_operation_table(instr_file: str):
             match = pattern.match(line)
             if match is not None:
                 cell_name = match.group(1)
-                op_table[cell_name] = []
+                if cell_name not in op_table:
+                    op_table[cell_name] = []
                 current_cell = cell_name
                 continue
-            pattern = re.compile(r'^operation\s+(\w+)\s+(.+)$')
+            pattern = re.compile(r'^rop\s+(\w+)\s+(.+)$')
             match = pattern.match(line)
             if match is not None:
                 op_name = match.group(1)
@@ -158,7 +159,17 @@ def create_operation_table(instr_file: str):
                         logging.error('Invalid field name: %s' % field_name)
                         sys.exit(1)
 
-                op = {'name': op_name, 'slot': slot, 'port': port, 'instr_list': []}
+                op = {'name': op_name, 'slot': slot, 'port': port, 'instr_list': [], 'cell': current_cell}
+                op_table[current_cell].append(op)
+                current_op = op
+                continue
+            pattern = re.compile(r'^cop\s+(\w+)$')
+            match = pattern.match(line)
+            if match is not None:
+                op_name = match.group(1)
+                slot = -1
+                port = -1
+                op = {'name': op_name, 'slot': slot, 'port': port, 'instr_list': [], 'cell': current_cell}
                 op_table[current_cell].append(op)
                 current_op = op
                 continue
@@ -197,22 +208,173 @@ def create_act_instr(op_list):
         return "act mode=%d, param=%d, ports=0b%s" % (1, port_idx[0], bin_str)
     
     logging.error('Cannot create ACT instruction for operations: %s' % op_list)
+    sys.exit(-1)
     return None
+
+def analyze_loop_structure(op_table, time_table):
+    loopt_timing_table = {}
+    looph_timing_table = {}
+    loop_timing_table = {}
+    next_looph = 0
+    next_loopt = -1
+    for key in op_table:
+        for op in op_table[key]:
+            op_instr_list = op['instr_list']
+            for i in range(len(op_instr_list)):
+                instr = op_instr_list[i]
+                instr = instr.strip()
+                if instr.startswith('looph'):
+                    curr_loop =next_looph
+                    pattern = re.compile(r'looph\s+(.+)$')
+                    match = pattern.match(instr)
+                    if match is not None:
+                        parameters = match.group(1).strip().split(',')
+                        new_paraemters = []
+                        for parameter in parameters:
+                            pattern2 = re.compile(r'(\w+)\=(.+)')
+                            match2 = pattern2.match(parameter)
+                            if match2 is not None:
+                                field_name = match2.group(1)
+                                field_value = match2.group(2)
+                                if field_name != 'id':
+                                    new_paraemters.append('%s=%s' % (field_name, field_value))
+                                else:
+                                    new_paraemters.append('id=%d' % next_looph)
+                                    next_loopt += 1
+                                    next_looph += 1
+                        parameters = new_paraemters
+                        instr = 'looph ' + ','.join(parameters)
+                    
+                    all_anchor_time = []
+                    for x in time_table:
+                        if x.startswith(op['name']+ '_e'+str(i)):
+                            all_anchor_time.append(time_table[x])
+                    all_anchor_time.sort()
+                    start = all_anchor_time[0]
+                    end = all_anchor_time[-1]
+                    looph_timing_table[curr_loop] = [start, end]
+
+                if instr.startswith('loopt'):
+                    curr_loop = next_loopt
+                    pattern = re.compile(r'loopt\s+(.+)$')
+                    match = pattern.match(instr)
+                    if match is not None:
+                        parameters = match.group(1).strip().split(',')
+                        new_paraemters = []
+                        for parameter in parameters:
+                            pattern2 = re.compile(r'(\w+)\=(.+)')
+                            match2 = pattern2.match(parameter)
+                            if match2 is not None:
+                                field_name = match2.group(1)
+                                field_value = match2.group(2)
+                                if field_name != 'id':
+                                    new_paraemters.append('%s=%s' % (field_name, field_value))
+                                else:
+                                    new_paraemters.append('id=%d' % next_loopt)
+                                    next_loopt -= 1
+                                    next_looph += 1
+                        parameters = new_paraemters
+                        instr = 'loopt ' + ','.join(parameters)
+
+                    all_anchor_time = []
+                    for x in time_table:
+                        if x.startswith(op['name']+ '_e'+str(i)):
+                            all_anchor_time.append(time_table[x])
+                    all_anchor_time.sort()
+                    start = all_anchor_time[0]
+                    end = all_anchor_time[-1]
+                    loopt_timing_table[curr_loop] = [start, end]
+
+    # check if there is any loop that is not closed
+    looph_keys = [x for x in looph_timing_table.keys()]
+    loopt_keys = [x for x in loopt_timing_table.keys()]
+    # both sets should be identical
+    if set(looph_keys) != set(loopt_keys):
+        logging.error('Loop structure is not closed!')
+        sys.exit(1)
+    
+    # create loop timing table
+    for key in looph_keys:
+        loop_timing_table[key] = [looph_timing_table[key][0], loopt_timing_table[key][1]]
+    
+    return [loop_timing_table, looph_timing_table, loopt_timing_table]
+    
+
+
 
 def insert_instr(instr_table: dict, op_table, time_table):
     for key in op_table:
-        instr_table[key] = {}
+        cell_instr_list = {}
+        cell_timing_table = {}
+        loopt_timing_table = {}
+        loopt_lut = {}
+
+        # First, insert instructions for control operations
+        for op in op_table[key]:
+            if op['slot'] >= 0:
+                # this is a resource operation, ignore
+                continue
+            op_instr_list = op['instr_list']
+            for i in range(len(op_instr_list)):
+                instr = op_instr_list[i]
+                # check if it's a loopt instr
+                instr = instr.strip()
+                if instr.startswith('loopt'):
+                    all_anchor_time = []
+                    for x in time_table:
+                        if x.startswith(op['name']+ '_e'+str(i)):
+                            all_anchor_time.append(time_table[x])
+                    all_anchor_time.sort()
+                    start = all_anchor_time[0]
+                    end = all_anchor_time[-1]
+                    loopt_timing_table[start] = end
+                    loopt_lut[instr] = start
+                    continue
+        
+        # create available time slots for each instruction position in cell_timing_table
+        latency = time_table['__latency__']
+        clk = 0
+        for i in range(latency):
+            cell_timing_table[i] = clk
+            if clk in loopt_timing_table:
+                clk = loopt_timing_table[clk]
+            clk += 1
+        
+        # insert control instructions
+        for op in op_table[key]:
+            if op['slot'] >= 0:
+                # this is a resource operation, ignore
+                continue
+            op_instr_list = op['instr_list']
+            for i in range(len(op_instr_list)):
+                instr = op_instr_list[i]
+                cell_instr_list[cell_timing_table[time_table[op['name']+"_e"+str(i)]]] = instr
+
+        # insert the activation of all resource operations
         activation_dict = {}
         for op in op_table[key]:
+            if op['slot'] < 0 :
+                # this is a control operation
+                continue
             activation_time = time_table[op['name']]
             if activation_time in activation_dict:
                 activation_dict[activation_time].append(op)
             else:
                 activation_dict[activation_time] = [op]
-        
+        loop_timing_table, _, _ = analyze_loop_structure(op_table, time_table)
         for activation_time in activation_dict:
+            # check activation time should not be in a loop region
+            for loop_id in loop_timing_table:
+                loop_start = loop_timing_table[loop_id][0]
+                loop_end = loop_timing_table[loop_id][1]
+                if activation_time >= loop_start and activation_time <= loop_end:
+                    logging.error('Activating resource operation %s inside loop is not allowed in an epoch!', activation_dict[activation_time][0]['name'])
+                    sys.exit(1)
+
             op_list = activation_dict[activation_time]
-            instr_table[key][activation_time] = create_act_instr(op_list)
+            act_instr = create_act_instr(op_list)
+            cell_instr_list[activation_time] = act_instr
+        
 
         op_act_time = [x for x in activation_dict.keys()]
         op_act_time.sort(reverse=True)
@@ -239,15 +401,39 @@ def insert_instr(instr_table: dict, op_table, time_table):
                 # reverse the order of the instructions
                 instr_list = instr_list[::-1]
                 tt = t-1
+                loop_level_count = 0
                 for instr in instr_list:
-                    while tt in instr_table[key]:
-                        tt -= 1
-                    instr_table[key][tt] = instr
+                    while True:
+                        if tt in cell_instr_list:
+                            ist = cell_instr_list[tt]
+                            if ist.startswith('loopt'):
+                                loop_level_count += 1
+                                tt = loopt_lut[ist]-1
+                            elif ist.startswith('looph'):
+                                loop_level_count -= 1
+                                tt -= 1
+                            else:
+                                tt -= 1
+                        else:
+                            if loop_level_count > 0:
+                                tt -= 1
+                            elif loop_level_count < 0:
+                                logging.error('Activating resource operation inside loop is not allowed in an epoch!')
+                                sys.exit(1)
+                            else:
+                                cell_instr_list[tt] = instr
+                                tt -= 1
+                                break
+                
+        # now the instructions are inserted in the correct order
+        instr_table[key] = cell_instr_list
 
 def shift_instr_table(instr_table: dict):
     offset = 0
+
     for key in instr_table:
-        offset = min(offset, min(instr_table[key].keys()))
+        if len(instr_table[key]) > 0:
+            offset = min(offset, min(instr_table[key].keys()))
     
     offset = -offset
     shifted_instr_table = {}
@@ -257,18 +443,50 @@ def shift_instr_table(instr_table: dict):
             shifted_instr_table[key][t+offset] = instr_table[key][t]
     return [shifted_instr_table, offset]
 
-def insert_wait_instr(instr_table: dict, latency: int):
+def insert_wait_instr(instr_table: dict, latency: int, op_table, time_table, offset):
+
     for key in instr_table:
+
+        loopt_timing_table = {}
+
+        if key not in op_table:
+            op_table[key] = []
+
+        # First, insert instructions for control operations
+        for op in op_table[key]:
+            if op['slot'] >= 0:
+                # this is a resource operation, ignore
+                continue
+            op_instr_list = op['instr_list']
+            for i in range(len(op_instr_list)):
+                instr = op_instr_list[i]
+                # check if it's a loopt instr
+                instr = instr.strip()
+                if instr.startswith('loopt'):
+                    all_anchor_time = []
+                    for x in time_table:
+                        if x.startswith(op['name']+ '_e'+str(i)):
+                            all_anchor_time.append(time_table[x])
+                    all_anchor_time.sort()
+                    start = all_anchor_time[0] + offset
+                    end = all_anchor_time[-1] + offset
+                    loopt_timing_table[start] = end
+                    continue
+
         t=0
         while t < latency:
             while t in instr_table[key] and t < latency:
-                t=t+1
+                if t in loopt_timing_table:
+                    t = loopt_timing_table[t] + 1
+                else:
+                    t=t+1
             t_lb = t
             while t not in instr_table[key] and t < latency:
                 t=t+1
             t_ub = t
             cycles = t_ub - t_lb
-            instr_table[key][t_lb] = "wait cycle=%d" % cycles
+            if cycles > 0:
+                instr_table[key][t_lb] = "wait cycle=%d" % cycles
             
 def convert_instr_table_to_lists(instr_table: dict):
     instr_lists = {}
@@ -288,7 +506,7 @@ def write_instr_lists_to_file(instr_lists: dict, output_folder: str):
                 f.write('%s\n' % instr)
             f.write('\n')
 
-def sync_instruction(instr_file: str, timing_file: str) -> dict:
+def sync_instruction(instr_file: str, timing_file: str, cell_set) -> dict:
     time_table = create_time_table(timing_file)
     op_table = create_operation_table(instr_file)
     # check all the operations in the op_table has a corresponding timing in the time_table
@@ -305,22 +523,21 @@ def sync_instruction(instr_file: str, timing_file: str) -> dict:
                 instr_list[i] = replace_instr_field_variables(instr_list[i], time_table)
 
     instr_table = {}
+    for key in cell_set:
+        instr_table[key] = {}
     latency = time_table['__latency__']
     insert_instr(instr_table, op_table, time_table)
     instr_table, offset = shift_instr_table(instr_table)
     latency = latency + offset
     
-    insert_wait_instr(instr_table, latency)
+    insert_wait_instr(instr_table, latency, op_table, time_table, offset)
     instr_lists = convert_instr_table_to_lists(instr_table)
 
     return instr_lists
 
-def sync(proto_asm_file, timing_file, output_dir): 
-    instr_lists = sync_instruction(proto_asm_file, timing_file)
-    
+def sync_resource(proto_asm_file, timing_file, cell_set, output_dir): 
+    instr_lists = sync_instruction(proto_asm_file, timing_file, cell_set)
     write_instr_lists_to_file(instr_lists, output_dir)
-
     logging.info('Instruction synchronization completed')
     logging.info('Instruction lists are written to %s' % os.path.join(output_dir, 'instr_lists.txt'))
-
 

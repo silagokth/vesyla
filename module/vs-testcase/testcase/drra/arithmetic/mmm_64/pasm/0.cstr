@@ -1,0 +1,58 @@
+epoch rb0 {
+
+type linear
+
+input_r_a == input_w_a
+input_w_a < read_a
+
+route0r < read_a
+route1wr < write_a
+route1wr < write_a
+
+read_a + 1 == write_a
+}
+epoch rb1 {
+
+type linear
+
+input_r_b == input_w_b
+input_w_b < read_b
+
+read_b + 1 == write_b
+read_b.e0[1][0] + 1 == write_b.e0[1][0]
+
+write_b.e0[0][0] == read_b_seq.e0[0][0] - 1
+write_b.e0[0][1] < read_b_seq.e0[0][16]
+write_b.e0[0][2] < read_b_seq.e0[0][32]
+write_b.e0[0][3] < read_b_seq.e0[0][48]
+write_b.e0[1][0] < read_b_seq.e0[1][0]
+write_b.e0[1][1] < read_b_seq.e0[1][16]
+write_b.e0[1][0] > read_b_seq.e0[0][15]
+write_b.e0[1][1] > read_b_seq.e0[0][31]
+write_b.e0[1][2] > read_b_seq.e0[0][47]
+write_b.e0[1][3] > read_b_seq.e0[0][63]
+write_b.e0[2][0] > read_b_seq.e0[1][15]
+write_b.e0[2][1] > read_b_seq.e0[1][31]
+write_b.e0[2][2] > read_b_seq.e0[1][47]
+write_b.e0[2][3] > read_b_seq.e0[1][63]
+write_b.e0[1][0] == read_b_seq.e0[0][0] + 63
+
+swb < read_a_seq
+read_a_seq == read_b_seq
+compute.e0[0] == read_a_seq.e0[0][0]+1
+compute.e0[1] == read_a_seq.e0[1][0]+1
+write_c_seq.e0[0] == read_a_seq.e0[0][0] + 64 + 1
+write_c_seq.e0[1] == read_a_seq.e0[1][0] + 64 + 1
+
+compute != route1wr
+compute != swb
+
+read_c.e0[3] > write_c_seq.e0[63]
+
+write_c == read_c + 1
+output_r == write_c +1
+output_r == output_w
+
+
+
+}

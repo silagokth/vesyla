@@ -6,6 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 import glob
+import sys
+import logging
 
 class Arguments:
     def __init__(self):
@@ -22,9 +24,15 @@ def run(directory):
         config = json.load(config_file)
     style = config["platform"]
 
-    os.system("vs-init -f -s " + style)
-    os.system("cp -rf " + directory + "/* .")
-    os.system("sh run.sh")
+    rt = subprocess.run("vs-init -f -s" + style, shell=True)
+    if rt.returncode != 0:
+        sys.exit(-1)
+    rt = subprocess.run("cp -rf " + directory + "/* .", shell=True)
+    if rt.returncode != 0:
+        sys.exit(-1)
+    rt = subprocess.run("sh run.sh", shell=True)
+    if rt.returncode != 0:
+        sys.exit(-1)
 
 def generate(directory):
     pattern = os.path.join(directory, "*", "*", "*")
@@ -44,9 +52,9 @@ def generate(directory):
         tags = "::".join(vec[-3:-1])
         testcases.append(TestcaseEntry(name, path, tags))
 
-    print(f"In total, {len(testcases)} testcases are found:")
+    logging.info(f"In total, {len(testcases)} testcases are found:")
     for tc in testcases:
-        print("\t" + tc.name)
+        logging.info("\t" + tc.name)
 
     with open("autotest_config.robot", "w") as f:
         f.write("""
@@ -69,9 +77,12 @@ Autotest Template
     ${result} =    Run Process    vs-testcase run ${filename}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work
     Should Be Equal As Integers    ${result.rc}    0
 """)
-    os.system("mkdir -p work")
+    rt = subprocess.run("mkdir -p work", shell=True)
+    if rt.returncode != 0:
+        sys.exit(-1)
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = process_arguments()
     cmd = args.command
     arg = args.arguments
@@ -80,7 +91,8 @@ def main():
     elif cmd == "generate":
         generate(arg[0])
     else:
-        print("Unknown command")
+        logging.error("Unknown command")
+        sys.exit(-1)
 
 if __name__ == "__main__":
     main()

@@ -13,13 +13,13 @@ void init() {
   srand((unsigned)time(NULL));
 
   // Generate N random numbers in range [0,100)
-  vector<int16_t> v(2 * N);
-  for (auto i = 0; i < 2 * N; i++) {
-    v[i] = rand() % 100;
+  vector<int16_t> v(2 * N * N);
+  for (auto i = 0; i < 2 * N * N; i++) {
+    v[i] = rand() % 3;
   }
 
   // Write the random numbers to the input buffer.
-  __input_buffer__.write<int16_t>(0, (2 * N) / 16, v);
+  __input_buffer__.write<int16_t>(0, (2 * N * N) / 16, v);
 }
 
 /*
@@ -29,14 +29,20 @@ void init() {
 void model_l0() {
 #define N 32
   // Read the input buffer to A and B.
-  vector<int16_t> a = __input_buffer__.read<int16_t>(0, N / 16);
-  vector<int16_t> b = __input_buffer__.read<int16_t>(0, N / 16);
-  vector<int16_t> c(N);
-  for(int i=0; i<N; i++){
-    c[i] = a[i]*b[i];
+  vector<int16_t> a = __input_buffer__.read<int16_t>(0, N * N / 16);
+  vector<int16_t> b = __input_buffer__.read<int16_t>(N * N / 16, N * N / 16);
+
+  vector<int16_t> c(1 * N);
+  for (int i = 0; i < 1; i++) {
+    for (int j = 0; j < N; j++) {
+      c[i * N + j]=0;
+      for (int k = 0; k < N; k++) {
+        c[i * N + j] += a[i * N + k] * b[j * N + k];
+      }
+    }
   }
   // Write A to the output buffer
-  __output_buffer__.write<int16_t>(0, N / 16, c);
+  __output_buffer__.write<int16_t>(0, 1 * N / 16, c);
 }
 
 /*

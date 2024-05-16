@@ -1,0 +1,22 @@
+epoch rb0 {
+type linear
+route0 < input_w
+swb1 < input_w
+route1 < input_w
+input_r == input_w
+io_r2 == input_r + 1
+write_2w == io_r2 + 1
+io_r1 == write_2w + 4
+write_1w == io_r1 + 1
+read_1n == read_2n
+read_1n == write_1w + 1
+compute == read_1n + 1
+write_3n == compute + 3
+read_1n.e0[1][0] == write_3n - 1
+compute.e0[1] == write_3n
+write_3n.e0[1] == compute.e0[1] + 3
+read_3w == write_3n.e0[29] + 1
+io_w == read_3w + 1
+output_r == output_w
+output_r == io_w + 1
+}

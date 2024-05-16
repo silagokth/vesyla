@@ -8,23 +8,44 @@ import sys
 import logging
 import re
 
+def kth_color(name):
+    color_db = {
+        'darkgreen': '#0D4A21',
+        'green': '#4DA060',
+        'lightgreen': '#C7EBBA',
+        'darkturquoise': '#1C434C',
+        'turquoise': '#339C9C',
+        'lightturquoise': '#B2E0E0',
+        'darkbrick': '#78001A',
+        'brick': '#E86A58',
+        'lightbrick': '#FFCCC4',
+        'darkyellow': '#A65900',
+        'yellow': '#FFBE00',
+        'lightyellow': '#FF0B0',
+        'darkgrey': '#323232',
+        'grey': '#A5A5A5',
+        'lightgrey': '#E6E6E6'
+    }
+    return color_db[name]
+            
+
 def plot_subfigure (ax, title, var_name, var_vec, latency_vec):
     ax.set_title(title)
     ax.set_xlabel(var_name)
-    ax.set_ylabel("Latency [s]")
-    ax.scatter(var_vec, latency_vec, color='#666666', label='raw data', s=50)
+    ax.set_ylabel("Compilation time [s]")
+    ax.scatter(var_vec, latency_vec, color=kth_color('grey'), label='raw data', s=50)
     # plot the line of best fit
     m, b = np.polyfit(var_vec, latency_vec, 1)
     mse_linear = np.mean((m*var_vec + b - latency_vec)**2)
-    ax.plot(var_vec, m*var_vec + b, color='green', label='linear fit: MSE='+'{:.3f}'.format(mse_linear))
+    ax.plot(var_vec, m*var_vec + b, color=kth_color('green'), label='linear fit: MSE='+'{:.3f}'.format(mse_linear))
     # plot the best fit exponential curve
     p = np.polyfit(var_vec, np.log(latency_vec), 1)
     mse_exponential = np.mean((np.exp(p[1])*np.exp(p[0]*var_vec) - latency_vec)**2)
-    ax.plot(var_vec, np.exp(p[1])*np.exp(p[0]*var_vec), color='red', label='exp fit: MSE='+'{:.3f}'.format(mse_exponential))
+    ax.plot(var_vec, np.exp(p[1])*np.exp(p[0]*var_vec), color=kth_color('brick'), label='exp fit: MSE='+'{:.3f}'.format(mse_exponential))
     # plot the best fit logarithmic curve
     p = np.polyfit(np.log(var_vec), latency_vec, 1)
     mse_logarithmic = np.mean((np.log(var_vec)*p[0]+p[1] - latency_vec)**2)
-    ax.plot(var_vec, np.log(var_vec)*p[0]+p[1], color='blue', label='log fit: MSE='+'{:.3f}'.format(mse_logarithmic))
+    ax.plot(var_vec, np.log(var_vec)*p[0]+p[1], color=kth_color('yellow'), label='log fit: MSE='+'{:.3f}'.format(mse_logarithmic))
     ax.legend(loc='upper left')
 
 def collect_data(directory: str) -> dict:
@@ -94,7 +115,7 @@ def create_figure(directory: str, vars: list):
     for i in range(len(vars)):
         key = vars[i]
         var_vec, latency_vec = data[key]
-        plot_subfigure(axs[i], "Latency increases with "+key, key, var_vec, latency_vec)
+        plot_subfigure(axs[i], "Compilation time increases with "+key, key, var_vec, latency_vec)
 
     # save the figure to pdf
     plt.savefig(os.path.join(directory, "plot.pdf"))

@@ -134,8 +134,13 @@ void set_state_reg(int row, int col, int addr, int value) {
 
 void simulate_code_segment(int id) {
   string cmd;
-  cmd = "vs-manas -i ../asm/" + to_string(id) +
-        ".txt -s ../isa.json "
+  cmd = "vs-schedule -p ../pasm/" + to_string(id) + ".pasm -c ../pasm/" +
+        to_string(id) + ".cstr -o compile";
+  assert(system(cmd.c_str()) == 0);
+  cmd = "mkdir asm && cp compile/instr_lists.asm asm/" + to_string(id) + ".asm";
+  assert(system(cmd.c_str()) == 0);
+  cmd = "vs-manas -i asm/" + to_string(id) +
+        ".asm -s ../isa.json "
         "-o .";
   assert(system(cmd.c_str()) == 0);
   cmd = "vs-alimpsim --arch ../arch.json "

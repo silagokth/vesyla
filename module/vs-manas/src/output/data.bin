@@ -1,67 +1,0 @@
-
-½
-DRRA-2 "D
-wait<
-cycle21Number of cycles, if cycle=0 means infinite loop."B
-act9
-slots2.1-hot encoded slots that need to be activated."ó
-calcj
-mode*idle*add*sub*shift_r*shift_l*mult*div*mod2Calculation modeD
-operand1_sd*s*d2'Is the first operand static or dynamic?
-operand1	2First operand.E
-operand2_sd*s*d2(Is the second operand static or dynamic?
-operand2	2Second operand.3
-result2'The RACCU register to store the result."ý
-loop,
-loopid2 The id of the loop manager slot."
-endpc2The PC where loop ends.9
-start_sd*s*d2Is the start static or dynamic?!
-start2The start of iterator."
-iter2The number of iteration.
-step 2The iteration step."‘
-brnw
-mode*always*	equal*	not_equal*greater*less*greater_equal*
-less_equal2The branch mode^
-pc2VThe PC to jump to in case the condition is true. The PC is relative to the current PC./
-slot2%The slot that will provide the flags."¶
-swby
-channel2lBus channel. Note: if the SWB is implemented by a crossbar, the channel is always equals to the target slot.
-source2Source slot.
-target2Target slot."ž
-route-
-sr*send*receive2Send or receive.{
-	direction2l1-hot encoded direction: E/N/W/S. If it's a receive instruction, the direction can only have 1 bit set to 1.g
-slot2]1-hot encoded slot number. If it's a send instruction, the slot can only have 1 bit set to 1."¤
-rep
-slot2Slot numberY
-port*read narrow*	read wide*write narrow*
-write wide2The port number[
-level2PThe level of the REP instruction. [0]: inner most level, [15]: outer most level. 
-iter2level-1 iteration - 1.
-step 2level-1 step
-delay2delay"î
-mask	
-slot2Slot numberæ
-chunk2ÚMask chunk of 16 elements. If each element is 16-bit, only 1 chunk is needed. If each element is 8-bit, 2 chunks are needed. If each element is 4-bit, 4 chunks are needed. If each element is 2-bit, 8 chunks are needed.ã
-mask2ØThe mask of 16-elements. If mask-bit is 0, then the corresponding element is useful and will be written to destination memory block. If mask-bit is 1, then the corresponding element is not useful and will be ignored."Ó
-dpu
-
-slot2Slot numberF
-bw*16-bit*	8-bit*	4-bit*	2-bit2The bit-width mode.®
-mode*idle*add*sum_acc*	add_const*subt*subt_abs*
-mode_6*mult*mult_add*	
-mult_const*
-mac*	ld_ir*axpy*max_min_acc*max_min_const*mode_15*max_min*shift_l*shift_r*sigm*
-tanhyp*	expon*lk_relu*relu*div*acc_softmax*div_softmax*
-ld_acc*scale_dw*scale_up*	mac_inter*mode_312The DPU mode. :
-	immediate2+The immediate field used by some DPU modes."Ò
-dsu
-slot2Slot numberC
-init_addr_sd*s*d2%Is initial address static or dynamic?
-	init_addr2Initial addressY
-port*read narrow*	read wide*write narrow*
-write wide2The port numberr
-level2gThe level of that the init address should be applied on. [0]: inner most level, [15]: outer most level."
-0_0
-wait	
-cycle
