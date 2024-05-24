@@ -486,7 +486,7 @@ def insert_wait_instr(instr_table: dict, latency: int, op_table, time_table, off
             t_ub = t
             cycles = t_ub - t_lb
             if cycles > 0:
-                instr_table[key][t_lb] = "wait cycle=%d" % cycles
+                instr_table[key][t_lb] = "wait cycle=%d" % (cycles-1)
             
 def convert_instr_table_to_lists(instr_table: dict):
     instr_lists = {}
@@ -499,7 +499,7 @@ def convert_instr_table_to_lists(instr_table: dict):
     return instr_lists
 
 def write_instr_lists_to_file(instr_lists: dict, output_folder: str):
-    with open(os.path.join(output_folder, 'instr_lists.txt'), 'w+') as f:
+    with open(os.path.join(output_folder, '0.asm'), 'w+') as f:
         for key in instr_lists:
             f.write('cell %s\n' % key)
             for instr in instr_lists[key]:

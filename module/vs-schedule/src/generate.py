@@ -5,7 +5,6 @@ import logging
 import uuid
 import operation
 import itertools
-import pyparsing as pp
 
 def generate_uuid():
     return "__"+uuid.uuid4().hex[:6].lower()+"__"

@@ -23,6 +23,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <cstdint>
 
 // Use (void) to silence unused warnings.
 #define assertm(exp, msg) assert(((void)msg, exp))

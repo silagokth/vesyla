@@ -564,10 +564,10 @@ def compute_npc(resource_pool_, row_, col_, pc_, pc_increment_):
     #                 continue
     #             else:
     #                 loop_config["iter"] = loop_config["iter"] - 1
-    #                 raccu_reg = resource_pool_.get("raccu_reg")
-    #                 raccu_reg[row_][col_][15 -
+    #                 scalar_reg = resource_pool_.get("scalar_reg")
+    #                 scalar_reg[row_][col_][15 -
     #                                       curr_loop_id] += loop_config["step"]
-    #                 resource_pool_.set("raccu_reg", raccu_reg)
+    #                 resource_pool_.set("scalar_reg", scalar_reg)
     #                 loop_manager[row_][col_][curr_loop_id] = loop_config
     #                 resource_pool_.set("loop_manager", loop_manager)
     #                 return loop_config["pc_start"]
@@ -600,47 +600,82 @@ def is_resource_instr(name: str, isa: ds.InstructionSet) -> bool:
 
 
 def calc_regs(clk_, event_pool_, resource_pool_, handler_pool_, args):
-    print(args)
     row = args[0]
     col = args[1]
     mode = args[2]
-    operand1_sd = args[3]
-    operand1 = args[4]
-    operand2_sd = args[5]
-    operand2 = args[6]
-    result = args[7]
+    operand1 = args[3]
+    operand2_sd = args[4]
+    operand2 = args[5]
+    result = args[6]
     if operand2 >= 2**9:
         operand2 = operand2 - 2**10
-    if operand1 >= 2**9:
-        operand1 = operand1 - 2**10
 
-    raccu_reg = resource_pool_.get("raccu_reg")
-    if operand1_sd:
-        operand1 = raccu_reg[row][col][operand1]
+    scalar_reg = resource_pool_.get("scalar_reg")
+    bool_reg = resource_pool_.get("bool_reg")
+
+    operand1 = scalar_reg[row][col][operand1]
     if operand2_sd:
-        operand2 = raccu_reg[row][col][operand2]
+        operand2 = scalar_reg[row][col][operand2]
+
+    # bool_reg[0] and bool_reg[1] cannot be modified.
+    if mode>=17 and mode<=22 and (result==0 or result==1):
+        return True
+    # scalar_reg[0] cannot be modified.
+    if (mode<17 or mode>22) and result==0:
+        return True
 
     if mode == 1:
-        raccu_reg[row][col][result] = operand1 + operand2
+        scalar_reg[row][col][result] = operand1 + operand2
     elif mode == 2:
-        raccu_reg[row][col][result] = operand1 - operand2
+        scalar_reg[row][col][result] = operand1 - operand2
     elif mode == 3:
-        raccu_reg[row][col][result] = operand1 // (2**operand2)
+        scalar_reg[row][col][result] = operand1 // (2**operand2)
     elif mode == 4:
-        raccu_reg[row][col][result] = operand1 * (2**operand2)
+        scalar_reg[row][col][result] = operand1 * (2**operand2)
     elif mode == 5:
-        raccu_reg[row][col][result] = operand1 * operand2
+        scalar_reg[row][col][result] = operand1 * operand2
+    elif mode == 17:
+        if operand1 == operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
+    elif mode == 18:
+        if operand1 != operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
+    elif mode == 19:
+        if operand1 > operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
+    elif mode == 20:
+        if operand1 >= operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
+    elif mode == 21:
+        if operand1 < operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
+    elif mode == 22:
+        if operand1 <= operand2:
+            bool_reg[row][col][result] = True
+        else:
+            bool_reg[row][col][result] = False
     else:
-        logger.fatal("Unknown RACCU mode: " + str(mode) + "!")
+        logger.fatal("Unknown calc mode: " + str(mode) + "!")
         exit(1)
     
-    resource_pool_.set("raccu_reg", raccu_reg)
+    resource_pool_.set("scalar_reg", scalar_reg)
+    resource_pool_.set("bool_reg", bool_reg)
 
     return True
 
 
 # def config_loop(clk_, event_pool_, resource_pool_, handler_pool_, args):
-#     raccu_reg = resource_pool_.get("raccu_reg")
+#     scalar_reg = resource_pool_.get("scalar_reg")
 
 #     row = args[0]
 #     col = args[1]
@@ -650,7 +685,7 @@ def calc_regs(clk_, event_pool_, resource_pool_, handler_pool_, args):
 #     start_sd = args[5]
 #     start = args[6]
 #     if start_sd:
-#         start = raccu_reg[row][col][start]
+#         start = scalar_reg[row][col][start]
 #     iter = args[7]
 #     step = args[8]
 
@@ -667,8 +702,8 @@ def calc_regs(clk_, event_pool_, resource_pool_, handler_pool_, args):
 #     loop_manager[row][col][loop_id]["step"] = step
 #     resource_pool_.set("loop_manager", loop_manager)
 
-#     raccu_reg[row][col][15-loop_id] = start
-#     resource_pool_.set("raccu_reg", raccu_reg)
+#     scalar_reg[row][col][15-loop_id] = start
+#     resource_pool_.set("scalar_reg", scalar_reg)
 #     return True
 
 
@@ -685,13 +720,19 @@ def control_init(name: str, db: ds.DataBase, prefix: str, event_pool_, resource_
         # Loop manager
         resource_pool_.add("loop_manager", [[[{"enable": False, "pc_begin": 0, "pc_end": 0, "start": 0, "step": 0, "iter": 0,
                                                "start_is_dynamic": 0, "step_is_dynamic": 0, "iter_is_dynamic": 0} for i in range(4)] for j in range(num_drra_col)] for k in range(num_drra_row)])
-        # RACCU register
-        resource_pool_.add(
-            "raccu_reg", [[[0 for i in range(16)] for j in range(num_drra_col)] for k in range(num_drra_row)])
-
+        # Scalar and boolean register
+        scalar_reg = [[[0 for i in range(16)] for j in range(num_drra_col)] for k in range(num_drra_row)]
+        bool_reg = [[[False for i in range(16)] for j in range(num_drra_col)] for k in range(num_drra_row)]
+        for r in range(num_drra_row):
+            for c in range(num_drra_col):
+                bool_reg[r][c][1] = True
+        resource_pool_.add("scalar_reg", scalar_reg)
+        resource_pool_.add("bool_reg", bool_reg)
         # activation
         handler_pool_.add("resource_trigger", resource_trigger)
         handler_pool_.add("calc_regs", calc_regs)
+
+        return True
     else:
         logger.error("Unknown control worker: ", name)
         return False
@@ -702,7 +743,10 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
     j = args[1]
     ir = resource_pool_.get("ir_"+str(i)+"_"+str(j))
 
-    if ir.name == "wait":
+    if ir.name == "halt":
+        logger.info("HALT instruction @ "+str(i)+"_"+str(j))
+        return True
+    elif ir.name == "wait":
         logger.info("WAIT instruction @ "+str(i)+"_"+str(j))
         exist, mode = get_instr_field(ir, "mode")
         if not exist:
@@ -713,13 +757,12 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             if not exist:
                 logger.error("WAIT instruction without cycle field")
                 return False
-            if cycle > 0:
-                pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
-                pc = compute_npc(resource_pool_, i, j, pc, 1)
-                resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
-                e = (clk_+cycle, "fetch_decode_" +
-                     str(i)+"_"+str(j), [i, j], 100, True)
-                event_pool_.post(e)
+            pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+            pc = compute_npc(resource_pool_, i, j, pc, 1)
+            resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
+            e = (clk_+cycle+1, "fetch_decode_" +
+                    str(i)+"_"+str(j), [i, j], 100, True)
+            event_pool_.post(e)
             return True
         else:
             logger.debug("Wait for events!")
@@ -773,10 +816,6 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
         if not exist:
             logger.error("CALC instruction without mode field")
             return False
-        exist, operand1_sd = get_instr_field(ir, "operand1_sd")
-        if not exist:
-            logger.error("CALC instruction without operand1_sd field")
-            return False
         exist, operand2_sd = get_instr_field(ir, "operand2_sd")
         if not exist:
             logger.error("CALC instruction without operand2_sd field")
@@ -800,7 +839,7 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
              str(i)+"_"+str(j), [i, j], 100, True)
         event_pool_.post(e)
         e = (clk_, "calc_regs", [
-             i, j, mode, operand1_sd, operand1, operand2_sd, operand2, result], 100, True)
+             i, j, mode, operand1, operand2_sd, operand2, result], 100, True)
         event_pool_.post(e)
         return True
     elif ir.name == "looph":
@@ -854,6 +893,32 @@ def control_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
             pc = compute_npc(resource_pool_, i, j, pc, loop_pc)
         resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
         resource_pool_.set("loop_manager", loop_manager)
+        e = (clk_+1, "fetch_decode_" +
+             str(i)+"_"+str(j), [i, j], 100, True)
+        event_pool_.post(e)
+        return True
+    elif ir.name == "brn":
+        logger.info("BRN instruction @ "+str(i)+"_"+str(j))
+        exist, reg = get_instr_field(ir, "reg")
+        if not exist:
+            logger.error("BRN instruction without reg field")
+            return False
+        exist, target_true = get_instr_field(ir, "target_true")
+        if not exist:
+            logger.error("BRN instruction without target_true field")
+            return False
+        exist, target_false = get_instr_field(ir, "target_false")
+        if not exist:
+            logger.error("BRN instruction without target_false field")
+            return False
+        pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
+        bool_reg = resource_pool_.get("bool_reg")
+        print(bool_reg[i][j])
+        if bool_reg[i][j][reg]:
+            pc = compute_npc(resource_pool_, i, j, pc, target_true)
+        else:
+            pc = compute_npc(resource_pool_, i, j, pc, target_false)
+        resource_pool_.set("pc_"+str(i)+"_"+str(j), pc)
         e = (clk_+1, "fetch_decode_" +
              str(i)+"_"+str(j), [i, j], 100, True)
         event_pool_.post(e)
@@ -1059,8 +1124,8 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 logger.error("Error: Instruction without init_addr field")
                 return False
             if init_addr_sd != 0:
-                raccu_reg = resource_pool_.get("raccu_reg")
-                resource_conf["start"] = raccu_reg[i][j][resource_conf["start"]]
+                scalar_reg = resource_pool_.get("scalar_reg")
+                resource_conf["start"] = scalar_reg[i][j][resource_conf["start"]]
 
             resource_pool_.set("conf", conf)
             logger.info("DSU instr: start="+str(resource_conf["start"]))
@@ -1162,8 +1227,8 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
                 logger.error("Error: Instruction without init_addr field")
                 return False
             if init_addr_sd != 0:
-                raccu_reg = resource_pool_.get("raccu_reg")
-                resource_conf["start"] = raccu_reg[i][j][resource_conf["start"]]
+                scalar_reg = resource_pool_.get("scalar_reg")
+                resource_conf["start"] = scalar_reg[i][j][resource_conf["start"]]
             resource_pool_.set("conf", conf)
             logger.info("DSU instr: start="+str(resource_conf["start"]))
             pc = resource_pool_.get("pc_"+str(i)+"_"+str(j))
@@ -1190,8 +1255,8 @@ def resource_run(clk_, event_pool_, resource_pool_, handler_pool_, args):
         #         logger.error("Error: Instruction without ext_addr field")
         #         return False
         #     if ext_addr_sd != 0:
-        #         raccu_reg = resource_pool_.get("raccu_reg")
-        #         resource_conf["ext_addr"] = raccu_reg[i][j][resource_conf["ext_addr"]]
+        #         scalar_reg = resource_pool_.get("scalar_reg")
+        #         resource_conf["ext_addr"] = scalar_reg[i][j][resource_conf["ext_addr"]]
         #     exist, resource_conf["int_addr"] = get_instr_field(ir, "int_addr")
         #     if not exist:
         #         logger.error("Error: Instruction without int_addr field")

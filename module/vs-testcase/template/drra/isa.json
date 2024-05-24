@@ -5,6 +5,11 @@
   "instruction_templates": [
     {
       "code": 0,
+      "name": "halt",
+      "machines": ["controller_io", "controller_normal"]
+    },
+    {
+      "code": 1,
       "name": "wait",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
@@ -15,13 +20,13 @@
         },
         {
           "name": "cycle",
-          "comment": "Number of cycles, if cycle=0 means infinite loop.",
+          "comment": "If mode is 0, it means the extra cycles to wait excluding the current cycle when this wait instruction is issued. If the mode is 1, this is the 1-hot encoding of event slots.",
           "bitwidth": 27
         }
       ]
     },
     {
-      "code": 1,
+      "code": 2,
       "name": "act",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
@@ -43,38 +48,47 @@
       ]
     },
     {
-      "code": 2,
+      "code": 3,
       "name": "calc",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
         {
+          "name": "cond",
+          "comment": "Condition flag. If the condition flag is false, the calculation will have no effect.",
+          "bitwidth": 4
+        },
+        {
           "name": "mode",
           "comment": "Calculation mode",
-          "bitwidth": 4,
+          "bitwidth": 6,
           "verbo_map": [
             { "key": 0, "val": "idle" },
             { "key": 1, "val": "add" },
             { "key": 2, "val": "sub" },
-            { "key": 3, "val": "shift_r" },
-            { "key": 4, "val": "shift_l" },
-            { "key": 5, "val": "mult" },
+            { "key": 3, "val": "lls" },
+            { "key": 4, "val": "lrs" },
+            { "key": 5, "val": "mul" },
             { "key": 6, "val": "div" },
-            { "key": 7, "val": "mod" }
-          ]
-        },
-        {
-          "name": "operand1_sd",
-          "comment": "Is the first operand static or dynamic?",
-          "bitwidth": 1,
-          "verbo_map": [
-            { "key": 0, "val": "s" },
-            { "key": 1, "val": "d" }
+            { "key": 7, "val": "mod" },
+            { "key": 8, "val": "bitand" },
+            { "key": 9, "val": "bitor" },
+            { "key": 10, "val": "bitinv" },
+            { "key": 11, "val": "bitxor" },
+            { "key": 17, "val": "eq" },
+            { "key": 18, "val": "ne" },
+            { "key": 19, "val": "gt" },
+            { "key": 20, "val": "ge" },
+            { "key": 21, "val": "lt" },
+            { "key": 22, "val": "le" },
+            { "key": 32, "val": "and" },
+            { "key": 33, "val": "or" },
+            { "key": 34, "val": "not" }
           ]
         },
         {
           "name": "operand1",
           "comment": "First operand.",
-          "bitwidth": 9
+          "bitwidth": 4
         },
         {
           "name": "operand2_sd",
@@ -88,78 +102,36 @@
         {
           "name": "operand2",
           "comment": "Second operand.",
-          "bitwidth": 9
+          "bitwidth": 8
         },
         {
           "name": "result",
-          "comment": "The RACCU register to store the result.",
+          "comment": "The register to store the result. It could be the scalar register or flag register, depending on the calculation mode.",
           "bitwidth": 4
-        }
-      ]
-    },
-    {
-      "code": 3,
-      "name": "looph",
-      "machines": ["controller_io", "controller_normal"],
-      "segment_templates": [
-        {
-          "name": "id",
-          "comment": "The id of the loop manager slot.",
-          "bitwidth": 2
-        },
-        {
-          "name": "iter",
-          "comment": "The number of iteration.",
-          "bitwidth": 6
         }
       ]
     },
     {
       "code": 4,
-      "name": "loopt",
-      "machines": ["controller_io", "controller_normal"],
-      "segment_templates": [
-        {
-          "name": "id",
-          "comment": "The id of the loop manager slot.",
-          "bitwidth": 2
-        },
-        {
-          "name": "pc",
-          "is_signed": true,
-          "comment": "The pc offset to jump. It will be negative if it jumps back",
-          "bitwidth": 6
-        }
-      ]
-    },
-    {
-      "code": 5,
       "name": "brn",
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
         {
-          "name": "mode",
-          "comment": "The branch mode",
-          "bitwidth": 2,
-          "verbo_map": [
-            { "key": 0, "val": "always" },
-            { "key": 1, "val": "equal" },
-            { "key": 2, "val": "not_equal" },
-            { "key": 3, "val": "greater" },
-            { "key": 4, "val": "less" },
-            { "key": 5, "val": "greater_equal" },
-            { "key": 6, "val": "less_equal" }
-          ]
-        },
-        {
-          "name": "pc",
-          "comment": "The PC to jump to in case the condition is true. The PC is relative to the current PC.",
-          "bitwidth": 7
-        },
-        {
-          "name": "slot",
-          "comment": "The slot that will provide the flags.",
+          "name": "reg",
+          "comment": "The flag register",
           "bitwidth": 4
+        },
+        {
+          "name": "target_true",
+          "comment": "The PC to jump to in case the condition is true. The PC is relative to the current PC.",
+          "is_signed": true,
+          "bitwidth": 9
+        },
+        {
+          "name": "target_false",
+          "comment": "The PC to jump to in case the condition is false. The PC is relative to the current PC.",
+          "is_signed": true,
+          "bitwidth": 9
         }
       ]
     },

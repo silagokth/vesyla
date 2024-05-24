@@ -74,7 +74,7 @@ class CodeGenerator:
         template = self.find_instr_template(instr.name, isa)
         # convert instruction segment into a single line of text
         # The format is: instr_name(segment1_name = segment1_value, segment2_name = segment2_value, ... )
-        content += template.name + " "
+        content += template.name + " ("
         for segment in template.segment_templates:
             value = None
             for vm in instr.value_map:
@@ -91,6 +91,7 @@ class CodeGenerator:
             else:
                 content += segment.name + "=" + \
                     str(value) + ", "
+        content += ")"
         return content
 
     def dump_instr_bin(self, data: db.DataBase, filename: str):
@@ -106,7 +107,10 @@ class CodeGenerator:
         # write only instructions to text file
         with open(filename, 'w') as f:
             for instr_list in data.pkg.instruction_lists:
-                f.write("cell " + instr_list.label + '\n')
+                coord = instr_list.label.split("_")
+                x = int(coord[0])
+                y = int(coord[1])
+                f.write("cell " + f"(x={x}, y={y})" + '\n')
                 for instr in instr_list.instructions:
                     text_content = self.assemble_instr_text(instr, data.isa)
                     f.write(text_content + '\n')

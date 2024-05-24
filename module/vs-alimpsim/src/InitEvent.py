@@ -204,12 +204,12 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     # read file contents as dictionary
     if os.path.exists(file_state_reg_):
         with open(file_state_reg_, "r") as f:
-            raccu_reg =resource_pool_.get("raccu_reg")
+            scalar_reg =resource_pool_.get("scalar_reg")
             state_reg = json.load(f)
             for label in state_reg:
                 [row, col, addr] = label.split("_")
-                raccu_reg[int(row)][int(col)][int(addr)] = state_reg[label]
-            resource_pool_.set("raccu_reg", raccu_reg)
+                scalar_reg[int(row)][int(col)][int(addr)] = state_reg[label]
+            resource_pool_.set("scalar_reg", scalar_reg)
 
     resource_map = resource_pool_.get("resource_map")
     print(resource_map)
@@ -341,7 +341,7 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #                                            "start_is_dynamic": 0, "step_is_dynamic": 0, "iter_is_dynamic": 0} for i in range(4)] for j in range(num_drra_col)] for k in range(num_drra_row)])
     #     # RACCU register
     #     resource_pool_.add(
-    #         "raccu_reg", [[[0 for i in range(16)] for j in range(num_drra_col)] for k in range(num_drra_row)])
+    #         "scalar_reg", [[[0 for i in range(16)] for j in range(num_drra_col)] for k in range(num_drra_row)])
 
     #     # post combination events
     #     e = (0, "comb_callback", [], 50, False)
@@ -361,10 +361,10 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #                     continue
     #                 else:
     #                     loop_config["iter"] = loop_config["iter"] - 1
-    #                     raccu_reg = resource_pool_.get("raccu_reg")
-    #                     raccu_reg[row_][col_][15 -
+    #                     scalar_reg = resource_pool_.get("scalar_reg")
+    #                     scalar_reg[row_][col_][15 -
     #                                           curr_loop_id] += loop_config["step"]
-    #                     resource_pool_.set("raccu_reg", raccu_reg)
+    #                     resource_pool_.set("scalar_reg", scalar_reg)
     #                     loop_manager[row_][col_][curr_loop_id] = loop_config
     #                     resource_pool_.set("loop_manager", loop_manager)
     #                     return loop_config["pc_start"]
@@ -714,21 +714,21 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #         reg_res += "RF_in"+str(port)
     #     if (dimarch):
     #         reg_res += "_dimarch"
-    #     raccu_reg = resource_pool_.get("raccu_reg")
+    #     scalar_reg = resource_pool_.get("scalar_reg")
     #     if init_addr_sd:
-    #         init_addr = raccu_reg[row][col][init_addr]
+    #         init_addr = scalar_reg[row][col][init_addr]
     #     if l1_iter_sd:
-    #         l1_iter = raccu_reg[row][col][l1_iter]
+    #         l1_iter = scalar_reg[row][col][l1_iter]
     #     if init_delay_sd:
-    #         init_delay = raccu_reg[row][col][init_delay]
+    #         init_delay = scalar_reg[row][col][init_delay]
     #     if l1_step_sd:
-    #         l1_step = raccu_reg[row][col][l1_step]
+    #         l1_step = scalar_reg[row][col][l1_step]
     #     if l1_delay_sd:
-    #         l1_delay = raccu_reg[row][col][l1_delay]
+    #         l1_delay = scalar_reg[row][col][l1_delay]
     #     if l2_iter_sd:
-    #         l2_iter = raccu_reg[row][col][l2_iter]
+    #         l2_iter = scalar_reg[row][col][l2_iter]
     #     if l2_delay_sd:
-    #         l2_delay = raccu_reg[row][col][l2_delay]
+    #         l2_delay = scalar_reg[row][col][l2_delay]
 
     #     if l1_delay_ext:
     #         l1_delay = l1_delay_ext * 2**4 + l1_delay
@@ -968,9 +968,9 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #     else:
     #         reg_res += "SRAM_out"
 
-    #     raccu_reg = resource_pool_.get("raccu_reg")
+    #     scalar_reg = resource_pool_.get("scalar_reg")
     #     if init_addr_sd:
-    #         init_addr = raccu_reg[row][col][init_addr]
+    #         init_addr = scalar_reg[row][col][init_addr]
 
     #     t = clk_+init_delay
     #     a_l2 = init_addr
@@ -1019,9 +1019,9 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #     else:
     #         reg_res += str(row)+"_"+str(col)+"_IO_out"
 
-    #     raccu_reg = resource_pool_.get("raccu_reg")
+    #     scalar_reg = resource_pool_.get("scalar_reg")
     #     if init_addr_sd:
-    #         init_addr = raccu_reg[row][col][init_addr]
+    #         init_addr = scalar_reg[row][col][init_addr]
 
     #     t = clk_+init_delay
     #     a_l2 = init_addr
@@ -1062,44 +1062,44 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #     if operand1 >= 2**24:
     #         operand1 = operand1 - 2**25
 
-    #     raccu_reg = resource_pool_.get("raccu_reg")
+    #     scalar_reg = resource_pool_.get("scalar_reg")
     #     if operand1_sd:
-    #         operand1 = raccu_reg[row][col][operand1]
+    #         operand1 = scalar_reg[row][col][operand1]
     #     if operand2_sd:
-    #         operand2 = raccu_reg[row][col][operand2]
+    #         operand2 = scalar_reg[row][col][operand2]
 
     #     logging.debug("RACCU: mode=" + str(mode) + ",   " + str(operand1) +
     #                   " " + str(operand2) + " " + str(result))
 
     #     if mode == 1:
-    #         raccu_reg[row][col][result] = operand1 + operand2
+    #         scalar_reg[row][col][result] = operand1 + operand2
     #     elif mode == 2:
-    #         raccu_reg[row][col][result] = operand1 - operand2
+    #         scalar_reg[row][col][result] = operand1 - operand2
     #     elif mode == 3:
-    #         raccu_reg[row][col][result] = operand1 // (2**operand2)
+    #         scalar_reg[row][col][result] = operand1 // (2**operand2)
     #     elif mode == 4:
-    #         raccu_reg[row][col][result] = operand1 * (2**operand2)
+    #         scalar_reg[row][col][result] = operand1 * (2**operand2)
     #     elif mode == 5:
-    #         raccu_reg[row][col][result] = operand1 * operand2
+    #         scalar_reg[row][col][result] = operand1 * operand2
     #     else:
     #         self.logger.fatal("Unknown RACCU mode: " + str(mode) + "!")
     #         exit(1)
 
-    #     resource_pool_.set("raccu_reg", raccu_reg)
+    #     resource_pool_.set("scalar_reg", scalar_reg)
 
     # def config_loop(self, clk_, event_pool_, resource_pool_, handler_pool_, args):
     #     row = args[0]
     #     col = args[1]
     #     pc_start = args[2]
     #     instr = args[3]
-    #     raccu_reg = resource_pool_.get("raccu_reg")
+    #     scalar_reg = resource_pool_.get("scalar_reg")
     #     ext = int(instr[4], 2)
     #     loop_id = int(instr[5: 7], 2)
     #     pc_end = int(instr[7: 13], 2)
     #     start_sd = int(instr[13], 2)
     #     start = int(instr[14:20], 2)
     #     if start_sd:
-    #         start = raccu_reg[row][col][start]
+    #         start = scalar_reg[row][col][start]
     #     iter_sd = int(instr[20], 2)
     #     iter = int(instr[21:27], 2)
     #     step_sd = 0
@@ -1108,15 +1108,15 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #         step_sd = int(instr[27], 2)
     #         step = int(instr[28:34], 2)
     #         if step_sd:
-    #             step = raccu_reg[row][col][step]
+    #             step = scalar_reg[row][col][step]
 
     #         iter_ext = int(instr[34:50], 2)
     #         iter = (iter_ext << 6) + iter
     #         if iter_sd:
-    #             iter = raccu_reg[row][col][iter]
+    #             iter = scalar_reg[row][col][iter]
 
     #     if iter_sd:
-    #         iter = raccu_reg[row][col][iter]
+    #         iter = scalar_reg[row][col][iter]
 
     #     if iter <= 0:
     #         pc = self.compute_npc(resource_pool_, row, col, pc_end, 1)
@@ -1131,8 +1131,8 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
     #     loop_manager[row][col][loop_id]["step"] = step
     #     resource_pool_.set("loop_manager", loop_manager)
 
-    #     raccu_reg[row][col][15-loop_id] = start
-    #     resource_pool_.set("raccu_reg", raccu_reg)
+    #     scalar_reg[row][col][15-loop_id] = start
+    #     resource_pool_.set("scalar_reg", scalar_reg)
 
     # def config_perm(self, clk_, event_pool_, resource_pool_, handler_pool_, args):
     #     row = args[0]

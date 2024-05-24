@@ -1,0 +1,62 @@
+syntax = "proto3";
+package vs.schedule.ds;
+
+message PASMProg {
+  string start = 1;
+  map<string, PASMRecord> records = 2;
+}
+message PASMRecord {
+  enum Kind {
+    UNKNOWN = 0;
+    START = 1;
+    LOOP = 2;
+    COND = 3;
+    EPOCH = 4;
+    CELL = 5;
+    COP = 6;
+    ROP = 7;
+    RAW = 8;
+    INSTR = 9;
+  }
+  string id = 1;
+  Kind kind = 2;
+  string name = 3;
+  map<string, string> parameters = 4;
+  repeated string contents = 5;
+}
+
+message CSTRProg {
+  string start = 1;
+  map<string, CSTRRecord> records = 2;
+}
+message CSTRRecord {
+  enum Kind {
+    UNKNOWN = 0;
+    START = 1;
+    EPOCH = 2;
+    CSTR = 3;
+  }
+  string id = 1;
+  Kind kind = 2;
+  string name = 3;
+  map<string, string> parameters = 4;
+  string constraint = 5;
+  repeated string contents = 6;
+}
+
+message ASMProg {
+  repeated string contents = 1;
+  map<string, ASMRecord> records = 2;
+}
+
+message ASMRecord {
+  enum Kind {
+    UNKNOWN = 0;
+    CELL = 1;
+    INSTR = 2;
+  }
+  string id = 1;
+  Kind kind = 2;
+  string name = 3;
+  map<string, string> parameters = 4;
+}

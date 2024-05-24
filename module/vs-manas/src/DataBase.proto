@@ -63,3 +63,20 @@ message IntStrMap {
   int32 key = 1;
   string val = 2;
 }
+
+message ASMProg {
+  repeated string contents = 1;
+  map<string, ASMRecord> records = 2;
+}
+
+message ASMRecord {
+  enum Kind {
+    UNKNOWN = 0;
+    CELL = 1;
+    INSTR = 2;
+  }
+  string id = 1;
+  Kind kind = 2;
+  string name = 3;
+  map<string, string> parameters = 4;
+}

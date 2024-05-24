@@ -93,13 +93,13 @@ if __name__ == "__main__":
         json.dump(metric, f)
     
     # Dump state register
-    raccu_reg = rp.get("raccu_reg")
+    scalar_reg = rp.get("scalar_reg")
     state_reg = {}
-    for r in range(len(raccu_reg)):
-        for c in range(len(raccu_reg[r])):
-            for addr in range(len(raccu_reg[r][c])):
-                if(raccu_reg[r][c][addr] != 0):
+    for r in range(len(scalar_reg)):
+        for c in range(len(scalar_reg[r])):
+            for addr in range(len(scalar_reg[r][c])):
+                if(scalar_reg[r][c][addr] != 0):
                     label = str(r) + "_" + str(c) + "_" + str(addr)
-                    state_reg[label] = raccu_reg[r][c][addr]
+                    state_reg[label] = scalar_reg[r][c][addr]
     with open(file_state_reg, "w+") as f:
         json.dump(state_reg, f)

@@ -137,7 +137,7 @@ void simulate_code_segment(int id) {
   cmd = "vs-schedule -p ../pasm/" + to_string(id) + ".pasm -c ../pasm/" +
         to_string(id) + ".cstr -o compile";
   assert(system(cmd.c_str()) == 0);
-  cmd = "mkdir asm && cp compile/instr_lists.asm asm/" + to_string(id) + ".asm";
+  cmd = "mkdir asm && cp compile/0.asm asm/" + to_string(id) + ".asm";
   assert(system(cmd.c_str()) == 0);
   cmd = "vs-manas -i asm/" + to_string(id) +
         ".asm -s ../isa.json "

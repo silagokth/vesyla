@@ -19,10 +19,40 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x0e\x44\x61taBase.proto\x12\x0bvs.manas.dt\"b\n\x08\x44\x61taBase\x12(\n\x03isa\x18\x01 \x01(\x0b\x32\x1b.vs.manas.dt.InstructionSet\x12,\n\x03pkg\x18\x02 \x01(\x0b\x32\x1f.vs.manas.dt.InstructionPackage\"\x97\x01\n\x0eInstructionSet\x12\x10\n\x08platform\x18\x01 \x01(\t\x12\x16\n\x0einstr_bitwidth\x18\x02 \x01(\x05\x12\x1b\n\x13instr_code_bitwidth\x18\x03 \x01(\x05\x12>\n\x15instruction_templates\x18\x04 \x03(\x0b\x32\x1f.vs.manas.dt.InstrctionTemplate\"{\n\x12InstrctionTemplate\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04\x63ode\x18\x02 \x01(\x05\x12\x10\n\x08machines\x18\x03 \x03(\t\x12\x37\n\x11segment_templates\x18\x04 \x03(\x0b\x32\x1c.vs.manas.dt.SegmentTemplate\"\x95\x01\n\x0fSegmentTemplate\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08\x62itwidth\x18\x02 \x01(\x05\x12\x11\n\tis_signed\x18\x03 \x01(\x08\x12\x13\n\x0b\x64\x65\x66\x61ult_val\x18\x04 \x01(\x05\x12)\n\tverbo_map\x18\x05 \x03(\x0b\x32\x16.vs.manas.dt.IntStrMap\x12\x0f\n\x07\x63omment\x18\x06 \x01(\t\"~\n\x12InstructionPackage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08platform\x18\x03 \x01(\t\x12\x37\n\x11instruction_lists\x18\x04 \x03(\x0b\x32\x1c.vs.manas.dt.InstructionList\"P\n\x0fInstructionList\x12\r\n\x05label\x18\x01 \x01(\t\x12.\n\x0cinstructions\x18\x02 \x03(\x0b\x32\x18.vs.manas.dt.Instruction\"\xa2\x01\n\x0bInstruction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12)\n\tvalue_map\x18\x02 \x03(\x0b\x32\x16.vs.manas.dt.StrIntMap\x12,\n\x0cint_info_map\x18\x03 \x03(\x0b\x32\x16.vs.manas.dt.StrIntMap\x12,\n\x0cstr_info_map\x18\x04 \x03(\x0b\x32\x16.vs.manas.dt.StrStrMap\"%\n\tStrIntMap\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0b\n\x03val\x18\x02 \x01(\x05\"%\n\tStrStrMap\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0b\n\x03val\x18\x02 \x01(\t\"%\n\tIntStrMap\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\x0b\n\x03val\x18\x02 \x01(\tb\x06proto3'
+  serialized_pb=b'\n\x0e\x44\x61taBase.proto\x12\x0bvs.manas.dt\"b\n\x08\x44\x61taBase\x12(\n\x03isa\x18\x01 \x01(\x0b\x32\x1b.vs.manas.dt.InstructionSet\x12,\n\x03pkg\x18\x02 \x01(\x0b\x32\x1f.vs.manas.dt.InstructionPackage\"\x97\x01\n\x0eInstructionSet\x12\x10\n\x08platform\x18\x01 \x01(\t\x12\x16\n\x0einstr_bitwidth\x18\x02 \x01(\x05\x12\x1b\n\x13instr_code_bitwidth\x18\x03 \x01(\x05\x12>\n\x15instruction_templates\x18\x04 \x03(\x0b\x32\x1f.vs.manas.dt.InstrctionTemplate\"{\n\x12InstrctionTemplate\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04\x63ode\x18\x02 \x01(\x05\x12\x10\n\x08machines\x18\x03 \x03(\t\x12\x37\n\x11segment_templates\x18\x04 \x03(\x0b\x32\x1c.vs.manas.dt.SegmentTemplate\"\x95\x01\n\x0fSegmentTemplate\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08\x62itwidth\x18\x02 \x01(\x05\x12\x11\n\tis_signed\x18\x03 \x01(\x08\x12\x13\n\x0b\x64\x65\x66\x61ult_val\x18\x04 \x01(\x05\x12)\n\tverbo_map\x18\x05 \x03(\x0b\x32\x16.vs.manas.dt.IntStrMap\x12\x0f\n\x07\x63omment\x18\x06 \x01(\t\"~\n\x12InstructionPackage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08platform\x18\x03 \x01(\t\x12\x37\n\x11instruction_lists\x18\x04 \x03(\x0b\x32\x1c.vs.manas.dt.InstructionList\"P\n\x0fInstructionList\x12\r\n\x05label\x18\x01 \x01(\t\x12.\n\x0cinstructions\x18\x02 \x03(\x0b\x32\x18.vs.manas.dt.Instruction\"\xa2\x01\n\x0bInstruction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12)\n\tvalue_map\x18\x02 \x03(\x0b\x32\x16.vs.manas.dt.StrIntMap\x12,\n\x0cint_info_map\x18\x03 \x03(\x0b\x32\x16.vs.manas.dt.StrIntMap\x12,\n\x0cstr_info_map\x18\x04 \x03(\x0b\x32\x16.vs.manas.dt.StrStrMap\"%\n\tStrIntMap\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0b\n\x03val\x18\x02 \x01(\x05\"%\n\tStrStrMap\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0b\n\x03val\x18\x02 \x01(\t\"%\n\tIntStrMap\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\x0b\n\x03val\x18\x02 \x01(\t\"\x97\x01\n\x07\x41SMProg\x12\x10\n\x08\x63ontents\x18\x01 \x03(\t\x12\x32\n\x07records\x18\x02 \x03(\x0b\x32!.vs.manas.dt.ASMProg.RecordsEntry\x1a\x46\n\x0cRecordsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12%\n\x05value\x18\x02 \x01(\x0b\x32\x16.vs.manas.dt.ASMRecord:\x02\x38\x01\"\xe9\x01\n\tASMRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12)\n\x04kind\x18\x02 \x01(\x0e\x32\x1b.vs.manas.dt.ASMRecord.Kind\x12\x0c\n\x04name\x18\x03 \x01(\t\x12:\n\nparameters\x18\x04 \x03(\x0b\x32&.vs.manas.dt.ASMRecord.ParametersEntry\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x04Kind\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x08\n\x04\x43\x45LL\x10\x01\x12\t\n\x05INSTR\x10\x02\x62\x06proto3'
 )
 
 
+
+_ASMRECORD_KIND = _descriptor.EnumDescriptor(
+  name='Kind',
+  full_name='vs.manas.dt.ASMRecord.Kind',
+  filename=None,
+  file=DESCRIPTOR,
+  create_key=_descriptor._internal_create_key,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='UNKNOWN', index=0, number=0,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='CELL', index=1, number=1,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='INSTR', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1402,
+  serialized_end=1442,
+)
+_sym_db.RegisterEnumDescriptor(_ASMRECORD_KIND)
 
 
 _DATABASE = _descriptor.Descriptor(
@@ -498,6 +528,175 @@ _INTSTRMAP = _descriptor.Descriptor(
   serialized_end=1052,
 )
 
+
+_ASMPROG_RECORDSENTRY = _descriptor.Descriptor(
+  name='RecordsEntry',
+  full_name='vs.manas.dt.ASMProg.RecordsEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='key', full_name='vs.manas.dt.ASMProg.RecordsEntry.key', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='value', full_name='vs.manas.dt.ASMProg.RecordsEntry.value', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=b'8\001',
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1136,
+  serialized_end=1206,
+)
+
+_ASMPROG = _descriptor.Descriptor(
+  name='ASMProg',
+  full_name='vs.manas.dt.ASMProg',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='contents', full_name='vs.manas.dt.ASMProg.contents', index=0,
+      number=1, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='records', full_name='vs.manas.dt.ASMProg.records', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_ASMPROG_RECORDSENTRY, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1055,
+  serialized_end=1206,
+)
+
+
+_ASMRECORD_PARAMETERSENTRY = _descriptor.Descriptor(
+  name='ParametersEntry',
+  full_name='vs.manas.dt.ASMRecord.ParametersEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='key', full_name='vs.manas.dt.ASMRecord.ParametersEntry.key', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='value', full_name='vs.manas.dt.ASMRecord.ParametersEntry.value', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=b'8\001',
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1351,
+  serialized_end=1400,
+)
+
+_ASMRECORD = _descriptor.Descriptor(
+  name='ASMRecord',
+  full_name='vs.manas.dt.ASMRecord',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='id', full_name='vs.manas.dt.ASMRecord.id', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='kind', full_name='vs.manas.dt.ASMRecord.kind', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='name', full_name='vs.manas.dt.ASMRecord.name', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='parameters', full_name='vs.manas.dt.ASMRecord.parameters', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_ASMRECORD_PARAMETERSENTRY, ],
+  enum_types=[
+    _ASMRECORD_KIND,
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1209,
+  serialized_end=1442,
+)
+
 _DATABASE.fields_by_name['isa'].message_type = _INSTRUCTIONSET
 _DATABASE.fields_by_name['pkg'].message_type = _INSTRUCTIONPACKAGE
 _INSTRUCTIONSET.fields_by_name['instruction_templates'].message_type = _INSTRCTIONTEMPLATE
@@ -508,6 +707,13 @@ _INSTRUCTIONLIST.fields_by_name['instructions'].message_type = _INSTRUCTION
 _INSTRUCTION.fields_by_name['value_map'].message_type = _STRINTMAP
 _INSTRUCTION.fields_by_name['int_info_map'].message_type = _STRINTMAP
 _INSTRUCTION.fields_by_name['str_info_map'].message_type = _STRSTRMAP
+_ASMPROG_RECORDSENTRY.fields_by_name['value'].message_type = _ASMRECORD
+_ASMPROG_RECORDSENTRY.containing_type = _ASMPROG
+_ASMPROG.fields_by_name['records'].message_type = _ASMPROG_RECORDSENTRY
+_ASMRECORD_PARAMETERSENTRY.containing_type = _ASMRECORD
+_ASMRECORD.fields_by_name['kind'].enum_type = _ASMRECORD_KIND
+_ASMRECORD.fields_by_name['parameters'].message_type = _ASMRECORD_PARAMETERSENTRY
+_ASMRECORD_KIND.containing_type = _ASMRECORD
 DESCRIPTOR.message_types_by_name['DataBase'] = _DATABASE
 DESCRIPTOR.message_types_by_name['InstructionSet'] = _INSTRUCTIONSET
 DESCRIPTOR.message_types_by_name['InstrctionTemplate'] = _INSTRCTIONTEMPLATE
@@ -518,6 +724,8 @@ DESCRIPTOR.message_types_by_name['Instruction'] = _INSTRUCTION
 DESCRIPTOR.message_types_by_name['StrIntMap'] = _STRINTMAP
 DESCRIPTOR.message_types_by_name['StrStrMap'] = _STRSTRMAP
 DESCRIPTOR.message_types_by_name['IntStrMap'] = _INTSTRMAP
+DESCRIPTOR.message_types_by_name['ASMProg'] = _ASMPROG
+DESCRIPTOR.message_types_by_name['ASMRecord'] = _ASMRECORD
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 DataBase = _reflection.GeneratedProtocolMessageType('DataBase', (_message.Message,), {
@@ -590,5 +798,37 @@ IntStrMap = _reflection.GeneratedProtocolMessageType('IntStrMap', (_message.Mess
   })
 _sym_db.RegisterMessage(IntStrMap)
 
+ASMProg = _reflection.GeneratedProtocolMessageType('ASMProg', (_message.Message,), {
 
+  'RecordsEntry' : _reflection.GeneratedProtocolMessageType('RecordsEntry', (_message.Message,), {
+    'DESCRIPTOR' : _ASMPROG_RECORDSENTRY,
+    '__module__' : 'DataBase_pb2'
+    # @@protoc_insertion_point(class_scope:vs.manas.dt.ASMProg.RecordsEntry)
+    })
+  ,
+  'DESCRIPTOR' : _ASMPROG,
+  '__module__' : 'DataBase_pb2'
+  # @@protoc_insertion_point(class_scope:vs.manas.dt.ASMProg)
+  })
+_sym_db.RegisterMessage(ASMProg)
+_sym_db.RegisterMessage(ASMProg.RecordsEntry)
+
+ASMRecord = _reflection.GeneratedProtocolMessageType('ASMRecord', (_message.Message,), {
+
+  'ParametersEntry' : _reflection.GeneratedProtocolMessageType('ParametersEntry', (_message.Message,), {
+    'DESCRIPTOR' : _ASMRECORD_PARAMETERSENTRY,
+    '__module__' : 'DataBase_pb2'
+    # @@protoc_insertion_point(class_scope:vs.manas.dt.ASMRecord.ParametersEntry)
+    })
+  ,
+  'DESCRIPTOR' : _ASMRECORD,
+  '__module__' : 'DataBase_pb2'
+  # @@protoc_insertion_point(class_scope:vs.manas.dt.ASMRecord)
+  })
+_sym_db.RegisterMessage(ASMRecord)
+_sym_db.RegisterMessage(ASMRecord.ParametersEntry)
+
+
+_ASMPROG_RECORDSENTRY._options = None
+_ASMRECORD_PARAMETERSENTRY._options = None
 # @@protoc_insertion_point(module_scope)

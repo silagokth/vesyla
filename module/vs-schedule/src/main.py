@@ -2,10 +2,6 @@ import os
 import sys
 import argparse
 import logging
-
-import generate
-import schedule
-import sync
 import time
 import dispatch
 

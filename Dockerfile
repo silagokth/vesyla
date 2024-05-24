@@ -3,12 +3,22 @@ FROM archlinux:base as builder
 WORKDIR /src
 COPY . .
 WORKDIR /src/build
-RUN pacman -Syu --noconfirm python python-pip cmake gcc make boost && \
+RUN pacman -Syu --noconfirm python python-pip cmake gcc make boost protobuf && \
     pip3 install --break-system-packages --upgrade pip setuptools && \
-    pip3 install --break-system-packages ortools protobuf pyinstaller verboselogs coloredlogs numpy matplotlib binarytree sympy regex pyparsing && \
+    pip3 install --break-system-packages ortools protobuf pyinstaller verboselogs coloredlogs numpy matplotlib binarytree sympy regex lark uuid && \
     cmake -DCMAKE_INSTALL_PREFIX=/fakeroot .. && \
     make -j$(nproc) && \
     make install
+
+# Test Image ##################################################################
+FROM archlinux:base as tester
+RUN pacman -Syu --noconfirm python python-pip gcc boost-libs && \
+    pip3 install --break-system-packages --upgrade pip setuptools && \
+    pip3 install --break-system-packages robotframework
+COPY --from=builder /fakeroot /usr
+WORKDIR /work
+RUN vs-testcase generate /usr/share/vesyla-suite/testcase && \
+    robot autotest_config.robot
 
 # Final Image ##################################################################
 FROM archlinux:base
