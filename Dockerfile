@@ -5,7 +5,7 @@ COPY . .
 WORKDIR /src/build
 RUN pacman -Syu --noconfirm python python-pip cmake gcc make boost protobuf && \
     pip3 install --break-system-packages --upgrade pip setuptools && \
-    pip3 install --break-system-packages ortools protobuf pyinstaller verboselogs coloredlogs numpy matplotlib binarytree sympy regex lark uuid && \
+    pip3 install --break-system-packages ortools protobufprotobuf==4.24.2 pyinstaller verboselogs coloredlogs numpy matplotlib binarytree sympy regex lark uuid && \
     cmake -DCMAKE_INSTALL_PREFIX=/fakeroot .. && \
     make -j$(nproc) && \
     make install

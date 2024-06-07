@@ -53,11 +53,6 @@
       "machines": ["controller_io", "controller_normal"],
       "segment_templates": [
         {
-          "name": "cond",
-          "comment": "Condition flag. If the condition flag is false, the calculation will have no effect.",
-          "bitwidth": 4
-        },
-        {
           "name": "mode",
           "comment": "Calculation mode",
           "bitwidth": 6,

@@ -56,7 +56,7 @@ IO file_to_io(string file_) {
     if (std::regex_match(line.cbegin(), line.cend(), sm, e1)) {
       int addr = stoi(sm[1]);
       string raw_data = sm[2];
-      io.set_slice(addr, io.encode(raw_data));
+      io.write(addr, 1, raw_data);
     }
   }
   return io;
@@ -78,6 +78,89 @@ void load_input_data(string file_) { __input_buffer__ = file_to_io(file_); }
 void store_input_data(string file_) { io_to_file(__input_buffer__, file_); }
 void load_output_data(string file_) { __output_buffer__ = file_to_io(file_); }
 void store_output_data(string file_) { io_to_file(__output_buffer__, file_); }
+
+void bin_to_hex_file(string bin_file_, string hex_file_) {
+  ifstream ifs(bin_file_);
+  if (!ifs.is_open()) {
+    cout << "Error: Can't open file: " << bin_file_ << endl;
+    abort();
+  }
+  ofstream ofs(hex_file_);
+  if (!ofs.is_open()) {
+    cout << "Error: Can't open file: " << hex_file_ << endl;
+    abort();
+  }
+  std::string line;
+  while (std::getline(ifs, line)) {
+    std::smatch sm;
+    std::regex e1("\\s*(\\d+)\\s+([01]+)\\s*");
+    if (std::regex_match(line.cbegin(), line.cend(), sm, e1)) {
+      int addr = stoi(sm[1]);
+      string raw_data = sm[2];
+      string hex_data;
+      if (raw_data.size() % 4 != 0) {
+        // pad 0s
+        raw_data = string(4 - raw_data.size() % 4, '0') + raw_data;
+      }
+      for (size_t i = 0; i < raw_data.size(); i += 4) {
+        unsigned long number = std::bitset<4>(raw_data.substr(i, 4)).to_ulong();
+        // convert to hex string
+        std::stringstream ss;
+        ss << std::hex << number;
+        hex_data += ss.str();
+      }
+      ofs << addr << " " << hex_data << endl;
+    }
+  }
+  ofs.close();
+}
+
+template <typename T> void bin_to_num_file(string bin_file_, string num_file_) {
+  ifstream ifs(bin_file_);
+  if (!ifs.is_open()) {
+    cout << "Error: Can't open file: " << bin_file_ << endl;
+    abort();
+  }
+  ofstream ofs(num_file_);
+  if (!ofs.is_open()) {
+    cout << "Error: Can't open file: " << num_file_ << endl;
+    abort();
+  }
+  std::string line;
+  while (std::getline(ifs, line)) {
+    std::smatch sm;
+    std::regex e1("\\s*(\\d+)\\s+([01]+)\\s*");
+    if (std::regex_match(line.cbegin(), line.cend(), sm, e1)) {
+      int addr = stoi(sm[1]);
+      string raw_data = sm[2];
+      // check raw_data size must be multiple of the size of T
+      if (raw_data.size() % (sizeof(T) * 8) != 0) {
+        cout << "Error: raw_data size is not multiple of " << sizeof(T) * 8
+             << endl;
+        abort();
+      }
+      // chop raw_data into chunks
+      ofs << addr << " [";
+      vector<std::bitset<sizeof(T) * 8>> vec;
+      for (size_t i = 0; i < raw_data.size(); i += sizeof(T) * 8) {
+        vec.push_back(
+            std::bitset<sizeof(T) * 8>(raw_data.substr(i, sizeof(T) * 8)));
+      }
+      for (size_t i = 0; i < vec.size(); i++) {
+        unsigned long num = vec[i].to_ulong();
+        T value;
+        // use memcpy to fill the value
+        memcpy(&value, &num, sizeof(T));
+        ofs << value;
+        if (i < vec.size() - 1) {
+          ofs << ", ";
+        }
+      }
+      ofs << "]" << endl;
+    }
+  }
+  ofs.close();
+}
 
 void reset_all() {
   __input_buffer__.reset();
@@ -145,8 +228,8 @@ void simulate_code_segment(int id) {
   assert(system(cmd.c_str()) == 0);
   cmd = "vs-alimpsim --arch ../arch.json "
         "--instr "
-        "instr.bin --isa ../isa.json --input sram_image_in.txt --output "
-        "sram_image_m1.txt "
+        "instr.bin --isa ../isa.json --input sram_image_in.bin --output "
+        "sram_image_m1.bin "
         "--metric metric.json --state_reg state_reg.json";
   assert(system(cmd.c_str()) == 0);
 }
@@ -154,18 +237,30 @@ void simulate_code_segment(int id) {
 int run_simulation() {
   cout << "Initialization ..." << endl;
   init();
-  store_input_data("sram_image_in.txt");
+  store_input_data("sram_image_in.bin");
+#ifdef DEBUG
+  bin_to_hex_file("sram_image_in.bin", "sram_image_in.hex");
+  bin_to_num_file<DATA_TYPE>("sram_image_in.bin", "sram_image_in.txt");
+#endif
   cout << "Run model 0 ..." << endl;
   reset_all();
-  load_input_data("sram_image_in.txt");
+  load_input_data("sram_image_in.bin");
   model_l0();
-  store_output_data("sram_image_m0.txt");
+  store_output_data("sram_image_m0.bin");
+#ifdef DEBUG
+  bin_to_hex_file("sram_image_m0.bin", "sram_image_m0.hex");
+  bin_to_num_file<DATA_TYPE>("sram_image_m0.bin", "sram_image_m0.txt");
+#endif
   cout << "Run model 1 ..." << endl;
   reset_all();
-  load_input_data("sram_image_in.txt");
+  load_input_data("sram_image_in.bin");
   model_l1();
+#ifdef DEBUG
+  bin_to_hex_file("sram_image_m1.bin", "sram_image_m1.hex");
+  bin_to_num_file<DATA_TYPE>("sram_image_m1.bin", "sram_image_m1.txt");
+#endif
   cout << "Verify model 1 against model 0 ..." << endl;
-  assert(verify("sram_image_m0.txt", "sram_image_m1.txt"));
+  assert(verify("sram_image_m0.bin", "sram_image_m1.bin"));
   cout << "Success!" << endl;
   return 0;
 }

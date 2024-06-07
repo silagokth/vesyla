@@ -33,7 +33,7 @@ rep (slot=2, port=2, iter=2, step=1, delay=t1)
 }
 rop <swb> (slot=0, port=0) {
 swb (slot=0, option=0, channel=4, source=1, target=4)
-swb (slot=0, option=0, channel=5, source=1, target=5)
+swb (slot=0, option=0, channel=5, source=2, target=5)
 swb (slot=0, option=0, channel=3, source=4, target=3)
 }
 rop <read_a_seq> (slot=1, port=1) {

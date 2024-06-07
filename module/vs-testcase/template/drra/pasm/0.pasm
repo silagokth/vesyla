@@ -39,7 +39,7 @@ epoch <rb0> {
 
         rop <swb> ( slot=0, port=0){
             swb (slot=0, option=0, channel=4, source=1, target=4)
-            swb (slot=0, option=0, channel=5, source=1, target=5)
+            swb (slot=0, option=0, channel=5, source=2, target=5)
             swb (slot=0, option=0, channel=3, source=4, target=3)
         }
 

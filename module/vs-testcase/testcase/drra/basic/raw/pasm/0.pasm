@@ -19,7 +19,7 @@ epoch <ep0> {
         raw {
             dpu  (slot=4, mode=7)
             swb  (slot=0, option=0, channel=4, source=1, target=4)
-            swb  (slot=0, option=0, channel=5, source=1, target=5)
+            swb  (slot=0, option=0, channel=5, source=2, target=5)
             swb  (slot=0, option=0, channel=3, source=4, target=3)
             route  (slot=0, option=0, sr=1, source=1, target=6)
             route  (slot=0, option=0, sr=0, source=3, target=128)

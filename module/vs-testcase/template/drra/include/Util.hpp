@@ -76,14 +76,3 @@ void print_bitset_stream(Stream<bitset<chunk_size>> stream) {
     print_vector<T>(vec);
   }
 }
-
-// /**
-//  * Print the contents of an array of bitset.
-//  * @param arr The array to print.
-//  */
-// template <size_t chunk_num, size_t chunk_size, typename T>
-// void print_bitset_array(Array<chunk_num, chunk_size> &arr, size_t addr_,
-//                         size_t size_) {
-//   std::vector<T> vec = arr.read<T>(addr_, size_);
-//   print_vector<T>(vec);
-// }
