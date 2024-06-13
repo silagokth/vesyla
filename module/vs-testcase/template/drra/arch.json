@@ -6,8 +6,8 @@
       "size": 4,
       "word_input_port": 0,
       "word_output_port": 0,
-      "bulk_input_port": 1,
-      "bulk_output_port": 1,
+      "bulk_input_port": 2,
+      "bulk_output_port": 2,
       "custom_properties": [
         {
           "key": "depth",
