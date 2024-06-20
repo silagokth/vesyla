@@ -1,0 +1,10 @@
+{
+  "name": "controller_io",
+  "type": "controller",
+  "description": "Controller with IO function",
+  "properties": {},
+  "visual": {
+    "color_fill": "#FFBE00",
+    "color_border": "#A65900"
+  }
+}
