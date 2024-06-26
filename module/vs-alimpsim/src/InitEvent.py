@@ -130,6 +130,8 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
                 data = [0] * 16
                 for i in range(16):
                     data[16-i-1] = int(result.group(2)[i*16:(i+1)*16], 2)
+                    if data[16-i-1] > 2**15-1:
+                        data[16-i-1] = data[16-i-1] - 2**16
                 input_buffer[addr] = data
     resource_pool_.set("input_buffer", input_buffer)
     
@@ -145,6 +147,8 @@ def init_event(event_pool_, resource_pool_, handler_pool_, file_arch_, file_isa_
                     data = [0] * 16
                     for i in range(16):
                         data[16-i-1] = int(result.group(2)[i*16:(i+1)*16], 2)
+                        if data[16-i-1] > 2**15-1:
+                            data[16-i-1] = data[16-i-1] - 2**16
                     output_buffer[addr] = data
                     output_buffer_active[addr] = True
         resource_pool_.set("output_buffer", output_buffer)
