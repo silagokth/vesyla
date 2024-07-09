@@ -68,7 +68,7 @@ rep (slot=2, port=1, level=0, iter=3, step=1, delay=0)
 rep (slot=2, port=1, level=1, iter=510, step=0, delay=0)
 }
 rop <compute> (slot=4, port=0) {
-dpu (slot=4, option=0, mode=2)
+dpu (slot=4, option=0, mode=8)
 rep (slot=4, level=0, iter=510, step=0, delay=2)
 }
 rop <write_3n_0> (slot=3, port=0) {

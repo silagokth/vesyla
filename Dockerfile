@@ -18,7 +18,7 @@ RUN pacman -Syu --noconfirm python python-pip gcc boost-libs && \
 COPY --from=builder /fakeroot /usr
 WORKDIR /work
 RUN vs-testcase generate /usr/share/vesyla-suite/testcase && \
-    robot autotest_config.robot
+    sh run.sh
 
 # Final Image ##################################################################
 FROM archlinux:base

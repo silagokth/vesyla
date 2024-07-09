@@ -1,0 +1,18 @@
+[package]
+name = "vs-component"
+version = "0.1.0"
+edition = "2021"
+
+# targets
+[[bin]]
+name = "vs-component"
+path = "src/main.rs"
+
+
+# Dependencies can be added here. For example:
+[dependencies]
+log = "0.4.14"
+env_logger = "0.10.0"
+argparse = "0.2.0"
+serde_json = "1.0.70"
+minijinja = "2.0.2"

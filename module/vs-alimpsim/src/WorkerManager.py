@@ -1832,14 +1832,40 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     elif conf["mode"] == 1:
                         out = in0 + in1
                     elif conf["mode"] == 2:
-                        print("old_acc= %d" % (acc))
-                        acc = in0*in1 + acc
+                        acc = in0+in1 + acc
                         out = acc
                         print("in0= %d, in1= %d, acc= %d, out=%d" % (in0, in1, acc, out))
                     elif conf["mode"] == 3:
-                        out = max(in0, in1)
+                        out = in0 + imm
+                    elif conf["mode"] == 4:
+                        out = in0 - in1
+                    elif conf["mode"] == 5:
+                        out = abs(in0 - in1)
+                    elif conf["mode"] == 6:
+                        out = int(pow(imm, in0))
                     elif conf["mode"] == 7:
                         out = in0*in1
+                    elif conf["mode"] == 8:
+                        acc = in0*in1+acc
+                        out = acc
+                    elif conf["mode"] == 9:
+                        out = in0*imm
+                    elif conf["mode"] == 10:
+                        acc = in0*in1+acc
+                        out = acc
+                    elif conf["mode"] == 13:
+                        acc = max(in0, in1, acc)
+                        out = acc
+                    elif conf["mode"] == 14:
+                        out = max(in0, in1, imm)
+                    elif conf["mode"] == 16:
+                        out = max(in0, in1)
+                    elif conf["mode"] == 21:
+                        out = pow(in0, in1)
+                    elif conf["mode"] == 23:
+                        out = max(in0, 0)
+                    elif conf["mode"] == 24:
+                        out = in0//in1
                     else:
                         logger.error("Error: Unknown DPU mode")
                         return False

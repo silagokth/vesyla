@@ -4,10 +4,11 @@
 import os
 import json
 import subprocess
-from pathlib import Path
 import glob
 import sys
 import logging
+import argparse
+import datetime
 
 class Arguments:
     def __init__(self):
@@ -24,9 +25,7 @@ def run(directory):
         config = json.load(config_file)
     style = config["platform"]
 
-    rt = subprocess.run("vs-init -f -s" + style, shell=True)
-    if rt.returncode != 0:
-        sys.exit(-1)
+    init(["-f", "-s", style, "-o", "."])
     rt = subprocess.run("cp -rf " + directory + "/* .", shell=True)
     if rt.returncode != 0:
         sys.exit(-1)
@@ -61,6 +60,7 @@ def generate(directory):
 *** Settings ***
 Library           Process
 Library           OperatingSystem
+Library           String
 Suite Teardown    Terminate All Processes    kill=True
 Test Template     Autotest Template
 
@@ -73,20 +73,82 @@ Test Template     Autotest Template
 *** Keywords ***
 Autotest Template
     [Arguments]  ${filename}
-    Empty Directory    work
-    ${result} =    Run Process    vs-testcase run ${filename}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work
+    ${random_string} =    Generate Random String    12    [LOWER]
+    Create Directory    work/${random_string}
+    ${result} =    Run Process    vs-testcase run ${filename}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
     Should Be Equal As Integers    ${result.rc}    0
+    Remove Directory   work/${random_string}     recursive=True
 """)
+    
+    with open("run.sh", "w") as f:
+        f.write("""
+#!/bin/sh
+pabot --testlevelsplit -d output autotest_config.robot
+""")
+    # add execute permission to run.sh
+    rt = subprocess.run("chmod +x run.sh", shell=True)
+    if rt.returncode != 0:
+        sys.exit(-1)
     rt = subprocess.run("mkdir -p work", shell=True)
     if rt.returncode != 0:
         sys.exit(-1)
+
+def init(args):
+    # parse the arguments:
+    # -s style, mandatory
+    # -f force, optional, if set, overwrite the existing files
+    # -o output directory
+
+    parser = argparse.ArgumentParser(description="Initialize a new testcase")
+    parser.add_argument("-s", "--style", help="style of the testcase", required=True)
+    parser.add_argument("-f", "--force", help="force overwrite", action="store_true")
+    parser.add_argument("-o", "--output", help="output directory", default=".")
+    args = parser.parse_args(args)
+
+    style = args.style
+    force = args.force
+    output = args.output
+
+    # check if the output directory exists, if not, create it
+    if not os.path.exists(output):
+        os.makedirs(output)
+
+    # check if the output directory has a ".lock" file, if so, it's locked.
+    if os.path.exists(os.path.join(output, ".lock")):
+        if not force:
+            logging.error("The output directory is locked")
+            sys.exit(-1)
+    else:
+        with open(os.path.join(output, ".lock"), "w") as f:
+            # write the current time to the lock file
+            now = datetime.datetime.now()
+            f.write(now.strftime("%Y-%m-%d %H:%M:%S"))
+
+    # get environment variable "VESYLA_SUITE_PATH_PROG"
+    prog_path = os.getenv("VESYLA_SUITE_PATH_PROG")
+    if not prog_path:
+        logging.error("Environment variable VESYLA_SUITE_PATH_PROG is not set")
+        sys.exit(-1)
+    template_path = os.path.join(prog_path, "share/vesyla-suite/template", style)
+    if not os.path.exists(template_path):
+        logging.error(f"Template for style {style} does not exist")
+        sys.exit(-1)
+    # copy templates
+    rt = subprocess.run(f"cp -rf {template_path}/* {output}", shell=True)
+    if rt.returncode != 0:
+        logging.error("Failed to copy templates")
+        sys.exit(-1)
+
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = process_arguments()
     cmd = args.command
     arg = args.arguments
-    if cmd == "run":
+    print(cmd)
+    if cmd == "init":
+        init(arg)
+    elif cmd == "run":
         run(arg[0])
     elif cmd == "generate":
         generate(arg[0])

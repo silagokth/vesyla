@@ -77,7 +77,7 @@ epoch <rb1> {
             rep (slot=3, port=0, level=0, iter=32, step=1, delay=t4)
         }
         rop <compute> (slot=4, port=0) {
-            dpu (slot=4, mode=2)
+            dpu (slot=4, mode=8)
             rep (slot=4, level=0, iter=32, step=1, delay=t4)
         }
         rop <read_c> (slot=3, port=3) {
