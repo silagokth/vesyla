@@ -1,0 +1,12 @@
+{
+  "name": "fpu_16_2r1w",
+  "type": "resource",
+  "description": "16-bit FPU",
+  "size": 2,
+  "fsm": [0],
+  "port": [0, 1, 5],
+  "properties": {},
+  "visual": {
+    "color_fill": "#4DA060"
+  }
+}

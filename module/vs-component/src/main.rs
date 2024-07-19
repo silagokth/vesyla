@@ -1,13 +1,20 @@
-use log::{info, warn, error, debug, trace};
-use argparse;
-use serde_json;
-use minijinja;
-use std::task::Context;
+#![allow(unused_imports)]
 
-fn main(){
+use argparse;
+use log::{debug, error, info, trace, warn};
+use minijinja;
+use serde_json;
+use std::fs;
+use std::path::PathBuf;
+
+mod collector;
+mod generator;
+
+fn main() {
     // set the log level
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug).init();
+        .filter_level(log::LevelFilter::Debug)
+        .init();
 
     // parse command line arguments with the following format:
     // program_name [command] [options]
@@ -18,26 +25,32 @@ fn main(){
     }
 
     // get the command
-    let command = &args[1];
-    let mut options : Vec<String> = Vec::new();
+    let command: &String = &args[1];
+    let mut options: Vec<String> = Vec::new();
     for i in 1..args.len() {
         options.push(args[i].clone());
     }
     match command.as_str() {
         "gen_api" => {
             info!("Generating system verilog api ...");
-            gen_api(options)
-        },
+            gen_api(options);
+            info!("Done!");
+        }
         "gen_doc" => {
             info!("Generating markdown documentation ...");
-            gen_doc(options)
-        },
+            gen_doc(options);
+            info!("Done!");
+        }
+        "assemble" => {
+            info!("Assembling ...");
+            assemble(options);
+            info!("Done!");
+        }
         _ => {
             error!("Unknown command: {}", command);
             panic!();
         }
     }
-
 }
 
 fn gen_api(args: Vec<String>) {
@@ -52,84 +65,18 @@ fn gen_api(args: Vec<String>) {
             .add_option(&["-i", "--input"], argparse::Store, "Input file");
         ap.refer(&mut output_file)
             .add_option(&["-o", "--output"], argparse::Store, "Output file");
-        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr()).unwrap();
+        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr())
+            .unwrap();
     }
-    info!("Input file: {}", input_file);
-    info!("Output file: {}", output_file);
 
-    // read the json file
-    let json_str = std::fs::read_to_string(input_file).expect("Failed to read file");
-    let isa : serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    
-    // using minijinja to generate the system verilog api
-    let template = r#"
-{%- set useful_bitwidth = isa.instr_bitwidth - isa.instr_code_bitwidth - 1 -%}
-package {{isa.machine_type}}_{{isa.machine}}_api;
-    {%- for instr in isa.instruction_templates %}
-    // Instruction: {{instr.name}}
-    opcode_{{instr.name}} = {{isa.instr_code_bitwidth}}'d{{instr.code}};
-    typedef struct {
-        {%- for field in instr.segment_templates %}
-        {%- if field.bitwidth == 1 %}
-        logic {{field.name}}; // {{field.comment}}
-        {%- else %}
-        logic[{{field.bitwidth - 1}}:0] {{field.name}}; // {{field.comment}}
-        {%- endif %}
-        {%- endfor %}
-    }{{instr.name}}_t;
-    function {{instr.name}}_t unpack_{{instr.name}};
-        input logic [{{useful_bitwidth - 1}}:0] instr;
-        {{instr.name}}_t st;
-        {%- set start =useful_bitwidth - 1 %}
-        {%- set end =0 %}
-        {%- for field in instr.segment_templates %}
-        {%- if field.bitwidth == 1 %}
-        st.{{field.name}} = instr[{{start}}];
-        {%- set start = start - 1 %}
-        {%- else %}
-        {%- set end = start - field.bitwidth + 1 %}
-        st.{{field.name}} = instr[{{start}}:{{end}}];
-        {%- set start = end - 1 %}
-        {%- endif %}
-        {%- endfor %}
-        return st;
-    endfunction
-    function logic [{{useful_bitwidth - 1}}:0] pack_{{instr.name}};
-        input {{instr.name}}_t st;
-        logic [{{useful_bitwidth - 1}}:0] instr;
-        {%- set start =useful_bitwidth-1 %}
-        {%- set end =0 %}
-        {%- for field in instr.segment_templates %}
-        {%- if field.bitwidth == 1 %}
-        instr[{{start}}] = st.{{field.name}};
-        {%- set start = start - 1 %}
-        {%- else %}
-        {%- set end = start - field.bitwidth + 1 %}
-        instr[{{start}}:{{end}}] = st.{{field.name}};
-        {%- set start = end - 1 %}
-        {%- endif %}
-        {%- endfor %}
-        return instr;
-    endfunction
-    {% endfor %}
-endpackage
-"#;
-
-    let mut env = minijinja::Environment::new();
-    env.add_template("api", template).unwrap();
-    let tmpl = env.get_template("api").unwrap();
-    let result =  tmpl.render(minijinja::context!(isa)).unwrap();
-
-    // write the result to the output file
-    std::fs::write(output_file, result).expect("Failed to write file");
-
+    generator::gen_api(input_file, output_file);
 }
 
 fn gen_doc(args: Vec<String>) {
     // parse the "args" using argparse
     // -i <input file> -o <output file>
-    let mut input_file = String::from("isa.json");
-    let mut output_file = String::from("doc.md");
+    let mut input_file: String = String::from("isa.json");
+    let mut output_file: String = String::from("doc.md");
     {
         let mut ap = argparse::ArgumentParser::new();
         ap.set_description("Generate system verilog api");
@@ -137,42 +84,328 @@ fn gen_doc(args: Vec<String>) {
             .add_option(&["-i", "--input"], argparse::Store, "Input file");
         ap.refer(&mut output_file)
             .add_option(&["-o", "--output"], argparse::Store, "Output file");
-        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr()).unwrap();
+        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr())
+            .unwrap();
     }
-    info!("Input file: {}", input_file);
-    info!("Output file: {}", output_file);
 
-    // read the json file
+    generator::gen_doc(input_file, output_file);
+}
+
+fn assemble(args: Vec<String>) {
+    // parse the "args" using argparse
+    // -i <input file> -o <output directory>
+    let mut input_file = String::from("conf.json");
+    let mut output_dir = String::from(".");
+    {
+        let mut ap = argparse::ArgumentParser::new();
+        ap.set_description("Assemble the system");
+        ap.refer(&mut input_file)
+            .add_option(&["-i", "--input"], argparse::Store, "Input file");
+        ap.refer(&mut output_dir).add_option(
+            &["-o", "--output"],
+            argparse::Store,
+            "Output directory",
+        );
+        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr())
+            .unwrap();
+    }
+
+    let component_map = find_all_components();
+    assemble_arch(
+        &input_file,
+        &format!("{}/arch.json", output_dir),
+        &component_map,
+    );
+    assemble_isa(
+        &format!("{}/arch.json", output_dir),
+        &format!("{}/isa.json", output_dir),
+        &component_map,
+    );
+    collector::collect_rtl(
+        &format!("{}/arch.json", output_dir),
+        &output_dir,
+        &component_map,
+    );
+}
+
+fn find_component(
+    search_path: &str,
+    component_map: &mut std::collections::HashMap<String, String>,
+) {
+    let paths = fs::read_dir(search_path).unwrap();
+    for path in paths {
+        let path = path.unwrap().path();
+        if path.is_dir() {
+            find_component(path.to_str().unwrap(), component_map);
+        } else {
+            if path.file_name().unwrap() == "arch.json" {
+                let json_str = std::fs::read_to_string(&path).expect("Failed to read file");
+                let component: serde_json::Value =
+                    serde_json::from_str(&json_str).expect("Failed to parse json");
+                let component_name = component["name"].as_str().unwrap();
+                let dir = path.parent().unwrap();
+                component_map.insert(
+                    component_name.to_string(),
+                    dir.to_str().unwrap().to_string(),
+                );
+            }
+        }
+    }
+}
+
+fn find_all_components() -> std::collections::HashMap<String, String> {
+    let mut search_path_vec: Vec<String> = Vec::new();
+    let vesyla_suite_path_share = std::env::var("VESYLA_SUITE_PATH_SHARE").expect("Environment variable VESYLA_SUITE_PATH_SHARE not set! Did you forget to source the setup script env.sh?");
+    search_path_vec.push(format!("{}/components", vesyla_suite_path_share));
+    search_path_vec.push(String::from("~/.vesyla-suite/components"));
+    search_path_vec.push(String::from("./components"));
+
+    // check if path exists, if yes, add to search path
+    let mut existing_search_path_vec: Vec<String> = Vec::new();
+    for search_path in search_path_vec.iter() {
+        let path = PathBuf::from(search_path);
+        if path.exists() {
+            existing_search_path_vec.push(
+                fs::canonicalize(search_path)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            );
+        }
+    }
+
+    assert!(
+        existing_search_path_vec.len() > 0,
+        "No component library found in the following location: \n{}",
+        search_path_vec.join("\n")
+    );
+
+    // find all components as a hashmap, key is the component name, value is the component json object
+    let mut component_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for search_path in existing_search_path_vec.iter() {
+        // recursively find all directories that contains a arch.json file
+        find_component(search_path, &mut component_map);
+    }
+    component_map
+}
+
+fn assemble_arch(
+    input_file: &String,
+    output_file: &String,
+    component_map: &std::collections::HashMap<String, String>,
+) {
+    // read the json file and find all used cells
     let json_str = std::fs::read_to_string(input_file).expect("Failed to read file");
-    let isa : serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    
-    // using minijinja to generate the system verilog api
-    let template = r#"
-{%- set useful_bitwidth=isa.instr_bitwidth - isa.instr_code_bitwidth -%}
-## {{isa.machine_type}} / {{isa.machine}}
+    let mut arch: serde_json::Value =
+        serde_json::from_str(&json_str).expect("Failed to parse json");
 
-{%- for i in isa.instruction_templates %}
+    // check mandatory fields
+    assert!(
+        arch["platform"].is_string(),
+        "Field platform is not present or is not a string"
+    );
+    assert!(
+        arch["instr_bitwidth"].is_number(),
+        "Field instr_bitwidth is not present or is not a number"
+    );
+    assert!(
+        arch["instr_code_bitwidth"].is_number(),
+        "Field instr_code_bitwidth is not present or is not a number"
+    );
+    assert!(
+        arch["fabric"]["cell_lists"].is_array(),
+        "Field fabric.cell_lists is not present or is not an array"
+    );
 
-### {{i.name}} [opcode={{i.code}}]
+    let cell_lists = &arch["fabric"]["cell_lists"];
+    let mut cell_name_vec: Vec<String> = Vec::new();
+    for cell_list in cell_lists.as_array().unwrap() {
+        let cell_list_object = cell_list.as_object().unwrap();
+        let cell_name = &cell_list_object["cell_name"].as_str().unwrap();
+        cell_name_vec.push(cell_name.to_string());
+    }
 
-Field | Position | Width | Default Value | Description
-------|----------|-------|---------------|-------------------------
-{%- set start =useful_bitwidth-1 %}
-{%- for j in i.segment_templates %}
-{%- set end = start - j.bitwidth + 1 %}
-{{j.name}} | [{{start }}, {{end}}] | {{j.bitwidth}} | {%- if j.default_val is defined -%}{{j.default_val}}{%- else -%}0{%- endif -%} | {{j.comment}} {%- if j.verbo_map -%}{% for k in j.verbo_map %} [{{k.key}}]:{{k.val}};{% endfor %}{%- endif -%}
-{%- set start = end - 1 -%}
-{%- endfor -%}
-{%- endfor -%}
-"#;
+    // create a component map content to store the component json object
+    let mut component_map_content = std::collections::HashMap::new();
+    for (component_name, component_dir) in component_map.iter() {
+        let json_str = std::fs::read_to_string(component_dir.to_owned() + "/arch.json")
+            .expect("Failed to read file");
+        let component: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse json");
+        component_map_content.insert(component_name, component);
+    }
 
-    let mut env = minijinja::Environment::new();
-    env.add_template("doc", template).unwrap();
-    let tmpl = env.get_template("doc").unwrap();
-    let result =  tmpl.render(minijinja::context!(isa)).unwrap();
+    if arch["cells"].is_null() {
+        arch["cells"] = serde_json::Value::Array(Vec::new());
+    } else {
+        arch["cells"].as_array_mut().unwrap().clear();
+    }
+    if arch["controllers"].is_null() {
+        arch["controllers"] = serde_json::Value::Array(Vec::new());
+    } else {
+        arch["controllers"].as_array_mut().unwrap().clear();
+    }
+    if arch["resources"].is_null() {
+        arch["resources"] = serde_json::Value::Array(Vec::new());
+    } else {
+        arch["resources"].as_array_mut().unwrap().clear();
+    }
+    for cell_name in cell_name_vec.iter() {
+        if !component_map_content.contains_key(&cell_name) {
+            error!("Component {} not found in the component library", cell_name);
+            panic!();
+        }
+        // iterate through the cells, if the name matches, continue without adding it to the arch
+        let mut flag_cell = false;
+        for cell in arch["cells"].as_array().unwrap() {
+            if cell["name"].as_str().unwrap() == cell_name {
+                flag_cell = true;
+            }
+        }
+        if !flag_cell {
+            assert!(
+                component_map_content[cell_name]["type"].as_str().unwrap() == "cell",
+                "Component {} is not a cell",
+                cell_name
+            );
+            arch["cells"]
+                .as_array_mut()
+                .unwrap()
+                .push(component_map_content[cell_name].clone());
+            let controller_name = component_map_content[cell_name]["controller"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            if !component_map_content.contains_key(&controller_name) {
+                error!(
+                    "Controller {} not found in the component library",
+                    controller_name
+                );
+                panic!();
+            }
+            // iterate through the controllers, if the name matches, continue without adding it to the arch
+            let mut flag_controller = false;
+            for controller in arch["controllers"].as_array().unwrap() {
+                if controller["name"].as_str().unwrap() == controller_name {
+                    flag_controller = true;
+                }
+            }
+            if !flag_controller {
+                assert!(
+                    component_map_content[&controller_name]["type"]
+                        .as_str()
+                        .unwrap()
+                        == "controller",
+                    "Component {} is not a controller",
+                    controller_name
+                );
+                arch["controllers"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(component_map_content[&controller_name].clone());
+            }
+            let resource_name_vec: &Vec<serde_json::Value> = component_map_content[cell_name]
+                ["resource_list"]
+                .as_array()
+                .unwrap();
+            for resource_name in resource_name_vec.iter() {
+                let resource_name: String = resource_name.as_str().unwrap().to_string();
+                // iterate through the resources, if the name matches, continue without adding it to the arch
+                let mut flag_resource = false;
+                for resource in arch["resources"].as_array().unwrap() {
+                    if resource["name"].as_str().unwrap() == resource_name {
+                        flag_resource = true;
+                    }
+                }
+                if !flag_resource {
+                    if !component_map_content.contains_key(&resource_name) {
+                        error!(
+                            "Resource {} not found in the component library",
+                            resource_name
+                        );
+                        panic!();
+                    }
+                    assert!(
+                        component_map_content[&resource_name]["type"]
+                            .as_str()
+                            .unwrap()
+                            == "resource",
+                        "Component {} is not a resource",
+                        resource_name
+                    );
+                    arch["resources"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(component_map_content[&resource_name].clone());
+                }
+            }
+        }
+    }
 
     // write the result to the output file
-    std::fs::write(output_file, result).expect("Failed to write file");
- 
-    
+    std::fs::write(output_file, serde_json::to_string_pretty(&arch).unwrap())
+        .expect("Failed to write file");
+}
+
+fn assemble_isa(
+    arch_file: &String,
+    output_file: &String,
+    component_map: &std::collections::HashMap<String, String>,
+) {
+    // read the json file and find all used cells
+    let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
+    let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
+
+    let mut controller_list: Vec<String> = Vec::new();
+    let mut resource_list: Vec<String> = Vec::new();
+
+    for controller in arch["controllers"].as_array().unwrap() {
+        let controller_name = controller["name"].as_str().unwrap();
+        controller_list.push(controller_name.to_string());
+    }
+    for resource in arch["resources"].as_array().unwrap() {
+        let resource_name = resource["name"].as_str().unwrap();
+        resource_list.push(resource_name.to_string());
+    }
+
+    let mut isa = serde_json::json!({
+        "platform": arch["platform"],
+        "instr_bitwidth": arch["instr_bitwidth"],
+        "instr_code_bitwidth": arch["instr_code_bitwidth"],
+        "components": []
+    });
+
+    for component in controller_list {
+        let mut js = serde_json::json!({
+            "name": component,
+            "type": "controller",
+            "instruction_templates": []
+        });
+        let json_str = std::fs::read_to_string(format!("{}/isa.json", component_map[&component]))
+            .expect("Failed to read file");
+        let json_isa: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse json");
+        js["instruction_templates"] = json_isa;
+        isa["components"].as_array_mut().unwrap().push(js);
+    }
+
+    for component in resource_list {
+        let mut js = serde_json::json!({
+            "name": component,
+            "type": "resource",
+            "instruction_templates": []
+        });
+        let json_str = std::fs::read_to_string(format!("{}/isa.json", component_map[&component]))
+            .expect("Failed to read file");
+        let json_isa: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse json");
+        js["instruction_templates"] = json_isa;
+        isa["components"].as_array_mut().unwrap().push(js);
+    }
+
+    // write the result to the output file
+    std::fs::write(output_file, serde_json::to_string_pretty(&isa).unwrap())
+        .expect("Failed to write file");
 }

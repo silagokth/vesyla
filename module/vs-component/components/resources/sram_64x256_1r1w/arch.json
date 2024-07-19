@@ -1,0 +1,9 @@
+{
+  "name": "sram_64x256_1r1w",
+  "type": "resource",
+  "description": "SRAM, 64 row of 256b, 1 read and 1 write port",
+  "size": 4,
+  "fsm": [0, 1, 2, 3, 5, 6],
+  "port": [0, 1, 2, 3, 5, 6],
+  "properties": {}
+}

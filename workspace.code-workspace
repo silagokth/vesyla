@@ -7,6 +7,10 @@
   "settings": {
     "files.associations": {
       "ostream": "cpp"
-    }
+    },
+    "rust-analyzer.linkedProjects": [
+      "module/vs-component/Cargo.toml",
+      "module/vs-testcase/Cargo.toml"
+    ]
   }
 }
