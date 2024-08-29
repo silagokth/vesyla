@@ -5,6 +5,21 @@ use std::env;
 use std::process;
 
 fn main() {
+    // define the used environment variables
+    let name_list = vec![
+        "VESYLA_SUITE_PATH_PROG".to_string(),
+        "VESYLA_SUITE_PATH_BIN".to_string(),
+        "VESYLA_SUITE_PATH_LIB".to_string(),
+        "VESYLA_SUITE_PATH_INC".to_string(),
+        "VESYLA_SUITE_PATH_SHARE".to_string(),
+        "VESYLA_SUITE_PATH_TEMPLATE".to_string(),
+        "VESYLA_SUITE_PATH_TESTCASE".to_string(),
+        "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION".to_string(),
+    ];
+
+    // save the environment variables
+    let saved_env = push_env(&name_list);
+
     // initialize the environment variables
     init();
 
@@ -23,18 +38,22 @@ fn main() {
     match command.as_str() {
         "alimpsim" | "archvis" | "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
-            let _output = process::Command::new(prog)
+            let status = process::Command::new(prog)
                 .args(&args[2..])
                 .stdout(process::Stdio::inherit())
                 .stderr(process::Stdio::inherit())
-                .output()
+                .status()
                 .expect("failed to execute process");
+            assert!(status.success());
         }
         _ => {
             error!("Unknown command: {}", command);
             process::exit(1);
         }
     }
+
+    // restore the environment variables
+    pop_env(&name_list, saved_env);
 }
 
 fn init() {
@@ -45,7 +64,7 @@ fn init() {
     let vesyla_suite_path_bin = vesyla_suite_path_prog.join("bin");
     let vesyla_suite_path_lib = vesyla_suite_path_prog.join("lib");
     let vesyla_suite_path_inc = vesyla_suite_path_prog.join("include");
-    let vesyla_suite_path_share = vesyla_suite_path_prog.join("share");
+    let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla-suite");
     let vesyla_suite_path_template = vesyla_suite_path_share.join("template");
     let vesyla_suite_path_testcase = vesyla_suite_path_share.join("testcase");
 
@@ -59,4 +78,32 @@ fn init() {
 
     // set protobuf for python
     env::set_var("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python");
+}
+
+fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {
+    let mut saved_env: Vec<(String, Option<String>)> = Vec::new();
+    for name in name_list {
+        match env::var(&name) {
+            Ok(val) => {
+                saved_env.push((name.to_string(), Some(val)));
+            }
+            Err(_) => {
+                saved_env.push((name.to_string(), None));
+            }
+        }
+    }
+    saved_env
+}
+
+fn pop_env(name_list: &Vec<String>, saved_env: Vec<(String, Option<String>)>) {
+    for (name, val) in saved_env {
+        match val {
+            Some(val) => {
+                env::set_var(name.to_string(), val);
+            }
+            None => {
+                env::remove_var(name.to_string());
+            }
+        }
+    }
 }

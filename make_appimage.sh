@@ -2,6 +2,8 @@
 
 # This script is used to create an AppImage of the application.
 
+set -e
+
 # compile the application to a fakeroot directory: appdir
 mkdir -p build
 cd build
@@ -15,4 +17,4 @@ chmod +x linuxdeploy-x86_64.AppImage
 
 # create the AppImage and rename it to vesyla-suite
 ./linuxdeploy-x86_64.AppImage --appdir appdir --output appimage
-mv vesyla-suite-x86_64.AppImage vesyla-suite
+mv vesyla-suite-x86_64.AppImage ../vesyla-suite

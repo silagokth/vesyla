@@ -1851,7 +1851,7 @@ def comb_callback(clk_, event_pool_, resource_pool_, handler_pool_, args):
                     elif conf["mode"] == 9:
                         out = in0*imm
                     elif conf["mode"] == 10:
-                        acc = in0*in1+acc
+                        acc = in0+acc
                         out = acc
                     elif conf["mode"] == 13:
                         acc = max(in0, in1, acc)

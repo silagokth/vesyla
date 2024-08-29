@@ -1,0 +1,136 @@
+{
+  "resources": [
+    {
+      "name": "iosram",
+      "size": 4,
+      "word_input_port": 0,
+      "word_output_port": 0,
+      "bulk_input_port": 2,
+      "bulk_output_port": 2,
+      "custom_properties": [
+        {
+          "key": "depth",
+          "val": 64
+        }
+      ]
+    },
+    {
+      "name": "swb",
+      "size": 1,
+      "word_input_port": 0,
+      "word_output_port": 0,
+      "bulk_input_port": 0,
+      "bulk_output_port": 0
+    },
+    {
+      "name": "dpu",
+      "size": 2,
+      "word_input_port": 2,
+      "word_output_port": 1,
+      "bulk_input_port": 0,
+      "bulk_output_port": 0
+    },
+    {
+      "name": "rf",
+      "size": 1,
+      "word_input_port": 1,
+      "word_output_port": 1,
+      "bulk_input_port": 1,
+      "bulk_output_port": 1,
+      "custom_properties": [
+        {
+          "key": "depth",
+          "val": 64
+        }
+      ]
+    }
+  ],
+  "controllers": [
+    {
+      "name": "controller_io",
+      "size": 8,
+      "iram_size": 64
+    },
+    {
+      "name": "controller_normal",
+      "size": 16,
+      "iram_size": 64
+    }
+  ],
+  "cells": [
+    {
+      "name": "drra_cell_input",
+      "controller": "controller_io",
+      "resource_list": ["swb", "iosram"]
+    },
+    {
+      "name": "drra_cell_output",
+      "controller": "controller_io",
+      "resource_list": ["swb", "iosram"]
+    },
+    {
+      "name": "drra_cell_normal",
+      "controller": "controller_normal",
+      "resource_list": ["swb", "rf", "rf", "rf","rf", "dpu", "dpu"]
+    }
+  ],
+  "fabric": {
+    "height": 3,
+    "width": 4,
+    "cell_lists": [
+      {
+        "coordinates": [{ "row": 0, "col": 0 }],
+        "cell_name": "drra_cell_input"
+      },
+      {
+        "coordinates": [{ "row": 1, "col": 0 }],
+        "cell_name": "drra_cell_normal"
+      },
+      {
+        "coordinates": [{ "row": 2, "col": 0 }],
+        "cell_name": "drra_cell_output"
+      },
+      {
+        "coordinates": [{ "row": 0, "col": 1 }],
+        "cell_name": "drra_cell_input"
+      },
+      {
+        "coordinates": [{ "row": 1, "col": 1 }],
+        "cell_name": "drra_cell_normal"
+      },
+      {
+        "coordinates": [{ "row": 2, "col": 1 }],
+        "cell_name": "drra_cell_output"
+      },
+      {
+        "coordinates": [{ "row": 0, "col": 2 }],
+        "cell_name": "drra_cell_input"
+      },
+      {
+        "coordinates": [{ "row": 1, "col": 2 }],
+        "cell_name": "drra_cell_normal"
+      },
+      {
+        "coordinates": [{ "row": 2, "col": 2 }],
+        "cell_name": "drra_cell_output"
+      },
+      {
+        "coordinates": [{ "row": 0, "col": 3 }],
+        "cell_name": "drra_cell_input"
+      },
+      {
+        "coordinates": [{ "row": 1, "col": 3 }],
+        "cell_name": "drra_cell_normal"
+      },
+      {
+        "coordinates": [{ "row": 2, "col": 3 }],
+        "cell_name": "drra_cell_output"
+      }
+    ],
+    "custom_properties": []
+  },
+  "interface": {
+    "input_buffer_depth": 1024,
+    "output_buffer_depth": 1024
+  }
+}

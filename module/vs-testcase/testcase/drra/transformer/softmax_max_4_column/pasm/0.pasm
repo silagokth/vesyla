@@ -338,7 +338,7 @@ dsu (slot=1, port=2, init_addr=0)
 rep (slot=1, port=2, level=0, iter=2, step=1, delay=1)
 
 dsu (slot=1, port=1, init_addr=0)
-rep (slot=1, port=1, level=0, iter=2, step=1, delay=1)
+rep (slot=1, port=1, level=0, iter=2, step=16, delay=1)
 
 dpu (slot=4, option=0, mode=13)
 
