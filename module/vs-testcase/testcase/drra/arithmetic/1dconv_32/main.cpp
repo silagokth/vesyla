@@ -27,7 +27,6 @@ void init() {
  * SRAM image. You can use free C++ programs.
  */
 void model_l0() {
-#define N 48
   // Read the input buffer to A. The starting address is 0, and the number of
   // row to read is 1.
   vector<int16_t> a = __input_buffer__.read<int16_t>(1, 2);
@@ -36,22 +35,19 @@ void model_l0() {
   vector<int16_t> b = __input_buffer__.read<int16_t>(0, 1);
   // Add A and B
   vector<int16_t> c(32);
-  for(int i = 0; i < 30; i++) {
-        int sum = 0;
-        for(int j = 0; j < 3; j++) {
-            
-            sum += a[i + j] * b[j];
-            
-        }
-        c[i+1] = sum;
-        //cout << i <<": " <<c[i] << endl;
+  for (int i = 0; i < 30; i++) {
+    int sum = 0;
+    for (int j = 0; j < 3; j++) {
+
+      sum += a[i + j] * b[j];
     }
-  
-  
+    c[i + 1] = sum;
+  }
+
   // Write the result C to the output buffer at starting address 0, and the
   // number of row to write is 1.
   __output_buffer__.write<int16_t>(0, 2, c);
-  //exit(0);
+  // exit(0);
 }
 
 /*

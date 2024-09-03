@@ -19,6 +19,8 @@ Python packages:
 - svglib
 - svg
 - reportlab
+- robotframework
+- robotframework-pabot
 
 System tools and packages:
 - cmake

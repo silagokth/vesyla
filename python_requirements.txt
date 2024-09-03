@@ -1,0 +1,17 @@
+setuptools
+ortools
+protobuf==4.24.2
+pyinstaller
+verboselogs
+coloredlogs
+numpy
+matplotlib
+binarytree
+sympy
+regex
+lark
+uuid
+svglib
+reportlab
+robotframework
+robotframework-pabot

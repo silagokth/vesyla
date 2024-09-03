@@ -13,7 +13,7 @@ Tool suite for DRRA-2 hardware accelerator platform.
 
 ## Compile and Install
 
-- install tool, library and python packages according to requirements.txt
-- run *make_appimage.sh*, and wait it generate the image called "vesyla-suite"
-- copy it to any directory that is in your *PATH* environment.
-- now you can use the *vesyla-suite* command in any working directory.
+- run _install_dependency.sh_ to install tool, library and python packages according to requirements.txt
+- run _make_appimage.sh_, and wait it generate the image called "vesyla-suite"
+- copy it to any directory that is in your _PATH_ environment.
+- now you can use the _vesyla-suite_ command in any working directory.
