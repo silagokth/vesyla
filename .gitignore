@@ -1,1 +1,6 @@
 build
+env/
+work/
+.vscode/settings.json
+vesyla-suite
+debug/
