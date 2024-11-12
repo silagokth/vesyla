@@ -4,7 +4,9 @@ use argparse;
 use log::{debug, error, info, trace, warn};
 use minijinja;
 use serde_json;
+use std::collections::HashMap;
 use std::fs;
+use std::io::Result;
 use std::path::PathBuf;
 
 mod collector;
@@ -27,8 +29,8 @@ fn main() {
     // get the command
     let command: &String = &args[1];
     let mut options: Vec<String> = Vec::new();
-    for i in 1..args.len() {
-        options.push(args[i].clone());
+    for arg in args.iter().skip(2) {
+        options.push(arg.clone());
     }
     match command.as_str() {
         "gen_api" => {
@@ -46,11 +48,45 @@ fn main() {
             assemble(options);
             info!("Done!");
         }
+        "gen_rtl" => {
+            match gen_rtl(options) {
+                Ok(_) => info!("Done!"),
+                Err(e) => error!("Error: {}", e),
+            };
+        }
         _ => {
             error!("Unknown command: {}", command);
             panic!();
         }
     }
+}
+
+fn gen_rtl(options: Vec<String>) -> Result<()> {
+    // 1. parse the arguments to find the fabric.json input file
+    let fabric_filepath = options[0].clone();
+    let fabric_file = fs::File::open(fabric_filepath).unwrap();
+    let fabric: serde_json::Value = serde_json::from_reader(fabric_file).unwrap();
+
+    // 2. create a registry to store the parameters
+    let mut parameters: HashMap<String, String> = HashMap::new();
+
+    todo!();
+    // 3. Add the fabric parameters to the registry
+    //
+    // 4. For each cell in the fabric
+    //    - add parameters to the registry
+    //    - for each resource in the cell
+    //      - add parameters to the registry
+    //      - check if RTL instance is already genreated
+    //      - if not, generate the RTL instance using the template and parameters
+    //      - add RTL instance to build files
+    //      - pop the parameters
+    //    - genreate the RTL for the cell using the template and parameters
+    //    - pop the parameters
+    // 5. Generate the top module for fabric using the template and parameters
+
+    // DONE
+    Ok(())
 }
 
 fn gen_api(args: Vec<String>) {
