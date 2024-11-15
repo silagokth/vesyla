@@ -7,3 +7,4 @@ debug/
 __pycache__/
 .lock
 target/
+.rustc_info.json
