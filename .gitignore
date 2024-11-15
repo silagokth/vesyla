@@ -6,3 +6,4 @@ vesyla-suite
 debug/
 __pycache__/
 .lock
+target/
