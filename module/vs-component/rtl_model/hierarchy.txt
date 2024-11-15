@@ -1,0 +1,5 @@
+../components/resources/dummy/rtl.sv
+../components/resources/vec_add/rtl.sv
+../components/controllers/sequencer/rtl.sv
+../components/cells/input_output_cell/rtl.sv
+fabric.sv
