@@ -36,6 +36,9 @@ fn main() {
     // find the directory of the current executable
     let command = &args[1];
     match command.as_str() {
+        "-v" | "--version" => {
+            info!("vesyla-suite 4.0.0");
+        }
         "alimpsim" | "archvis" | "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
             let status = process::Command::new(prog)
