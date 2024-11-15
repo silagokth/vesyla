@@ -1,1 +1,9 @@
 build
+env/
+work/
+.vscode/settings.json
+vesyla-suite
+debug/
+__pycache__/
+.lock
+target/
