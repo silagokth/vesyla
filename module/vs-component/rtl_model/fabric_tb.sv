@@ -34,6 +34,8 @@ import fabric_pkg::*;
     int index;
     string line;
     logic [INSTR_DATA_WIDTH-1:0] temp_instruction;
+    realtime start_time, end_time;
+    logic [15:0][15:0] ob_line;
     initial begin
         rst_n = 0;
         for (int i=0; i<ROWS; i++) begin
@@ -75,10 +77,12 @@ import fabric_pkg::*;
             end
         end
         
+        // record simulation time
         @(negedge clk)
         for (int i=0; i<ROWS; i++) begin
             call[i] = 1;
         end
+        start_time = $realtime;
         @(negedge clk)
         for (int i=0; i<ROWS; i++) begin
             call[i] = 0;
@@ -90,10 +94,18 @@ import fabric_pkg::*;
         
         // wait for ret to be 1
         @(posedge ret_all);
+        // record simulation time
+        @(negedge clk) end_time = $realtime;
+        $display("Simulation ends! Total cycles = %d", (end_time - start_time)/10);
+
         // display all the output buffer and write it to a file
+        $display("Output Buffers:");
         fd = $fopen("sram_image_out.bin", "w+");
         foreach(output_buffer[i]) begin
-            $display("output_buffer[%d] = %b", i, output_buffer[i]);
+            for (int x = 0; x < 16; x = x + 1) begin
+                ob_line[x] = output_buffer[i][16*x +: 16];
+            end
+            $display("OB[%d] = %s", i, $sformatf("%p", ob_line));
             $fwrite(fd, "%d %b\n", i, output_buffer[i]);
         end
         $finish;
