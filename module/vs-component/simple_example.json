@@ -1,0 +1,112 @@
+{
+  "platform": "drra",
+  "resources": [
+    {
+      "name": "dummy_impl",
+      "type": "dummy",
+      "size": 1,
+      "custom_properties": [],
+      "required_parameters": [
+        "RESOURCE_INSTR_WIDTH"
+      ]
+    },
+    {
+      "name": "vec_add_impl",
+      "type": "vec_add",
+      "size": 1,
+      "custom_properties": [],
+      "required_parameters": [
+        "IO_DATA_WIDTH",
+        "IO_ADDR_WIDTH",
+        "RESOURCE_INSTR_WIDTH"
+      ]
+    }
+  ],
+  "controllers": [
+    {
+      "name": "sequencer_impl",
+      "type": "sequencer",
+      "size": 16,
+      "custom_properties": [
+        {
+          "name": "NUM_SLOTS",
+          "value": 16
+        }
+      ],
+      "required_parameters": [
+        "RESOURCE_INSTR_WIDTH",
+        "NUM_SLOTS",
+        "INSTR_DATA_WIDTH",
+        "INSTR_ADDR_WIDTH",
+        "INSTR_HOPS_WIDTH"
+      ]
+    }
+  ],
+  "cells": [
+    {
+      "name": "cell_impl",
+      "controller": "sequencer_impl",
+      "resource_list": [
+        "dummy_impl",
+        "vec_add_impl"
+      ]
+    }
+  ],
+  "fabric": {
+    "height": 1,
+    "width": 2,
+    "cells_list": [
+      {
+        "coordinates": [
+          {
+            "row": 0,
+            "col": 0
+          },
+          {
+            "row": 0,
+            "col": 1
+          }
+        ],
+        "cell_name": "cell_impl"
+      }
+    ],
+    "custom_properties": [
+      {
+        "name": "IO_DATA_WIDTH",
+        "value": 256
+      },
+      {
+        "name": "IO_ADDR_WIDTH",
+        "value": 16
+      },
+      {
+        "name": "RESOURCE_INSTR_WIDTH",
+        "value": 27
+      },
+      {
+        "name": "ROWS",
+        "value": 1
+      },
+      {
+        "name": "COLS",
+        "value": 2
+      },
+      {
+        "name": "INSTR_DATA_WIDTH",
+        "value": 32
+      },
+      {
+        "name": "INSTR_ADDR_WIDTH",
+        "value": 6
+      },
+      {
+        "name": "INSTR_HOPS_WIDTH",
+        "value": 4
+      }
+    ]
+  },
+  "interface": {
+    "input_buffer_depth": 1024,
+    "output_buffer_depth": 1024
+  }
+}
