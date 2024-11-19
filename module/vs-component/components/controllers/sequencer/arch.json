@@ -1,0 +1,19 @@
+{
+  "kind": "sequencer",
+  "size": 16,
+  "io_input": false,
+  "io_output": false,
+  "custom_properties": [
+    {
+      "name": "NUM_SLOTS",
+      "value": 16
+    }
+  ],
+  "required_parameters": [
+    "RESOURCE_INSTR_WIDTH",
+    "NUM_SLOTS",
+    "INSTR_DATA_WIDTH",
+    "INSTR_ADDR_WIDTH",
+    "INSTR_HOPS_WIDTH"
+  ]
+}

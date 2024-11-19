@@ -1,0 +1,12 @@
+{
+  "kind": "vec_add",
+  "size": 1,
+  "io_input": true,
+  "io_output": true,
+  "custom_properties": [],
+  "required_parameters": [
+    "IO_DATA_WIDTH",
+    "IO_ADDR_WIDTH",
+    "RESOURCE_INSTR_WIDTH"
+  ]
+}

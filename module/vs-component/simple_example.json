@@ -3,43 +3,17 @@
   "resources": [
     {
       "name": "dummy_impl",
-      "kind": "dummy",
-      "size": 1,
-      "custom_properties": [],
-      "required_parameters": [
-        "RESOURCE_INSTR_WIDTH"
-      ]
+      "kind": "dummy"
     },
     {
       "name": "vec_add_impl",
-      "kind": "vec_add",
-      "size": 1,
-      "custom_properties": [],
-      "required_parameters": [
-        "IO_DATA_WIDTH",
-        "IO_ADDR_WIDTH",
-        "RESOURCE_INSTR_WIDTH"
-      ]
+      "kind": "vec_add"
     }
   ],
   "controllers": [
     {
       "name": "sequencer_impl",
-      "kind": "sequencer",
-      "size": 16,
-      "custom_properties": [
-        {
-          "name": "NUM_SLOTS",
-          "value": 16
-        }
-      ],
-      "required_parameters": [
-        "RESOURCE_INSTR_WIDTH",
-        "NUM_SLOTS",
-        "INSTR_DATA_WIDTH",
-        "INSTR_ADDR_WIDTH",
-        "INSTR_HOPS_WIDTH"
-      ]
+      "kind": "sequencer"
     }
   ],
   "cells": [
