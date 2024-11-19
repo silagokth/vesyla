@@ -3,11 +3,39 @@ use std::{collections::BTreeMap, fmt::write};
 
 pub type ParameterList = BTreeMap<String, u64>;
 
+#[derive(Debug)]
+pub enum Error {
+    Io(std::io::Error),
+    ResourceDeclaredAsController,
+    ControllerDeclaredAsResource,
+    ComponentWithoutNameOrKind,
+    UnknownComponentType,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::ResourceDeclaredAsController => write!(f, "Resource declared as controller"),
+            Error::ControllerDeclaredAsResource => write!(f, "Controller declared as resource"),
+            Error::ComponentWithoutNameOrKind => write!(f, "Component without name or kind"),
+            Error::UnknownComponentType => write!(f, "Unknown component type"),
+            Error::Io(err) => write!(f, "IO error: {}", err),
+        }
+    }
+}
+
+impl std::convert::From<std::io::Error> for Error {
+    fn from(_error: std::io::Error) -> Self {
+        Error::Io(_error)
+    }
+}
+
 #[derive(Clone)]
 pub struct Controller {
     pub name: String,
     pub kind: Option<String>,
     pub size: Option<u64>,
+    pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
 }
@@ -18,12 +46,13 @@ impl Controller {
             name,
             kind: None,
             size,
+            component_type: "controller".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
         }
     }
 
-    pub fn from_json(json_str: &str) -> Result<Self, std::io::Error> {
+    pub fn from_json(json_str: &str) -> Result<Self, Error> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
         if json_value.is_string() {
@@ -36,7 +65,7 @@ impl Controller {
             if json_value.get("name").is_some() {
                 name = json_value["name"].as_str().unwrap().to_string();
             } else {
-                panic!("Controller name not found");
+                name = "".to_string();
             }
         } else {
             name = name_option.unwrap().as_str().unwrap().to_string();
@@ -49,6 +78,22 @@ impl Controller {
         let controller_kind = json_value.get("kind");
         if let Some(controller_kind) = controller_kind {
             controller.kind = Some(controller_kind.as_str().unwrap().to_string());
+        } else if controller.name.is_empty() {
+            return Err(Error::ComponentWithoutNameOrKind);
+        }
+
+        // Check component type
+        let component_type = json_value.get("component_type");
+        if let Some(component_type) = component_type {
+            if component_type.as_str().unwrap() != controller.component_type
+                && !component_type.as_str().unwrap().is_empty()
+            {
+                if component_type.as_str().unwrap() == "resource" {
+                    return Err(Error::ControllerDeclaredAsResource);
+                } else {
+                    return Err(Error::UnknownComponentType);
+                }
+            }
         }
         // Parameters (optional)
         let json_controller_params = json_value.get("custom_properties");
@@ -78,6 +123,7 @@ impl Controller {
         }
         Ok(controller)
     }
+
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
     }
@@ -89,6 +135,7 @@ pub struct Resource {
     pub kind: Option<String>,
     pub slot: Option<u64>,
     pub size: Option<u64>,
+    pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
 }
@@ -100,11 +147,12 @@ impl Resource {
             kind: None,
             slot,
             size,
+            component_type: "resource".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
         }
     }
-    pub fn from_json(json_str: &str) -> Result<Self, std::io::Error> {
+    pub fn from_json(json_str: &str) -> Result<Self, Error> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
         if json_value.is_string() {
@@ -112,12 +160,12 @@ impl Resource {
             return Ok(Resource::new(name, None, None));
         }
         let name: String;
-        let name_option = json_value.get("resource_name"); //].as_str().unwrap().to_string();
+        let name_option = json_value.get("resource_name");
         if name_option.is_none() {
             if json_value.get("name").is_some() {
                 name = json_value["name"].as_str().unwrap().to_string();
             } else {
-                panic!("Resource name not found");
+                name = "".to_string();
             }
         } else {
             name = name_option.unwrap().as_str().unwrap().to_string();
@@ -132,6 +180,21 @@ impl Resource {
         let resource_kind = json_value.get("kind");
         if let Some(resource_kind) = resource_kind {
             resource.kind = Some(resource_kind.as_str().unwrap().to_string());
+        } else if resource.name.is_empty() {
+            return Err(Error::ComponentWithoutNameOrKind);
+        }
+        // Check component type
+        let component_type = json_value.get("component_type");
+        if let Some(component_type) = component_type {
+            if component_type.as_str().unwrap() != resource.component_type
+                && !component_type.as_str().unwrap().is_empty()
+            {
+                if component_type.as_str().unwrap() == "controller" {
+                    return Err(Error::ResourceDeclaredAsController);
+                } else {
+                    return Err(Error::UnknownComponentType);
+                }
+            }
         }
         // Parameters (optional)
         let json_resource_params = json_value.get("custom_properties");
@@ -193,7 +256,7 @@ impl Cell {
         }
     }
 
-    pub fn from_json(json_str: &str) -> Result<Self, std::io::Error> {
+    pub fn from_json(json_str: &str) -> Result<Self, Error> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
         let name: String;
@@ -202,7 +265,7 @@ impl Cell {
             if json_value.get("name").is_some() {
                 name = json_value["name"].as_str().unwrap().to_string();
             } else {
-                panic!("Cell name not found");
+                name = "".to_string();
             }
         } else {
             name = name_option.unwrap().as_str().unwrap().to_string();
@@ -224,6 +287,8 @@ impl Cell {
         let cell_kind = json_value.get("kind");
         if let Some(cell_kind) = cell_kind {
             cell.kind = Some(cell_kind.as_str().unwrap().to_string());
+        } else if cell.name.is_empty() {
+            return Err(Error::ComponentWithoutNameOrKind);
         }
 
         // Parameters
@@ -280,6 +345,16 @@ impl Cell {
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
+    }
+
+    pub fn get_resources_names(&self) -> Vec<String> {
+        let mut resources_names = Vec::new();
+        if let Some(resources) = &self.resources {
+            for resource in resources {
+                resources_names.push(resource.name.clone());
+            }
+        }
+        resources_names
     }
 }
 

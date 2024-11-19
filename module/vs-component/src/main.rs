@@ -71,9 +71,9 @@ struct Args {
 
 fn main() {
     // set the log level
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
-        .init();
+    //env_logger::Builder::from_default_env()
+    //    .filter_level(log::LevelFilter::Debug)
+    //    .init();
 
     let cli_args = Args::parse();
 
@@ -104,11 +104,20 @@ fn main() {
         }
         Command::GenRtl {
             fabric_description,
-            debug,
             build_dir,
+            debug,
         } => {
-            info!("Generating RTL ...");
-            match gen_rtl(fabric_description.clone(), Some(*debug), build_dir.clone()) {
+            info!("Generating RTL...");
+            if *debug {
+                env_logger::Builder::from_default_env()
+                    .filter_level(log::LevelFilter::Debug)
+                    .init();
+            } else {
+                env_logger::Builder::from_default_env()
+                    .filter_level(log::LevelFilter::Info)
+                    .init();
+            }
+            match gen_rtl(fabric_description.clone(), build_dir.clone()) {
                 Ok(_) => info!("Done!"),
                 Err(e) => error!("Error: {}", e),
             };
@@ -150,10 +159,8 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
     }
 }
 
-fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> Result<()> {
-    let debug = debug.unwrap_or(false);
-
-    info!("Library path: {}", get_library_path());
+fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
+    debug!("Library path: {}", get_library_path());
 
     // Create lists for implemented cells, resources and controllers
     let mut implemented_cells: HashMap<String, Cell> = HashMap::new();
@@ -195,7 +202,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
     // get the fabric object from the json file
     let fabric = fabric_json
         .get("fabric")
-        .expect("Fabric not found in fabric.json");
+        .expect("Fabric not found in .json");
 
     // Get fabric dimensions
     let fabric_height = fabric["height"].as_u64().unwrap();
@@ -222,12 +229,20 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
     let cell_list = fabric.get("cells_list").expect("Cells not found in fabric");
     for cell in cell_list.as_array().unwrap() {
         let mut resource_hashes = Vec::new();
-        let mut cell_object = Cell::from_json(&cell.to_string())?;
+        let mut cell_object = match Cell::from_json(&cell.to_string()) {
+            Ok(cell) => cell,
+            Err(drra::Error::ComponentWithoutNameOrKind) => {
+                panic!("Cell without name or kind found in fabric description");
+            }
+            Err(e) => {
+                panic!("Error with cell: {}", e);
+            }
+        };
 
         // Check cell coordinates
         if cell_object.coordinates_list.is_empty() {
             panic!(
-                "Cell {} was declared without coordinates in fabric",
+                "Cell {} was declared without coordinates in fabric description",
                 cell_object.name
             );
         }
@@ -286,7 +301,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                         &mut cell_object.parameters,
                         &cell_from_lib.parameters,
                     )?);
-                    if debug && !overwritten_params.is_empty() {
+                    if !overwritten_params.is_empty() {
                         let mut warning = format!(
                             "Some parameters from cell {} were overwritten:",
                             cell_object.name,
@@ -297,7 +312,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                                 param.0, param.1, param.2
                             ));
                         }
-                        warn!("{}", warning);
+                        debug!("{}", warning);
                     }
                     // append required parameters from cell_from_lib to cell
                     if !cell_from_lib.required_parameters.is_empty() {
@@ -389,7 +404,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                         &mut cell_object.controller.as_mut().unwrap().parameters,
                         &controller_from_lib.parameters,
                     )?);
-                    if debug && !overwritten_params.is_empty() {
+                    if !overwritten_params.is_empty() {
                         let mut warning = format!(
                             "Some parameters from controller {} in cell {} were overwritten:",
                             cell_object.controller.as_ref().unwrap().name,
@@ -519,6 +534,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                 cell_object.controller.as_ref().unwrap().clone(),
             );
             let output_controller_json = serde_json::json!({
+                "name": cell_object.controller.as_ref().unwrap().name,
                 "fingerprint": controller_hash,
                 "parameters": cell_object.controller.as_ref().unwrap().parameters,
             });
@@ -590,7 +606,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                             &mut resource_object.parameters,
                             &resource_from_lib.parameters,
                         )?);
-                        if debug && !overwritten_params.is_empty() {
+                        if !overwritten_params.is_empty() {
                             let mut warning = format!(
                             "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
                             resource_object.name,
@@ -685,6 +701,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
                 implemented_resources.insert(resource_hash.clone(), resource_object.clone());
                 //todo!("Generate the resource RTL here");
                 let output_resource_json = serde_json::json!({
+                    "name": resource_object.name,
                     "fingerprint": resource_hash,
                     "parameters": resource_object.parameters,
                 });
@@ -703,9 +720,11 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
             // Create the json object for the cell
             let output_cell_json = serde_json::json!({
                 "fingerprint": cell_hash,
+                "name": cell_object.name,
                 "parameters": cell_object.parameters,
-                "resources": resource_hashes.clone(),
-                "controller": controller_hash.clone(),
+                "resources": cell_object.get_resources_names(),
+                "controller": cell_object.controller.as_ref().unwrap().name,
+
             });
             output_cells.push(output_cell_json);
         }
@@ -720,7 +739,7 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> R
         for coordinate in cell_object.coordinates_list.iter() {
             let output_cell_json = serde_json::json!({
                 "coordinates": coordinate,
-                "cell": cell_hash,
+                "cell": cell_object.name,
             });
             output_cells_list.push(output_cell_json);
         }
@@ -800,6 +819,7 @@ fn get_from_library(component_name: &String) -> Result<serde_json::Value> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        debug!("Checking path: {:?}", entry.path());
         let path = entry.path();
         if path.is_dir()
             && path
@@ -1278,6 +1298,6 @@ mod tests {
             "VESYLA_LIBRARY_PATH",
             env!("CARGO_MANIFEST_DIR").to_string() + "/template",
         );
-        gen_rtl(args[0].clone(), Some(true), "build".to_string()).unwrap();
+        gen_rtl(args[0].clone(), "build".to_string()).unwrap();
     }
 }
