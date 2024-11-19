@@ -1,5 +1,5 @@
 use log::warn;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::write};
 
 pub type ParameterList = BTreeMap<String, u64>;
 
@@ -175,9 +175,10 @@ impl Resource {
     }
 }
 
+#[derive(Clone)]
 pub struct Cell {
     pub name: String,
-    pub coordinates: Option<(u64, u64)>,
+    pub coordinates_list: Vec<(u64, u64)>,
     pub controller: Option<Controller>,
     pub resources: Option<Vec<Resource>>,
     pub parameters: ParameterList,
@@ -185,10 +186,10 @@ pub struct Cell {
 }
 
 impl Cell {
-    pub fn new(name: String, coordinates: Option<(u64, u64)>) -> Self {
+    pub fn new(name: String, coordinates_list: Vec<(u64, u64)>) -> Self {
         Cell {
             name,
-            coordinates,
+            coordinates_list,
             controller: None,
             resources: None,
             parameters: ParameterList::new(),
@@ -212,17 +213,16 @@ impl Cell {
         }
         // Coordinates
         let coordinates_option = json_value.get("coordinates");
-        let coordinates = if let Some(coordinates) = coordinates_option {
-            Some((
-                coordinates[0]["row"].as_u64().unwrap(),
-                coordinates[0]["col"].as_u64().unwrap(),
-            ))
-        } else {
-            warn!("Coordinates not found");
-            None
+        let mut coordinates_list = Vec::new();
+        if let Some(coordinates) = coordinates_option {
+            for coordinate in coordinates.as_array().unwrap() {
+                let row = coordinate["row"].as_u64().unwrap();
+                let col = coordinate["col"].as_u64().unwrap();
+                coordinates_list.push((row, col));
+            }
         };
 
-        let mut cell = Cell::new(name, coordinates);
+        let mut cell = Cell::new(name, coordinates_list);
         // Parameters
         let json_cell_params = json_value.get("custom_properties");
         if let Some(json_cell_params) = json_cell_params {
@@ -277,6 +277,36 @@ impl Cell {
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
+    }
+}
+
+pub struct Fabric {
+    pub height: u64,
+    pub width: u64,
+    pub cells: Vec<Vec<Cell>>,
+    pub parameters: ParameterList,
+}
+
+impl Fabric {
+    pub fn new(height: u64, width: u64) -> Self {
+        let mut cells = Vec::new();
+        for _ in 0..height {
+            let mut row = Vec::new();
+            for _ in 0..width {
+                row.push(Cell::new("".to_string(), vec![]));
+            }
+            cells.push(row);
+        }
+        Fabric {
+            height,
+            width,
+            cells,
+            parameters: ParameterList::new(),
+        }
+    }
+
+    pub fn add_cell(&mut self, cell: &Cell, row: u64, col: u64) {
+        self.cells[row as usize][col as usize] = cell.clone();
     }
 }
 

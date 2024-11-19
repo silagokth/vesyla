@@ -3,7 +3,7 @@ mod collector;
 mod drra;
 mod generator;
 
-use crate::drra::{Cell, ParameterList, Resource, Controller};
+use crate::drra::{Cell, Controller, Fabric, ParameterList, Resource};
 use bs58::encode;
 use clap::{Parser, Subcommand, ValueEnum};
 use log::{debug, error, info, trace, warn};
@@ -47,6 +47,9 @@ enum Command {
         /// Debug mode (default: false)
         #[arg(short, long, default_value_t = false)]
         debug: bool,
+        /// Build directory
+        #[arg(short, long, default_value = "build")]
+        build_dir: String,
     },
     #[command(about = "Validate JSON file", name = "validate_json")]
     ValidateJson {
@@ -102,9 +105,10 @@ fn main() {
         Command::GenRtl {
             fabric_description,
             debug,
+            build_dir,
         } => {
             info!("Generating RTL ...");
-            match gen_rtl(fabric_description.clone(), Some(*debug)) {
+            match gen_rtl(fabric_description.clone(), Some(*debug), build_dir.clone()) {
                 Ok(_) => info!("Done!"),
                 Err(e) => error!("Error: {}", e),
             };
@@ -146,8 +150,19 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
     }
 }
 
-fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
+fn gen_rtl(fabric_filepath: String, debug: Option<bool>, build_dir: String) -> Result<()> {
     let debug = debug.unwrap_or(false);
+
+    // Create lists for implemented cells, resources and controllers
+    let mut implemented_cells: HashMap<String, Cell> = HashMap::new();
+    let mut implemented_resources: HashMap<String, Resource> = HashMap::new();
+    let mut implemented_controllers: HashMap<String, Controller> = HashMap::new();
+
+    // Create JSON arrays to store the output cells, resources and controllers
+    let mut output_cells: Vec<serde_json::Value> = Vec::new();
+    let mut output_resources: Vec<serde_json::Value> = Vec::new();
+    let mut output_controllers: Vec<serde_json::Value> = Vec::new();
+    let mut output_cells_list: Vec<serde_json::Value> = Vec::new();
 
     // parse the arguments to find the fabric.json input file
     let fabric_file = match fs::File::open(Path::new(&fabric_filepath)) {
@@ -164,27 +179,6 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
     // create a registry to store the parameters
     let mut parameter_list = ParameterList::new();
 
-    // get the fabric object from the json file
-    let fabric = fabric_json
-        .get("fabric")
-        .expect("Fabric not found in fabric.json");
-
-    // add fabric parameters to the registry
-    if debug {
-        println!("Fabric parameters:");
-    }
-    let fabric_parameters = get_parameters(fabric, Some("custom_properties".to_string()));
-    if fabric_parameters.is_empty() {
-        warn!("No parameters found in fabric.json");
-    } else {
-        match add_parameters(&fabric_parameters, &mut parameter_list) {
-            Ok(_) => (),
-            Err(e) => {
-                panic!("Error with fabric.json parameters: ({})", e);
-            }
-        }
-    }
-
     // get cell_pool, resource_pool and controller_pool from the json file
     let cell_pool = fabric_json
         .get("cells")
@@ -196,17 +190,43 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
         .get("controllers")
         .expect("Controller pool not found in fabric");
 
+    // get the fabric object from the json file
+    let fabric = fabric_json
+        .get("fabric")
+        .expect("Fabric not found in fabric.json");
+
+    // Get fabric dimensions
+    let fabric_height = fabric["height"].as_u64().unwrap();
+    let fabric_width = fabric["width"].as_u64().unwrap();
+
+    // add fabric parameters to the registry
+    let fabric_parameters = get_parameters(fabric, Some("custom_properties".to_string()));
+    if fabric_parameters.is_empty() {
+        warn!("No fabric parameters found in {}", fabric_filepath);
+    } else {
+        match add_parameters(&fabric_parameters, &mut parameter_list) {
+            Ok(_) => (),
+            Err(e) => {
+                panic!("Error with fabric.json parameters: ({})", e);
+            }
+        }
+    }
+
+    // Create the fabric object
+    let mut fabric_object = Fabric::new(fabric_height, fabric_width);
+    fabric_object.parameters = fabric_parameters;
+
     // CELLS
-    let cell_list = fabric.get("cell_lists").expect("Cells not found in fabric");
+    let cell_list = fabric.get("cells_list").expect("Cells not found in fabric");
     for cell in cell_list.as_array().unwrap() {
         let mut resource_hashes = Vec::new();
         let mut cell_object = Cell::from_json(&cell.to_string())?;
 
         // Check cell coordinates
-        if cell_object.coordinates.is_none() {
+        if cell_object.coordinates_list.is_empty() {
             panic!(
-            "Cell {} was declared without coordinates in fabric",
-            cell_object.name
+                "Cell {} was declared without coordinates in fabric",
+                cell_object.name
             );
         }
 
@@ -236,7 +256,9 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                 )?);
                 // append required parameters from cell_from_pool to cell
                 if !cell_from_pool.required_parameters.is_empty() {
-                    cell_object.required_parameters.extend(cell_from_pool.required_parameters);
+                    cell_object
+                        .required_parameters
+                        .extend(cell_from_pool.required_parameters);
                 }
             }
         }
@@ -259,8 +281,8 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                 )?);
                 if debug && !overwritten_params.is_empty() {
                     let mut warning = format!(
-                        "Some parameters from cell {} (row {}, col {}) were overwritten:",
-                        cell_object.name, cell_object.coordinates.unwrap().0, cell_object.coordinates.unwrap().1
+                        "Some parameters from cell {} were overwritten:",
+                        cell_object.name,
                     );
                     for param in overwritten_params.iter() {
                         warning.push_str(&format!(
@@ -272,25 +294,24 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                 }
                 // append required parameters from cell_from_lib to cell
                 if !cell_from_lib.required_parameters.is_empty() {
-                    cell_object.required_parameters.extend(cell_from_lib.required_parameters);
+                    cell_object
+                        .required_parameters
+                        .extend(cell_from_lib.required_parameters);
                 }
             }
         }
 
         // Verify cell validity
         if cell_object.controller.is_none() {
-            panic!(
-            "Controller not found for cell {} (row {}, col {})",
-            cell_object.name, cell_object.coordinates.unwrap().0, cell_object.coordinates.unwrap().1
-            );
+            panic!("Controller not found for cell {}", cell_object.name,);
         }
         if cell_object.resources.is_none() {
             panic!("Resources for cell {} not found in the library and were not provided in JSON file fabric or cell pool", cell_object.name);
         }
-        if cell_object.parameters.is_empty() {
+        if cell_object.parameters.is_empty() && cell_object.required_parameters.is_empty() {
             warn!(
-                "No parameters found for cell {} (row {}, col {})",
-                cell_object.name, cell_object.coordinates.unwrap().0, cell_object.coordinates.unwrap().1
+                "No parameters or required_parameters found for cell {}",
+                cell_object.name,
             );
         } else {
             // Add cell parameters to the registry
@@ -298,8 +319,8 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                 Ok(_) => (),
                 Err(e) => {
                     panic!(
-                        "Error with cell parameters for cell ({}, row {}, col {}): ({})",
-                        cell_object.name, cell_object.coordinates.unwrap().0, cell_object.coordinates.unwrap().1, e
+                        "Error with cell parameters for cell ({}): {}",
+                        cell_object.name, e,
                     );
                 }
             }
@@ -309,12 +330,9 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
         let mut overwritten_params = Vec::new();
         // Get the controller from the controller pool
         if cell_object.controller.as_mut().unwrap().size.is_none() {
-            if let Some(controller) = controller_pool
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|entry| entry["name"].as_str().unwrap() == cell_object.controller.as_ref().unwrap().name)
-            {
+            if let Some(controller) = controller_pool.as_array().unwrap().iter().find(|entry| {
+                entry["name"].as_str().unwrap() == cell_object.controller.as_ref().unwrap().name
+            }) {
                 if let Ok(controller_from_pool) = Controller::from_json(&controller.to_string()) {
                     // Check size
                     cell_object.controller.as_mut().unwrap().size = controller_from_pool.size;
@@ -325,17 +343,23 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     )?);
                     // append required parameters from controller_from_pool to controller
                     if !controller_from_pool.required_parameters.is_empty() {
-                        cell_object.controller.as_mut().unwrap().required_parameters.extend(
-                            controller_from_pool.required_parameters
-                        );
+                        cell_object
+                            .controller
+                            .as_mut()
+                            .unwrap()
+                            .required_parameters
+                            .extend(controller_from_pool.required_parameters);
                     }
                 }
             }
         }
         // Get the controller from the library
         if cell_object.controller.as_mut().unwrap().size.is_none() {
-            if let Ok(lib_controller) = get_from_library(&cell_object.controller.as_ref().unwrap().name) {
-                if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string()) {
+            if let Ok(lib_controller) =
+                get_from_library(&cell_object.controller.as_ref().unwrap().name)
+            {
+                if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
+                {
                     // Check size
                     cell_object.controller.as_mut().unwrap().size = controller_from_lib.size;
                     // append parameters from controller_from_lib to controller_parameters
@@ -345,11 +369,9 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     )?);
                     if debug && !overwritten_params.is_empty() {
                         let mut warning = format!(
-                            "Some parameters from controller {} in cell {} (row {}, col {}) were overwritten:",
+                            "Some parameters from controller {} in cell {} were overwritten:",
                             cell_object.controller.as_ref().unwrap().name,
                             cell_object.name,
-                            cell_object.coordinates.unwrap().0,
-                            cell_object.coordinates.unwrap().1
                         );
                         for param in overwritten_params.iter() {
                             warning.push_str(&format!(
@@ -361,9 +383,12 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     }
                     // append required parameters from controller_from_lib to controller
                     if !controller_from_lib.required_parameters.is_empty() {
-                        cell_object.controller.as_mut().unwrap().required_parameters.extend(
-                            controller_from_lib.required_parameters
-                        );
+                        cell_object
+                            .controller
+                            .as_mut()
+                            .unwrap()
+                            .required_parameters
+                            .extend(controller_from_lib.required_parameters);
                     }
                 }
             }
@@ -371,63 +396,86 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
         // Check controller validity
         if cell_object.controller.as_ref().unwrap().size.is_none() {
             panic!(
-            "Size not found for controller {} in cell {} (row {}, col {})",
-            cell_object.controller.as_ref().unwrap().name,
-            cell_object.name,
-            cell_object.coordinates.unwrap().0,
-            cell_object.coordinates.unwrap().1
+                "Size not found for controller {} in cell {}",
+                cell_object.controller.as_ref().unwrap().name,
+                cell_object.name,
             );
         }
 
         // Get the required parameters for the resource
-            if cell_object.controller.as_ref().unwrap().required_parameters.is_empty() {
-                cell_object.controller.as_mut().unwrap().required_parameters = cell_object.controller.as_ref().unwrap().parameters.keys().cloned().collect();
-                warn!(
-                    "No required parameters found for controller {} in cell {} (row {}, col {}), using all parameters as required",
+        if cell_object
+            .controller
+            .as_ref()
+            .unwrap()
+            .required_parameters
+            .is_empty()
+        {
+            cell_object.controller.as_mut().unwrap().required_parameters = cell_object
+                .controller
+                .as_ref()
+                .unwrap()
+                .parameters
+                .keys()
+                .cloned()
+                .collect();
+            warn!(
+                    "No required parameters found for controller {} in cell {}, using all parameters as required",
                     cell_object.controller.as_ref().unwrap().name,
                     cell_object.name,
-                    cell_object.coordinates.unwrap().0,
-                    cell_object.coordinates.unwrap().1
                 );
-            }
+        }
 
         // Add controller required parameters to the registry
-        if cell_object.controller.as_ref().unwrap().parameters.is_empty() {
+        if cell_object
+            .controller
+            .as_ref()
+            .unwrap()
+            .parameters
+            .is_empty()
+            && cell_object
+                .controller
+                .as_ref()
+                .unwrap()
+                .required_parameters
+                .is_empty()
+        {
             warn!(
-            "No parameters found for controller {} in cell {} (row {}, col {})",
-            cell_object.controller.as_ref().unwrap().name,
-            cell_object.name,
-            cell_object.coordinates.unwrap().0,
-            cell_object.coordinates.unwrap().1
+                "No parameters found for controller {} in cell {}",
+                cell_object.controller.as_ref().unwrap().name,
+                cell_object.name,
             );
         } else {
             let mut filtered_parameters = ParameterList::new();
             for required_param in &cell_object.controller.as_ref().unwrap().required_parameters {
-                if let Some(param_value) = cell_object.controller.as_ref().unwrap().parameters.get(required_param) {
+                if let Some(param_value) = cell_object
+                    .controller
+                    .as_ref()
+                    .unwrap()
+                    .parameters
+                    .get(required_param)
+                {
+                    filtered_parameters.insert(required_param.clone(), *param_value);
+                } else if let Some(param_value) = cell_object.parameters.get(required_param) {
+                    filtered_parameters.insert(required_param.clone(), *param_value);
+                } else if let Some(param_value) = fabric_object.parameters.get(required_param) {
                     filtered_parameters.insert(required_param.clone(), *param_value);
                 } else {
                     panic!(
-                "Required parameter {} not found for controller {} in cell {} (row {}, col {})",
-                required_param,
-                cell_object.controller.as_ref().unwrap().name,
-                cell_object.name,
-                cell_object.coordinates.unwrap().0,
-                cell_object.coordinates.unwrap().1
+                        "Required parameter {} not found for controller {} in cell {}",
+                        required_param,
+                        cell_object.controller.as_ref().unwrap().name,
+                        cell_object.name,
                     );
                 }
             }
-            match add_parameters(
-                &filtered_parameters,
-                &mut parameter_list,
-            ) {
+            cell_object.controller.as_mut().unwrap().parameters = filtered_parameters.clone();
+            match add_parameters(&filtered_parameters, &mut parameter_list) {
                 Ok(_) => (),
                 Err(e) => {
                     panic!(
-                        "Error with controller parameters for controller {} in cell {} (row {}, col {}): ({})",
+                        "Error with controller parameters for controller {} in cell {}: ({})",
                         cell_object.controller.as_ref().unwrap().name,
                         cell_object.name,
-                        cell_object.coordinates.unwrap().0,
-                        cell_object.coordinates.unwrap().1,
                         e
                     );
                 }
@@ -435,16 +483,29 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
         }
 
         // generate a hash based on the required parameters for the controller
-        let controller_hash = generate_hash(vec![cell_object.controller.as_ref().unwrap().name.clone()], &parameter_list);
-        println!(" - Controller {} Hash: {}", cell_object.controller.as_ref().unwrap().name, controller_hash);
-        resource_hashes.push(controller_hash);
+        let controller_hash = generate_hash(
+            vec![cell_object.controller.as_ref().unwrap().name.clone()],
+            &parameter_list,
+        );
+        resource_hashes.push(controller_hash.clone());
 
         // Check if two controllers with same parameters have the same hash
-        // todo!("Generate the controller RTL here");
+        if !implemented_controllers.contains_key(&controller_hash) {
+            implemented_controllers.insert(
+                controller_hash.clone(),
+                cell_object.controller.as_ref().unwrap().clone(),
+            );
+            let output_controller_json = serde_json::json!({
+                "fingerprint": controller_hash,
+                "parameters": cell_object.controller.as_ref().unwrap().parameters,
+            });
+            output_controllers.push(output_controller_json);
+        }
+        //todo!("Generate the controller RTL here");
 
         // RESOURCES
         let mut current_slot = 0;
-        for resource_object in cell_object.resources.unwrap().iter_mut() {
+        for resource_object in cell_object.resources.as_mut().unwrap().iter_mut() {
             let mut overwritten_params = Vec::new();
 
             // Get the resource from the resource pool
@@ -470,9 +531,9 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     )?);
                     // append required parameters from resource_from_pool to resource
                     if !resource_from_pool.required_parameters.is_empty() {
-                        resource_object.required_parameters.extend(
-                            resource_from_pool.required_parameters
-                        );
+                        resource_object
+                            .required_parameters
+                            .extend(resource_from_pool.required_parameters);
                     }
                 }
             }
@@ -495,12 +556,10 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     )?);
                     if debug && !overwritten_params.is_empty() {
                         let mut warning = format!(
-                            "Some parameters from resource {} (slot {}) in cell {} (row {}, col {}) were overwritten:",
+                            "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
                             resource_object.name,
                             resource_object.slot.unwrap(),
                             cell_object.name,
-                            cell_object.coordinates.unwrap().0,
-                            cell_object.coordinates.unwrap().1
                         );
                         for param in overwritten_params.iter() {
                             warning.push_str(&format!(
@@ -512,9 +571,9 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                     }
                     // append required parameters from resource_from_lib to resource
                     if !resource_from_lib.required_parameters.is_empty() {
-                        resource_object.required_parameters.extend(
-                            resource_from_lib.required_parameters
-                        );
+                        resource_object
+                            .required_parameters
+                            .extend(resource_from_lib.required_parameters);
                     }
                 }
             }
@@ -523,37 +582,27 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
             if resource_object.slot.is_none() {
                 resource_object.slot = Some(current_slot);
                 current_slot += resource_object.size.unwrap();
-                //panic!(
-                //    "Slot not found for resource {} in cell {} (row {}, col {})",
-                //    resource_object.name,
-                //    cell_object.name,
-                //    cell_object.coordinates.unwrap().0,
-                //    cell_object.coordinates.unwrap().1
-                //);
             }
 
             // Get the required parameters for the resource
             if resource_object.required_parameters.is_empty() {
-                resource_object.required_parameters = resource_object.parameters.keys().cloned().collect();
+                resource_object.required_parameters =
+                    resource_object.parameters.keys().cloned().collect();
                 warn!(
-                    "No required parameters found for resource {} (slot {}) in cell {} (row {}, col {}), using all parameters as required",
+                    "No required parameters found for resource {} (slot {}) in cell {}, using all parameters as required",
                     resource_object.name,
                     resource_object.slot.unwrap(),
                     cell_object.name,
-                    cell_object.coordinates.unwrap().0,
-                    cell_object.coordinates.unwrap().1
                 );
             }
 
             // Add required parameters to the registry
             if resource_object.required_parameters.is_empty() {
                 warn!(
-                    "No parameters found for resource {} (slot {}) in cell {} (row {}, col {})",
+                    "No parameters found for resource {} (slot {}) in cell {}",
                     resource_object.name,
                     resource_object.slot.unwrap(),
                     cell_object.name,
-                    cell_object.coordinates.unwrap().0,
-                    cell_object.coordinates.unwrap().1
                 );
             } else {
                 // Filter parameters that are not required
@@ -561,28 +610,29 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
                 for required_param in &resource_object.required_parameters {
                     if let Some(param_value) = resource_object.parameters.get(required_param) {
                         filtered_parameters.insert(required_param.clone(), *param_value);
+                    } else if let Some(param_value) = cell_object.parameters.get(required_param) {
+                        filtered_parameters.insert(required_param.clone(), *param_value);
+                    } else if let Some(param_value) = fabric_object.parameters.get(required_param) {
+                        filtered_parameters.insert(required_param.clone(), *param_value);
                     } else {
                         panic!(
-                            "Required parameter {} not found for resource {} (slot {}) in cell {} (row {}, col {})",
+                            "Required parameter {} not found for resource {} (slot {}) in cell {}",
                             required_param,
                             resource_object.name,
                             resource_object.slot.unwrap(),
                             cell_object.name,
-                            cell_object.coordinates.unwrap().0,
-                            cell_object.coordinates.unwrap().1
                         );
                     }
                 }
+                resource_object.parameters = filtered_parameters.clone();
                 match add_parameters(&filtered_parameters, &mut parameter_list) {
                     Ok(_) => (),
                     Err(e) => {
                         panic!(
-                        "Error with resource parameters for resource ({}, slot {}) in cell ({}, row {}, col {}): ({})",
+                        "Error with resource parameters for resource ({}, slot {}) in cell {}: ({})",
                         resource_object.name,
                         resource_object.slot.unwrap(),
-                        &cell_object.name, 
-                        &cell_object.coordinates.unwrap().0, 
-                        &cell_object.coordinates.unwrap().1,
+                        &cell_object.name,
                         e
                     );
                     }
@@ -591,33 +641,80 @@ fn gen_rtl(fabric_filepath: String, debug: Option<bool>) -> Result<()> {
 
             // generate a hash based on the required parameters for the resource
             let resource_hash = generate_hash(vec![resource_object.name.clone()], &parameter_list);
-            println!(" - Resource {} (slot {}) Hash: {}", resource_object.name, resource_object.slot.unwrap(), resource_hash);
-            resource_hashes.push(resource_hash);
+            resource_hashes.push(resource_hash.clone());
 
             // Check if two resources with same parameters have the same hash
-            //todo!("Generate the resource RTL here");
+            if !implemented_resources.contains_key(&resource_hash) {
+                implemented_resources.insert(resource_hash.clone(), resource_object.clone());
+                //todo!("Generate the resource RTL here");
+                let output_resource_json = serde_json::json!({
+                    "fingerprint": resource_hash,
+                    "parameters": resource_object.parameters,
+                });
+                output_resources.push(output_resource_json);
+            }
 
             // Remove the resource parameters from the registry
             remove_parameters(&resource_object.parameters, &mut parameter_list).unwrap();
         }
         // generate a hash based on the required parameters for the cell
-        let cell_hash = generate_hash(resource_hashes, &parameter_list);
-        println!("Cell {} (row: {}, col: {}) -> Hash: {}", cell_object.name, cell_object.coordinates.unwrap().0, cell_object.coordinates.unwrap().1, cell_hash);
+        let cell_hash = generate_hash(resource_hashes.clone(), &parameter_list);
 
         // Check if two cells with same parameters have the same hash
+        if !implemented_cells.contains_key(&cell_hash) {
+            implemented_cells.insert(cell_hash.clone(), cell_object.clone());
+            // Create the json object for the cell
+            let output_cell_json = serde_json::json!({
+                "fingerprint": cell_hash,
+                "parameters": cell_object.parameters,
+                "resources": resource_hashes.clone(),
+                "controller": controller_hash.clone(),
+            });
+            output_cells.push(output_cell_json);
+        }
         //todo!("Generate the cell RTL here");
-       
+
+        // Add the cell to the fabric at the different coordinates
+        for (row, col) in cell_object.coordinates_list.iter() {
+            fabric_object.add_cell(&cell_object, *row, *col);
+        }
+
+        // Create the json object for the cell list
+        for coordinate in cell_object.coordinates_list.iter() {
+            let output_cell_json = serde_json::json!({
+                "coordinates": coordinate,
+                "cell": cell_hash,
+            });
+            output_cells_list.push(output_cell_json);
+        }
 
         // remove cell parameters from the registry
         remove_parameters(&cell_object.parameters, &mut parameter_list).unwrap();
     }
-    //      - check if RTL instance is already genreated
-    //      - if not, generate the RTL instance using the template and parameters
-    //      - add RTL instance to build files
-    //    - genreate the RTL for the cell using the template and parameters
+
+    let output_json = serde_json::json!({
+        "cells": output_cells,
+        "resources": output_resources,
+        "controllers": output_controllers,
+        "fabric": {
+            "height": fabric_object.height,
+            "width": fabric_object.width,
+            "parameters": fabric_object.parameters,
+            "cells_list": output_cells_list,
+        },
+    });
+
+    // Write the output json to a file in the build directory
+    let output_file = Path::new(&build_dir).join("fabric.json");
+    fs::create_dir_all(build_dir).expect("Failed to create build directory");
+    fs::write(
+        &output_file,
+        serde_json::to_string_pretty(&output_json).unwrap(),
+    )?;
+    println!("{}", serde_json::to_string_pretty(&output_json).unwrap());
+
     // 5. Generate the top module for fabric using the template and parameters
 
-    // DONE
     Ok(())
 }
 
@@ -707,7 +804,6 @@ fn generate_hash(names: Vec<String>, parameters: &BTreeMap<String, u64>) -> Stri
 
 fn add_parameters(parameters: &ParameterList, parameter_list: &mut ParameterList) -> Result<()> {
     for (param_name, param_value) in parameters.iter() {
-        println!("{}: {}", param_name, param_value);
         if add_parameter(param_name.to_string(), *param_value, parameter_list).is_err() {
             return Err(Error::new(
                 std::io::ErrorKind::AlreadyExists,
@@ -719,12 +815,22 @@ fn add_parameters(parameters: &ParameterList, parameter_list: &mut ParameterList
 }
 
 fn add_parameter(key: String, value: u64, parameter_list: &mut ParameterList) -> Result<()> {
-    if parameter_list.insert(key.clone(), value).is_some() {
+    if parameter_list.contains_key(key.as_str())
+        && parameter_list.get(key.as_str()).unwrap() != &value
+    {
         return Err(Error::new(
             std::io::ErrorKind::AlreadyExists,
-            format!("Duplicate parameter: {}", key),
+            format!(
+                "Duplicate parameter with different value: {} ({} vs. {})",
+                key,
+                parameter_list.get(key.as_str()).unwrap(),
+                value
+            ),
         ));
     }
+
+    parameter_list.insert(key, value);
+
     Ok(())
 }
 
@@ -1093,10 +1199,11 @@ mod tests {
 
     #[test]
     fn test_gen_rtl() {
-        let args = [
-            env!("CARGO_MANIFEST_DIR").to_string() + "/test.json",
-        ];
-        std::env::set_var("VESYLA_LIBRARY_PATH", env!("CARGO_MANIFEST_DIR").to_string()+"/template");
-        gen_rtl(args[0].clone(), Some(true)).unwrap();
+        let args = [env!("CARGO_MANIFEST_DIR").to_string() + "/simple_example.json"];
+        std::env::set_var(
+            "VESYLA_LIBRARY_PATH",
+            env!("CARGO_MANIFEST_DIR").to_string() + "/template",
+        );
+        gen_rtl(args[0].clone(), Some(true), "build".to_string()).unwrap();
     }
 }
