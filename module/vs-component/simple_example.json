@@ -3,7 +3,7 @@
   "resources": [
     {
       "name": "dummy_impl",
-      "type": "dummy",
+      "kind": "dummy",
       "size": 1,
       "custom_properties": [],
       "required_parameters": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "vec_add_impl",
-      "type": "vec_add",
+      "kind": "vec_add",
       "size": 1,
       "custom_properties": [],
       "required_parameters": [
@@ -25,7 +25,7 @@
   "controllers": [
     {
       "name": "sequencer_impl",
-      "type": "sequencer",
+      "kind": "sequencer",
       "size": 16,
       "custom_properties": [
         {

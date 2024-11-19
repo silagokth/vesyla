@@ -3,30 +3,10 @@ use std::{collections::BTreeMap, fmt::write};
 
 pub type ParameterList = BTreeMap<String, u64>;
 
-//impl ParameterList {
-//    pub fn new() -> Self {
-//        ParameterList(BTreeMap::new())
-//    }
-//    pub fn insert(&mut self, name: String, value: u64) {
-//        self.0.insert(name, value);
-//    }
-//    pub fn get_names(&self) -> Vec<String> {
-//        self.0.keys().cloned().collect()
-//    }
-//    pub fn get(&self, name: &str) -> Option<&u64> {
-//        self.0.get(name)
-//    }
-//    pub fn is_empty(&self) -> bool {
-//        self.0.is_empty()
-//    }
-//    pub fn iter(&self) -> std::collections::btree_map::Iter<String, u64> {
-//        self.0.iter()
-//    }
-//}
-
 #[derive(Clone)]
 pub struct Controller {
     pub name: String,
+    pub kind: Option<String>,
     pub size: Option<u64>,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
@@ -36,6 +16,7 @@ impl Controller {
     pub fn new(name: String, size: Option<u64>) -> Self {
         Controller {
             name,
+            kind: None,
             size,
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
@@ -63,6 +44,12 @@ impl Controller {
         // Size (optional)
         let size = json_value.get("size").map(|x| x.as_u64().unwrap());
         let mut controller = Controller::new(name, size);
+
+        // Kind (optional)
+        let controller_kind = json_value.get("kind");
+        if let Some(controller_kind) = controller_kind {
+            controller.kind = Some(controller_kind.as_str().unwrap().to_string());
+        }
         // Parameters (optional)
         let json_controller_params = json_value.get("custom_properties");
         if let Some(json_controller_params) = json_controller_params {
@@ -99,6 +86,7 @@ impl Controller {
 #[derive(Clone)]
 pub struct Resource {
     pub name: String,
+    pub kind: Option<String>,
     pub slot: Option<u64>,
     pub size: Option<u64>,
     pub parameters: ParameterList,
@@ -109,6 +97,7 @@ impl Resource {
     pub fn new(name: String, slot: Option<u64>, size: Option<u64>) -> Self {
         Resource {
             name,
+            kind: None,
             slot,
             size,
             parameters: ParameterList::new(),
@@ -139,6 +128,11 @@ impl Resource {
         // Size (optional)
         let size = json_value.get("size").map(|x| x.as_u64().unwrap());
         let mut resource = Resource::new(name, slot, size);
+        // Kind (optional)
+        let resource_kind = json_value.get("kind");
+        if let Some(resource_kind) = resource_kind {
+            resource.kind = Some(resource_kind.as_str().unwrap().to_string());
+        }
         // Parameters (optional)
         let json_resource_params = json_value.get("custom_properties");
         if let Some(json_resource_params) = json_resource_params {
@@ -179,6 +173,7 @@ impl Resource {
 pub struct Cell {
     pub name: String,
     pub coordinates_list: Vec<(u64, u64)>,
+    pub kind: Option<String>,
     pub controller: Option<Controller>,
     pub resources: Option<Vec<Resource>>,
     pub parameters: ParameterList,
@@ -190,6 +185,7 @@ impl Cell {
         Cell {
             name,
             coordinates_list,
+            kind: None,
             controller: None,
             resources: None,
             parameters: ParameterList::new(),
@@ -223,6 +219,13 @@ impl Cell {
         };
 
         let mut cell = Cell::new(name, coordinates_list);
+
+        // Cell kind (optional)
+        let cell_kind = json_value.get("kind");
+        if let Some(cell_kind) = cell_kind {
+            cell.kind = Some(cell_kind.as_str().unwrap().to_string());
+        }
+
         // Parameters
         let json_cell_params = json_value.get("custom_properties");
         if let Some(json_cell_params) = json_cell_params {
