@@ -35,6 +35,8 @@ pub struct Controller {
     pub name: String,
     pub kind: Option<String>,
     pub size: Option<u64>,
+    pub io_input: Option<bool>,
+    pub io_output: Option<bool>,
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
@@ -46,6 +48,8 @@ impl Controller {
             name,
             kind: None,
             size,
+            io_input: None,
+            io_output: None,
             component_type: "controller".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
@@ -80,6 +84,17 @@ impl Controller {
             controller.kind = Some(controller_kind.as_str().unwrap().to_string());
         } else if controller.name.is_empty() {
             return Err(Error::ComponentWithoutNameOrKind);
+        }
+
+        // IO input (optional)
+        let io_input = json_value.get("io_input");
+        if let Some(io_input) = io_input {
+            controller.io_input = Some(io_input.as_bool().unwrap());
+        }
+        // IO output (optional)
+        let io_output = json_value.get("io_output");
+        if let Some(io_output) = io_output {
+            controller.io_output = Some(io_output.as_bool().unwrap());
         }
 
         // Check component type
@@ -135,6 +150,8 @@ pub struct Resource {
     pub kind: Option<String>,
     pub slot: Option<u64>,
     pub size: Option<u64>,
+    pub io_input: Option<bool>,
+    pub io_output: Option<bool>,
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
@@ -147,6 +164,8 @@ impl Resource {
             kind: None,
             slot,
             size,
+            io_input: None,
+            io_output: None,
             component_type: "resource".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
@@ -183,6 +202,18 @@ impl Resource {
         } else if resource.name.is_empty() {
             return Err(Error::ComponentWithoutNameOrKind);
         }
+
+        // IO input (optional)
+        let io_input = json_value.get("io_input");
+        if let Some(io_input) = io_input {
+            resource.io_input = Some(io_input.as_bool().unwrap());
+        }
+        // IO output (optional)
+        let io_output = json_value.get("io_output");
+        if let Some(io_output) = io_output {
+            resource.io_output = Some(io_output.as_bool().unwrap());
+        }
+
         // Check component type
         let component_type = json_value.get("component_type");
         if let Some(component_type) = component_type {

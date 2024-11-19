@@ -358,7 +358,11 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             }) {
                 if let Ok(controller_from_pool) = Controller::from_json(&controller.to_string()) {
                     // Check size
-                    cell_object.controller.as_mut().unwrap().size = controller_from_pool.size;
+                    if cell_object.controller.as_ref().unwrap().size.is_none()
+                        && controller_from_pool.size.is_some()
+                    {
+                        cell_object.controller.as_mut().unwrap().size = controller_from_pool.size;
+                    }
                     // append parameters from controller_from_pool to controller_parameters
                     overwritten_params.extend(merge_parameters(
                         &mut cell_object.controller.as_mut().unwrap().parameters,
@@ -379,6 +383,20 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                     {
                         cell_object.controller.as_mut().unwrap().kind = controller_from_pool.kind;
                     }
+                    // check io input
+                    if controller_from_pool.io_input.is_some()
+                        && cell_object.controller.as_ref().unwrap().io_input.is_none()
+                    {
+                        cell_object.controller.as_mut().unwrap().io_input =
+                            controller_from_pool.io_input;
+                    }
+                    // check io output
+                    if controller_from_pool.io_output.is_some()
+                        && cell_object.controller.as_ref().unwrap().io_output.is_none()
+                    {
+                        cell_object.controller.as_mut().unwrap().io_output =
+                            controller_from_pool.io_output;
+                    }
                 }
             }
         }
@@ -398,7 +416,11 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
                 {
                     // Check size
-                    cell_object.controller.as_mut().unwrap().size = controller_from_lib.size;
+                    if cell_object.controller.as_ref().unwrap().size.is_none()
+                        && controller_from_lib.size.is_some()
+                    {
+                        cell_object.controller.as_mut().unwrap().size = controller_from_lib.size;
+                    }
                     // append parameters from controller_from_lib to controller_parameters
                     overwritten_params.extend(merge_parameters(
                         &mut cell_object.controller.as_mut().unwrap().parameters,
@@ -426,6 +448,20 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                             .unwrap()
                             .required_parameters
                             .extend(controller_from_lib.required_parameters);
+                    }
+                    // check io input
+                    if controller_from_lib.io_input.is_some()
+                        && cell_object.controller.as_ref().unwrap().io_input.is_none()
+                    {
+                        cell_object.controller.as_mut().unwrap().io_input =
+                            controller_from_lib.io_input;
+                    }
+                    // check io output
+                    if controller_from_lib.io_output.is_some()
+                        && cell_object.controller.as_ref().unwrap().io_output.is_none()
+                    {
+                        cell_object.controller.as_mut().unwrap().io_output =
+                            controller_from_lib.io_output;
                     }
                 }
             }
@@ -535,6 +571,9 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             );
             let output_controller_json = serde_json::json!({
                 "name": cell_object.controller.as_ref().unwrap().name,
+                "size": cell_object.controller.as_ref().unwrap().size,
+                "io_input": cell_object.controller.as_ref().unwrap().io_input,
+                "io_output": cell_object.controller.as_ref().unwrap().io_output,
                 "fingerprint": controller_hash,
                 "parameters": cell_object.controller.as_ref().unwrap().parameters,
             });
@@ -577,6 +616,15 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                     // check if the resource has kind
                     if resource_from_pool.kind.is_some() && resource_object.kind.is_none() {
                         resource_object.kind = resource_from_pool.kind;
+                    }
+                    // check io input
+                    if resource_from_pool.io_input.is_some() && resource_object.io_input.is_none() {
+                        resource_object.io_input = resource_from_pool.io_input;
+                    }
+                    // check io output
+                    if resource_from_pool.io_output.is_some() && resource_object.io_output.is_none()
+                    {
+                        resource_object.io_output = resource_from_pool.io_output;
                     }
                 }
             }
@@ -626,6 +674,18 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                             resource_object
                                 .required_parameters
                                 .extend(resource_from_lib.required_parameters);
+                        }
+                        // check io input
+                        if resource_from_lib.io_input.is_some()
+                            && resource_object.io_input.is_none()
+                        {
+                            resource_object.io_input = resource_from_lib.io_input;
+                        }
+                        // check io output
+                        if resource_from_lib.io_output.is_some()
+                            && resource_object.io_output.is_none()
+                        {
+                            resource_object.io_output = resource_from_lib.io_output;
                         }
                     }
                 }
@@ -703,6 +763,9 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 let output_resource_json = serde_json::json!({
                     "name": resource_object.name,
                     "fingerprint": resource_hash,
+                    "size": resource_object.size,
+                    "io_input": resource_object.io_input,
+                    "io_output": resource_object.io_output,
                     "parameters": resource_object.parameters,
                 });
                 output_resources.push(output_resource_json);
