@@ -1,5 +1,12 @@
+use crate::utils::{get_library_path, get_rtl_template_from_library};
 use log::warn;
-use std::{collections::BTreeMap, fmt::write};
+use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::write,
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub type ParameterList = BTreeMap<String, u64>;
 
@@ -30,10 +37,16 @@ impl std::convert::From<std::io::Error> for Error {
     }
 }
 
+pub trait RTLComponent {
+    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error>;
+}
+
 #[derive(Clone)]
 pub struct Controller {
     pub name: String,
+    pub fingerprint: Option<String>,
     pub kind: Option<String>,
+    pub already_defined: bool,
     pub size: Option<u64>,
     pub io_input: Option<bool>,
     pub io_output: Option<bool>,
@@ -46,7 +59,9 @@ impl Controller {
     pub fn new(name: String, size: Option<u64>) -> Self {
         Controller {
             name,
+            fingerprint: None,
             kind: None,
+            already_defined: false,
             size,
             io_input: None,
             io_output: None,
@@ -144,10 +159,71 @@ impl Controller {
     }
 }
 
+impl RTLComponent for Controller {
+    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
+        // Get the RTL template for the controller
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+            // Create output file
+            fs::File::create(output_file).expect("Failed to create file");
+            let mj_env = minijinja::Environment::new();
+            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
+                fs::write(output_file, output_str)?;
+            } else {
+                panic!("Failed to render template for controller {}", self.name);
+            }
+        } else {
+            panic!("Failed to get RTL template for controller {}", self.name);
+        }
+        Ok(())
+    }
+}
+
+impl Serialize for Controller {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the struct as a map with the following keys:
+        // - controller_name
+        // - kind
+        // - size
+        // - io_input
+        // - io_output
+        // - component_type
+        // - custom_properties
+        // - required_parameters
+        let mut state = serializer.serialize_map(Some(8))?;
+        state.serialize_entry("name", &self.name)?;
+        if let Some(fingerprint) = &self.fingerprint {
+            state.serialize_entry("fingerprint", fingerprint)?;
+        }
+        state.serialize_entry("already_defined", &self.already_defined)?;
+        if let Some(kind) = &self.kind {
+            state.serialize_entry("kind", kind)?;
+        }
+        if let Some(size) = self.size {
+            state.serialize_entry("size", &size)?;
+        }
+        if let Some(io_input) = self.io_input {
+            state.serialize_entry("io_input", &io_input)?;
+        }
+        if let Some(io_output) = self.io_output {
+            state.serialize_entry("io_output", &io_output)?;
+        }
+        state.serialize_entry("component_type", &self.component_type)?;
+        if !self.parameters.is_empty() {
+            state.serialize_entry("parameters", &self.parameters)?;
+        }
+        state.end()
+    }
+}
+
 #[derive(Clone)]
 pub struct Resource {
     pub name: String,
+    pub fingerprint: Option<String>,
     pub kind: Option<String>,
+    pub already_defined: bool,
     pub slot: Option<u64>,
     pub size: Option<u64>,
     pub io_input: Option<bool>,
@@ -161,7 +237,9 @@ impl Resource {
     pub fn new(name: String, slot: Option<u64>, size: Option<u64>) -> Self {
         Resource {
             name,
+            fingerprint: None,
             kind: None,
+            already_defined: false,
             slot,
             size,
             io_input: None,
@@ -263,10 +341,78 @@ impl Resource {
     }
 }
 
+impl RTLComponent for Resource {
+    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
+        // Get the RTL template for the controller
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+            // Create output file
+            fs::File::create(output_file).expect("Failed to create file");
+            let mj_env = minijinja::Environment::new();
+            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
+                fs::write(output_file, output_str)?;
+            } else {
+                panic!("Failed to render template for controller {}", self.name);
+            }
+        } else {
+            panic!("Failed to get RTL template for controller {}", self.name);
+        }
+        Ok(())
+    }
+}
+
+impl Serialize for Resource {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the struct as a map with the following keys:
+        // - resource_name
+        // - kind
+        // - slot
+        // - size
+        // - io_input
+        // - io_output
+        // - component_type
+        // - custom_properties
+        // - required_parameters
+
+        let mut state = serializer.serialize_map(Some(8))?;
+        state.serialize_entry("name", &self.name)?;
+        if let Some(fingerprint) = &self.fingerprint {
+            state.serialize_entry("fingerprint", fingerprint)?;
+        }
+        state.serialize_entry("already_defined", &self.already_defined)?;
+        if let Some(kind) = &self.kind {
+            state.serialize_entry("kind", kind)?;
+        }
+        if let Some(slot) = self.slot {
+            state.serialize_entry("slot", &slot)?;
+        }
+        if let Some(size) = self.size {
+            state.serialize_entry("size", &size)?;
+        }
+        if let Some(io_input) = self.io_input {
+            state.serialize_entry("io_input", &io_input)?;
+        }
+        if let Some(io_output) = self.io_output {
+            state.serialize_entry("io_output", &io_output)?;
+        }
+        state.serialize_entry("component_type", &self.component_type)?;
+        if !self.parameters.is_empty() {
+            state.serialize_entry("parameters", &self.parameters)?;
+        }
+        state.end()
+    }
+}
+
 #[derive(Clone)]
 pub struct Cell {
     pub name: String,
+    pub fingerprint: Option<String>,
+    pub already_defined: bool,
     pub coordinates_list: Vec<(u64, u64)>,
+    pub io_input: Option<bool>,
+    pub io_output: Option<bool>,
     pub kind: Option<String>,
     pub controller: Option<Controller>,
     pub resources: Option<Vec<Resource>>,
@@ -278,7 +424,11 @@ impl Cell {
     pub fn new(name: String, coordinates_list: Vec<(u64, u64)>) -> Self {
         Cell {
             name,
+            fingerprint: None,
+            already_defined: false,
             coordinates_list,
+            io_input: None,
+            io_output: None,
             kind: None,
             controller: None,
             resources: None,
@@ -313,6 +463,17 @@ impl Cell {
         };
 
         let mut cell = Cell::new(name, coordinates_list);
+
+        // IO input (optional)
+        let io_input = json_value.get("io_input");
+        if let Some(io_input) = io_input {
+            cell.io_input = Some(io_input.as_bool().unwrap());
+        }
+        // IO output (optional)
+        let io_output = json_value.get("io_output");
+        if let Some(io_output) = io_output {
+            cell.io_output = Some(io_output.as_bool().unwrap());
+        }
 
         // Cell kind (optional)
         let cell_kind = json_value.get("kind");
@@ -378,14 +539,100 @@ impl Cell {
         self.parameters.insert(name, value);
     }
 
-    pub fn get_resources_names(&self) -> Vec<String> {
-        let mut resources_names = Vec::new();
-        if let Some(resources) = &self.resources {
-            for resource in resources {
-                resources_names.push(resource.name.clone());
+    //pub fn get_resources_names(&self) -> Vec<String> {
+    //    let mut resources_names = Vec::new();
+    //    if let Some(resources) = &self.resources {
+    //        for resource in resources {
+    //            resources_names.push(resource.name.clone());
+    //        }
+    //    }
+    //    resources_names
+    //}
+}
+
+impl RTLComponent for Cell {
+    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
+        // Get the RTL template for the controller
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+            // Create output file
+            fs::File::create(output_file).expect("Failed to create file");
+            let mj_env = minijinja::Environment::new();
+            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
+                fs::write(output_file, output_str)?;
+            } else {
+                panic!("Failed to render template for controller {}", self.name);
             }
+        } else {
+            panic!("Failed to get RTL template for controller {}", self.name);
         }
-        resources_names
+        Ok(())
+    }
+}
+
+impl Serialize for Cell {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the struct as a map with the following keys:
+        // - cell_name
+        // - kind
+        // - controller
+        // - resource_list
+        // - custom_properties
+        // - required_parameters
+        let mut state = serializer.serialize_map(Some(7))?;
+        state.serialize_entry("name", &self.name)?;
+        if let Some(fingerprint) = &self.fingerprint {
+            state.serialize_entry("fingerprint", fingerprint)?;
+        }
+        state.serialize_entry("already_defined", &self.already_defined)?;
+        //state.serialize_entry("coordinates", &self.coordinates_list)?;
+        if let Some(kind) = &self.kind {
+            state.serialize_entry("kind", kind)?;
+        }
+        if let Some(io_input) = self.io_input {
+            state.serialize_entry("io_input", &io_input)?;
+        }
+        if let Some(io_output) = self.io_output {
+            state.serialize_entry("io_output", &io_output)?;
+        }
+        if !self.parameters.is_empty() {
+            state.serialize_entry("parameters", &self.parameters)?;
+        }
+        if let Some(controller) = &self.controller {
+            state.serialize_entry("controller", controller)?;
+        }
+        if let Some(resources) = &self.resources {
+            state.serialize_entry("resources_list", resources)?;
+        }
+        state.end()
+    }
+}
+
+struct CellWithCoordinates {
+    cell: Cell,
+    coordinates: (u64, u64),
+}
+
+impl Serialize for CellWithCoordinates {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the struct as a map with the following keys:
+        // - cell
+        // - coordinates
+        let mut state = serializer.serialize_map(Some(2))?;
+        let row = self.coordinates.0;
+        let col = self.coordinates.1;
+        let coordinates_hashmap = [("row", &row), ("col", &col)]
+            .iter()
+            .cloned()
+            .collect::<HashMap<&str, &u64>>();
+        state.serialize_entry("coordinates", &coordinates_hashmap)?;
+        state.serialize_entry("cell", &self.cell)?;
+        state.end()
     }
 }
 
@@ -419,18 +666,34 @@ impl Fabric {
     }
 }
 
-//impl std::fmt::Debug for Cell {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//        // Print following this format:
-//        //{
-//        //"coordinates": [
-//        //  {
-//        //    "row": 0,
-//        //    "col": 0
-//        //  }
-//        //],
-//        //"cell_name": "drra_cell_input"
-//        //}
-//        write!(f, "{{\n\"coordinates\": [\n{{\n\"row\": {},\n\"col\": {}\n}}\n],\n\"cell_name\": \"{}\"\n}}", self.coordinates.0, self.coordinates.1, self.name)
-//    }
-//}
+impl Serialize for Fabric {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the struct as a map with the following keys:
+        // - height
+        // - width
+        // - cells
+        // - custom_properties
+        let mut state = serializer.serialize_map(Some(4))?;
+        state.serialize_entry("height", &self.height)?;
+        state.serialize_entry("width", &self.width)?;
+        let mut cells_with_coords = Vec::new();
+        for (row_idx, row) in self.cells.iter().enumerate() {
+            for (col_idx, cell) in row.iter().enumerate() {
+                let cell_with_coords = CellWithCoordinates {
+                    cell: cell.clone(),
+                    coordinates: (row_idx as u64, col_idx as u64),
+                };
+                cells_with_coords.push(cell_with_coords);
+            }
+        }
+        state.serialize_entry("cells", &cells_with_coords)?;
+        //state.serialize_entry("cells", &self.cells)?;
+        if !self.parameters.is_empty() {
+            state.serialize_entry("parameters", &self.parameters)?;
+        }
+        state.end()
+    }
+}

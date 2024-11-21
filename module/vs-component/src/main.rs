@@ -2,8 +2,10 @@
 mod collector;
 mod drra;
 mod generator;
+mod utils;
 
-use crate::drra::{Cell, Controller, Fabric, ParameterList, Resource};
+use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
+use crate::utils::*;
 use bs58::encode;
 use clap::{Parser, Subcommand, ValueEnum};
 use log::{debug, error, info, trace, warn};
@@ -59,6 +61,12 @@ enum Command {
         #[arg(short, long)]
         schema_file: String,
     },
+    #[command(about = "Clean the build directory", name = "clean")]
+    Clean {
+        /// Build directory
+        #[arg(short, long, default_value = "build")]
+        build_dir: String,
+    },
 }
 
 #[derive(Parser)]
@@ -74,6 +82,7 @@ fn main() {
     //env_logger::Builder::from_default_env()
     //    .filter_level(log::LevelFilter::Debug)
     //    .init();
+    log_panics::init();
 
     let cli_args = Args::parse();
 
@@ -132,7 +141,22 @@ fn main() {
                 Err(e) => error!("Error: {}", e),
             };
         }
+        Command::Clean { build_dir } => {
+            info!("Cleaning build directory ...");
+            match clean(build_dir.clone()) {
+                Ok(_) => info!("Done!"),
+                Err(e) => error!("Error: {}", e),
+            };
+        }
     }
+}
+
+fn clean(build_dir: String) -> Result<()> {
+    let build_dir = Path::new(&build_dir);
+    if build_dir.exists() {
+        fs::remove_dir_all(build_dir)?;
+    }
+    Ok(())
 }
 
 fn validate_json(json_file: String, schema_file: String) -> Result<()> {
@@ -160,18 +184,14 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
 }
 
 fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
-    debug!("Library path: {}", get_library_path());
+    // Find or create the build directory
+    let rtl_output_dir = Path::new(&build_dir).join("rtl");
+    fs::create_dir_all(&rtl_output_dir).expect("Failed to create build directory");
 
     // Create lists for implemented cells, resources and controllers
     let mut implemented_cells: HashMap<String, Cell> = HashMap::new();
     let mut implemented_resources: HashMap<String, Resource> = HashMap::new();
     let mut implemented_controllers: HashMap<String, Controller> = HashMap::new();
-
-    // Create JSON arrays to store the output cells, resources and controllers
-    let mut output_cells: Vec<serde_json::Value> = Vec::new();
-    let mut output_resources: Vec<serde_json::Value> = Vec::new();
-    let mut output_controllers: Vec<serde_json::Value> = Vec::new();
-    let mut output_cells_list: Vec<serde_json::Value> = Vec::new();
 
     // parse the arguments to find the fabric.json input file
     let fabric_file = match fs::File::open(Path::new(&fabric_filepath)) {
@@ -266,6 +286,14 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 if cell_from_pool.resources.is_some() && cell_object.resources.is_none() {
                     cell_object.resources = cell_from_pool.resources.clone();
                 }
+                // Check io input
+                if cell_from_pool.io_input.is_some() && cell_object.io_input.is_none() {
+                    cell_object.io_input = cell_from_pool.io_input;
+                }
+                // Check io output
+                if cell_from_pool.io_output.is_some() && cell_object.io_output.is_none() {
+                    cell_object.io_output = cell_from_pool.io_output;
+                }
                 // If cell kind was not provided in "fabric" get from cell_from_pool
                 if cell_from_pool.kind.is_some() && cell_object.kind.is_none() {
                     cell_object.kind = cell_from_pool.kind.clone();
@@ -286,7 +314,7 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
 
         // Get cell from library if kind is provided
         if let Some(cell_type) = cell_object.kind.as_ref() {
-            if let Ok(lib_cell) = get_from_library(cell_type) {
+            if let Ok(lib_cell) = get_arch_from_library(cell_type) {
                 if let Ok(cell_from_lib) = Cell::from_json(&lib_cell.to_string()) {
                     // If cell controller was not provided in "fabric" or cell pool, get from cell_from_lib
                     if cell_from_lib.controller.is_some() && cell_object.controller.is_none() {
@@ -331,15 +359,33 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         if cell_object.resources.is_none() {
             panic!("Resources for cell {} not found in the library and were not provided in JSON file fabric or cell pool", cell_object.name);
         }
+        let mut cell_added_parameters = ParameterList::new();
         if cell_object.parameters.is_empty() && cell_object.required_parameters.is_empty() {
             warn!(
                 "No parameters or required_parameters found for cell {}",
                 cell_object.name,
             );
         } else {
+            // Find and add the required parameters to the cell
+            let mut filtered_parameters = ParameterList::new();
+            for required_param in &cell_object.required_parameters {
+                if let Some(param_value) = cell_object.parameters.get(required_param) {
+                    filtered_parameters.insert(required_param.clone(), *param_value);
+                } else if let Some(param_value) = fabric_object.parameters.get(required_param) {
+                    filtered_parameters.insert(required_param.clone(), *param_value);
+                } else {
+                    panic!(
+                        "Required parameter {} not found for cell {}",
+                        required_param, cell_object.name,
+                    );
+                }
+            }
+            cell_object.parameters = filtered_parameters.clone();
             // Add cell parameters to the registry
             match add_parameters(&cell_object.parameters, &mut parameter_list) {
-                Ok(_) => (),
+                Ok(added_params) => {
+                    cell_added_parameters = added_params;
+                }
                 Err(e) => {
                     panic!(
                         "Error with cell parameters for cell ({}): {}",
@@ -412,7 +458,7 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
 
         // Get the controller from the library if kind is provided
         if let Some(controller_kind) = cell_object.controller.as_ref().unwrap().kind.as_ref() {
-            if let Ok(lib_controller) = get_from_library(controller_kind) {
+            if let Ok(lib_controller) = get_arch_from_library(controller_kind) {
                 if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
                 {
                     // Check size
@@ -500,6 +546,7 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         }
 
         // Add controller required parameters to the registry
+        let mut controller_added_parameters = ParameterList::new();
         if cell_object
             .controller
             .as_ref()
@@ -544,7 +591,9 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             }
             cell_object.controller.as_mut().unwrap().parameters = filtered_parameters.clone();
             match add_parameters(&filtered_parameters, &mut parameter_list) {
-                Ok(_) => (),
+                Ok(added_params) => {
+                    controller_added_parameters = added_params;
+                }
                 Err(e) => {
                     panic!(
                         "Error with controller parameters for controller {} in cell {}: ({})",
@@ -558,10 +607,17 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
 
         // generate a hash based on the required parameters for the controller
         let controller_hash = generate_hash(
-            vec![cell_object.controller.as_ref().unwrap().name.clone()],
+            vec![cell_object
+                .controller
+                .as_ref()
+                .unwrap()
+                .kind
+                .clone()
+                .unwrap()],
             &parameter_list,
         );
         resource_hashes.push(controller_hash.clone());
+        cell_object.controller.as_mut().unwrap().fingerprint = Some(controller_hash.clone());
 
         // Check if two controllers with same parameters have the same hash
         if !implemented_controllers.contains_key(&controller_hash) {
@@ -569,17 +625,57 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 controller_hash.clone(),
                 cell_object.controller.as_ref().unwrap().clone(),
             );
-            let output_controller_json = serde_json::json!({
-                "name": cell_object.controller.as_ref().unwrap().name,
-                "size": cell_object.controller.as_ref().unwrap().size,
-                "io_input": cell_object.controller.as_ref().unwrap().io_input,
-                "io_output": cell_object.controller.as_ref().unwrap().io_output,
-                "fingerprint": controller_hash,
-                "parameters": cell_object.controller.as_ref().unwrap().parameters,
-            });
-            output_controllers.push(output_controller_json);
+        } else {
+            cell_object.controller.as_mut().unwrap().already_defined = true;
         }
-        //todo!("Generate the controller RTL here");
+
+        debug!(
+            "Controller: {} in cell: {} (hash: {})",
+            cell_object.controller.as_ref().unwrap().name,
+            cell_object.name,
+            controller_hash,
+        );
+        debug!(
+            "Serialized controller: \n{}",
+            serde_json::to_string_pretty(&cell_object.controller.as_ref()).unwrap()
+        );
+
+        // Check if the RTL has already been generated for this controller
+        let rtl_output_file = Path::new(&rtl_output_dir).join(format!(
+            "{}.sv",
+            cell_object.controller.as_ref().unwrap().name
+        ));
+        if Path::exists(&rtl_output_file) {
+            debug!(
+                "Using existing RTL for controller {} (hash: {})",
+                cell_object.controller.as_ref().unwrap().name,
+                controller_hash,
+            );
+        } else {
+            // Generate the controller RTL here
+            if cell_object
+                .controller
+                .as_ref()
+                .unwrap()
+                .generate_rtl(&rtl_output_file)
+                .is_ok()
+            {
+                debug!(
+                    "Generated RTL for controller {} (hash: {})",
+                    cell_object.controller.as_ref().unwrap().name,
+                    controller_hash,
+                );
+            } else {
+                panic!(
+                    "Failed to generate RTL for controller {} (hash: {})",
+                    cell_object.controller.as_ref().unwrap().name,
+                    controller_hash,
+                );
+            }
+        }
+
+        // Remove the controller parameters from the registry
+        remove_parameters(&controller_added_parameters, &mut parameter_list).unwrap();
 
         // RESOURCES
         let mut current_slot = 0;
@@ -639,7 +735,7 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
 
             // Get the resource from the library
             if let Some(resource_kind) = resource_object.kind.as_ref() {
-                if let Ok(lib_resource) = get_from_library(resource_kind) {
+                if let Ok(lib_resource) = get_arch_from_library(resource_kind) {
                     if let Ok(resource_from_lib) = Resource::from_json(&lib_resource.to_string()) {
                         // Check slot
                         if resource_object.slot.is_none() && resource_from_lib.slot.is_some() {
@@ -710,6 +806,7 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             }
 
             // Add required parameters to the registry
+            let mut resource_added_parameters = ParameterList::new();
             if resource_object.required_parameters.is_empty() {
                 warn!(
                     "No parameters found for resource {} (slot {}) in cell {}",
@@ -739,7 +836,9 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 }
                 resource_object.parameters = filtered_parameters.clone();
                 match add_parameters(&filtered_parameters, &mut parameter_list) {
-                    Ok(_) => (),
+                    Ok(added_params) => {
+                        resource_added_parameters = added_params;
+                    }
                     Err(e) => {
                         panic!(
                         "Error with resource parameters for resource ({}, slot {}) in cell {}: ({})",
@@ -753,87 +852,114 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             }
 
             // generate a hash based on the required parameters for the resource
-            let resource_hash = generate_hash(vec![resource_object.name.clone()], &parameter_list);
+            let resource_hash =
+                generate_hash(vec![resource_object.kind.clone().unwrap()], &parameter_list);
             resource_hashes.push(resource_hash.clone());
+            resource_object.fingerprint = Some(resource_hash.clone());
 
             // Check if two resources with same parameters have the same hash
             if !implemented_resources.contains_key(&resource_hash) {
                 implemented_resources.insert(resource_hash.clone(), resource_object.clone());
-                //todo!("Generate the resource RTL here");
-                let output_resource_json = serde_json::json!({
-                    "name": resource_object.name,
-                    "fingerprint": resource_hash,
-                    "size": resource_object.size,
-                    "io_input": resource_object.io_input,
-                    "io_output": resource_object.io_output,
-                    "parameters": resource_object.parameters,
-                });
-                output_resources.push(output_resource_json);
+            } else {
+                resource_object.already_defined = true;
+            }
+
+            debug!(
+                "Resource: {} (slot: {}) in cell: {} (hash: {})",
+                resource_object.name,
+                resource_object.slot.unwrap(),
+                cell_object.name,
+                resource_hash,
+            );
+            debug!(
+                "Serialized resource: \n{}",
+                serde_json::to_string_pretty(&resource_object).unwrap()
+            );
+
+            // Check if the RTL has already been generated for this resource
+            let rtl_output_file =
+                Path::new(&rtl_output_dir).join(format!("{}.sv", resource_object.name));
+            if Path::exists(&rtl_output_file) {
+                debug!(
+                    "Using existing RTL for resource {} (hash: {})",
+                    resource_object.name, resource_hash,
+                );
+            } else {
+                // Generate the resource RTL here
+                if resource_object.generate_rtl(&rtl_output_file).is_ok() {
+                    debug!(
+                        "Generated RTL for resource {} (hash: {})",
+                        resource_object.name, resource_hash,
+                    );
+                } else {
+                    panic!(
+                        "Failed to generate RTL for resource {} (hash: {})",
+                        resource_object.name, resource_hash,
+                    );
+                }
             }
 
             // Remove the resource parameters from the registry
-            remove_parameters(&resource_object.parameters, &mut parameter_list).unwrap();
+            remove_parameters(&resource_added_parameters, &mut parameter_list).unwrap();
         }
         // generate a hash based on the required parameters for the cell
-        let cell_hash = generate_hash(resource_hashes.clone(), &parameter_list);
+        let mut cell_hash_content = Vec::new();
+        if cell_object.kind.is_none() {
+            cell_hash_content = resource_hashes.clone();
+        } else {
+            cell_hash_content.push(cell_object.kind.clone().unwrap());
+            cell_hash_content.extend(resource_hashes.clone());
+        }
+        let cell_hash = generate_hash(cell_hash_content, &parameter_list);
+        cell_object.fingerprint = Some(cell_hash.clone());
 
         // Check if two cells with same parameters have the same hash
         if !implemented_cells.contains_key(&cell_hash) {
             implemented_cells.insert(cell_hash.clone(), cell_object.clone());
-            // Create the json object for the cell
-            let output_cell_json = serde_json::json!({
-                "fingerprint": cell_hash,
-                "name": cell_object.name,
-                "parameters": cell_object.parameters,
-                "resources": cell_object.get_resources_names(),
-                "controller": cell_object.controller.as_ref().unwrap().name,
-
-            });
-            output_cells.push(output_cell_json);
+        } else {
+            cell_object.already_defined = true;
         }
-        //todo!("Generate the cell RTL here");
 
         // Add the cell to the fabric at the different coordinates
-        for (row, col) in cell_object.coordinates_list.iter() {
+        for (index, (row, col)) in cell_object.coordinates_list.iter().enumerate() {
+            if index > 0 {
+                cell_object.already_defined = true;
+            }
             fabric_object.add_cell(&cell_object, *row, *col);
         }
 
-        // Create the json object for the cell list
-        for coordinate in cell_object.coordinates_list.iter() {
-            let output_cell_json = serde_json::json!({
-                "coordinates": coordinate,
-                "cell": cell_object.name,
-            });
-            output_cells_list.push(output_cell_json);
+        let rtl_output_file = Path::new(&rtl_output_dir).join(format!("{}.sv", cell_object.name));
+        // Check if the RTL has already been generated for this cell
+        if Path::exists(&rtl_output_file) {
+            debug!(
+                "Using existing RTL for cell {} (hash: {})",
+                cell_object.name, cell_hash,
+            );
+        } else {
+            debug!(
+                "Serialized cell: \n{}",
+                serde_json::to_string_pretty(&cell_object).unwrap()
+            );
+            if cell_object.generate_rtl(&rtl_output_file).is_ok() {
+                debug!(
+                    "Generated RTL for cell {} (hash: {})",
+                    cell_object.name, cell_hash,
+                );
+            } else {
+                panic!(
+                    "Failed to generate RTL for cell {} (hash: {})",
+                    cell_object.name, cell_hash,
+                );
+            }
         }
-
         // remove cell parameters from the registry
-        remove_parameters(&cell_object.parameters, &mut parameter_list).unwrap();
+        remove_parameters(&cell_added_parameters, &mut parameter_list).unwrap();
     }
 
-    let output_json = serde_json::json!({
-        "cells": output_cells,
-        "resources": output_resources,
-        "controllers": output_controllers,
-        "fabric": {
-            "height": fabric_object.height,
-            "width": fabric_object.width,
-            "parameters": fabric_object.parameters,
-            "cells_list": output_cells_list,
-        },
-    });
-
-    // Write the output json to a file in the build directory
-    let output_file = Path::new(&build_dir).join("fabric.json");
-    fs::create_dir_all(build_dir).expect("Failed to create build directory");
-    fs::write(
-        &output_file,
-        serde_json::to_string_pretty(&output_json).unwrap(),
-    )?;
-    println!("{}", serde_json::to_string_pretty(&output_json).unwrap());
-
-    // 5. Generate the top module for fabric using the template and parameters
-
+    debug!(
+        "Serialized fabric: \n{}",
+        serde_json::to_string_pretty(&fabric_object).unwrap()
+    );
     Ok(())
 }
 
@@ -872,81 +998,7 @@ fn merge_parameters(
     Ok(overwritten_params)
 }
 
-fn get_from_library(component_name: &String) -> Result<serde_json::Value> {
-    // Get the library path
-    let library_path = get_library_path();
-
-    // Check if a folder in the library is named the same as the cell
-    let mut cell_path = None;
-    for entry in walkdir::WalkDir::new(&library_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        debug!("Checking path: {:?}", entry.path());
-        let path = entry.path();
-        if path.is_dir()
-            && path
-                .file_name()
-                .map_or(false, |name| name == component_name.as_str())
-        {
-            cell_path = Some(entry.path().to_path_buf());
-            break;
-        }
-    }
-
-    if cell_path.is_none() {
-        error!("Component {} not found in the library", component_name);
-        Err(Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("Component {} not found in the library", component_name),
-        ))
-    } else {
-        let cell_path = cell_path.unwrap();
-        // Get the arch.json file for the cell
-        let arch_path = cell_path.join("arch.json");
-        if !arch_path.exists() {
-            warn!(
-                "Component \"{}\" JSON description not found in library (component path: {})",
-                component_name,
-                cell_path.to_str().unwrap()
-            );
-            return Err(Error::new(
-                std::io::ErrorKind::NotFound,
-                format!(
-                    "Component {} does not contain an arch.json file",
-                    component_name
-                ),
-            ));
-        }
-
-        // Read the arch.json file
-        let json_str = std::fs::read_to_string(&arch_path).expect("Failed to read file");
-        let component_result = serde_json::from_str(&json_str);
-        match component_result {
-            Ok(component) => Ok(component),
-            Err(_) => {
-                warn!(
-                    "Failed to parse JSON description for component \"{}\" (component path: {})",
-                    component_name,
-                    arch_path.to_str().unwrap()
-                );
-                Err(Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Failed to parse json file: {}", arch_path.to_str().unwrap()),
-                ))
-            }
-        }
-    }
-}
-
-fn get_library_path() -> String {
-    let lib_path = env::var("VESYLA_LIBRARY_PATH").expect("Environment variable VESYLA_LIBRARY_PATH not set! Did you forget to source the setup script env.sh?");
-    // get abosulte path
-    let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
-    abosulte.to_str().unwrap().to_string()
-}
-
-fn generate_hash(names: Vec<String>, parameters: &BTreeMap<String, u64>) -> String {
+fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
     let mut hasher = DefaultHasher::new();
     for name in names {
         hasher.write(name.as_bytes());
@@ -959,36 +1011,47 @@ fn generate_hash(names: Vec<String>, parameters: &BTreeMap<String, u64>) -> Stri
     encode(hash.to_be_bytes()).into_string()
 }
 
-fn add_parameters(parameters: &ParameterList, parameter_list: &mut ParameterList) -> Result<()> {
+fn add_parameters(
+    parameters: &ParameterList,
+    parameter_list: &mut ParameterList,
+) -> Result<ParameterList> {
+    let mut added_params = ParameterList::new();
     for (param_name, param_value) in parameters.iter() {
-        if add_parameter(param_name.to_string(), *param_value, parameter_list).is_err() {
-            return Err(Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!("Duplicate parameter: {}", param_name),
-            ));
+        match add_parameter(param_name.to_string(), *param_value, parameter_list) {
+            Ok(true) => {
+                added_params.insert(param_name.to_string(), *param_value);
+            }
+            Ok(false) => (),
+            Err(_) => {
+                return Err(Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("Duplicate parameter: {}", param_name),
+                ));
+            }
         }
     }
-    Ok(())
+    Ok(added_params)
 }
 
-fn add_parameter(key: String, value: u64, parameter_list: &mut ParameterList) -> Result<()> {
-    if parameter_list.contains_key(key.as_str())
-        && parameter_list.get(key.as_str()).unwrap() != &value
-    {
-        return Err(Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!(
-                "Duplicate parameter with different value: {} ({} vs. {})",
-                key,
-                parameter_list.get(key.as_str()).unwrap(),
-                value
-            ),
-        ));
+fn add_parameter(key: String, value: u64, parameter_list: &mut ParameterList) -> Result<bool> {
+    if parameter_list.contains_key(key.as_str()) {
+        if parameter_list.get(key.as_str()).unwrap() != &value {
+            return Err(Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "Duplicate parameter with different value: {} ({} vs. {})",
+                    key,
+                    parameter_list.get(key.as_str()).unwrap(),
+                    value
+                ),
+            ));
+        } else {
+            return Ok(false);
+        }
     }
 
     parameter_list.insert(key, value);
-
-    Ok(())
+    Ok(true)
 }
 
 fn remove_parameters(parameters: &ParameterList, parameter_list: &mut ParameterList) -> Result<()> {

@@ -19,6 +19,7 @@
   "cells": [
     {
       "name": "cell_impl",
+      "kind": "input_output_cell",
       "controller": "sequencer_impl",
       "resource_list": [
         "dummy_impl",
