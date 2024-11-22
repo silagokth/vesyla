@@ -963,6 +963,12 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         "Serialized fabric: \n{}",
         serde_json::to_string_pretty(&fabric_object).unwrap()
     );
+    let fabric_output_file = Path::new(&rtl_output_dir).join("fabric.sv");
+    if fabric_object.generate_rtl(&fabric_output_file).is_ok() {
+        debug!("Generated RTL for fabric");
+    } else {
+        panic!("Failed to generate RTL for fabric");
+    }
     Ok(())
 }
 
