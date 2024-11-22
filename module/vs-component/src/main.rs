@@ -184,6 +184,9 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
 }
 
 fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
+    // Clean build directory
+    clean(build_dir.clone())?;
+
     // Find or create the build directory
     let rtl_output_dir = Path::new(&build_dir).join("rtl");
     fs::create_dir_all(&rtl_output_dir).expect("Failed to create build directory");
