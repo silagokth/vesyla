@@ -1,35 +1,7 @@
-{% set name_pool = [] %}
-{%- for cell in cells %}
-    name pools: {{name_pool}}
-    {%- if not cell.cell.already_defined %}
-        `define {{cell.cell.name}} {{cell.cell.fingerprint}}
-        `define {{cell.cell.name}}_pkg {{cell.cell.fingerprint}}_pkg
-    name pools: {{name_pool}}
-        {% set name_pool = name_pool|append(cell.cell.name)%}
-    name pools: {{name_pool}}
-    {% endif %}
-    {%- if not cell.cell.controller.already_defined %}
-        `define {{cell.cell.controller.name}} {{cell.cell.controller.fingerprint}}
-        `define {{cell.cell.controller.name}}_pkg {{cell.cell.controller.fingerprint}}_pkg
-    name pools: {{name_pool}}
-        {% set name_pool = name_pool|append(cell.cell.controller.name)%}
-    name pools: {{name_pool}}
-    {% endif %}
-    {%- for rs in cell.cell.resources_list %}
-        {%- if not rs.already_defined %}
-            rs.name : {{rs.name}}
-            `define {{rs.name}} {{rs.fingerprint}}
-            `define {{rs.name}}_pkg {{rs.fingerprint}}_pkg
-    name pools: {{name_pool}}
-        {% set name_pool = name_pool|append(rs.name)%}
-    name pools: {{name_pool}}
-        {% endif %}
-    {% endfor %}
-
+{% for key, value in fingerprint_table | items -%}
+`define {{key}} {{value}}
+`define {{key}}_pkg {{value}}_pkg
 {%- endfor %}
-
-
-
 
 package fabric_pkg;
     {%- for p in parameters %}

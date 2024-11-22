@@ -665,6 +665,41 @@ impl Fabric {
     pub fn add_cell(&mut self, cell: &Cell, row: u64, col: u64) {
         self.cells[row as usize][col as usize] = cell.clone();
     }
+
+    fn get_fingerprint_table(&self) -> HashMap<String, String> {
+        let mut fingerprint_table = HashMap::new();
+        for row in self.cells.iter() {
+            for cell in row.iter() {
+                if let Some(fingerprint) = &cell.fingerprint {
+                    if !fingerprint_table.contains_key(&cell.name) {
+                        fingerprint_table.insert(cell.name.clone(), fingerprint.clone());
+                    }
+                    if !fingerprint_table.contains_key(&cell.controller.as_ref().unwrap().name) {
+                        fingerprint_table.insert(
+                            cell.controller.as_ref().unwrap().name.clone(),
+                            cell.controller
+                                .as_ref()
+                                .unwrap()
+                                .fingerprint
+                                .clone()
+                                .unwrap(),
+                        );
+                    }
+                    if let Some(resources) = &cell.resources {
+                        for resource in resources.iter() {
+                            if !fingerprint_table.contains_key(&resource.name) {
+                                fingerprint_table.insert(
+                                    resource.name.clone(),
+                                    resource.fingerprint.clone().unwrap(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        fingerprint_table
+    }
 }
 
 impl RTLComponent for Fabric {
@@ -755,6 +790,7 @@ impl Serialize for Fabric {
         if !self.parameters.is_empty() {
             state.serialize_entry("parameters", &self.parameters)?;
         }
+        state.serialize_entry("fingerprint_table", &self.get_fingerprint_table())?;
         state.end()
     }
 }
