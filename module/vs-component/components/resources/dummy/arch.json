@@ -5,7 +5,5 @@
   "io_input": false,
   "io_output": false,
   "custom_properties": [],
-  "required_parameters": [
-    "RESOURCE_INSTR_WIDTH"
-  ]
+  "required_parameters": ["RESOURCE_INSTR_WIDTH"]
 }

@@ -1,12 +1,7 @@
 package fabric_pkg;
-    parameter IO_DATA_WIDTH = 256;
-    parameter IO_ADDR_WIDTH = 16;
-    parameter RESOURCE_INSTR_WIDTH = 27;
-    parameter ROWS = 1;
-    parameter COLS = 2;
-    parameter INSTR_DATA_WIDTH = 32;
-    parameter INSTR_ADDR_WIDTH = 6;
-    parameter INSTR_HOPS_WIDTH = 4;
+    {%- for p in parameters %}
+    parameter {{p}} = {{parameters[p]}};
+    {%- endfor %}
 endpackage
 
 module fabric
@@ -71,49 +66,30 @@ import fabric_pkg::*;
         assign ret[i] = ret_net[i][0];
     end
 
-    input_output_cell cell_inst_0_0 (
+    {% for cell in cells %}
+    {%- set r=cell.coordinates.row -%}
+    {%- set c=cell.coordinates.col -%}
+    {{cell.cell.name}} cell_{{r}}_{{c}}_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .call_in(call_net[0][0]),
-        .call_out(call_net[0][0+1]),
-        .ret_in(ret_net[0][0+1]),
-        .ret_out(ret_net[0][0]),
-        .io_en_in(io_en_in[0]),
-        .io_addr_in(io_addr_in[0]),
-        .io_data_in(io_data_in[0]),
-        .io_en_out(io_en_out[0]),
-        .io_addr_out(io_addr_out[0]),
-        .io_data_out(io_data_out[0]),
-        .instr_data_in(instr_data_net[0][0]),
-        .instr_addr_in(instr_addr_net[0][0]),
-        .instr_hops_in(instr_hops_net[0][0]),
-        .instr_en_in(instr_en_net[0][0]),
-        .instr_data_out(instr_data_net[0][1]),
-        .instr_addr_out(instr_addr_net[0][1]),
-        .instr_hops_out(instr_hops_net[0][1]),
-        .instr_en_out(instr_en_net[0][1])
-    );
-    input_output_cell cell_inst_0_1 (
-        .clk(clk),
-        .rst_n(rst_n),
-        .call_in(call_net[0][1]),
-        .call_out(call_net[0][2]),
-        .ret_in(ret_net[0][2]),
-        .ret_out(ret_net[0][1]),
-        .io_en_in(io_en_in[1]),
-        .io_addr_in(io_addr_in[1]),
-        .io_data_in(io_data_in[1]),
-        .io_en_out(io_en_out[1]),
-        .io_addr_out(io_addr_out[1]),
-        .io_data_out(io_data_out[1]),
-        .instr_data_in(instr_data_net[0][1]),
-        .instr_addr_in(instr_addr_net[0][1]),
-        .instr_hops_in(instr_hops_net[0][1]),
-        .instr_en_in(instr_en_net[0][1]),
-        .instr_data_out(instr_data_net[0][2]),
-        .instr_addr_out(instr_addr_net[0][2]),
-        .instr_hops_out(instr_hops_net[0][2]),
-        .instr_en_out(instr_en_net[0][2])
-    );
-
+        .call_in(call_net[{{r}}][{{c}}]),
+        .call_out(call_net[{{r}}][{{c + 1}}]),
+        .ret_in(ret_net[{{r}}][{{c + 1}}]),
+        .ret_out(ret_net[{{r}}][{{c}}]),
+        .io_en_in(io_en_in[{{c}}]),
+        .io_addr_in(io_addr_in[{{c}}]),
+        .io_data_in(io_data_in[{{c}}]),
+        .io_en_out(io_en_out[{{c}}]),
+        .io_addr_out(io_addr_out[{{c}}]),
+        .io_data_out(io_data_out[{{c}}]),
+        .instr_data_in(instr_data_net[{{r}}][{{c}}]),
+        .instr_addr_in(instr_addr_net[{{r}}][{{c}}]),
+        .instr_hops_in(instr_hops_net[{{r}}][{{c}}]),
+        .instr_en_in(instr_en_net[{{r}}][{{c}}]),
+        .instr_data_out(instr_data_net[{{r}}][{{c + 1}}]),
+        .instr_addr_out(instr_addr_net[{{r}}][{{c + 1}}]),
+        .instr_hops_out(instr_hops_net[{{r}}][{{c + 1}}]),
+        .instr_en_out(instr_en_net[{{r}}][{{c + 1}}])
+    )
+    {% endfor %}
 endmodule

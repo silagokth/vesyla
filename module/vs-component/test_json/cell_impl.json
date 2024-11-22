@@ -1,0 +1,61 @@
+{
+  "name": "cell_impl",
+  "fingerprint": "VEJzHxKdchA",
+  "io_input": true,
+  "io_output": true,
+  "parameters": {
+    "INSTR_ADDR_WIDTH": 6,
+    "INSTR_DATA_WIDTH": 32,
+    "INSTR_HOPS_WIDTH": 4,
+    "IO_ADDR_WIDTH": 16,
+    "IO_DATA_WIDTH": 256,
+    "NUM_SLOTS": 16,
+    "RESOURCE_INSTR_WIDTH": 27
+  },
+  "controller": {
+    "name": "sequencer_impl",
+    "fingerprint": "MvcWbWWJaCp",
+    "kind": "sequencer",
+    "size": 16,
+    "io_input": false,
+    "io_output": false,
+    "component_type": "controller",
+    "parameters": {
+      "INSTR_ADDR_WIDTH": 6,
+      "INSTR_DATA_WIDTH": 32,
+      "INSTR_HOPS_WIDTH": 4,
+      "NUM_SLOTS": 16,
+      "RESOURCE_INSTR_WIDTH": 27
+    }
+  },
+  "resources_list": [
+    {
+      "name": "dummy_impl",
+      "fingerprint": "LHML4Wk3oWo",
+      "kind": "dummy",
+      "slot": 0,
+      "size": 1,
+      "io_input": false,
+      "io_output": false,
+      "component_type": "resource",
+      "parameters": {
+        "RESOURCE_INSTR_WIDTH": 27
+      }
+    },
+    {
+      "name": "vec_add_impl",
+      "fingerprint": "fmcaWkF8W8m",
+      "kind": "vec_add",
+      "slot": 1,
+      "size": 1,
+      "io_input": true,
+      "io_output": true,
+      "component_type": "resource",
+      "parameters": {
+        "IO_ADDR_WIDTH": 16,
+        "IO_DATA_WIDTH": 256,
+        "RESOURCE_INSTR_WIDTH": 27
+      }
+    }
+  ]
+}

@@ -1,15 +1,15 @@
-package input_output_cell_pkg;
-  parameter IO_DATA_WIDTH = 256;
-  parameter IO_ADDR_WIDTH = 16;
-  parameter RESOURCE_INSTR_WIDTH = 27;
-  parameter NUM_SLOTS = 16;
-  parameter INSTR_DATA_WIDTH = 32;
-  parameter INSTR_ADDR_WIDTH = 6;
-  parameter INSTR_HOPS_WIDTH = 4;
+#define {{name}} {{fingerprint}}
+#define {{name}}_pkg {{fingerprint}}_pkg
+
+{% if not already_defined %}
+package {{fingerprint}}_pkg;
+    {%- for p in parameters %}
+    parameter {{p}} = {{parameters[p]}};
+    {%- endfor %}
 endpackage
 
-module input_output_cell
-  import input_output_cell_pkg::*;
+module {{fingerprint}}
+import {{fingerprint}}_pkg::*;
 (
     input logic clk,
     input logic rst_n,
@@ -57,44 +57,51 @@ module input_output_cell
 
   assign ret_out = controller_ret_remember & ret_in_remember;
 
-  sequencer sequencer_inst (
-      .clk(clk),
-      .rst_n(rst_n),
-      .call(controller_call),
-      .ret(controller_ret),
-      .instr_en(instr_en),
-      .instr(instr),
-      .activate(activate),
-      .instr_data_in(instr_data_in),
-      .instr_addr_in(instr_addr_in),
-      .instr_hops_in(instr_hops_in),
-      .instr_en_in(instr_en_in),
-      .instr_data_out(instr_data_out),
-      .instr_addr_out(instr_addr_out),
-      .instr_hops_out(instr_hops_out),
-      .instr_en_out(instr_en_out)
-  );
+    // Controller
+    {{controller.name}} controller_inst
+    (
+        .clk(clk),
+        .rst_n(rst_n),
+        .call(controller_call),
+        .ret(controller_ret),
+        .instr_en(instr_en),
+        .instr(instr),
+        .activate(activate),
+        .instr_data_in(instr_data_in),
+        .instr_addr_in(instr_addr_in),
+        .instr_hops_in(instr_hops_in),
+        .instr_en_in(instr_en_in),
+        .instr_data_out(instr_data_out),
+        .instr_addr_out(instr_addr_out),
+        .instr_hops_out(instr_hops_out),
+        .instr_en_out(instr_en_out)
+    );
 
-  dummy dummy_inst (
-      .clk(clk),
-      .rst_n(rst_n),
-      .instr_en(instr_en[0]),
-      .instr(instr),
-      .activate(activate[0])
-  );
-
-  vec_add vec_add_inst (
-      .clk(clk),
-      .rst_n(rst_n),
-      .instr_en(instr_en[1]),
-      .instr(instr),
-      .activate(activate[1]),
-      .io_en_in(io_en_in),
-      .io_addr_in(io_addr_in),
-      .io_data_in(io_data_in),
-      .io_en_out(io_en_out),
-      .io_addr_out(io_addr_out),
-      .io_data_out(io_data_out)
-  );
-
+    {% for res in resources_list %}
+    {{res.name}} resource_{{res.slot}}_inst
+    (
+        {%- for i in range(res.size) %}
+        .clk_{{i}}(clk),
+        .rst_n_{{i}}(rst_n),
+        .instr_en_{{i}}(instr_en[{{ res.slot+i }}]),
+        .instr_{{i}}(instr),
+        .activate_{{i}}(activate[{{ res.slot+i }}])
+        {%- if i < res.size-1 %},{% endif %}
+        {%- endfor %}
+        {%- if res.io_input -%}
+        ,
+        .io_en_in(io_en_in),
+        .io_addr_in(io_addr_in),
+        .io_data_in(io_data_in)
+        {%- endif %}
+        {%- if res.io_output -%}
+        ,
+        .io_en_out(io_en_out),
+        .io_addr_out(io_addr_out),
+        .io_data_out(io_data_out)
+        {%- endif %}
+    );
+    {% endfor %}
 endmodule
+{% endif %}
+

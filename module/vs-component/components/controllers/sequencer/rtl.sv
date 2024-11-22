@@ -1,19 +1,11 @@
-/*******************************************************************************
- * Component: sequencer
- * Type: controller
- * Description: Normal controller
- ******************************************************************************/
+#define {{name}} {{fingerprint}}
+#define {{name}}_pkg {{fingerprint}}_pkg
 
-
-/*******************************************************************************
- * Package
- ******************************************************************************/
-package sequencer_pkg;
-    parameter RESOURCE_INSTR_WIDTH = 27;
-    parameter NUM_SLOTS = 16;
-    parameter INSTR_DATA_WIDTH = 32;
-    parameter INSTR_ADDR_WIDTH = 6;
-    parameter INSTR_HOPS_WIDTH = 4;
+{% if not already_defined %}
+package {{fingerprint}}_pkg;
+    {%- for p in parameters %}
+    parameter {{p}} = {{parameters[p]}};
+    {%- endfor %}
 
     // Others:
 
@@ -80,11 +72,8 @@ package sequencer_pkg;
 
 endpackage
 
-/*******************************************************************************
- * Module
- ******************************************************************************/
-module sequencer
-import sequencer_pkg::*;
+module {{fingerprint}}
+import {{fingerprint}}_pkg::*;
 (
     input  logic clk,
     input  logic rst_n,
@@ -239,3 +228,5 @@ import sequencer_pkg::*;
         endcase
     end
 endmodule
+
+{% endif %}

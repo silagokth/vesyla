@@ -1,7 +1,11 @@
-package vec_add_pkg;
-    parameter IO_DATA_WIDTH = 256;
-    parameter IO_ADDR_WIDTH = 16;
-    parameter RESOURCE_INSTR_WIDTH = 27;
+#define {{name}} {{fingerprint}}
+#define {{name}}_pkg {{fingerprint}}_pkg
+
+{% if not already_defined %}
+package {{fingerprint}}_pkg;
+    {%- for p in parameters %}
+    parameter {{p}} = {{parameters[p]}};
+    {%- endfor %}
 
     typedef struct packed {
         logic mode;
@@ -29,18 +33,16 @@ package vec_add_pkg;
 
         return instr;
     endfunction
-
-
 endpackage
 
-module vec_add
-import vec_add_pkg::*;
+module {{fingerprint}}
+import {{fingerprint}}_pkg::*;
 (
-    input  logic clk,
-    input  logic rst_n,
-    input  logic instr_en,
-    input  logic [RESOURCE_INSTR_WIDTH-1:0] instr,
-    input  logic activate,
+    input  logic clk_0,
+    input  logic rst_n_0,
+    input  logic instr_en_0,
+    input  logic [RESOURCE_INSTR_WIDTH-1:0] instr_0,
+    input  logic activate_0,
     output logic io_en_in,
     output logic [IO_ADDR_WIDTH-1:0] io_addr_in,
     input  logic [IO_DATA_WIDTH-1:0] io_data_in,
@@ -48,6 +50,15 @@ import vec_add_pkg::*;
     output logic [IO_ADDR_WIDTH-1:0] io_addr_out,
     output logic [IO_DATA_WIDTH-1:0] io_data_out
 );
+
+    logic clk, rst_n, instr_en, activate;
+    logic [RESOURCE_INSTR_WIDTH-1:0] instr;
+
+    assign clk = clk_0;
+    assign rst_n = rst_n_0;
+    assign instr_en = instr_en_0;
+    assign instr = instr_0;
+    assign activate = activate_0;
 
     // Function definition:
     typedef enum logic [1:0] { RESET, IDLE, COMPUTE_0, COMPUTE_1} state_t;
@@ -124,3 +135,5 @@ import vec_add_pkg::*;
         endcase
     end
 endmodule
+
+{% endif %}

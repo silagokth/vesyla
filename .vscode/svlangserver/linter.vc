@@ -1,8 +1,5 @@
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/cells/input_output_cell/rtl.sv
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/controllers/sequencer/rtl.sv
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/dummy/rtl.sv
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/vec_add/rtl.sv
 -v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/rtl_model/fabric.sv
+-v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/fabric/fabric.sv
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/cells/input_output_cell
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/controllers/sequencer
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/dummy

@@ -1,0 +1,16 @@
+{
+  "name": "vec_add_impl",
+  "fingerprint": "fmcaWkF8W8m",
+  "kind": "vec_add",
+  "slot": 1,
+  "size": 1,
+  "io_input": true,
+  "io_output": true,
+  "already_defined": false,
+  "component_type": "resource",
+  "parameters": {
+    "IO_ADDR_WIDTH": 16,
+    "IO_DATA_WIDTH": 256,
+    "RESOURCE_INSTR_WIDTH": 27
+  }
+}
