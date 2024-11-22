@@ -15,9 +15,9 @@ while read line; do
     fi
 done < hierarchy.txt
 
-vlog -sv fabric_tb.sv
+vlog -sv ../output/rtl/fabric_tb.sv
 
-vsim -c -voptargs=+acc -debugDB -do "log * -r;run 400ns" work.fabric_tb
+vsim -voptargs=+acc -debugDB -do "log * -r;run 400ns" work.fabric_tb
 
 
 

@@ -1,11 +1,11 @@
-`define {{name}} {{fingerprint}}
-`define {{name}}_pkg {{fingerprint}}_pkg
+`define vec_add_impl _9tjr2rhr8kq
+`define vec_add_impl_pkg _9tjr2rhr8kq_pkg
 
-{% if not already_defined %}
-package {{fingerprint}}_pkg;
-    {%- for p in parameters %}
-    parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+
+package _9tjr2rhr8kq_pkg;
+    parameter IO_ADDR_WIDTH = 16;
+    parameter IO_DATA_WIDTH = 256;
+    parameter RESOURCE_INSTR_WIDTH = 27;
 
     typedef struct packed {
         logic mode;
@@ -35,8 +35,8 @@ package {{fingerprint}}_pkg;
     endfunction
 endpackage
 
-module {{fingerprint}}
-import {{fingerprint}}_pkg::*;
+module _9tjr2rhr8kq
+import _9tjr2rhr8kq_pkg::*;
 (
     input  logic clk_0,
     input  logic rst_n_0,
@@ -136,4 +136,3 @@ import {{fingerprint}}_pkg::*;
     end
 endmodule
 
-{% endif %}

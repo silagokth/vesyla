@@ -1,5 +1,6 @@
 use crate::utils::{get_library_path, get_rtl_template_from_library};
 use log::warn;
+use minijinja::filters::Filter;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -691,15 +692,22 @@ impl RTLComponent for Fabric {
         );
 
         // Render fabric RTL
-        let mj_env = minijinja::Environment::new();
-        if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
-            fs::write(output_file, output_str)?;
+        let mut mj_env = minijinja::Environment::new();
+        mj_env.add_filter("append", append_filter);
+        let result = mj_env.render_str(&rtl_template, self);
+        if result.is_err() {
+            panic!(
+                "Failed to render template for fabric RTL: {}",
+                result.err().unwrap()
+            );
         } else {
-            panic!("Failed to render template for fabric {}", self.height);
+            let output_str = result.unwrap();
+            fs::write(output_file, output_str).expect("Failed to write to file");
         }
 
         // Render fabric testbench
-        let mj_env = minijinja::Environment::new();
+        let mut mj_env = minijinja::Environment::new();
+        mj_env.add_filter("append", append_filter);
         if let Ok(output_str) = mj_env.render_str(&tb_template, self) {
             fs::write(tb_output_file, output_str)?;
         } else {
@@ -710,6 +718,13 @@ impl RTLComponent for Fabric {
         }
         Ok(())
     }
+}
+
+// define append filter for jinja template that adds a new string in a list
+fn append_filter(list: Vec<String>, new: String) -> Vec<String> {
+    let mut new_list = list.clone();
+    new_list.push(new.clone());
+    new_list
 }
 
 impl Serialize for Fabric {

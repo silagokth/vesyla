@@ -1,11 +1,13 @@
-`define {{name}} {{fingerprint}}
-`define {{name}}_pkg {{fingerprint}}_pkg
+`define sequencer_impl _j91xtxoqyjk
+`define sequencer_impl_pkg _j91xtxoqyjk_pkg
 
-{% if not already_defined %}
-package {{fingerprint}}_pkg;
-    {%- for p in parameters %}
-    parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+
+package _j91xtxoqyjk_pkg;
+    parameter INSTR_ADDR_WIDTH = 6;
+    parameter INSTR_DATA_WIDTH = 32;
+    parameter INSTR_HOPS_WIDTH = 4;
+    parameter NUM_SLOTS = 16;
+    parameter RESOURCE_INSTR_WIDTH = 27;
 
     // Others:
 
@@ -72,8 +74,8 @@ package {{fingerprint}}_pkg;
 
 endpackage
 
-module {{fingerprint}}
-import {{fingerprint}}_pkg::*;
+module _j91xtxoqyjk
+import _j91xtxoqyjk_pkg::*;
 (
     input  logic clk,
     input  logic rst_n,
@@ -229,4 +231,3 @@ import {{fingerprint}}_pkg::*;
     end
 endmodule
 
-{% endif %}

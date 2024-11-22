@@ -1,12 +1,16 @@
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/rtl_model/fabric.sv
--v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/fabric/fabric.sv
+-v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl/cell_impl.sv
+-v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl/dummy_impl.sv
+-v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl/sequencer_impl.sv
+-v /home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl/vec_add_impl.sv
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/cells/input_output_cell
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/controllers/sequencer
++incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/fabric
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/dummy
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/vec_add
-+incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/rtl_model
++incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/cells/input_output_cell
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/controllers/sequencer
++incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/fabric
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/dummy
 +incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/components/resources/vec_add
-+incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/rtl_model
++incdir+/home/herenvarno/Projects/github.com/vesyla-suite-4/module/vs-component/output/rtl

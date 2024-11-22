@@ -8,6 +8,7 @@ use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resourc
 use crate::utils::*;
 use bs58::encode;
 use clap::{Parser, Subcommand, ValueEnum};
+use core::hash;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -925,9 +926,9 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
 
         // Add the cell to the fabric at the different coordinates
         for (index, (row, col)) in cell_object.coordinates_list.iter().enumerate() {
-            if index > 0 {
-                cell_object.already_defined = true;
-            }
+            //if index > 0 {
+            //    cell_object.already_defined = true;
+            //}
             fabric_object.add_cell(&cell_object, *row, *col);
         }
 
@@ -1017,7 +1018,10 @@ fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
         hasher.write(&param_value.to_be_bytes());
     }
     let hash = hasher.finish();
-    encode(hash.to_be_bytes()).into_string()
+
+    let str_hash = encode(hash.to_be_bytes()).into_string().to_lowercase();
+    let str_hash_mod = "_".to_string() + &str_hash;
+    str_hash_mod
 }
 
 fn add_parameters(

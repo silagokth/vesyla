@@ -8,6 +8,10 @@
     {
       "name": "vec_add_impl",
       "kind": "vec_add"
+    },
+    {
+      "name": "dummy_impl2",
+      "kind": "dummy"
     }
   ],
   "controllers": [
@@ -19,12 +23,7 @@
   "cells": [
     {
       "name": "cell_impl",
-      "kind": "input_output_cell",
-      "controller": "sequencer_impl",
-      "resource_list": [
-        "dummy_impl",
-        "vec_add_impl"
-      ]
+      "kind": "input_output_cell"
     }
   ],
   "fabric": {

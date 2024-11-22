@@ -1,5 +1,5 @@
-#define {{name}} {{fingerprint}}
-#define {{name}}_pkg {{fingerprint}}_pkg
+`define {{name}} {{fingerprint}}
+`define {{name}}_pkg {{fingerprint}}_pkg
 
 {% if not already_defined %}
 package {{fingerprint}}_pkg;

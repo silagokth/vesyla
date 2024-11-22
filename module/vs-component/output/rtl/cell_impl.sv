@@ -1,15 +1,19 @@
-`define {{name}} {{fingerprint}}
-`define {{name}}_pkg {{fingerprint}}_pkg
+`define cell_impl _pv8b47jqufe
+`define cell_impl_pkg _pv8b47jqufe_pkg
 
-{% if not already_defined %}
-package {{fingerprint}}_pkg;
-    {%- for p in parameters %}
-    parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+
+package _pv8b47jqufe_pkg;
+    parameter INSTR_ADDR_WIDTH = 6;
+    parameter INSTR_DATA_WIDTH = 32;
+    parameter INSTR_HOPS_WIDTH = 4;
+    parameter IO_ADDR_WIDTH = 16;
+    parameter IO_DATA_WIDTH = 256;
+    parameter NUM_SLOTS = 16;
+    parameter RESOURCE_INSTR_WIDTH = 27;
 endpackage
 
-module {{fingerprint}}
-import {{fingerprint}}_pkg::*;
+module _pv8b47jqufe
+import _pv8b47jqufe_pkg::*;
 (
     input logic clk,
     input logic rst_n,
@@ -58,7 +62,7 @@ import {{fingerprint}}_pkg::*;
   assign ret_out = controller_ret_remember & ret_in_remember;
 
     // Controller
-    {{controller.name}} controller_inst
+    sequencer_impl controller_inst
     (
         .clk(clk),
         .rst_n(rst_n),
@@ -77,31 +81,39 @@ import {{fingerprint}}_pkg::*;
         .instr_en_out(instr_en_out)
     );
 
-    {% for res in resources_list %}
-    {{res.name}} resource_{{res.slot}}_inst
+    
+    dummy_impl resource_0_inst
     (
-        {%- for i in range(res.size) %}
-        .clk_{{i}}(clk),
-        .rst_n_{{i}}(rst_n),
-        .instr_en_{{i}}(instr_en[{{ res.slot+i }}]),
-        .instr_{{i}}(instr),
-        .activate_{{i}}(activate[{{ res.slot+i }}])
-        {%- if i < res.size-1 %},{% endif %}
-        {%- endfor %}
-        {%- if res.io_input -%}
-        ,
+        .clk_0(clk),
+        .rst_n_0(rst_n),
+        .instr_en_0(instr_en[0]),
+        .instr_0(instr),
+        .activate_0(activate[0])
+    );
+    
+    vec_add_impl resource_1_inst
+    (
+        .clk_0(clk),
+        .rst_n_0(rst_n),
+        .instr_en_0(instr_en[1]),
+        .instr_0(instr),
+        .activate_0(activate[1]),
         .io_en_in(io_en_in),
         .io_addr_in(io_addr_in),
-        .io_data_in(io_data_in)
-        {%- endif %}
-        {%- if res.io_output -%}
-        ,
+        .io_data_in(io_data_in),
         .io_en_out(io_en_out),
         .io_addr_out(io_addr_out),
         .io_data_out(io_data_out)
-        {%- endif %}
     );
-    {% endfor %}
+    
+    dummy_impl2 resource_2_inst
+    (
+        .clk_0(clk),
+        .rst_n_0(rst_n),
+        .instr_en_0(instr_en[2]),
+        .instr_0(instr),
+        .activate_0(activate[2])
+    );
+    
 endmodule
-{% endif %}
 
