@@ -80,10 +80,18 @@ pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Valu
     }
 }
 
-pub fn get_rtl_template_from_library(component_name: &String) -> Result<String> {
+pub fn get_rtl_template_from_library(
+    component_name: &String,
+    template_name: Option<String>,
+) -> Result<String> {
+    let template_name = template_name.unwrap_or("rtl.sv".to_string()).clone();
+    debug!(
+        "Looking for RTL template for component \"{}\" (template: {})",
+        component_name, template_name
+    );
     let component_path = get_path_from_library(component_name)?;
     // Check if a folder in the library is named the same as the cell
-    let rtl_path = component_path.join("rtl.sv");
+    let rtl_path = component_path.join(template_name);
     if !rtl_path.exists() {
         warn!(
             "RTL template for component \"{}\" not found in library (component path: {})",
