@@ -166,7 +166,9 @@ impl RTLComponent for Controller {
         if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
-            let mj_env = minijinja::Environment::new();
+            let mut mj_env = minijinja::Environment::new();
+            mj_env.set_trim_blocks(true);
+            mj_env.set_lstrip_blocks(true);
             if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
                 fs::write(output_file, output_str)?;
             } else {
@@ -348,7 +350,9 @@ impl RTLComponent for Resource {
         if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
-            let mj_env = minijinja::Environment::new();
+            let mut mj_env = minijinja::Environment::new();
+            mj_env.set_trim_blocks(true);
+            mj_env.set_lstrip_blocks(true);
             if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
                 fs::write(output_file, output_str)?;
             } else {
@@ -540,15 +544,26 @@ impl Cell {
         self.parameters.insert(name, value);
     }
 
-    //pub fn get_resources_names(&self) -> Vec<String> {
-    //    let mut resources_names = Vec::new();
-    //    if let Some(resources) = &self.resources {
-    //        for resource in resources {
-    //            resources_names.push(resource.name.clone());
-    //        }
-    //    }
-    //    resources_names
-    //}
+    fn get_fingerprint_table(&self) -> HashMap<String, String> {
+        let mut fingerprint_table = HashMap::new();
+        if let Some(controller) = &self.controller {
+            if let Some(fingerprint) = &controller.fingerprint {
+                if !fingerprint_table.contains_key(&controller.name) {
+                    fingerprint_table.insert(controller.name.clone(), fingerprint.clone());
+                }
+            }
+        }
+        if let Some(resources) = &self.resources {
+            for resource in resources.iter() {
+                if let Some(fingerprint) = &resource.fingerprint {
+                    if !fingerprint_table.contains_key(&resource.name) {
+                        fingerprint_table.insert(resource.name.clone(), fingerprint.clone());
+                    }
+                }
+            }
+        }
+        fingerprint_table
+    }
 }
 
 impl RTLComponent for Cell {
@@ -557,7 +572,9 @@ impl RTLComponent for Cell {
         if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
-            let mj_env = minijinja::Environment::new();
+            let mut mj_env = minijinja::Environment::new();
+            mj_env.set_trim_blocks(true);
+            mj_env.set_lstrip_blocks(true);
             if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
                 fs::write(output_file, output_str)?;
             } else {
@@ -607,6 +624,7 @@ impl Serialize for Cell {
         if let Some(resources) = &self.resources {
             state.serialize_entry("resources_list", resources)?;
         }
+        state.serialize_entry("fingerprint_table", &self.get_fingerprint_table())?;
         state.end()
     }
 }
@@ -728,7 +746,8 @@ impl RTLComponent for Fabric {
 
         // Render fabric RTL
         let mut mj_env = minijinja::Environment::new();
-        mj_env.add_filter("append", append_filter);
+        mj_env.set_trim_blocks(true);
+        mj_env.set_lstrip_blocks(true);
         let result = mj_env.render_str(&rtl_template, self);
         if result.is_err() {
             panic!(
@@ -742,7 +761,8 @@ impl RTLComponent for Fabric {
 
         // Render fabric testbench
         let mut mj_env = minijinja::Environment::new();
-        mj_env.add_filter("append", append_filter);
+        mj_env.set_trim_blocks(true);
+        mj_env.set_lstrip_blocks(true);
         if let Ok(output_str) = mj_env.render_str(&tb_template, self) {
             fs::write(tb_output_file, output_str)?;
         } else {
@@ -753,13 +773,6 @@ impl RTLComponent for Fabric {
         }
         Ok(())
     }
-}
-
-// define append filter for jinja template that adds a new string in a list
-fn append_filter(list: Vec<String>, new: String) -> Vec<String> {
-    let mut new_list = list.clone();
-    new_list.push(new.clone());
-    new_list
 }
 
 impl Serialize for Fabric {
