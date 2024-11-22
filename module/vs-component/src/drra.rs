@@ -162,7 +162,7 @@ impl Controller {
 impl RTLComponent for Controller {
     fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
         // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
             let mj_env = minijinja::Environment::new();
@@ -344,7 +344,7 @@ impl Resource {
 impl RTLComponent for Resource {
     fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
         // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
             let mj_env = minijinja::Environment::new();
@@ -553,17 +553,17 @@ impl Cell {
 impl RTLComponent for Cell {
     fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
         // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap()) {
+        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
             // Create output file
             fs::File::create(output_file).expect("Failed to create file");
             let mj_env = minijinja::Environment::new();
             if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
                 fs::write(output_file, output_str)?;
             } else {
-                panic!("Failed to render template for controller {}", self.name);
+                panic!("Failed to render template for cell {}", self.name);
             }
         } else {
-            panic!("Failed to get RTL template for controller {}", self.name);
+            panic!("Failed to get RTL template for cell {}", self.name);
         }
         Ok(())
     }
@@ -663,6 +663,52 @@ impl Fabric {
 
     pub fn add_cell(&mut self, cell: &Cell, row: u64, col: u64) {
         self.cells[row as usize][col as usize] = cell.clone();
+    }
+}
+
+impl RTLComponent for Fabric {
+    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
+        // Get the RTL template for the controller
+        let rtl_template =
+            get_rtl_template_from_library(&"fabric".to_string(), Some("fabric.sv".to_string()))
+                .unwrap();
+        let tb_template =
+            get_rtl_template_from_library(&"fabric".to_string(), Some("fabric_tb.sv".to_string()))
+                .unwrap();
+        // Create output file
+        fs::File::create(output_file).expect("Failed to create file");
+        // Create output file for testbench
+        let tb_output_file = output_file.with_file_name(
+            output_file
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split(".")
+                .collect::<Vec<&str>>()[0]
+                .to_string()
+                + "_tb.sv",
+        );
+
+        // Render fabric RTL
+        let mj_env = minijinja::Environment::new();
+        if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
+            fs::write(output_file, output_str)?;
+        } else {
+            panic!("Failed to render template for fabric {}", self.height);
+        }
+
+        // Render fabric testbench
+        let mj_env = minijinja::Environment::new();
+        if let Ok(output_str) = mj_env.render_str(&tb_template, self) {
+            fs::write(tb_output_file, output_str)?;
+        } else {
+            panic!(
+                "Failed to render template for fabric testbench {}",
+                self.height
+            );
+        }
+        Ok(())
     }
 }
 
