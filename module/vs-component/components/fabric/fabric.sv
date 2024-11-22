@@ -1,7 +1,7 @@
-{% for key, value in fingerprint_table | items -%}
+{% for key, value in fingerprint_table | items %}
 `define {{key}} {{value}}
 `define {{key}}_pkg {{value}}_pkg
-{%- endfor %}
+{% endfor %}
 
 package fabric_pkg;
     {%- for p in parameters %}

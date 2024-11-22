@@ -3,12 +3,11 @@
 
 {% if not already_defined %}
 package {{fingerprint}}_pkg;
-    {%- for p in parameters %}
+    {% for p in parameters %}
     parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+    {% endfor %}
 
     // Others:
-
     parameter OPCODE_HALT = 0;
     parameter OPCODE_WAIT = 1;
     parameter OPCODE_ACTIVATE = 2;

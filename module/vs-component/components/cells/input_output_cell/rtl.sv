@@ -1,11 +1,16 @@
 `define {{name}} {{fingerprint}}
 `define {{name}}_pkg {{fingerprint}}_pkg
 
+{% for key, value in fingerprint_table | items %}
+`define {{key}} {{value}}
+`define {{key}}_pkg {{value}}_pkg
+{% endfor %}
+
 {% if not already_defined %}
 package {{fingerprint}}_pkg;
-    {%- for p in parameters %}
+    {% for p in parameters %}
     parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+    {% endfor %}
 endpackage
 
 module {{fingerprint}}
@@ -80,28 +85,25 @@ import {{fingerprint}}_pkg::*;
     {% for res in resources_list %}
     {{res.name}} resource_{{res.slot}}_inst
     (
-        {%- for i in range(res.size) %}
+        {% for i in range(res.size) %}
         .clk_{{i}}(clk),
         .rst_n_{{i}}(rst_n),
         .instr_en_{{i}}(instr_en[{{ res.slot+i }}]),
         .instr_{{i}}(instr),
-        .activate_{{i}}(activate[{{ res.slot+i }}])
-        {%- if i < res.size-1 %},{% endif %}
-        {%- endfor %}
-        {%- if res.io_input -%}
-        ,
+        .activate_{{i}}(activate[{{ res.slot+i }}]){% if i < res.size-1 %},{% endif %}
+        {% endfor %}
+        {% if res.io_input %},
         .io_en_in(io_en_in),
         .io_addr_in(io_addr_in),
-        .io_data_in(io_data_in)
-        {%- endif %}
-        {%- if res.io_output -%}
-        ,
+        .io_data_in(io_data_in){% endif %}{% if res.io_output %},
         .io_en_out(io_en_out),
         .io_addr_out(io_addr_out),
-        .io_data_out(io_data_out)
-        {%- endif %}
+        .io_data_out(io_data_out){% endif %}
+
     );
+
     {% endfor %}
+
 endmodule
 {% endif %}
 
