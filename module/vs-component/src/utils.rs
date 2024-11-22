@@ -103,5 +103,8 @@ pub fn get_rtl_template_from_library(component_name: &String) -> Result<String> 
         component_name,
         rtl_path.to_str().unwrap()
     );
-    Ok(rtl_path.to_str().unwrap().to_string())
+
+    // Read the rtl.sv file
+    let rtl_str = std::fs::read_to_string(&rtl_path).expect("Failed to read file");
+    Ok(rtl_str)
 }
