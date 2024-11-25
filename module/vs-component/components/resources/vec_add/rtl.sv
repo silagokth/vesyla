@@ -7,32 +7,50 @@ package {{fingerprint}}_pkg;
     parameter {{p}} = {{parameters[p]}};
     {% endfor %}
 
+    {% set payload_bitwidth = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth %}
+    {% for instr in isa.instructions %}
     typedef struct packed {
-        logic mode;
-        logic [15:0] n;
-    } add_t;
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth == 1 %}
+        logic {{segment.name}};
+        {% else %}
+        logic [{{segment.bitwidth-1}}:0] {{segment.name}};
+        {% endif %}
+        {% endfor %}
+    } {{instr.name}}_t;
 
-    function static add_t unpack_add;
-        input logic [23:0] instr;
-
-        add_t add;
-
-        add.mode = instr[23];
-        add.n  = instr[22:7];
-
-        return add;
+    function static {{instr.name}}_t unpack_{{instr.name}};
+        input logic [{{payload_bitwidth - 1}}:0] instr;
+        {{instr.name}}_t {{instr.name}};
+        {% set index=payload_bitwidth -1 %}
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth==1 %}
+        {{instr.name}}.{{segment.name}} = instr[index];
+        {% else %}
+        {{instr.name}}.{{segment.name}}  = instr[index:index-segment.bitwidth+1];
+        {% set index=index-segment.bitwidth %}
+        {% endif %}
+        {% endfor %}
+        return {{instr.name}};
     endfunction
 
-    function static logic [23:0] pack_add;
-        input add_t add;
+    function static logic [{{ payload_bitwidth - 1 }}:0] pack_{{instr.name}};
+        input {{instr.name}}_t {{instr.name}};
+        logic [{{ payload_bitwidth - 1 }}:0] instr;
 
-        logic [23:0] instr;
-
-        instr[23] = add.mode;
-        instr[22:7]  = add.n;
-
+        {% set index=payload_bitwidth -1 %}
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth==1 %}
+        instr[index] = {{instr.name}}.{{segment.name}};
+        {% else %}
+        instr[index:index-segment.bitwidth+1] = {{instr.name}}.{{segment.name}};
+        {% set index=index-segment.bitwidth %}
+        {% endif %}
+        {% endfor %}
         return instr;
     endfunction
+
+    {% endfor %}
 endpackage
 
 module {{fingerprint}}

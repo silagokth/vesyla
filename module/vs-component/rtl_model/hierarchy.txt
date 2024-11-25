@@ -1,5 +1,6 @@
 ../output/rtl/dummy_impl.sv
 ../output/rtl/dummy_impl2.sv
 ../output/rtl/vec_add_impl.sv
+../output/rtl/sequencer_impl.sv
 ../output/rtl/cell_impl.sv
 ../output/rtl/fabric.sv

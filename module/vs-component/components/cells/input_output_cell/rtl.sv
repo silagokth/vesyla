@@ -63,7 +63,7 @@ import {{fingerprint}}_pkg::*;
   assign ret_out = controller_ret_remember & ret_in_remember;
 
     // Controller
-    {{controller.name}} controller_inst
+    `{{controller.name}} controller_inst
     (
         .clk(clk),
         .rst_n(rst_n),
@@ -83,7 +83,7 @@ import {{fingerprint}}_pkg::*;
     );
 
     {% for res in resources_list %}
-    {{res.name}} resource_{{res.slot}}_inst
+    `{{res.name}} resource_{{res.slot}}_inst
     (
         {% for i in range(res.size) %}
         .clk_{{i}}(clk),

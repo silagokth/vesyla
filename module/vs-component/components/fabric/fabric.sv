@@ -4,9 +4,9 @@
 {% endfor %}
 
 package fabric_pkg;
-    {%- for p in parameters %}
+    {% for p in parameters %}
     parameter {{p}} = {{parameters[p]}};
-    {%- endfor %}
+    {% endfor %}
 endpackage
 
 module fabric
@@ -74,7 +74,7 @@ import fabric_pkg::*;
     {% for cell in cells %}
     {%- set r=cell.coordinates.row -%}
     {%- set c=cell.coordinates.col -%}
-    {{cell.cell.name}} cell_{{r}}_{{c}}_inst (
+    `{{cell.cell.name}} cell_{{r}}_{{c}}_inst (
         .clk(clk),
         .rst_n(rst_n),
         .call_in(call_net[{{r}}][{{c}}]),

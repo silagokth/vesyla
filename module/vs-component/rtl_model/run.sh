@@ -17,7 +17,7 @@ done < hierarchy.txt
 
 vlog -sv ../output/rtl/fabric_tb.sv
 
-vsim -voptargs=+acc -debugDB -do "log * -r;run 400ns" work.fabric_tb
+vsim -c -voptargs=+acc -debugDB -do "log * -r;run 400ns" work.fabric_tb
 
 
 
