@@ -8,66 +8,49 @@ package {{fingerprint}}_pkg;
     {% endfor %}
 
     // Others:
-    parameter OPCODE_HALT = 0;
-    parameter OPCODE_WAIT = 1;
-    parameter OPCODE_ACTIVATE = 2;
-
+    {% set payload_bitwidth = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth %}
+    {% for instr in isa.instructions %}
     typedef struct packed {
-        logic [15:0] ports;
-        logic [3:0]  mode;
-        logic [7:0]  param;
-    } activate_t;
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth == 1 %}
+        logic _{{segment.name}};
+        {% else %}
+        logic [{{segment.bitwidth-1}}:0] _{{segment.name}};
+        {% endif %}
+        {% endfor %}
+    } {{instr.name}}_t;
 
-    function static activate_t unpack_activate;
-        input logic [27:0] instr;
-
-        activate_t activate;
-
-        activate.ports = instr[27:12];
-        activate.mode  = instr[11:8];
-        activate.param = instr[7:0];
-
-        return activate;
+    function static {{instr.name}}_t unpack_{{instr.name}};
+        input logic [{{payload_bitwidth - 1}}:0] instr;
+        {{instr.name}}_t _{{instr.name}};
+        {% set index=payload_bitwidth -1 %}
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth==1 %}
+        _{{instr.name}}._{{segment.name}} = instr[{{index}}];
+        {% else %}
+        _{{instr.name}}._{{segment.name}}  = instr[{{index}}:{{index-segment.bitwidth+1}}];
+        {% endif %}
+        {% set index=index-segment.bitwidth %}
+        {% endfor %}
+        return _{{instr.name}};
     endfunction
 
-    function static logic [27:0] pack_activate;
-        input activate_t activate;
+    function static logic [{{ payload_bitwidth - 1 }}:0] pack_{{instr.name}};
+        input {{instr.name}}_t _{{instr.name}};
+        logic [{{ payload_bitwidth - 1 }}:0] instr;
 
-        logic [27:0] instr;
-
-        instr[27:12] = activate.ports;
-        instr[11:8]  = activate.mode;
-        instr[7:0]   = activate.param;
-
+        {% set index=payload_bitwidth -1 %}
+        {% for segment in instr.segments %}
+        {% if segment.bitwidth==1 %}
+        instr[{{index}}] = _{{instr.name}}._{{segment.name}};
+        {% else %}
+        instr[{{index}}:{{index-segment.bitwidth+1}}] = _{{instr.name}}._{{segment.name}};
+        {% endif %}
+        {% set index=index-segment.bitwidth %}
+        {% endfor %}
         return instr;
     endfunction
-
-    typedef struct {
-        logic mode;
-        logic [26:0] cycle;
-    } wait_t;
-
-    function static wait_t unpack_wait;
-        input logic [27:0] instr;
-
-        wait_t _wait;
-
-        _wait.mode  = instr[27];
-        _wait.cycle = instr[26:0];
-
-        return _wait;
-    endfunction
-
-    function static logic [27:0] pack_wait;
-        input wait_t _wait;
-
-        logic [27:0] instr;
-
-        instr[27]   = _wait.mode;
-        instr[26:0] = _wait.cycle;
-
-        return instr;
-    endfunction
+    {% endfor %}
 
 endpackage
 
@@ -177,16 +160,16 @@ import {{fingerprint}}_pkg::*;
                 end
             end
             DECODE: begin
-                if (instr_type == 0 && opcode == OPCODE_HALT) begin
+                if (instr_type == 0 && opcode == 0) begin
                     pc_next = 0;
                     next_state = IDLE;
-                end else if (instr_type == 0 && opcode == OPCODE_WAIT) begin
+                end else if (instr_type == 0 && opcode == 1) begin
                     wait_t _wait;
                     _wait = unpack_wait(instr_reg);
-                    if (_wait.cycle != 0) begin
+                    if (_wait._cycle != 0) begin
                         pc_next = pc;
                         next_state = WAIT;
-                        wait_counter_next = _wait.cycle;
+                        wait_counter_next = _wait._cycle;
                     end
                 end
             end
@@ -212,11 +195,11 @@ import {{fingerprint}}_pkg::*;
         case (state)
             DECODE: begin
                 if (instr_type == 0) begin
-                    if (opcode == OPCODE_ACTIVATE) begin
-                        activate_t _activate;
-                        _activate = unpack_activate(instr_reg);
-                        activate = _activate.ports;
-                    end else if (opcode == OPCODE_HALT) begin
+                    if (opcode == 2) begin
+                        act_t _act;
+                        _act = unpack_act(instr_reg);
+                        activate = _act._ports;
+                    end else if (opcode == 0) begin
                         ret = 1;
                     end
                 end else begin

@@ -183,10 +183,7 @@
       "opcode": 4,
       "name": "brn",
       "instr_type": 0,
-      "machines": [
-        "controller_io",
-        "controller_normal"
-      ],
+      "machines": ["controller_io", "controller_normal"],
       "segments": [
         {
           "name": "reg",

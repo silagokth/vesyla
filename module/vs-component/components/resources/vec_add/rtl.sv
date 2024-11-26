@@ -12,44 +12,43 @@ package {{fingerprint}}_pkg;
     typedef struct packed {
         {% for segment in instr.segments %}
         {% if segment.bitwidth == 1 %}
-        logic {{segment.name}};
+        logic _{{segment.name}};
         {% else %}
-        logic [{{segment.bitwidth-1}}:0] {{segment.name}};
+        logic [{{segment.bitwidth-1}}:0] _{{segment.name}};
         {% endif %}
         {% endfor %}
     } {{instr.name}}_t;
 
     function static {{instr.name}}_t unpack_{{instr.name}};
         input logic [{{payload_bitwidth - 1}}:0] instr;
-        {{instr.name}}_t {{instr.name}};
+        {{instr.name}}_t _{{instr.name}};
         {% set index=payload_bitwidth -1 %}
         {% for segment in instr.segments %}
         {% if segment.bitwidth==1 %}
-        {{instr.name}}.{{segment.name}} = instr[index];
+        _{{instr.name}}._{{segment.name}} = instr[{{index}}];
         {% else %}
-        {{instr.name}}.{{segment.name}}  = instr[index:index-segment.bitwidth+1];
-        {% set index=index-segment.bitwidth %}
+        _{{instr.name}}._{{segment.name}}  = instr[{{index}}:{{index-segment.bitwidth+1}}];
         {% endif %}
+        {% set index=index-segment.bitwidth %}
         {% endfor %}
-        return {{instr.name}};
+        return _{{instr.name}};
     endfunction
 
     function static logic [{{ payload_bitwidth - 1 }}:0] pack_{{instr.name}};
-        input {{instr.name}}_t {{instr.name}};
+        input {{instr.name}}_t _{{instr.name}};
         logic [{{ payload_bitwidth - 1 }}:0] instr;
 
         {% set index=payload_bitwidth -1 %}
         {% for segment in instr.segments %}
         {% if segment.bitwidth==1 %}
-        instr[index] = {{instr.name}}.{{segment.name}};
+        instr[{{index}}] = _{{instr.name}}._{{segment.name}};
         {% else %}
-        instr[index:index-segment.bitwidth+1] = {{instr.name}}.{{segment.name}};
-        {% set index=index-segment.bitwidth %}
+        instr[{{index}}:{{index-segment.bitwidth+1}}] = _{{instr.name}}._{{segment.name}};
         {% endif %}
+        {% set index=index-segment.bitwidth %}
         {% endfor %}
         return instr;
     endfunction
-
     {% endfor %}
 endpackage
 
@@ -110,7 +109,7 @@ import {{fingerprint}}_pkg::*;
                 if (activate == 1) begin
                     add_t _add;
                     _add = unpack_add(payload);
-                    if (_add.mode == 1) begin
+                    if (_add._en == 1) begin
                         next_state <= COMPUTE_0;
                     end
                 end
@@ -138,7 +137,7 @@ import {{fingerprint}}_pkg::*;
                 add_t _add;
                 _add = unpack_add(payload);
                 io_en_in = 1;
-                io_addr_in = _add.n;
+                io_addr_in = _add._addr;
             end
 
             COMPUTE_1: begin
@@ -148,7 +147,7 @@ import {{fingerprint}}_pkg::*;
                     io_data_out[16*i +: 16] = io_data_in[16*i +: 16] + 1;
                 end
                 io_en_out = 1;
-                io_addr_out = _add.n;
+                io_addr_out = _add._addr;
             end
         endcase
     end
