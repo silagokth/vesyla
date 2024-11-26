@@ -80,6 +80,41 @@ pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Valu
     }
 }
 
+pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value> {
+    let component_path = get_path_from_library(component_name)?;
+
+    // Get the isa.json file for the cell
+    let isa_path = component_path.join("isa.json");
+
+    if !isa_path.exists() {
+        warn!(
+            "Component \"{}\" JSON description not found in library (component path: {})",
+            component_name,
+            component_path.to_str().unwrap()
+        );
+        Err(Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "Component {} does not contain an isa.json file",
+                component_name
+            ),
+        ))
+    } else {
+        let json_str = std::fs::read_to_string(&isa_path).expect("Failed to read file");
+        serde_json::from_str(&json_str).map_err(|_| {
+            warn!(
+                "Failed to parse JSON description for component \"{}\" (component path: {})",
+                component_name,
+                isa_path.to_str().unwrap()
+            );
+            Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to parse json file: {}", isa_path.to_str().unwrap()),
+            )
+        })
+    }
+}
+
 pub fn get_rtl_template_from_library(
     component_name: &String,
     template_name: Option<String>,

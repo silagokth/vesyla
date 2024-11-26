@@ -2,9 +2,11 @@
 mod collector;
 mod drra;
 mod generator;
+mod isa;
 mod utils;
 
 use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
+use crate::isa::InstructionSet;
 use crate::utils::*;
 use bs58::encode;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -12,12 +14,12 @@ use core::hash;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::env;
 use std::fmt::write;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{Error, Result};
 use std::path::{Path, PathBuf};
+use std::{cell, env};
 
 #[derive(Subcommand)]
 enum Command {
@@ -328,6 +330,20 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                     if cell_from_lib.resources.is_some() && cell_object.resources.is_none() {
                         cell_object.resources = cell_from_lib.resources.clone();
                     }
+                    // Get ISA from library if is None
+                    if cell_object.isa.is_none() {
+                        let isa_json = get_isa_from_library(cell_type).unwrap();
+                        let isa = InstructionSet::from_json(isa_json);
+                        if isa.is_err() {
+                            panic!(
+                                "Error with ISA for cell {} from library (kind: {}) -> {}",
+                                cell_object.name,
+                                cell_type,
+                                isa.err().unwrap()
+                            );
+                        }
+                        cell_object.isa = Some(isa.unwrap());
+                    }
                     // append parameters from cell_from_lib to cell_parameters
                     overwritten_params.extend(merge_parameters(
                         &mut cell_object.parameters,
@@ -359,6 +375,13 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         // Verify cell validity
         if cell_object.controller.is_none() {
             panic!("Controller not found for cell {}", cell_object.name,);
+        }
+        if cell_object.isa.is_none() {
+            panic!(
+                "ISA not found for cell {} (kind: {})",
+                cell_object.name,
+                cell_object.kind.as_ref().unwrap(),
+            );
         }
         if cell_object.resources.is_none() {
             panic!("Resources for cell {} not found in the library and were not provided in JSON file fabric or cell pool", cell_object.name);
@@ -461,8 +484,8 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         }
 
         // Get the controller from the library if kind is provided
-        if let Some(controller_kind) = cell_object.controller.as_ref().unwrap().kind.as_ref() {
-            if let Ok(lib_controller) = get_arch_from_library(controller_kind) {
+        if let Some(controller_kind) = cell_object.controller.as_ref().unwrap().kind.clone() {
+            if let Ok(lib_controller) = get_arch_from_library(&controller_kind.clone()) {
                 if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
                 {
                     // Check size
@@ -513,6 +536,21 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                         cell_object.controller.as_mut().unwrap().io_output =
                             controller_from_lib.io_output;
                     }
+                    // get ISA from library if is None
+                    if cell_object.controller.as_ref().unwrap().isa.is_none() {
+                        let isa_json = get_isa_from_library(&controller_kind.clone()).unwrap();
+                        let isa = InstructionSet::from_json(isa_json);
+                        if isa.is_err() {
+                            panic!(
+                                "Error with ISA for controller {} in cell {} from library (kind: {}) -> {}",
+                                cell_object.controller.as_ref().unwrap().name,
+                                cell_object.name,
+                                controller_kind,
+                                isa.err().unwrap()
+                            );
+                        }
+                        cell_object.controller.as_mut().unwrap().isa = Some(isa.unwrap());
+                    }
                 }
             }
         }
@@ -523,6 +561,20 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                 "Size not found for controller {} in cell {}",
                 cell_object.controller.as_ref().unwrap().name,
                 cell_object.name,
+            );
+        }
+        if cell_object.controller.as_ref().unwrap().isa.is_none() {
+            panic!(
+                "ISA not found for controller {} in cell {} (kind: {})",
+                cell_object.controller.as_ref().unwrap().name,
+                cell_object.name,
+                cell_object
+                    .controller
+                    .as_ref()
+                    .unwrap()
+                    .kind
+                    .as_ref()
+                    .unwrap(),
             );
         }
 
@@ -787,6 +839,22 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
                         {
                             resource_object.io_output = resource_from_lib.io_output;
                         }
+                        // get ISA from library if is None
+                        if resource_object.isa.is_none() {
+                            let isa_json = get_isa_from_library(resource_kind).unwrap();
+                            let isa = InstructionSet::from_json(isa_json);
+                            if isa.is_err() {
+                                panic!(
+                                    "Error with ISA for resource {} (slot {}) in cell {} from library (kind: {}) -> {}",
+                                    resource_object.name,
+                                    resource_object.slot.unwrap(),
+                                    cell_object.name,
+                                    resource_kind,
+                                    isa.err().unwrap()
+                                );
+                            }
+                            resource_object.isa = Some(isa.unwrap());
+                        }
                     }
                 }
             }
@@ -795,6 +863,15 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
             if resource_object.slot.is_none() {
                 resource_object.slot = Some(current_slot);
                 current_slot += resource_object.size.unwrap();
+            }
+            if resource_object.isa.is_none() {
+                panic!(
+                    "ISA not found for resource {} (slot {}) in cell {} (kind: {})",
+                    resource_object.name,
+                    resource_object.slot.unwrap(),
+                    cell_object.name,
+                    resource_object.kind.as_ref().unwrap(),
+                );
             }
 
             // Get the required parameters for the resource

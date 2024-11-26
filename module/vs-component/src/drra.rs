@@ -1,4 +1,6 @@
+use crate::isa::*;
 use crate::utils::{get_library_path, get_rtl_template_from_library};
+use core::panic;
 use log::warn;
 use minijinja::filters::Filter;
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -54,6 +56,7 @@ pub struct Controller {
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
+    pub isa: Option<InstructionSet>,
 }
 
 impl Controller {
@@ -69,6 +72,7 @@ impl Controller {
             component_type: "controller".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
+            isa: None,
         }
     }
 
@@ -152,6 +156,16 @@ impl Controller {
                     .push(required_parameter.as_str().unwrap().to_string());
             }
         }
+        // ISA (optional)
+        let isa = json_value.get("isa");
+        if let Some(isa) = isa {
+            let isa_result = InstructionSet::from_json(isa.clone());
+            if let Err(isa) = isa_result {
+                panic!("Error parsing ISA for controller: {:?}", isa);
+            } else {
+                controller.isa = Some(isa_result.unwrap());
+            }
+        }
         Ok(controller)
     }
 
@@ -217,6 +231,9 @@ impl Serialize for Controller {
         if !self.parameters.is_empty() {
             state.serialize_entry("parameters", &self.parameters)?;
         }
+        if let Some(isa) = &self.isa {
+            state.serialize_entry("isa", isa)?;
+        }
         state.end()
     }
 }
@@ -234,6 +251,7 @@ pub struct Resource {
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
+    pub isa: Option<InstructionSet>,
 }
 
 impl Resource {
@@ -250,6 +268,7 @@ impl Resource {
             component_type: "resource".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
+            isa: None,
         }
     }
     pub fn from_json(json_str: &str) -> Result<Self, Error> {
@@ -337,6 +356,17 @@ impl Resource {
                     .push(required_parameter.as_str().unwrap().to_string());
             }
         }
+        // ISA (optional)
+        let isa = json_value.get("isa");
+        if let Some(isa) = isa {
+            let isa_result =
+                InstructionSet::from_json(serde_json::from_str(isa.to_string().as_str()).unwrap());
+            if let Ok(isa) = isa_result {
+                resource.isa = Some(isa);
+            } else {
+                panic!("Error parsing ISA: {:?}", isa.to_string());
+            }
+        }
         Ok(resource)
     }
     pub fn add_parameter(&mut self, name: String, value: u64) {
@@ -353,10 +383,16 @@ impl RTLComponent for Resource {
             let mut mj_env = minijinja::Environment::new();
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
-            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
-                fs::write(output_file, output_str)?;
-            } else {
-                panic!("Failed to render template for controller {}", self.name);
+            match mj_env.render_str(&rtl_template, self) {
+                Ok(output_str) => {
+                    fs::write(output_file, output_str)?;
+                }
+                Err(err) => {
+                    panic!(
+                        "Failed to render template for resource {}: {}",
+                        self.name, err
+                    );
+                }
             }
         } else {
             panic!("Failed to get RTL template for controller {}", self.name);
@@ -406,6 +442,9 @@ impl Serialize for Resource {
         if !self.parameters.is_empty() {
             state.serialize_entry("parameters", &self.parameters)?;
         }
+        if let Some(isa) = &self.isa {
+            state.serialize_entry("isa", isa)?;
+        }
         state.end()
     }
 }
@@ -423,6 +462,7 @@ pub struct Cell {
     pub resources: Option<Vec<Resource>>,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
+    pub isa: Option<InstructionSet>,
 }
 
 impl Cell {
@@ -439,6 +479,7 @@ impl Cell {
             resources: None,
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
+            isa: None,
         }
     }
 
@@ -537,6 +578,17 @@ impl Cell {
             }
             cell.resources = Some(resources_vec);
         }
+        // ISA (optional)
+        let isa = json_value.get("isa");
+        if let Some(isa) = isa {
+            let isa_result =
+                InstructionSet::from_json(serde_json::from_str(isa.to_string().as_str()).unwrap());
+            if let Ok(isa) = isa_result {
+                cell.isa = Some(isa);
+            } else {
+                panic!("Error parsing ISA: {:?}", isa.to_string());
+            }
+        }
         Ok(cell)
     }
 
@@ -623,6 +675,9 @@ impl Serialize for Cell {
         }
         if let Some(resources) = &self.resources {
             state.serialize_entry("resources_list", resources)?;
+        }
+        if let Some(isa) = &self.isa {
+            state.serialize_entry("isa", isa)?;
         }
         state.serialize_entry("fingerprint_table", &self.get_fingerprint_table())?;
         state.end()
