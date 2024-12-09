@@ -1,0 +1,122 @@
+{
+  "format": {
+    "instr_bitwidth": 32,
+    "instr_type_bitwidth": 1,
+    "instr_opcode_bitwidth": 3,
+    "instr_slot_bitwidth": 4
+  },
+  "instructions": [
+    {
+      "name": "dsu",
+      "opcode": 6,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "init_addr_sd",
+          "comment": "Is initial address static or dynamic?",
+          "bitwidth": 1,
+          "verbo_map": [
+            { "key": 0, "val": "s" },
+            { "key": 1, "val": "d" }
+          ]
+        },
+        {
+          "name": "init_addr",
+          "comment": "Initial address",
+          "bitwidth": 16
+        },
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rep",
+      "opcode": 0,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        },
+        {
+          "name": "level",
+          "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level.",
+          "bitwidth": 4
+        },
+        {
+          "name": "iter",
+          "comment": "level-1 iteration - 1.",
+          "bitwidth": 6
+        },
+        {
+          "name": "step",
+          "comment": "level-1 step",
+          "bitwidth": 6,
+          "default_val": 1,
+          "is_signed": true
+        },
+        {
+          "name": "delay",
+          "comment": "delay",
+          "bitwidth": 6
+        }
+      ]
+    },
+    {
+      "name": "repx",
+      "opcode": 1,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        },
+        {
+          "name": "level",
+          "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level.",
+          "bitwidth": 4
+        },
+        {
+          "name": "iter",
+          "comment": "level-1 iteration - 1.",
+          "bitwidth": 6
+        },
+        {
+          "name": "step",
+          "comment": "level-1 step",
+          "bitwidth": 6,
+          "default_val": 1,
+          "is_signed": true
+        },
+        {
+          "name": "delay",
+          "comment": "delay",
+          "bitwidth": 6
+        }
+      ]
+    }
+  ]
+}

@@ -39,6 +39,11 @@ import fabric_pkg::*;
     logic [ROWS-1:0][COLS:0][INSTR_HOPS_WIDTH-1:0] instr_hops_net;
     logic [ROWS-1:0][COLS:0] instr_en_net;
 
+    logic[ROWS:0][COLS:0][BULK_WIDTH-1:0] bulk_intercell_n2s_net;
+    logic[ROWS:0][COLS:0][BULK_WIDTH-1:0] bulk_intercell_w2e_net;
+    logic[ROWS:0][COLS:0][BULK_WIDTH-1:0] bulk_intercell_s2n_net;
+    logic[ROWS:0][COLS:0][BULK_WIDTH-1:0] bulk_intercell_e2w_net;
+
     always_comb begin
         if (~rst_n) begin
             for (int r=0; r<ROWS; r++) begin
@@ -94,7 +99,15 @@ import fabric_pkg::*;
         .instr_data_out(instr_data_net[{{r}}][{{c + 1}}]),
         .instr_addr_out(instr_addr_net[{{r}}][{{c + 1}}]),
         .instr_hops_out(instr_hops_net[{{r}}][{{c + 1}}]),
-        .instr_en_out(instr_en_net[{{r}}][{{c + 1}}])
+        .instr_en_out(instr_en_net[{{r}}][{{c + 1}}]),
+        .bulk_intercell_n_in(bulk_intercell_n2s_net[{{r}}][{{c}}]),
+        .bulk_intercell_w_in(bulk_intercell_w2e_net[{{r}}][{{c}}]),
+        .bulk_intercell_s_in(bulk_intercell_s2n_net[{{r+1}}][{{c}}]),
+        .bulk_intercell_e_in(bulk_intercell_e2w_net[{{r}}][{{c+1}}]),
+        .bulk_intercell_n_out(bulk_intercell_n2s_net[{{r}}][{{c}}]),
+        .bulk_intercell_w_out(bulk_intercell_w2e_net[{{r}}][{{c}}]),
+        .bulk_intercell_s_out(bulk_intercell_n2s_net[{{r+1}}][{{c}}]),
+        .bulk_intercell_e_out(bulk_intercell_e2w_net[{{r}}][{{c+1}}])
     );
     {% endfor %}
 endmodule

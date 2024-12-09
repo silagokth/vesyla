@@ -1,0 +1,44 @@
+{
+  "name": "cell_btm_impl",
+  "kind": "cell_btm",
+  "component_type": "cell",
+  "parameters": {
+    "INSTR_ADDR_WIDTH": 6,
+    "INSTR_DATA_WIDTH": 32,
+    "INSTR_HOPS_WIDTH": 4,
+    "NUM_SLOTS": 16,
+    "RESOURCE_INSTR_WIDTH": 27
+  },
+  "controller": "sequencer_impl",
+  "resource_list": ["swb_impl", "iosram_btm_impl"],
+  "custom_properties": [
+    {
+      "name": "NUM_SLOTS",
+      "value": 16
+    },
+    {
+      "name": "WORD_BITWIDTH",
+      "value": 16
+    },
+    {
+      "name": "BULK_BITWIDTH",
+      "value": 256
+    },
+    {
+      "name": "FSM_PER_SLOT",
+      "value": 4
+    }
+  ],
+  "required_parameters": [
+    "IO_ADDR_WIDTH",
+    "IO_DATA_WIDTH",
+    "INSTR_ADDR_WIDTH",
+    "INSTR_DATA_WIDTH",
+    "INSTR_HOPS_WIDTH",
+    "NUM_SLOTS",
+    "RESOURCE_INSTR_WIDTH",
+    "WORD_BITWIDTH",
+    "BULK_BITWIDTH",
+    "FSM_PER_SLOT"
+  ]
+}

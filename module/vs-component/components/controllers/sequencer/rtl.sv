@@ -63,7 +63,7 @@ import {{fingerprint}}_pkg::*;
     output logic ret,
     output logic [NUM_SLOTS-1:0] instr_en,
     output logic [RESOURCE_INSTR_WIDTH-1:0] instr,
-    output logic [NUM_SLOTS-1:0] activate,
+    output logic [NUM_SLOTS-1:0][FSM_PER_SLOT-1:0] activate,
     input  logic [INSTR_DATA_WIDTH-1:0] instr_data_in,
     input  logic [INSTR_ADDR_WIDTH-1:0] instr_addr_in,
     input  logic [INSTR_HOPS_WIDTH-1:0] instr_hops_in,
@@ -77,6 +77,7 @@ import {{fingerprint}}_pkg::*;
     // Parameter check:
 
     // Function definition:
+    logic [NUM_SLOTS * FSM_PER_SLOT - 1:0] activate_flat;
 
     logic [27:0] instr_reg;
     logic [63:0][31:0] iram;
@@ -185,6 +186,7 @@ import {{fingerprint}}_pkg::*;
         endcase
     end
 
+    act_t _act;
     always_comb begin
         ret = 0;
         for (int i = 0; i < NUM_SLOTS; i = i + 1) begin
@@ -196,9 +198,12 @@ import {{fingerprint}}_pkg::*;
             DECODE: begin
                 if (instr_type == 0) begin
                     if (opcode == 2) begin
-                        act_t _act;
+                        activate_flat = 0;
                         _act = unpack_act(instr_reg);
-                        activate = _act._ports;
+                        activate_flat = _act._ports << (_act._param * FSM_PER_SLOT);
+                        for (int i=0; i<NUM_SLOTS; i++) begin
+                            activate[i] = activate_flat[FSM_PER_SLOT*i +: FSM_PER_SLOT];
+                        end
                     end else if (opcode == 0) begin
                         ret = 1;
                     end

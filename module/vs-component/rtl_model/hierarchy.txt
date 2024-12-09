@@ -1,6 +1,10 @@
-../output/rtl/dummy_impl.sv
-../output/rtl/dummy_impl2.sv
-../output/rtl/vec_add_impl.sv
+../output/rtl/swb_impl.sv
+../output/rtl/iosram_top_impl.sv
+../output/rtl/iosram_btm_impl.sv
+../output/rtl/rf_impl.sv
+../output/rtl/dpu_impl.sv
 ../output/rtl/sequencer_impl.sv
-../output/rtl/cell_impl.sv
-../output/rtl/fabric.sv
+../output/rtl/cell_top_impl.sv
+../output/rtl/cell_mid_impl.sv
+../output/rtl/cell_btm_impl.sv
+../output/rtl/fabric.sv 

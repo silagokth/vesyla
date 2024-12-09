@@ -98,7 +98,10 @@ class CodeGenerator:
         # write only instructions to binary file
         with open(filename, 'w') as f:
             for instr_list in data.pkg.instruction_lists:
-                f.write("cell " + instr_list.label + '\n')
+                coord = instr_list.label.split("_")
+                x = int(coord[0])
+                y = int(coord[1])
+                f.write("cell " + f"{x} {y}" + '\n')
                 for instr in instr_list.instructions:
                     bin_content = self.assemble_instr_bin(instr, data.isa)
                     f.write(bin_content + '\n')

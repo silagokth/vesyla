@@ -12,6 +12,7 @@
   "required_parameters": [
     "RESOURCE_INSTR_WIDTH",
     "NUM_SLOTS",
+    "FSM_PER_SLOT",
     "INSTR_DATA_WIDTH",
     "INSTR_ADDR_WIDTH",
     "INSTR_HOPS_WIDTH"

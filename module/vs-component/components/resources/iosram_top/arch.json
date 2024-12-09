@@ -1,0 +1,22 @@
+{
+  "kind": "iosram_top",
+  "size": 4,
+  "io_input": true,
+  "io_output": false,
+  "custom_properties": [
+    {
+      "name": "SRAM_ADDR_WIDTH",
+      "value": 6
+    }
+  ],
+  "required_parameters": [
+    "IO_DATA_WIDTH",
+    "IO_ADDR_WIDTH",
+    "RESOURCE_INSTR_WIDTH",
+    "BULK_BITWIDTH",
+    "WORD_BITWIDTH",
+    "NUM_SLOTS",
+    "FSM_PER_SLOT",
+    "INSTR_OPCODE_BITWIDTH"
+  ]
+}

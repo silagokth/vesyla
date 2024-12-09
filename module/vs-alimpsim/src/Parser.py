@@ -48,9 +48,11 @@ class Parser:
             line = re.sub(r"#.*", "", line)
 
             # match "cell <label>"
-            match = re.match(r"\s*cell\s+([^\s]+)\s*", line)
+            match = re.match(r"\s*cell\s+(\d+)\s+(\d+)\s*", line)
             if match:
-                current_label = match.group(1)
+                x = int(match.group(1))
+                y = int(match.group(2))
+                current_label = "{}_{}".format(x, y)
                 continue
 
             # match instructions in N-bit binary form, only 0 and 1 are allowed. N is defined in the ISA.

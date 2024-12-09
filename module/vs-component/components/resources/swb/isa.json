@@ -1,0 +1,68 @@
+{
+  "format": {
+    "instr_bitwidth": 32,
+    "instr_type_bitwidth": 1,
+    "instr_opcode_bitwidth": 3,
+    "instr_slot_bitwidth": 4
+  },
+  "instructions": [
+    {
+      "name": "swb",
+      "opcode": 4,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "option",
+          "comment": "configuration option",
+          "bitwidth": 2
+        },
+        {
+          "name": "channel",
+          "comment": "Bus channel. Note: if the SWB is implemented by a crossbar, the channel is always equals to the target slot.",
+          "bitwidth": 4
+        },
+        {
+          "name": "source",
+          "comment": "Source slot.",
+          "bitwidth": 4
+        },
+        {
+          "name": "target",
+          "comment": "Target slot.",
+          "bitwidth": 4
+        }
+      ]
+    },
+    {
+      "name": "route",
+      "opcode": 5,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "option",
+          "comment": "configuration option",
+          "bitwidth": 2
+        },
+        {
+          "name": "sr",
+          "comment": "Send or receive.",
+          "bitwidth": 1,
+          "verbo_map": [
+            { "key": 0, "val": "s" },
+            { "key": 1, "val": "r" }
+          ]
+        },
+        {
+          "name": "source",
+          "comment": "1-hot encoded direction: E/N/W/S. If it's a receive instruction, the direction can only have 1 bit set to 1.",
+          "bitwidth": 4
+        },
+        {
+          "name": "target",
+          "comment": "1-hot encoded slot number. If it's a send instruction, the slot can only have 1 bit set to 1.",
+          "bitwidth": 16
+        }
+      ]
+    }
+  ]
+}

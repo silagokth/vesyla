@@ -2,16 +2,24 @@
   "platform": "drra",
   "resources": [
     {
-      "name": "dummy_impl",
-      "kind": "dummy"
+      "name": "swb_impl",
+      "kind": "swb"
     },
     {
-      "name": "vec_add_impl",
-      "kind": "vec_add"
+      "name": "iosram_top_impl",
+      "kind": "iosram_top"
     },
     {
-      "name": "dummy_impl2",
-      "kind": "dummy"
+      "name": "iosram_btm_impl",
+      "kind": "iosram_btm"
+    },
+    {
+      "name": "rf_impl",
+      "kind": "rf"
+    },
+    {
+      "name": "dpu_impl",
+      "kind": "dpu"
     }
   ],
   "controllers": [
@@ -22,26 +30,48 @@
   ],
   "cells": [
     {
-      "name": "cell_impl",
-      "kind": "input_output_cell"
+      "name": "cell_top_impl",
+      "kind": "cell_top"
+    },
+    {
+      "name": "cell_mid_impl",
+      "kind": "cell_mid"
+    },
+    {
+      "name": "cell_btm_impl",
+      "kind": "cell_btm"
     }
   ],
   "fabric": {
-    "height": 1,
-    "width": 2,
+    "height": 3,
+    "width": 1,
     "cells_list": [
       {
         "coordinates": [
           {
             "row": 0,
             "col": 0
-          },
-          {
-            "row": 0,
-            "col": 1
           }
         ],
-        "cell_name": "cell_impl"
+        "cell_name": "cell_top_impl"
+      },
+      {
+        "coordinates": [
+          {
+            "row": 1,
+            "col": 0
+          }
+        ],
+        "cell_name": "cell_mid_impl"
+      },
+      {
+        "coordinates": [
+          {
+            "row": 2,
+            "col": 0
+          }
+        ],
+        "cell_name": "cell_btm_impl"
       }
     ],
     "custom_properties": [
@@ -59,11 +89,11 @@
       },
       {
         "name": "ROWS",
-        "value": 1
+        "value": 3
       },
       {
         "name": "COLS",
-        "value": 2
+        "value": 1
       },
       {
         "name": "INSTR_DATA_WIDTH",
@@ -76,6 +106,14 @@
       {
         "name": "INSTR_HOPS_WIDTH",
         "value": 4
+      },
+      {
+        "name": "INSTR_OPCODE_BITWIDTH",
+        "value": 3
+      },
+      {
+        "name": "BULK_WIDTH",
+        "value": 256
       }
     ]
   },

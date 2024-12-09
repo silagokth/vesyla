@@ -1,6 +1,6 @@
 {
-  "name": "cell_impl",
-  "kind": "input_output_cell",
+  "name": "cell_mid_impl",
+  "kind": "cell_mid",
   "component_type": "cell",
   "parameters": {
     "INSTR_ADDR_WIDTH": 6,
@@ -10,11 +10,23 @@
     "RESOURCE_INSTR_WIDTH": 27
   },
   "controller": "sequencer_impl",
-  "resource_list": ["dummy_impl", "vec_add_impl", "dummy_impl2"],
+  "resource_list": ["swb_impl", "rf_impl", "rf_impl", "rf_impl", "dpu_impl"],
   "custom_properties": [
     {
       "name": "NUM_SLOTS",
       "value": 16
+    },
+    {
+      "name": "WORD_BITWIDTH",
+      "value": 16
+    },
+    {
+      "name": "BULK_BITWIDTH",
+      "value": 256
+    },
+    {
+      "name": "FSM_PER_SLOT",
+      "value": 4
     }
   ],
   "required_parameters": [
@@ -24,6 +36,9 @@
     "INSTR_DATA_WIDTH",
     "INSTR_HOPS_WIDTH",
     "NUM_SLOTS",
-    "RESOURCE_INSTR_WIDTH"
+    "RESOURCE_INSTR_WIDTH",
+    "WORD_BITWIDTH",
+    "BULK_BITWIDTH",
+    "FSM_PER_SLOT"
   ]
 }

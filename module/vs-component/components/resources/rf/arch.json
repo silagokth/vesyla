@@ -1,0 +1,30 @@
+{
+  "kind": "rf",
+  "size": 1,
+  "io_input": false,
+  "io_output": false,
+  "custom_properties": [
+    {
+      "name": "RF_DEPTH",
+      "value": 64
+    },
+    {
+      "name": "WORD_ADDR_WIDTH",
+      "value": 6
+    },
+    {
+      "name": "BULK_ADDR_WIDTH",
+      "value": 2
+    }
+  ],
+  "required_parameters": [
+    "IO_DATA_WIDTH",
+    "IO_ADDR_WIDTH",
+    "RESOURCE_INSTR_WIDTH",
+    "BULK_BITWIDTH",
+    "WORD_BITWIDTH",
+    "NUM_SLOTS",
+    "FSM_PER_SLOT",
+    "INSTR_OPCODE_BITWIDTH"
+  ]
+}

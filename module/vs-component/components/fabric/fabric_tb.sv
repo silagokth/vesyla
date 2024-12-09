@@ -35,7 +35,7 @@ import fabric_pkg::*;
     string line;
     logic [INSTR_DATA_WIDTH-1:0] temp_instruction;
     realtime start_time, end_time;
-    logic [15:0][15:0] ob_line;
+    logic [15:0][15:0] ob_line, ib_line;
     initial begin
         rst_n = 0;
         for (int i=0; i<ROWS; i++) begin
@@ -121,6 +121,14 @@ import fabric_pkg::*;
             $fscanf(fd, "%d %b", index, temp_data);
             $display("index = %d, data = %b", index, temp_data);
             input_buffer[index] = temp_data;
+        end
+
+        $display("Input Buffers:");
+        foreach(input_buffer[i]) begin
+            for (int x = 0; x < 16; x = x + 1) begin
+                ib_line[x] = input_buffer[i][16*x +: 16];
+            end
+            $display("IB[%d] = %s", i, $sformatf("%p", ib_line));
         end
     end
 

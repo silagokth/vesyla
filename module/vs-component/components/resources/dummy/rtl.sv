@@ -15,7 +15,11 @@ import {{fingerprint}}_pkg::*;
     input  logic rst_n_0,
     input  logic instr_en_0,
     input  logic [RESOURCE_INSTR_WIDTH-1:0] instr_0,
-    input  logic activate_0
+    input  logic [3:0] activate_0,
+    input  logic [WORD_BITWIDTH-1:0] word_data_in_0,
+    output logic [WORD_BITWIDTH-1:0] word_data_out_0,
+    input  logic [BULK_BITWIDTH-1:0] bulk_data_in_0,
+    output logic [BULK_BITWIDTH-1:0] bulk_data_out_0
 );
 endmodule
 {% endif %}

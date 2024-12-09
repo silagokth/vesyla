@@ -1,0 +1,17 @@
+{
+  "kind": "dpu",
+  "size": 2,
+  "io_input": false,
+  "io_output": false,
+  "custom_properties": [],
+  "required_parameters": [
+    "IO_DATA_WIDTH",
+    "IO_ADDR_WIDTH",
+    "RESOURCE_INSTR_WIDTH",
+    "BULK_BITWIDTH",
+    "WORD_BITWIDTH",
+    "NUM_SLOTS",
+    "FSM_PER_SLOT",
+    "INSTR_OPCODE_BITWIDTH"
+  ]
+}

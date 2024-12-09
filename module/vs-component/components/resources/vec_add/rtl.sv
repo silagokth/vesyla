@@ -59,7 +59,11 @@ import {{fingerprint}}_pkg::*;
     input  logic rst_n_0,
     input  logic instr_en_0,
     input  logic [RESOURCE_INSTR_WIDTH-1:0] instr_0,
-    input  logic activate_0,
+    input  logic activate_0[FSM_PER_SLOT-1:0],
+    input  logic [WORD_BITWIDTH-1:0] word_data_in_0,
+    output logic [WORD_BITWIDTH-1:0] word_data_out_0,
+    input  logic [BULK_BITWIDTH-1:0] bulk_data_in_0,
+    output logic [BULK_BITWIDTH-1:0] bulk_data_out_0,
     output logic io_en_in,
     output logic [IO_ADDR_WIDTH-1:0] io_addr_in,
     input  logic [IO_DATA_WIDTH-1:0] io_data_in,
@@ -68,6 +72,9 @@ import {{fingerprint}}_pkg::*;
     output logic [IO_DATA_WIDTH-1:0] io_data_out
 );
 
+    assign word_data_out_0 = 0;
+    assign bulk_data_out_0 = 0;
+
     logic clk, rst_n, instr_en, activate;
     logic [RESOURCE_INSTR_WIDTH-1:0] instr;
 
@@ -75,7 +82,7 @@ import {{fingerprint}}_pkg::*;
     assign rst_n = rst_n_0;
     assign instr_en = instr_en_0;
     assign instr = instr_0;
-    assign activate = activate_0;
+    assign activate = activate_0[0];
 
     // Function definition:
     typedef enum logic [1:0] { RESET, IDLE, COMPUTE_0, COMPUTE_1} state_t;

@@ -545,9 +545,26 @@ def add_halt(asmprog, cells):
         asmprog.records[halt_record.id].CopyFrom(halt_record)
         asmprog.contents.append(halt_record.id)
 
+def iter_add_one(pasmprog) -> ds.PASMProg:
+    for record_id in pasmprog.records:
+        record = pasmprog.records[record_id]
+        if record.kind == ds.PASMRecord.Kind.INSTR:
+            if record.name == "rep":
+                record.parameters["iter"] = str(int(record.parameters["iter"]) + 1)
+    return pasmprog
+
+def iter_sub_one(asmprog) -> ds.ASMProg:
+    for record_id in asmprog.contents:
+        record = asmprog.records[record_id]
+        if record.kind == ds.ASMRecord.Kind.INSTR:
+            if record.name == "rep":
+                record.parameters["iter"] = str(int(record.parameters["iter"]) - 1)
+    return asmprog
+
 def dispatch(file_pasm, file_cstr, output_dir):
     with open(file_pasm, "r") as file:
         pasmprog = parse.parse_pasm(file.read())
+        pasmprog = iter_add_one(pasmprog)
     with open(file_cstr, "r") as file:
         cstrprog = parse.parse_cstr(file.read())
 
@@ -555,6 +572,7 @@ def dispatch(file_pasm, file_cstr, output_dir):
     asmprog = create_asm(pasmprog, cstrprog, cells, output_dir)
     add_halt(asmprog, cells)
     optimize_asm(asmprog)
+    asmprog = iter_sub_one(asmprog)
 
     txt = codegen.asmprog_to_text(asmprog)
     with open(os.path.join(output_dir, "0.asm"), "w") as file:

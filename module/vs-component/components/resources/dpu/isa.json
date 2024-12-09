@@ -1,0 +1,173 @@
+{
+  "format": {
+    "instr_bitwidth": 32,
+    "instr_type_bitwidth": 1,
+    "instr_opcode_bitwidth": 3,
+    "instr_slot_bitwidth": 4
+  },
+  "instructions": [
+    {
+      "name": "dpu",
+      "opcode": 3,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "option",
+          "comment": "Configuration option.",
+          "bitwidth": 2
+        },
+        {
+          "name": "mode",
+          "comment": "The DPU mode. ",
+          "bitwidth": 5,
+          "verbo_map": [
+            { "key": 0, "val": "idle" },
+            { "key": 1, "val": "add" },
+            { "key": 2, "val": "sum_acc" },
+            { "key": 3, "val": "add_const" },
+            { "key": 4, "val": "subt" },
+            { "key": 5, "val": "subt_abs" },
+            { "key": 6, "val": "mode_6" },
+            { "key": 7, "val": "mult" },
+            { "key": 8, "val": "mult_add" },
+            { "key": 9, "val": "mult_const" },
+            { "key": 10, "val": "mac" },
+            { "key": 11, "val": "ld_ir" },
+            { "key": 12, "val": "axpy" },
+            { "key": 13, "val": "max_min_acc" },
+            { "key": 14, "val": "max_min_const" },
+            { "key": 15, "val": "mode_15" },
+            { "key": 16, "val": "max_min" },
+            { "key": 17, "val": "shift_l" },
+            { "key": 18, "val": "shift_r" },
+            { "key": 19, "val": "sigm" },
+            { "key": 20, "val": "tanhyp" },
+            { "key": 21, "val": "expon" },
+            { "key": 22, "val": "lk_relu" },
+            { "key": 23, "val": "relu" },
+            { "key": 24, "val": "div" },
+            { "key": 25, "val": "acc_softmax" },
+            { "key": 26, "val": "div_softmax" },
+            { "key": 27, "val": "ld_acc" },
+            { "key": 28, "val": "scale_dw" },
+            { "key": 29, "val": "scale_up" },
+            { "key": 30, "val": "mac_inter" },
+            { "key": 31, "val": "mode_31" }
+          ]
+        },
+        {
+          "name": "immediate",
+          "comment": "The immediate field used by some DPU modes.",
+          "bitwidth": 16
+        }
+      ]
+    },
+    {
+      "name": "rep",
+      "opcode": 0,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        },
+        {
+          "name": "level",
+          "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level.",
+          "bitwidth": 4
+        },
+        {
+          "name": "iter",
+          "comment": "level-1 iteration - 1.",
+          "bitwidth": 6
+        },
+        {
+          "name": "step",
+          "comment": "level-1 step",
+          "bitwidth": 6,
+          "default_val": 1,
+          "is_signed": true
+        },
+        {
+          "name": "delay",
+          "comment": "delay",
+          "bitwidth": 6
+        }
+      ]
+    },
+    {
+      "name": "repx",
+      "opcode": 1,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2,
+          "verbo_map": [
+            { "key": 0, "val": "read narrow" },
+            { "key": 1, "val": "read wide" },
+            { "key": 2, "val": "write narrow" },
+            { "key": 3, "val": "write wide" }
+          ]
+        },
+        {
+          "name": "level",
+          "comment": "The level of the REP instruction. [0]: inner most level, [15]: outer most level.",
+          "bitwidth": 4
+        },
+        {
+          "name": "iter",
+          "comment": "level-1 iteration - 1.",
+          "bitwidth": 6
+        },
+        {
+          "name": "step",
+          "comment": "level-1 step",
+          "bitwidth": 6,
+          "default_val": 1,
+          "is_signed": true
+        },
+        {
+          "name": "delay",
+          "comment": "delay",
+          "bitwidth": 6
+        }
+      ]
+    },
+    {
+      "name": "fsm",
+      "opcode": 2,
+      "instr_type": 1,
+      "segments": [
+        {
+          "name": "port",
+          "comment": "The port number",
+          "bitwidth": 2
+        },
+        {
+          "name": "delay_0",
+          "comment": "Delay between state 0 and 1.",
+          "bitwidth": 7
+        },
+        {
+          "name": "delay_1",
+          "comment": "Delay between state 1 and 2.",
+          "bitwidth": 7
+        },
+        {
+          "name": "delay_2",
+          "comment": "Delay between state 2 and 3.",
+          "bitwidth": 7
+        }
+      ]
+    }
+  ]
+}

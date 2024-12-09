@@ -1,13 +1,15 @@
 {
-  "component_type": "resource",
-  "kind": "dummy",
+  "kind": "swb",
   "size": 1,
   "io_input": false,
   "io_output": false,
   "custom_properties": [],
   "required_parameters": [
     "RESOURCE_INSTR_WIDTH",
+    "BULK_BITWIDTH",
     "WORD_BITWIDTH",
-    "BULK_BITWIDTH"
+    "NUM_SLOTS",
+    "FSM_PER_SLOT",
+    "INSTR_OPCODE_BITWIDTH"
   ]
 }

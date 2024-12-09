@@ -7,6 +7,9 @@
   "required_parameters": [
     "IO_DATA_WIDTH",
     "IO_ADDR_WIDTH",
-    "RESOURCE_INSTR_WIDTH"
+    "RESOURCE_INSTR_WIDTH",
+    "FSM_PER_SLOT",
+    "BULK_BITWIDTH",
+    "WORD_BITWIDTH"
   ]
 }
