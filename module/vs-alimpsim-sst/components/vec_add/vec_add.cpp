@@ -52,12 +52,23 @@ void VecAdd::handleEvent(Event *event)
 
     if (newEvent)
     {
+        // Check if the event is an ActEvent
+        ActEvent *actEvent = dynamic_cast<ActEvent *>(newEvent);
+        if (actEvent)
+        {
+            out.output("VecAdd received ActEvent\n");
+            active = true;
+        }
+
+        // Check if the event is an InstrEvent
         InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(newEvent);
         if (instrEvent)
         {
-            instruction = instrEvent->instruction;
-            out.output("VecAdd received instruction: %08x\n", instruction);
+            instrBuffer = instrEvent->instruction;
+            out.output("VecAdd received InstrEvent: %08x\n", instrBuffer);
         }
+
+        // Delete the event
         delete newEvent;
     }
 }
