@@ -21,8 +21,16 @@ public:
   )
 
   SST_ELI_DOCUMENT_PARAMS(
-      {"test", "Test parameter", "1"}, // Example parameter
-  )
+      {"clock", "Clock frequency", "100MHz"},
+      {"printFrequency", "Frequency to print tick messages", "1000"},
+      {"chunckWidth", "Width of the chunck", "16"},
+      {"io_data_width", "Width of the IO data", "256"},
+
+      // Instruction format (from isa.json file)
+      {"instr_bitwidth", "Instruction bitwidth", "32"},
+      {"instr_type_bitwidth", "Instruction type (control/resource)", "1"},
+      {"instr_opcode_width", "Instruction opcode width", "3"},
+      {"instr_slot_width", "Instruction slot width", "4"}, )
 
   SST_ELI_DOCUMENT_PORTS(
       {"controller_port", "Link to the controller"})
@@ -46,12 +54,51 @@ public:
 
   // SST event handler
   void handleEvent(Event *event);
+  void handleMemoryEvent(Interfaces::StandardMem::Request *req);
 
 private:
   Output out;
   Cycle_t printFrequency;
+  string clock;
+  uint8_t chunckWidth = 16;
 
-  Link *controllerLink;
+  uint32_t io_data_width = 256;
+
+  // Instruction format (from isa.json file)
+  uint32_t instrBitwidth;
+  uint32_t instrTypeBitwidth;
+  uint32_t instrOpcodeWidth;
+  uint32_t instrSlotWidth;
+
+  // Links
+  Link *controllerLink; // Sequencer connection (Instructions and activations)
+  // Component state (IDLE, COMPUTE_0, COMPUTE_1)
+  enum State
+  {
+    RESET,
+    IDLE,
+    COMPUTE_0,
+    COMPUTE_1
+  };
+  State state = RESET;
+
+  // Add instruction (decoded)
+  typedef struct vec_add_instr
+  {
+    bool en = false;
+    uint16_t addr = 0;
+  } VecAddInstr;
+
+  bool active = false;
+  uint32_t instrBuffer = 0;
+  VecAddInstr instr;
+  std::vector<uint8_t> dataBuffer;
+
+  // Functions
+  VecAddInstr decodeInstruction(uint32_t instruction);
+  void read_from_io();
+  void write_to_io();
+  void compute_addition();
 };
 
 #endif // _VECADD_H
