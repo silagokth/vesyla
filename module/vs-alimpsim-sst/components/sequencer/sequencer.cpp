@@ -2,6 +2,7 @@
 #include <sst/core/component.h>
 #include <sst/core/link.h>
 
+#include "activationEvent.h"
 #include "instructionEvent.h"
 #include "sequencer.h"
 #include <bitset>
@@ -198,10 +199,9 @@ void Sequencer::fetch_decode(uint32_t instruction)
 
     if (instruction_type == 1) // Send event to resource
     {
-        out.output("Resource instruction: %08x\n", instruction);
         event->instruction = instruction;
-        out.output("Sending event to slot %u\n", slot);
         slotLinks[slot]->send(event);
+        out.output("Sequencer sent INSTRUCTION event to slot %u\n", slot);
     }
     else
     {
@@ -283,22 +283,52 @@ void Sequencer::wait_event()
 
 void Sequencer::activate(uint32_t content)
 {
-    uint32_t portsSegmentLength = 16;
+    uint32_t slotsSegmentLength = 16;
     uint32_t modeSegmentLength = 4;
     uint32_t paramSegmentLength = 8;
 
     // Check validity
-    if (portsSegmentLength + modeSegmentLength + paramSegmentLength > instrBitwidth - instrTypeBitwidth - instrOpcodeWidth)
+    if (slotsSegmentLength + modeSegmentLength + paramSegmentLength > instrBitwidth - instrTypeBitwidth - instrOpcodeWidth)
     {
         out.fatal(CALL_INFO, -1, "Invalid instruction format\n");
     }
 
     // Extract segments
-    uint32_t ports = (content & ((1 << portsSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - portsSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - portsSegmentLength);
-    uint32_t mode = (content & ((1 << modeSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - portsSegmentLength - modeSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - portsSegmentLength - modeSegmentLength);
+    uint32_t slots = (content & ((1 << slotsSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - slotsSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - slotsSegmentLength);
+    uint32_t mode = (content & ((1 << modeSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - slotsSegmentLength - modeSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - slotsSegmentLength - modeSegmentLength);
     uint32_t param = (content & ((1 << paramSegmentLength) - 1));
 
-    out.output("ACTIVATE: ports=%s, mode=%s, param=%s\n", std::bitset<16>(ports).to_string().c_str(), std::bitset<4>(mode).to_string().c_str(), std::bitset<8>(param).to_string().c_str());
+    uint32_t targetPort = 0;
+
+    // Send activate event to ports (one-hot encoded)
+    for (uint32_t i = 0; i < numSlots; i++)
+    {
+        if (slots & (1 << i))
+        {
+            switch (mode)
+            {
+            case 0:
+                targetPort = param + i;
+                break;
+            case 1:
+                targetPort = param;
+                break;
+            case 2:
+                out.fatal(CALL_INFO, -1, "ACT MODE 2 not implemented\n");
+                break;
+
+            default:
+                out.fatal(CALL_INFO, -1, "Invalid mode\n");
+                break;
+            }
+            ActEvent *event = new ActEvent();
+            event->port = targetPort;
+            slotLinks[i]->send(event);
+            out.output("Sequencer sent ACTIVATE event to slot %u, port %u\n", i, targetPort);
+        }
+    }
+
+    out.output("ACTIVATE: slots=%s, mode=%s, param=%s\n", std::bitset<16>(slots).to_string().c_str(), std::bitset<4>(mode).to_string().c_str(), std::bitset<8>(param).to_string().c_str());
 }
 
 void Sequencer::calculate(uint32_t content)
@@ -332,66 +362,87 @@ void Sequencer::calculate(uint32_t content)
 
     case 1:
         operationStr = "add";
+        scalarRegisters[result] = operand1 + operand2;
         break;
     case 2:
         operationStr = "sub";
+        scalarRegisters[result] = operand1 - operand2;
         break;
     case 3:
         operationStr = "lls";
+        scalarRegisters[result] = operand1 / (1 << operand2);
         break;
     case 4:
         operationStr = "lrs";
+        scalarRegisters[result] = operand1 * (1 << operand2);
         break;
     case 5:
         operationStr = "mul";
+        scalarRegisters[result] = operand1 * operand2;
         break;
     case 6:
         operationStr = "div";
+        scalarRegisters[result] = operand1 / operand2;
         break;
     case 7:
         operationStr = "mod";
+        scalarRegisters[result] = operand1 % operand2;
         break;
     case 8:
         operationStr = "bitand";
+        scalarRegisters[result] = operand1 & operand2;
         break;
     case 9:
         operationStr = "bitor";
+        scalarRegisters[result] = operand1 | operand2;
         break;
     case 10:
         operationStr = "bitinv";
+        scalarRegisters[result] = ~operand1;
         break;
     case 11:
         operationStr = "bitxor";
+        scalarRegisters[result] = operand1 ^ operand2;
         break;
     case 17:
         operationStr = "eq";
+        boolRegisters[result] = operand1 == operand2;
         break;
     case 18:
         operationStr = "ne";
+        boolRegisters[result] = operand1 != operand2;
         break;
     case 19:
         operationStr = "gt";
+        boolRegisters[result] = operand1 > operand2;
         break;
     case 20:
         operationStr = "ge";
+        boolRegisters[result] = operand1 >= operand2;
         break;
     case 21:
         operationStr = "lt";
+        boolRegisters[result] = operand1 < operand2;
         break;
     case 22:
         operationStr = "le";
+        boolRegisters[result] = operand1 <= operand2;
         break;
     case 32:
         operationStr = "and";
+        boolRegisters[result] = boolRegisters[operand1] && boolRegisters[operand2]; // TODO check this
         break;
     case 33:
         operationStr = "or";
+        boolRegisters[result] = boolRegisters[operand1] || boolRegisters[operand2];
         break;
     case 34:
         operationStr = "not";
+        boolRegisters[result] = !boolRegisters[operand1];
         break;
 
     default:
+        out.fatal(CALL_INFO, -1, "Invalid operation mode\n");
         break;
     }
 
@@ -423,6 +474,16 @@ void Sequencer::branch(uint32_t content)
     if (targetFalse & (1 << (targetFalseSegmentLength - 1)))
     {
         targetFalse |= ~((1 << targetFalseSegmentLength) - 1);
+    }
+
+    // Compute new PC
+    if (boolRegisters[reg])
+    {
+        pc += targetTrue;
+    }
+    else
+    {
+        pc += targetFalse;
     }
 
     out.output("BRANCH: reg=%s, targetTrue=%d, targetFalse=%d\n", std::bitset<4>(reg).to_string().c_str(), targetTrue, targetFalse);
