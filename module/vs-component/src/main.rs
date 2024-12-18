@@ -55,6 +55,9 @@ enum Command {
         /// Build directory
         #[arg(short, long, default_value = "build")]
         build_dir: String,
+        /// Output JSON file path
+        #[arg(short, long, default_value = "")]
+        output_json: String,
     },
     #[command(about = "Validate JSON file", name = "validate_json")]
     ValidateJson {
@@ -117,6 +120,7 @@ fn main() {
         Command::GenRtl {
             fabric_description,
             build_dir,
+            output_json,
             debug,
         } => {
             info!("Generating RTL...");
@@ -129,7 +133,11 @@ fn main() {
                     .filter_level(log::LevelFilter::Info)
                     .init();
             }
-            match gen_rtl(fabric_description.clone(), build_dir.clone()) {
+            match gen_rtl(
+                fabric_description.clone(),
+                build_dir.clone(),
+                output_json.clone(),
+            ) {
                 Ok(_) => info!("Done!"),
                 Err(e) => error!("Error: {}", e),
             };
@@ -186,7 +194,7 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
     }
 }
 
-fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
+fn gen_rtl(fabric_filepath: String, build_dir: String, output_json: String) -> Result<()> {
     // Clean build directory
     clean(build_dir.clone())?;
 
@@ -1038,6 +1046,18 @@ fn gen_rtl(fabric_filepath: String, build_dir: String) -> Result<()> {
         "Serialized fabric: \n{}",
         serde_json::to_string_pretty(&fabric_object).unwrap()
     );
+    // Output the fabric object to a JSON file
+    if !output_json.is_empty() {
+        let fabric_output_file = Path::new(&output_json);
+        let fabric_output = fs::File::create(fabric_output_file).expect("Failed to create file");
+        serde_json::to_writer_pretty(fabric_output, &fabric_object).expect("Failed to write JSON");
+        info!(
+            "Generated JSON file for fabric at path: {}",
+            fabric_output_file.display()
+        );
+    }
+
+    // Output the fabric RTL
     let fabric_output_file = Path::new(&rtl_output_dir).join("fabric.sv");
     if fabric_object.generate_rtl(&fabric_output_file).is_ok() {
         debug!("Generated RTL for fabric");
@@ -1510,6 +1530,6 @@ mod tests {
             "VESYLA_LIBRARY_PATH",
             env!("CARGO_MANIFEST_DIR").to_string() + "/template",
         );
-        gen_rtl(args[0].clone(), "build".to_string()).unwrap();
+        gen_rtl(args[0].clone(), "build".to_string(), "".to_string()).unwrap();
     }
 }
