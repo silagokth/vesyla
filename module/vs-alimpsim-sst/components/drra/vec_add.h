@@ -2,6 +2,7 @@
 #define _VECADD_H
 
 #include <sst/core/component.h>
+#include <sst/core/interfaces/stdMem.h>
 #include <sst/core/params.h>
 
 using namespace std;
@@ -13,7 +14,7 @@ public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(
       VecAdd,                           // Class name
-      "vec_add",                        // Name of library
+      "drra",                           // Name of library
       "VecAdd",                         // Lookup name for component
       SST_ELI_ELEMENT_VERSION(1, 0, 0), // Component version
       "VecAdd DPU component",           // Description
@@ -33,9 +34,14 @@ public:
       {"instr_slot_width", "Instruction slot width", "4"}, )
 
   SST_ELI_DOCUMENT_PORTS(
-      {"controller_port", "Link to the controller"})
+      {"controller_port", "Link to the controller"},
+      {"input_buffer_port", "Link to the input buffer"},
+      {"output_buffer_port", "Link to the output buffer"})
+
   SST_ELI_DOCUMENT_STATISTICS()
   SST_ELI_DOCUMENT_SUBCOMPONENT_SLOTS()
+  // {"input_buffer", "Input buffer", "SST::Interfaces::StandardMem"},
+  // {"output_buffer", "Output buffer", "SST::Interfaces::StandardMem"})
 
   /* Constructor */
   VecAdd(ComponentId_t id, Params &params);
@@ -72,6 +78,13 @@ private:
 
   // Links
   Link *controllerLink; // Sequencer connection (Instructions and activations)
+  Link *inputBufferLink;
+  Link *outputBufferLink;
+
+  // Memory interfaces
+  // Interfaces::StandardMem *inputBuffer;  // IO connection (data in)
+  // Interfaces::StandardMem *outputBuffer; // IO connection (data out)
+
   // Component state (IDLE, COMPUTE_0, COMPUTE_1)
   enum State
   {

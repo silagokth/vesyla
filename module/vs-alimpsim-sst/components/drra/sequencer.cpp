@@ -61,7 +61,7 @@ Sequencer::Sequencer(ComponentId_t id, Params &params) : Component(id)
         out.output("Number of slots: %lu\n", slotLinks.size());
         out.fatal(CALL_INFO, -1, "Invalid number of slots\n");
     }
-    out.output("Connected %lu slot links\n", slotLinks.size());
+    out.output("Sequencer: Connected %lu slot links\n", slotLinks.size());
 
     registerClock(clock, new SST::Clock::Handler<Sequencer>(this, &Sequencer::clockTick));
 
@@ -126,14 +126,12 @@ bool Sequencer::clockTick(Cycle_t currentCycle)
         primaryComponentOKToEndSim();
         return true;
     }
-    else
+
+    if (pc >= assemblyProgram.size())
     {
-        if (pc >= assemblyProgram.size())
-        {
-            out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
-        }
-        return false;
+        out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
     }
+    return false;
 }
 
 void Sequencer::handleEvent(Event *event)

@@ -15,65 +15,27 @@ execute_process(
 )
 set(SST_INCLUDE_DIR ${SST_INCLUDE_DIR})
 include_directories(${SST_INCLUDE_DIR})
-add_library(${PROJECT_NAME} MODULE ${CMAKE_CURRENT_SOURCE_DIR}/src/instructionEvent.h ${CMAKE_CURRENT_SOURCE_DIR}/src/drra.cpp)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+include_directories($ENV{SST_ELEMENTS_HOME}/include)
 
-# Function to add a component
-function(add_sst_component COMPONENT_NAME)
-    # Create a module for this component
-    add_library(${COMPONENT_NAME} MODULE
-        ${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}/${COMPONENT_NAME}.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}/${COMPONENT_NAME}.h
-    )
+# Find DRRA sources and headers
+file(GLOB DRRA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/components/drra/*.cpp)
+file(GLOB DRRA_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/components/drra/*.h)
+file(GLOB DRRA_EVENTS ${CMAKE_CURRENT_SOURCE_DIR}/components/drra/events/*.h)
 
-    # Include directories
-    target_include_directories(${COMPONENT_NAME} PUBLIC 
-        ${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}
-    )
+# Add DRRA library
+add_library(drra MODULE ${DRRA_SOURCES} ${DRRA_HEADERS} ${DRRA_EVENTS})
 
-    # Link
-    target_link_options(${COMPONENT_NAME} PRIVATE -Wl,-undefined,dynamic_lookup)
-    target_link_libraries(${COMPONENT_NAME} SST::SSTCore)
+# Set DRRA include dirs, links and flags
+target_include_directories(drra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/components/drra)
+target_include_directories(drra PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/components/drra/events)
+target_link_options(drra PRIVATE -Wl,-undefined,dynamic_lookup)
+target_link_libraries(drra SST::SSTCore)
+target_compile_options(drra PRIVATE ${CMAKE_CXX_FLAGS})
 
-    # Add SST-specific compile and link flags
-    target_compile_options(${COMPONENT_NAME} PRIVATE 
-        ${CMAKE_CXX_FLAGS}
-    )
-
-    # Create an install target for this specific component
-    # install(TARGETS ${COMPONENT_NAME}
-    #     LIBRARY DESTINATION lib/drra-components
-    # )
-
-    # Custom install command to register this specific SST component
-    # install(CODE "
-    #     message(STATUS \"Registering SST component: ${COMPONENT_NAME}\")
-    #     execute_process(
-    #         COMMAND sst-register ${COMPONENT_NAME} ${COMPONENT_NAME}_LIBDIR=${CMAKE_INSTALL_PREFIX}/lib
-    #         COMMAND sst-register SST_ELEMENT_SOURCE ${COMPONENT_NAME}=${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}
-    #         COMMAND sst-register SST_ELEMENT_TESTS ${COMPONENT_NAME}=${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}/../tests
-    #         COMMENT \"Registering SST component: ${COMPONENT_NAME}\"
-    #     )
-    # ")
-
-    # Custom command to register this specific SST component
-    add_custom_command(TARGET ${COMPONENT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lib
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${COMPONENT_NAME}> ${CMAKE_CURRENT_BINARY_DIR}/lib
-        COMMAND sst-register ${COMPONENT_NAME} ${COMPONENT_NAME}_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}/lib
-        COMMAND sst-register SST_ELEMENT_SOURCE ${COMPONENT_NAME}=${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}
-        COMMAND sst-register SST_ELEMENT_TESTS ${COMPONENT_NAME}=${CMAKE_CURRENT_SOURCE_DIR}/components/${COMPONENT_NAME}/../tests
-        COMMENT "Registering SST component: ${COMPONENT_NAME}"
-        USES_TERMINAL
-    )
-endfunction()
-
-# Discover and add all components
-file(GLOB COMPONENT_DIRS "components/*")
-foreach(COMPONENT_DIR ${COMPONENT_DIRS})
-    if(IS_DIRECTORY ${COMPONENT_DIR})
-        message(STATUS "Adding SST component: ${COMPONENT_DIR}")
-        get_filename_component(COMPONENT_NAME ${COMPONENT_DIR} NAME)
-        add_sst_component(${COMPONENT_NAME})
-    endif()
-endforeach()
+# Register DRRA library and its components
+message(STATUS "Registering SST library: drra")
+add_custom_command(TARGET drra POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lib
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:drra> ${CMAKE_CURRENT_BINARY_DIR}/lib
+    COMMAND sst-register drra drra_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}/lib
+)

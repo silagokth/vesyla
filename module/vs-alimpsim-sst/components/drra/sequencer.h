@@ -13,7 +13,7 @@ public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(
       Sequencer,                        // Class name
-      "sequencer",                      // Name of library
+      "drra",                           // Name of library
       "Sequencer",                      // Lookup name for component
       SST_ELI_ELEMENT_VERSION(1, 0, 0), // Component version
       "Sequencer component",            // Description

@@ -2,6 +2,9 @@
 
 #include "activationEvent.h"
 #include "instructionEvent.h"
+#include "memoryEvents.h"
+#include "sst/elements/memHierarchy/memEvent.h"
+#include "sst/elements/memHierarchy/memEventBase.h"
 #include "vec_add.h"
 
 VecAdd::VecAdd(ComponentId_t id, Params &params) : Component(id)
@@ -25,6 +28,32 @@ VecAdd::VecAdd(ComponentId_t id, Params &params) : Component(id)
 
     // Clock
     TimeConverter *tc = registerClock(clock, new SST::Clock::Handler<VecAdd>(this, &VecAdd::clockTick));
+
+    // Links
+    inputBufferLink = configureLink("input_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+    out.output("VecAdd: Connected to input buffer\n");
+    outputBufferLink = configureLink("output_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+    out.output("VecAdd: Connected to output buffer\n");
+
+    // Interface to input and output buffers
+    // inputBuffer = loadUserSubComponent<Interfaces::StandardMem>("input_buffer", ComponentInfo::SHARE_NONE, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
+    // if (!inputBuffer)
+    // {
+    //     SST::Params interfaceParams;
+    //     interfaceParams.insert("port", "input_buffer_port");
+    //     inputBuffer = loadAnonymousSubComponent<Interfaces::StandardMem>("memHierarchy.standardInterface", "memory", 0, ComponentInfo::SHARE_PORTS | ComponentInfo::INSERT_STATS, interfaceParams, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
+    // }
+    // sst_assert(inputBuffer, CALL_INFO, -1, "Failed to load input buffer\n");
+
+    // // outputBuffer = loadUserSubComponent<Interfaces::StandardMem>("output_buffer", ComponentInfo::SHARE_NONE, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
+    // if (!outputBuffer)
+    // {
+    //     SST::Params interfaceParams;
+    //     interfaceParams.insert("port", "output_buffer_port");
+    //     outputBuffer = loadAnonymousSubComponent<Interfaces::StandardMem>("memHierarchy.standardInterface", "memory", 0, ComponentInfo::SHARE_PORTS | ComponentInfo::INSERT_STATS, interfaceParams, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
+    // }
+    // sst_assert(outputBuffer, CALL_INFO, -1, "Failed to load output buffer\n");
+    // out.output("VecAdd (ID:%lu): Connected to input and output buffers\n", id);
 }
 
 VecAdd::~VecAdd() {}
@@ -32,6 +61,9 @@ VecAdd::~VecAdd() {}
 void VecAdd::init(unsigned int phase)
 {
     controllerLink = configureLink("controller_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+    out.output("VecAdd: Connected to controller\n");
+    // inputBuffer->init(phase);
+    // outputBuffer->init(phase);
     out.verbose(CALL_INFO, 1, 0, "VecAdd initialized\n");
 }
 
@@ -88,12 +120,8 @@ bool VecAdd::clockTick(Cycle_t currentCycle)
         out.fatal(CALL_INFO, -1, "Invalid state\n");
         break;
     }
-    // if (currentCycle % printFrequency == 0)
-    // {
-    //     out.output("VecAdd tick at %" PRIu64 "\n", currentCycle);
-    // }
 
-    return false;
+    return true;
 }
 
 void VecAdd::handleEvent(Event *event)
@@ -139,6 +167,8 @@ VecAdd::VecAddInstr VecAdd::decodeInstruction(uint32_t instruction)
     instr.en = (instruction & ((1 << enSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - instrSlotWidth - enSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - instrSlotWidth - enSegmentLength);
     instr.addr = (instruction & ((1 << addrSegmentLength) - 1) << (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - instrSlotWidth - enSegmentLength - addrSegmentLength)) >> (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - instrSlotWidth - enSegmentLength - addrSegmentLength);
 
+    out.output("VecAdd decoded instruction: en=%d, addr=%d\n", instr.en, instr.addr);
+
     return instr;
 }
 
@@ -158,10 +188,13 @@ void VecAdd::handleMemoryEvent(Interfaces::StandardMem::Request *response)
 
 void VecAdd::read_from_io()
 {
-    Interfaces::StandardMem::Request *req;
-    Interfaces::StandardMem::Addr addr = instr.addr;
-    req = new Interfaces::StandardMem::Read(addr, io_data_width / 8); // read 256 bits
-    inputBuffer->send(req);
+    out.output("VecAdd reading from input buffer\n");
+    // Interfaces::StandardMem::Request *req;
+    // Interfaces::StandardMem::Addr addr = instr.addr;
+    ReadRequest *readReq = new ReadRequest();
+    readReq->address = instr.addr;
+    inputBufferLink->send(readReq);
+    out.output("VecAdd sent read request\n");
 }
 
 void VecAdd::compute_addition()
@@ -189,8 +222,15 @@ void VecAdd::compute_addition()
 
 void VecAdd::write_to_io()
 {
-    Interfaces::StandardMem::Request *req;
-    Interfaces::StandardMem::Addr addr = instr.addr;
-    req = new Interfaces::StandardMem::Write(addr, io_data_width / 8, dataBuffer); // write 256 bits
-    outputBuffer->send(req);
+    out.output("VecAdd writing to output buffer\n");
+    // Interfaces::StandardMem::Request *req;
+    // Interfaces::StandardMem::Addr addr = instr.addr;
+    WriteRequest *writeReq = new WriteRequest();
+    writeReq->address = instr.addr;
+    for (int i = 0; i < io_data_width / 8; i++)
+    {
+        writeReq->data.push_back(dataBuffer[i]);
+    }
+    outputBufferLink->send(writeReq);
+    out.output("VecAdd sent write request\n");
 }
