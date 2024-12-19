@@ -200,11 +200,11 @@ void VecAdd::read_from_io()
 void VecAdd::compute_addition()
 {
     // Iterate over the data buffer in chunks of chunckWidth
-    for (int i = 0; i < io_data_width; i += chunckWidth)
+    for (int i = 0; i < io_data_width; i += chunckWidth / 8)
     {
         uint64_t chunk = 0;
         // Combine bytes into a single chunk
-        for (int j = 0; j < chunckWidth; ++j)
+        for (int j = 0; j < chunckWidth / 8; ++j)
         {
             chunk |= (static_cast<uint64_t>(dataBuffer[i + j]) << (j * 8));
         }
