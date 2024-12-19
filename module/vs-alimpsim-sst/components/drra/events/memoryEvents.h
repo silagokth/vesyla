@@ -5,7 +5,11 @@
 
 using namespace SST;
 
-class ReadRequest : public Event
+class MemoryEvent : public Event
+{
+};
+
+class ReadRequest : public MemoryEvent
 {
 public:
     ReadRequest() {}
@@ -13,6 +17,8 @@ public:
 
     // Data members
     uint32_t address;
+    uint32_t size;
+    uint32_t column_id;
 
     ReadRequest *clone() override
     {
@@ -27,14 +33,15 @@ public:
     ImplementSerializable(ReadRequest);
 };
 
-class ReadResponse : public Event
+class ReadResponse : public MemoryEvent
 {
 public:
     ReadResponse() {}
     ~ReadResponse() {}
 
     // Data members
-    uint32_t data;
+    uint32_t address;
+    std::vector<uint8_t> data;
 
     ReadResponse *clone() override
     {
@@ -46,10 +53,15 @@ public:
         Event::serialize_order(ser);
     }
 
+    void set_data(std::vector<uint8_t> data)
+    {
+        this->data = data;
+    }
+
     ImplementSerializable(ReadResponse);
 };
 
-class WriteRequest : public Event
+class WriteRequest : public MemoryEvent
 {
 public:
     WriteRequest() {}
@@ -77,7 +89,7 @@ public:
     }
 };
 
-class WriteResponse : public Event
+class WriteResponse : public MemoryEvent
 {
 public:
     WriteResponse() {}

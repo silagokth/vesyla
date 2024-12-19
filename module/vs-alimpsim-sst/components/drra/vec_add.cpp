@@ -13,11 +13,32 @@ VecAdd::VecAdd(ComponentId_t id, Params &params) : Component(id)
     printFrequency = params.find<uint64_t>("printFrequency", 1000);
     clock = params.find<std::string>("clock", "100MHz");
     chunckWidth = params.find<uint8_t>("chunckWidth", 16);
+    slot_id = params.find<uint8_t>("slot_id");
+    has_io_input_connection = params.find<bool>("has_io_input_connection", false);
+    has_io_output_connection = params.find<bool>("has_io_output_connection", false);
+    if ((has_io_input_connection || has_io_output_connection) && (slot_id != 1))
+    {
+        out.fatal(CALL_INFO, -1, "Invalid slot id (only slot 1 is supported for IO connections)\n");
+    }
 
     io_data_width = params.find<uint64_t>("io_data_width", 256);
     for (int i = 0; i < io_data_width / 8; i++)
     {
         dataBuffer.push_back(0); // initialize data buffer
+    }
+
+    // Cell coordinates
+    std::vector<int> paramsCellCoordinates;
+    params.find_array<int>("cell_coordinates", paramsCellCoordinates);
+    if (paramsCellCoordinates.size() != 2)
+    {
+        out.output("Size of cell coordinates: %lu\n", paramsCellCoordinates.size());
+        out.fatal(CALL_INFO, -1, "Invalid cell coordinates\n");
+    }
+    else
+    {
+        cellCoordinates[0] = paramsCellCoordinates[0];
+        cellCoordinates[1] = paramsCellCoordinates[1];
     }
 
     // Instruction format
@@ -29,41 +50,36 @@ VecAdd::VecAdd(ComponentId_t id, Params &params) : Component(id)
     // Clock
     TimeConverter *tc = registerClock(clock, new SST::Clock::Handler<VecAdd>(this, &VecAdd::clockTick));
 
+    controllerLink = configureLink("controller_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+    out.output("VecAdd: Connected to controller\n");
+
     // Links
-    inputBufferLink = configureLink("input_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
-    out.output("VecAdd: Connected to input buffer\n");
-    outputBufferLink = configureLink("output_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
-    out.output("VecAdd: Connected to output buffer\n");
+    out.output("%d,%d\n", has_io_input_connection, has_io_output_connection);
+    if (has_io_input_connection)
+    {
+        inputBufferLink = configureLink("input_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+        out.output("VecAdd: Connected to input buffer\n");
+    }
+    if (has_io_output_connection)
+    {
+        outputBufferLink = configureLink("output_buffer_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
+        out.output("VecAdd: Connected to output buffer\n");
+    }
 
-    // Interface to input and output buffers
-    // inputBuffer = loadUserSubComponent<Interfaces::StandardMem>("input_buffer", ComponentInfo::SHARE_NONE, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
-    // if (!inputBuffer)
-    // {
-    //     SST::Params interfaceParams;
-    //     interfaceParams.insert("port", "input_buffer_port");
-    //     inputBuffer = loadAnonymousSubComponent<Interfaces::StandardMem>("memHierarchy.standardInterface", "memory", 0, ComponentInfo::SHARE_PORTS | ComponentInfo::INSERT_STATS, interfaceParams, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
-    // }
-    // sst_assert(inputBuffer, CALL_INFO, -1, "Failed to load input buffer\n");
-
-    // // outputBuffer = loadUserSubComponent<Interfaces::StandardMem>("output_buffer", ComponentInfo::SHARE_NONE, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
-    // if (!outputBuffer)
-    // {
-    //     SST::Params interfaceParams;
-    //     interfaceParams.insert("port", "output_buffer_port");
-    //     outputBuffer = loadAnonymousSubComponent<Interfaces::StandardMem>("memHierarchy.standardInterface", "memory", 0, ComponentInfo::SHARE_PORTS | ComponentInfo::INSERT_STATS, interfaceParams, tc, new Interfaces::StandardMem::Handler<VecAdd>(this, &VecAdd::handleMemoryEvent));
-    // }
-    // sst_assert(outputBuffer, CALL_INFO, -1, "Failed to load output buffer\n");
-    // out.output("VecAdd (ID:%lu): Connected to input and output buffers\n", id);
+    if ((!inputBufferLink) || (!outputBufferLink))
+    {
+        out.fatal(CALL_INFO, -1, "Invalid IO buffer input and output connections.\nThis component needs IO connections to run.\n");
+    }
+    else
+    {
+        out.output("VecAdd: IO connections configured\n");
+    }
 }
 
 VecAdd::~VecAdd() {}
 
 void VecAdd::init(unsigned int phase)
 {
-    controllerLink = configureLink("controller_port", "0ns", new Event::Handler<VecAdd>(this, &VecAdd::handleEvent));
-    out.output("VecAdd: Connected to controller\n");
-    // inputBuffer->init(phase);
-    // outputBuffer->init(phase);
     out.verbose(CALL_INFO, 1, 0, "VecAdd initialized\n");
 }
 
@@ -84,6 +100,10 @@ void VecAdd::finish()
 
 bool VecAdd::clockTick(Cycle_t currentCycle)
 {
+    if (currentCycle % printFrequency == 0)
+    {
+        out.output("--- VECADD CYCLE %" PRIu64 " ---\n", currentCycle);
+    }
     switch (state)
     {
     case RESET:
@@ -103,6 +123,7 @@ bool VecAdd::clockTick(Cycle_t currentCycle)
             {
                 state = COMPUTE_0; // start computation (read from io)
             }
+            instrBuffer = 0;
         }
         break;
     case COMPUTE_0: // read from io
@@ -114,6 +135,7 @@ bool VecAdd::clockTick(Cycle_t currentCycle)
         write_to_io();
         instrBuffer = 0;
         state = IDLE;
+        return true;
         break;
 
     default:
@@ -121,7 +143,7 @@ bool VecAdd::clockTick(Cycle_t currentCycle)
         break;
     }
 
-    return true;
+    return false;
 }
 
 void VecAdd::handleEvent(Event *event)
@@ -146,8 +168,36 @@ void VecAdd::handleEvent(Event *event)
             out.output("VecAdd received InstrEvent: %08x\n", instrBuffer);
         }
 
+        // Check if the event is a memory request
+        MemoryEvent *readReq = dynamic_cast<MemoryEvent *>(newEvent);
+        if (readReq)
+        {
+            // Read from memory
+            handleMemoryEvent(readReq);
+        }
+
         // Delete the event
         delete newEvent;
+    }
+}
+
+void VecAdd::handleMemoryEvent(MemoryEvent *memEvent)
+{
+    ReadResponse *readResp = dynamic_cast<ReadResponse *>(memEvent);
+    if (readResp)
+    {
+        out.output("VecAdd received read response\n");
+        out.output("VecAdd dataBuffer (%d bits) = ", io_data_width);
+        for (int i = io_data_width / 8 - 1; i >= 0; i--)
+        {
+            dataBuffer[i] = readResp->data[i];
+            out.output("%08b", dataBuffer[i]);
+            if (i % 2 == 0)
+            {
+                out.output(" ");
+            }
+        }
+        out.output("\n");
     }
 }
 
@@ -172,20 +222,6 @@ VecAdd::VecAddInstr VecAdd::decodeInstruction(uint32_t instruction)
     return instr;
 }
 
-void VecAdd::handleMemoryEvent(Interfaces::StandardMem::Request *response)
-{
-    Interfaces::StandardMem::ReadResp *readResp = dynamic_cast<Interfaces::StandardMem::ReadResp *>(response);
-    if (readResp)
-    {
-        out.output("VecAdd received read response\n");
-        for (int i = 0; i < io_data_width / 8; i++)
-        {
-            dataBuffer[i] = readResp->data[i];
-        }
-    }
-    delete response;
-}
-
 void VecAdd::read_from_io()
 {
     out.output("VecAdd reading from input buffer\n");
@@ -193,6 +229,8 @@ void VecAdd::read_from_io()
     // Interfaces::StandardMem::Addr addr = instr.addr;
     ReadRequest *readReq = new ReadRequest();
     readReq->address = instr.addr;
+    readReq->size = io_data_width / 8;
+    readReq->column_id = cellCoordinates[1];
     inputBufferLink->send(readReq);
     out.output("VecAdd sent read request\n");
 }

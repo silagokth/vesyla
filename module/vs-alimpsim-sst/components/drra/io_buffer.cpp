@@ -9,6 +9,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : SST::Component(
 {
     out.init("IOBuffer[@p:@l]: ", 16, 0, SST::Output::STDOUT);
     clock = params.find<std::string>("clock", "100MHz");
+    printFrequency = params.find<uint64_t>("printFrequency", 1000);
     io_data_width = params.find<uint64_t>("io_data_width", 256);
     access_time = params.find<std::string>("access_time", "0ns");
 
@@ -64,8 +65,8 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : SST::Component(
     }
     out.output("IOBuffer (ID:%lu): Created backing store (type: %s)\n", id, backingType.c_str());
 
-    // Slots ports
-    std::string linkPrefix = "slot_port";
+    // Column ports
+    std::string linkPrefix = "col_port";
     std::string linkName = linkPrefix + "0";
     int portNum = 0;
     while (isPortConnected(linkName))
@@ -77,13 +78,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : SST::Component(
         {
             out.fatal(CALL_INFO, -1, "Failed to configure link %s\n", linkName.c_str());
         }
-        slotLinks.push_back(link);
-
-        // SST::Params memlink = params.get_scoped_params(linkName);
-        // memlink.insert("port", linkName);
-        // memLinks.push_back(loadAnonymousSubComponent<SST::MemHierarchy::MemLinkBase>("memHierarchy.MemLink", "cpulink", portNum, SST::ComponentInfo::SHARE_PORTS | SST::ComponentInfo::INSERT_STATS, memlink, tc));
-        // out.output("HERE\n");
-        // memLinks[portNum]->setRecvHandler(new SST::Event::Handler<IOBuffer>(this, &IOBuffer::handleEvent));
+        columnLinks.push_back(link);
 
         // Next link
         portNum++;
@@ -93,58 +88,6 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : SST::Component(
 
 void IOBuffer::init(unsigned int phase)
 {
-    out.output("IOBuffer initializing\n");
-    // SST::Event *event = nullptr;
-    // int count = 0;
-    // for (int i = 0; i < slotLinks.size(); i++)
-    // {
-    // slotLinks[i]->sendUntimedData(new SST::MemHierarchy::MemEventInitCoherence(getName(), SST::MemHierarchy::Endpoint::Scratchpad, true, true, io_data_width / 8, true));
-    // while (slotLinks[i]->recvUntimedData())
-    // {
-    // event = slotLinks[i]->recvUntimedData();
-    // SST::MemHierarchy::MemEventInit *initEvent = dynamic_cast<SST::MemHierarchy::MemEventInit *>(event);
-    // if (initEvent->getCmd() == SST::MemHierarchy::Command::NULLCMD)
-    // {
-    //     if (initEvent->getInitCmd() == SST::MemHierarchy::MemEventInit::InitCommand::Coherence)
-    //     {
-    //         SST::MemHierarchy::MemEventInitCoherence *initCoherence = dynamic_cast<SST::MemHierarchy::MemEventInitCoherence *>(initEvent);
-    //         if (initCoherence->getType() == SST::MemHierarchy::Endpoint::Cache)
-    //         {
-    //             out.output("IOBuffer received cache init event\n");
-    //             out.fatal(CALL_INFO, -1, "test");
-    //         }
-    //         else if (initCoherence->getType() == SST::MemHierarchy::Endpoint::Directory)
-    //         {
-    //             out.output("IOBuffer received directory init event\n");
-    //             out.fatal(CALL_INFO, -1, "test");
-    //         }
-    //         else if (initCoherence->getType() == SST::MemHierarchy::Endpoint::Memory)
-    //         {
-    //             out.output("IOBuffer received memory init event\n");
-    //             out.fatal(CALL_INFO, -1, "test");
-    //         }
-    //         else if (initCoherence->getType() == SST::MemHierarchy::Endpoint::Scratchpad)
-    //         {
-    //             out.output("IOBuffer received scratchpad init event\n");
-    //             out.fatal(CALL_INFO, -1, "test");
-    //         }
-    //         else
-    //         {
-    //             out.fatal(CALL_INFO, -1, "Invalid init event (unknown type)\n");
-    //         }
-    //     }
-    // }
-    // else
-    // {
-    //     out.fatal(CALL_INFO, -1, "Invalid init event (no lower memory level)\n");
-    // }
-    // if (count == 100)
-    // {
-    //     out.fatal(CALL_INFO, -1, "test");
-    // }
-    // count++;
-    // }
-    // }
     out.verbose(CALL_INFO, 1, 0, "IOBuffer initialized\n");
 }
 
@@ -165,46 +108,67 @@ void IOBuffer::finish()
 
 bool IOBuffer::clockTick(SST::Cycle_t currentCycle)
 {
-    // out.verbose(CALL_INFO, 1, 0, "IOBuffer clock tick\n");
-    return false;
+    if (currentCycle % printFrequency == 0)
+    {
+        out.output("--- IOBUFFER CYCLE %" PRIu64 " ---\n", currentCycle);
+    }
+    return true;
 }
 
 void IOBuffer::handleEvent(SST::Event *event)
 {
     ReadRequest *readReq = dynamic_cast<ReadRequest *>(event);
+    std::vector<uint8_t> data;
     if (readReq)
     {
         out.output("IOBuffer received read request\n");
+        if (backend)
+        {
+            out.output("IOBuffer reading from backend\n");
+            for (int i = 0; i < readReq->size; i++)
+            {
+                data.push_back(backend->get(readReq->address + i));
+            }
+            out.output("IOBuffer read from backend\n");
+        }
+        else
+        {
+            for (int i = 0; i < readReq->size; i++)
+            {
+                data.push_back(0);
+            }
+        }
+
+        ReadResponse *readResp = new ReadResponse();
+        readResp->address = readReq->address;
+        readResp->set_data(data);
+        columnLinks[0]->send(readResp);
+        out.output("IOBuffer sent read response\n");
+
+        return;
     }
 
     WriteRequest *writeReq = dynamic_cast<WriteRequest *>(event);
     if (writeReq)
     {
         out.output("IOBuffer received write request\n");
-    }
-}
-
-void IOBuffer::handleMemoryEvent(SST::MemHierarchy::MemEvent *event)
-{
-    if (event->getCmd() == SST::MemHierarchy::Command::GetSResp)
-    {
         if (backend)
         {
-            backend->set(event->getAddr(), event->getPayloadSize(), event->getPayload());
+            out.output("IOBuffer writing to backend\n");
+            backend->set(writeReq->address, writeReq->data.size(), writeReq->data);
+            out.output("IOBuffer data (%lu bits) = ", writeReq->data.size() * 8);
+            for (int i = writeReq->data.size() - 1; i >= 0; i--)
+            {
+                out.output("%08b", writeReq->data[i]);
+                if (i % 2 == 0)
+                {
+                    out.output(" ");
+                }
+            }
+            out.output("\n");
+            out.output("IOBuffer wrote to backend\n");
         }
-    }
 
-    out.output("IOBuffer received event\n");
-    // Check if the event is a memory request
-    SST::Interfaces::StandardMem::Read *readReq = dynamic_cast<SST::Interfaces::StandardMem::Read *>(event);
-    if (readReq)
-    {
-        out.output("IOBuffer received read request\n");
-    }
-
-    SST::Interfaces::StandardMem::Write *writeReq = dynamic_cast<SST::Interfaces::StandardMem::Write *>(event);
-    if (writeReq)
-    {
-        out.output("IOBuffer received write request\n");
+        return;
     }
 }

@@ -26,6 +26,9 @@ public:
       {"printFrequency", "Frequency to print tick messages", "1000"},
       {"chunckWidth", "Width of the chunck", "16"},
       {"io_data_width", "Width of the IO data", "256"},
+      {"slot_id", "Slot ID"},
+      {"has_io_input_connection", "Has IO input connection", "0"},
+      {"has_io_output_connection", "Has IO output connection", "0"},
 
       // Instruction format (from isa.json file)
       {"instr_bitwidth", "Instruction bitwidth", "32"},
@@ -60,15 +63,18 @@ public:
 
   // SST event handler
   void handleEvent(Event *event);
-  void handleMemoryEvent(Interfaces::StandardMem::Request *req);
+  void handleMemoryEvent(MemoryEvent *memEvent);
 
 private:
   Output out;
   Cycle_t printFrequency;
   string clock;
   uint8_t chunckWidth = 16;
+  uint8_t slot_id;
+  bool has_io_input_connection, has_io_output_connection;
 
   uint32_t io_data_width = 256;
+  uint32_t cellCoordinates[2] = {0, 0};
 
   // Instruction format (from isa.json file)
   uint32_t instrBitwidth;
@@ -77,9 +83,9 @@ private:
   uint32_t instrSlotWidth;
 
   // Links
-  Link *controllerLink; // Sequencer connection (Instructions and activations)
-  Link *inputBufferLink;
-  Link *outputBufferLink;
+  Link *controllerLink = nullptr;   // Sequencer connection (Instructions and activations)
+  Link *inputBufferLink = nullptr;  // IO connection (data in)
+  Link *outputBufferLink = nullptr; // IO connection (data out)
 
   // Memory interfaces
   // Interfaces::StandardMem *inputBuffer;  // IO connection (data in)

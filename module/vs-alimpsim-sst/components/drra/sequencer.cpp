@@ -106,18 +106,20 @@ bool Sequencer::clockTick(Cycle_t currentCycle)
 {
     if (currentCycle % printFrequency == 0)
     {
-        if (cyclesToWait == 0)
-        {
-            out.output("--- SEQUENCER CYCLE %" PRIu64 " ---\n", currentCycle);
-        }
+        out.output("--- SEQUENCER CYCLE %" PRIu64 " ---\n", currentCycle);
     }
 
     if (cyclesToWait > 0)
     {
         cyclesToWait--;
+        out.output("Sequencer waiting %u cycles\n", cyclesToWait);
         return false;
     }
 
+    if (pc >= assemblyProgram.size())
+    {
+        out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
+    }
     uint32_t instruction = assemblyProgram[pc];
     fetch_decode(instruction);
 
@@ -125,11 +127,6 @@ bool Sequencer::clockTick(Cycle_t currentCycle)
     {
         primaryComponentOKToEndSim();
         return true;
-    }
-
-    if (pc >= assemblyProgram.size())
-    {
-        out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
     }
     return false;
 }

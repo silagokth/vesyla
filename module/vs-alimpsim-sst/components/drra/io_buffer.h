@@ -37,7 +37,7 @@ public:
         {"access_time", "Time to access the IO buffer", "0ns"})
 
     SST_ELI_DOCUMENT_PORTS(
-        {"slot_port%(portnum)d", "Link(s) to resources in slots. Connect slot_port0, slot_port1, etc."})
+        {"col_port%(portnum)d", "Link(s) to DRRA columns (should be connected to slot 1 of top or bottom cells). Connect col_port0, col_port1, etc."})
 
     SST_ELI_DOCUMENT_STATISTICS()
     SST_ELI_DOCUMENT_SUBCOMPONENT_SLOTS()
@@ -67,13 +67,14 @@ public:
 private:
     SST::Output out;
     std::string clock;
+    uint64_t printFrequency;
     uint64_t io_data_width;
     std::string access_time;
 
     SST::MemHierarchy::Backend::Backing *backend = nullptr;
     ScratchBackendConvertor *backendConvertor = nullptr;
 
-    std::vector<SST::Link *> slotLinks;
+    std::vector<SST::Link *> columnLinks;
 };
 
 #endif // _IOBUFFER_H
