@@ -22,10 +22,7 @@ VecAdd::VecAdd(ComponentId_t id, Params &params) : Component(id)
     }
 
     io_data_width = params.find<uint64_t>("io_data_width", 256);
-    for (int i = 0; i < io_data_width / 8; i++)
-    {
-        dataBuffer.push_back(0); // initialize data buffer
-    }
+    dataBuffer.resize(io_data_width / 8, 0); // Ensure proper size and alignment
 
     // Cell coordinates
     std::vector<int> paramsCellCoordinates;
@@ -85,17 +82,17 @@ void VecAdd::init(unsigned int phase)
 
 void VecAdd::setup()
 {
-    // out.verbose(CALL_INFO, 1, 0, "VecAdd setup\n");
+    out.verbose(CALL_INFO, 1, 0, "VecAdd setup\n");
 }
 
 void VecAdd::complete(unsigned int phase)
 {
-    // out.verbose(CALL_INFO, 1, 0, "VecAdd completed\n");
+    out.verbose(CALL_INFO, 1, 0, "VecAdd completed\n");
 }
 
 void VecAdd::finish()
 {
-    // out.verbose(CALL_INFO, 1, 0, "VecAdd finishing\n");
+    out.verbose(CALL_INFO, 1, 0, "VecAdd finishing\n");
 }
 
 bool VecAdd::clockTick(Cycle_t currentCycle)
@@ -175,9 +172,6 @@ void VecAdd::handleEvent(Event *event)
             // Read from memory
             handleMemoryEvent(readReq);
         }
-
-        // Delete the event
-        delete newEvent;
     }
 }
 

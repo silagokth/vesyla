@@ -93,17 +93,17 @@ void IOBuffer::init(unsigned int phase)
 
 void IOBuffer::setup()
 {
-    // out.verbose(CALL_INFO, 1, 0, "IOBuffer setup\n");
+    out.verbose(CALL_INFO, 1, 0, "IOBuffer setup\n");
 }
 
 void IOBuffer::complete(unsigned int phase)
 {
-    // out.verbose(CALL_INFO, 1, 0, "IOBuffer completed\n");
+    out.verbose(CALL_INFO, 1, 0, "IOBuffer completed\n");
 }
 
 void IOBuffer::finish()
 {
-    // out.verbose(CALL_INFO, 1, 0, "IOBuffer finishing\n");
+    out.verbose(CALL_INFO, 1, 0, "IOBuffer finishing\n");
 }
 
 bool IOBuffer::clockTick(SST::Cycle_t currentCycle)
@@ -133,10 +133,7 @@ void IOBuffer::handleEvent(SST::Event *event)
         }
         else
         {
-            for (int i = 0; i < readReq->size; i++)
-            {
-                data.push_back(0);
-            }
+            data.resize(readReq->size, 0); // Ensure proper size and alignment
         }
 
         ReadResponse *readResp = new ReadResponse();

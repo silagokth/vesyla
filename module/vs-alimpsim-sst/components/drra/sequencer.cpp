@@ -174,6 +174,7 @@ void Sequencer::load_assembly_program(std::string assemblyProgramPath)
             assemblyProgram.push_back(static_cast<uint32_t>(bits.to_ulong()));
         }
     }
+    assemblyProgram.shrink_to_fit(); // Ensure proper alignment and size
     out.output("Loaded %lu instructions\n", assemblyProgram.size());
 }
 
