@@ -145,12 +145,10 @@ bool VecAdd::clockTick(Cycle_t currentCycle)
 
 void VecAdd::handleEvent(Event *event)
 {
-    Event *newEvent = event;
-
-    if (newEvent)
+    if (event)
     {
         // Check if the event is an ActEvent
-        ActEvent *actEvent = dynamic_cast<ActEvent *>(newEvent);
+        ActEvent *actEvent = dynamic_cast<ActEvent *>(event);
         if (actEvent)
         {
             out.output("VecAdd received ActEvent\n");
@@ -158,7 +156,7 @@ void VecAdd::handleEvent(Event *event)
         }
 
         // Check if the event is an InstrEvent
-        InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(newEvent);
+        InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(event);
         if (instrEvent)
         {
             instrBuffer = instrEvent->instruction;
@@ -166,7 +164,7 @@ void VecAdd::handleEvent(Event *event)
         }
 
         // Check if the event is a memory request
-        MemoryEvent *readReq = dynamic_cast<MemoryEvent *>(newEvent);
+        MemoryEvent *readReq = dynamic_cast<MemoryEvent *>(event);
         if (readReq)
         {
             // Read from memory
