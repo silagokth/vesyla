@@ -251,7 +251,7 @@ void VecAdd::compute_addition()
         // Mask the chunk to fit within chunckWidth bits
         chunk &= ((1ULL << chunckWidth) - 1);
         // Split the chunk back into bytes and store them in the data buffer
-        for (int j = 0; j < chunckWidth; ++j)
+        for (int j = 0; j < chunckWidth / 8; ++j)
         {
             dataBuffer[i + j] = (chunk >> (j * 8)) & 0xFF;
         }
