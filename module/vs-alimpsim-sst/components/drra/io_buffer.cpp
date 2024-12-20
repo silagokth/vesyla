@@ -157,7 +157,7 @@ void IOBuffer::handleEvent(SST::Event *event)
             for (int i = writeReq->data.size() - 1; i >= 0; i--)
             {
                 out.output("%08b", writeReq->data[i]);
-                if (i % 2 == 0)
+                if ((i % 2 == 0) && (i != 0))
                 {
                     out.output(" ");
                 }

@@ -32,10 +32,16 @@ target_link_options(drra PRIVATE -Wl,-undefined,dynamic_lookup)
 target_link_libraries(drra SST::SSTCore)
 target_compile_options(drra PRIVATE ${CMAKE_CXX_FLAGS})
 
+# Set environment variable SST_DRRA_LIB_DIR
+message(STATUS "Setting SST_DRRA_LIB_DIR to ${CMAKE_CURRENT_SOURCE_DIR}")
+set(ENV{SST_DRRA_LIB_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Register DRRA library and its components
 message(STATUS "Registering SST library: drra")
 add_custom_command(TARGET drra POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lib
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:drra> ${CMAKE_CURRENT_BINARY_DIR}/lib
     COMMAND sst-register drra drra_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}/lib
+    COMMAND sst-register SST_ELEMENTS_SOURCE drra=${CMAKE_CURRENT_SOURCE_DIR}/components
+    COMMAND sst-register SST_ELEMENTS_TESTS drra=${CMAKE_CURRENT_SOURCE_DIR}/components/tests
 )

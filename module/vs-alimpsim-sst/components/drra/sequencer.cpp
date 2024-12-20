@@ -148,7 +148,7 @@ void Sequencer::load_assembly_program(std::string assemblyProgramPath)
     {
         out.fatal(CALL_INFO, -1, "Failed to open assembly program file\n");
     }
-    out.output("Loading assembly program from %s\n", assemblyProgramPath.c_str());
+    // out.output("Loading assembly program from %s\n", assemblyProgramPath.c_str());
     std::string line;
     bool isSelfCell = false;
     while (std::getline(assemblyProgramFile, line))

@@ -184,7 +184,7 @@ void VecAdd::handleMemoryEvent(MemoryEvent *memEvent)
         {
             dataBuffer[i] = readResp->data[i];
             out.output("%08b", dataBuffer[i]);
-            if (i % 2 == 0)
+            if ((i % 2 == 0) && (i != 0))
             {
                 out.output(" ");
             }
