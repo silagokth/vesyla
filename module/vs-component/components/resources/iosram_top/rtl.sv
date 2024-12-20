@@ -305,13 +305,13 @@ import {{fingerprint}}_pkg::*;
         .DA(sram_in_data),
         .BWEBA(1'b0),
         .WEBA(~sram_in_en),
-        .CEBA(1'b0),
+        .CEBA(~sram_in_en),
         .CLK(clk),
         .AB(sram_out_addr),
         .DB(256'b0),
         .BWEBB(1'b0),
         .WEBB(~sram_out_en),
-        .CEBB(1'b0),
+        .CEBB(~sram_out_en),
         .AWT(1'b0),
         .QB(sram_out_data)
     );
@@ -344,12 +344,10 @@ module agu #(
 );
 
 
-  logic [NUMBER_OF_LEVELS-1:0] wait_states;
-  logic [NUMBER_OF_LEVELS-1:0] delay_states;
   logic [NUMBER_OF_LEVELS-1:0] count_states;
-  logic [NUMBER_OF_LEVELS-1:0] higher_levels_activations;
-  logic [NUMBER_OF_LEVELS-1:0] lower_levels_activations;
+  logic [NUMBER_OF_LEVELS+1:0] level_finish;
   logic [NUMBER_OF_LEVELS:0][ADDRESS_WIDTH-1:0] addresses;
+  logic [NUMBER_OF_LEVELS:0] level_restart;
 
 
   // initial level
@@ -380,19 +378,19 @@ module agu #(
         .step(step),
         .delay(delay),
         .iterations(iterations),
-        .higher_levels_activation(higher_levels_activations[i]),
-        .lower_levels_activation(lower_levels_activations[i]),
-        .wait_state(wait_states[i]),
-        .delay_state(delay_states[i]),
+        .lower_level_finish(level_finish[i]),
+        .higher_level_finish(level_finish[i+2]),
+        .higher_level_restart(level_restart[i+1]),
         .count_state(count_states[i]),
-        .address(addresses[i+1])
+        .finish(level_finish[i+1]),
+        .address(addresses[i+1]),
+        .lower_level_restart(level_restart[i])
     );
-
-    // higher level activation is the AND of all higher levels not counting or delay
-    assign higher_levels_activations[i] = &wait_states[i:0] && &delay_states[i:0];
-    // lower level activation is the AND of all lower levels not counting or delay
-    assign lower_levels_activations[i] = &wait_states[NUMBER_OF_LEVELS-1:i] && &delay_states[NUMBER_OF_LEVELS-1:i];
   end
+
+  assign level_finish[0] = 1;
+  assign level_finish[NUMBER_OF_LEVELS+1] = 1;
+  assign level_restart[NUMBER_OF_LEVELS] = 1;
 
   // adder tree to calculate the address
   always_comb begin
@@ -462,19 +460,20 @@ module agu_level #(
     input logic [ADDR_WIDTH-1:0] step,
     input logic [ADDR_WIDTH-1:0] delay,
     input logic [ADDR_WIDTH-1:0] iterations,
-    input logic higher_levels_activation,  // AND of all higher levels not counting or delay
-    input logic lower_levels_activation,  // AND of all lower levels not counting or delay
-    output logic wait_state,
-    output logic delay_state,
+    input logic lower_level_finish,
+    input logic higher_level_finish,
+    input logic higher_level_restart,
     output logic count_state,
-    output logic [ADDR_WIDTH-1:0] address
+    output logic finish,
+    output logic [ADDR_WIDTH-1:0] address,
+    output logic lower_level_restart
 );
 
   typedef enum logic [2:0] {
     IDLE,
-    COUNT,
-    DELAY,
     WAIT,
+    DELAY,
+    COUNT,
     LOAD
   } state_t;
 
@@ -485,6 +484,8 @@ module agu_level #(
   logic [ADDR_WIDTH-1:0] delay_counter_next;
   logic [ADDR_WIDTH-1:0] step_reg;
   logic [ADDR_WIDTH-1:0] iterations_reg;
+  logic [ADDR_WIDTH-1:0] iter_counter;
+  logic [ADDR_WIDTH-1:0] iter_counter_next;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -496,9 +497,8 @@ module agu_level #(
     end
   end
 
-  assign wait_state  = (state == WAIT);
-  assign delay_state = (state == DELAY);
-  assign count_state = (state == COUNT);
+  assign finish = (iter_counter == iterations_reg && lower_level_finish);
+  assign count_state  = (state == COUNT);
 
   // config loading registers
   always_ff @(posedge clk or negedge rst_n) begin
@@ -525,54 +525,158 @@ module agu_level #(
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       delay_counter <= 0;
+      iter_counter <= 0;
     end else begin
       delay_counter <= delay_counter_next;
+      iter_counter <= iter_counter_next;
     end
   end
+
+
 
   always_comb begin
     next_state = state;
     next_address = address;
     delay_counter_next = delay_counter;
+    iter_counter_next = iter_counter;
+    lower_level_restart = 0;
 
     case (state)
       IDLE: begin
         if (activate) begin
-          next_state   = COUNT;
+          next_state = COUNT;
           next_address = 0;
+          iter_counter_next = 0;
+          delay_counter_next = 0;
+        end else begin
+          next_state   = IDLE;
+          next_address = 0;
+          delay_counter_next=0;
+          iter_counter_next=0;
         end
       end
+
       COUNT: begin
-        if (delay_reg > 0) begin
-          next_state   = DELAY;
+        if (lower_level_finish) begin
+            if (higher_level_finish) begin
+              if (finish) begin
+                next_state = IDLE;
+                next_address = 0;
+                iter_counter_next = 0;
+              end else begin
+                if (delay_reg>0) begin
+                  next_state   = DELAY;
+                  next_address = address;
+                  iter_counter_next = iter_counter;
+                end else begin
+                  next_state   = COUNT;
+                  next_address = address + step_reg;
+                  iter_counter_next = iter_counter + 1;
+                  lower_level_restart = 1;
+                end
+              end
+            end else begin
+              if (finish) begin
+                if (higher_level_restart) begin
+                  next_state = COUNT;
+                  next_address = 0;
+                  iter_counter_next = 0;
+                  lower_level_restart = 1;
+                end else begin
+                  next_state = WAIT;
+                  next_address = address;
+                  iter_counter_next = iter_counter;
+                end
+
+              end else begin
+                if (delay_reg>0) begin
+                  next_state   = DELAY;
+                  next_address = address;
+                  iter_counter_next = iter_counter;
+                end else begin
+                  next_state   = COUNT;
+                  next_address = address + step_reg;
+                  iter_counter_next = iter_counter + 1;
+                  lower_level_restart = 1;
+                end
+              end
+            end
+        end else begin
+          next_state = WAIT;
           next_address = address;
-        end else if (address == iterations_reg) begin
+          iter_counter_next = iter_counter;
+          delay_counter_next = 0;
+        end
+      end
+
+      WAIT: begin
+        if (lower_level_finish) begin
+          if (higher_level_finish) begin
+            if (finish) begin
+              next_state = IDLE;
+              next_address = 0;
+              iter_counter_next = 0;
+            end else begin
+              if (delay_reg>0) begin
+                next_state   = DELAY;
+                next_address = address;
+                iter_counter_next = iter_counter;
+              end else begin
+                next_state   = COUNT;
+                next_address = address + step_reg;
+                iter_counter_next = iter_counter + 1;
+                lower_level_restart = 1;
+              end
+            end
+          end else begin
+            if (finish) begin
+              if (higher_level_restart) begin
+                next_state = COUNT;
+                next_address = 0;
+                iter_counter_next = 0;
+                lower_level_restart = 1;
+              end else begin
+                next_state = WAIT;
+                next_address = address;
+                iter_counter_next = iter_counter;
+              end
+            end else begin
+              if (delay_reg>0) begin
+                next_state   = DELAY;
+                next_address = address;
+                iter_counter_next = iter_counter;
+              end else begin
+                next_state   = COUNT;
+                next_address = address + step_reg;
+                iter_counter_next = iter_counter + 1;
+                lower_level_restart = 1;
+              end
+            end
+          end
+        end else begin
           next_state   = WAIT;
           next_address = address;
-        end else begin
-          next_state   = COUNT;
-          next_address = address + step_reg;
         end
       end
       DELAY: begin
         delay_counter_next = delay_counter + 1;
         if (delay_counter_next == delay_reg) begin
           next_state   = COUNT;
-          next_address = address;
+          next_address = address+step_reg;
+          iter_counter_next = iter_counter+1;
+          lower_level_restart = 1;
+          delay_counter_next = 0;
         end else begin
           next_state   = DELAY;
           next_address = address;
-        end
-      end
-      WAIT: begin
-        if (higher_levels_activation) begin
-          next_state   = COUNT;
-          next_address = 0;
+          iter_counter_next = iter_counter;
         end
       end
       default: begin
         next_state   = IDLE;
         next_address = 0;
+        iter_counter_next = 0;
+        delay_counter_next = 0;
       end
     endcase
   end

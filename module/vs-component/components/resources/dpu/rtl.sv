@@ -116,8 +116,6 @@ import {{fingerprint}}_pkg::*;
         end
     end
 
-
-
   logic [$clog2(FSM_MAX_STATES)-1:0][DPU_MODE_WIDTH-1:0] mode_memory;
   logic [$clog2(FSM_MAX_STATES)-1:0][DPU_IMMEDIATE_WIDTH-1:0] immediate_memory;
   logic [$clog2(FSM_MAX_STATES)-1:0] fsm_option;
@@ -221,14 +219,14 @@ import {{fingerprint}}_pkg::*;
   end
 
   // in future we will use ChipWare blocks for pipelined and such 
-  adder adder_inst (
+  {{fingerprint}}_adder adder_inst (
       .in1(adder_in0),
       .in2(adder_in1),
       .saturate(1'b1),
       .out(adder_out)
   );
 
-  multiplier mult_inst (
+  {{fingerprint}}_multiplier mult_inst (
       .in1(mult_in0),
       .in2(mult_in1),
       .saturate(1'b1),
@@ -239,6 +237,79 @@ import {{fingerprint}}_pkg::*;
 
 endmodule
 
+module {{fingerprint}}_adder
+import {{fingerprint}}_pkg::*;
+(
+    input logic signed [BITWIDTH-1:0] in1,
+    input logic signed [BITWIDTH-1:0] in2,
+    output logic signed [BITWIDTH-1:0] out,
+    output logic overflow,
+    output logic underflow,
+    input logic saturate
+);
+
+  localparam logic signed [BITWIDTH-1:0] MAX_RESULT = (1 << (BITWIDTH - 1)) - 1;
+  localparam logic signed [BITWIDTH-1:0] MIN_RESULT = -MAX_RESULT - 1;
+  logic signed [BITWIDTH:0] temp_add;
+
+  always_comb begin
+    overflow = 0;
+    underflow = 0;
+    out = 0;
+    temp_add = in1 + in2;
+    // saturation logic
+    if (saturate) begin
+      if (temp_add > MAX_RESULT) begin
+        out = MAX_RESULT;
+        overflow = 1;
+      end else if (temp_add < MIN_RESULT) begin
+        out = MIN_RESULT;
+        underflow = 1;
+      end else begin
+        out = temp_add[BITWIDTH-1:0];
+      end
+    end else begin
+      out = temp_add[BITWIDTH-1:0];
+    end
+  end
+endmodule
+
+module {{fingerprint}}_multiplier
+import {{fingerprint}}_pkg::*;
+(
+    input logic signed [BITWIDTH-1:0] in1,
+    input logic signed [BITWIDTH-1:0] in2,
+    output logic signed [BITWIDTH-1:0] out,
+    output logic overflow,
+    output logic underflow,
+    input logic saturate
+);
+
+  localparam logic signed [BITWIDTH-1:0] MAX_RESULT = (1 << (BITWIDTH - 1)) - 1;
+  localparam logic signed [BITWIDTH-1:0] MIN_RESULT = -MAX_RESULT - 1;
+  logic signed [BITWIDTH*2-1:0] temp_mult;
+
+  always_comb begin
+    out = 0;
+    overflow = 0;
+    underflow = 0;
+    temp_mult = in1 * in2;
+    // saturation logic
+    if (saturate) begin
+      if (temp_mult > MAX_RESULT) begin
+        out = MAX_RESULT;
+        overflow = 1;
+      end else if (temp_mult < MIN_RESULT) begin
+        out = MIN_RESULT;
+        underflow = 1;
+      end else begin
+        out = temp_mult[BITWIDTH-1:0];
+      end
+    end else begin
+      out = temp_mult[BITWIDTH-1:0];
+    end
+  end
+endmodule
 
 module fsm
 import {{fingerprint}}_pkg::*;
@@ -322,80 +393,6 @@ import {{fingerprint}}_pkg::*;
       );
 
 
-endmodule
-
-module adder
-import {{fingerprint}}_pkg::*;
-(
-    input logic signed [BITWIDTH-1:0] in1,
-    input logic signed [BITWIDTH-1:0] in2,
-    output logic signed [BITWIDTH-1:0] out,
-    output logic overflow,
-    output logic underflow,
-    input logic saturate
-);
-
-  localparam logic signed [BITWIDTH-1:0] MAX_RESULT = (1 << (BITWIDTH - 1)) - 1;
-  localparam logic signed [BITWIDTH-1:0] MIN_RESULT = -MAX_RESULT - 1;
-  logic signed [BITWIDTH:0] temp_add;
-
-  always_comb begin
-    overflow = 0;
-    underflow = 0;
-    out = 0;
-    temp_add = in1 + in2;
-    // saturation logic
-    if (saturate) begin
-      if (temp_add > MAX_RESULT) begin
-        out = MAX_RESULT;
-        overflow = 1;
-      end else if (temp_add < MIN_RESULT) begin
-        out = MIN_RESULT;
-        underflow = 1;
-      end else begin
-        out = temp_add[BITWIDTH-1:0];
-      end
-    end else begin
-      out = temp_add[BITWIDTH-1:0];
-    end
-  end
-endmodule
-
-module multiplier
-import {{fingerprint}}_pkg::*;
-(
-    input logic signed [BITWIDTH-1:0] in1,
-    input logic signed [BITWIDTH-1:0] in2,
-    output logic signed [BITWIDTH-1:0] out,
-    output logic overflow,
-    output logic underflow,
-    input logic saturate
-);
-
-  localparam logic signed [BITWIDTH-1:0] MAX_RESULT = (1 << (BITWIDTH - 1)) - 1;
-  localparam logic signed [BITWIDTH-1:0] MIN_RESULT = -MAX_RESULT - 1;
-  logic signed [BITWIDTH*2-1:0] temp_mult;
-
-  always_comb begin
-    out = 0;
-    overflow = 0;
-    underflow = 0;
-    temp_mult = in1 * in2;
-    // saturation logic
-    if (saturate) begin
-      if (temp_mult > MAX_RESULT) begin
-        out = MAX_RESULT;
-        overflow = 1;
-      end else if (temp_mult < MIN_RESULT) begin
-        out = MIN_RESULT;
-        underflow = 1;
-      end else begin
-        out = temp_mult[BITWIDTH-1:0];
-      end
-    end else begin
-      out = temp_mult[BITWIDTH-1:0];
-    end
-  end
 endmodule
 
 {% endif %}

@@ -172,7 +172,7 @@ import {{fingerprint}}_pkg::*;
     assign iter_0_3 = rep._iter[BULK_ADDR_WIDTH-1:0];
     assign init_addr_0_3 = dsu._init_addr[BULK_ADDR_WIDTH-1:0];
     
-    {{fingerprint}}_agu #(
+    agu #(
       .ADDRESS_WIDTH(WORD_ADDR_WIDTH),
       .NUMBER_OF_LEVELS(4)
     ) aug_0_0 (
@@ -191,7 +191,7 @@ import {{fingerprint}}_pkg::*;
       .address(word_w_addr)
     );
 
-    {{fingerprint}}_agu #(
+    agu #(
       .ADDRESS_WIDTH(WORD_ADDR_WIDTH),
       .NUMBER_OF_LEVELS(4)
     ) aug_0_1 (
@@ -210,7 +210,7 @@ import {{fingerprint}}_pkg::*;
       .address(word_r_addr)
   );
 
-  {{fingerprint}}_agu #(
+  agu #(
       .ADDRESS_WIDTH(BULK_ADDR_WIDTH),
       .NUMBER_OF_LEVELS(4)
   ) agu_0_2 (
@@ -229,7 +229,7 @@ import {{fingerprint}}_pkg::*;
       .address(bulk_w_addr)
   );
 
-  {{fingerprint}}_agu #(
+  agu #(
       .ADDRESS_WIDTH(BULK_ADDR_WIDTH),
       .NUMBER_OF_LEVELS(4)
   ) agu_0_3 (
@@ -247,264 +247,6 @@ import {{fingerprint}}_pkg::*;
       .address_valid(bulk_r_en),
       .address(bulk_r_addr)
   );
-
-endmodule
-
-
-
-
-module {{fingerprint}}_agu #(
-    parameter ADDRESS_WIDTH = 8,
-    parameter NUMBER_OF_LEVELS = 4
-) (
-    input logic clk,
-    input logic rst_n,
-    input logic activate,
-    input logic load_initial,
-    input logic load_level,
-    input logic is_extended,
-    input logic [$clog2(NUMBER_OF_LEVELS)-1:0] level_to_load,
-    input logic [ADDRESS_WIDTH-1:0] step,
-    input logic [ADDRESS_WIDTH-1:0] delay,
-    input logic [ADDRESS_WIDTH-1:0] iterations,
-    input logic [ADDRESS_WIDTH-1:0] initial_address,
-    output logic address_valid,
-    output logic [ADDRESS_WIDTH-1:0] address
-);
-
-
-  logic [NUMBER_OF_LEVELS-1:0] wait_states;
-  logic [NUMBER_OF_LEVELS-1:0] delay_states;
-  logic [NUMBER_OF_LEVELS-1:0] count_states;
-  logic [NUMBER_OF_LEVELS-1:0] higher_levels_activations;
-  logic [NUMBER_OF_LEVELS-1:0] lower_levels_activations;
-  logic [NUMBER_OF_LEVELS:0][ADDRESS_WIDTH-1:0] addresses;
-
-
-  // initial level
-  {{fingerprint}}_agu_initial #(
-      .ADDR_WIDTH(ADDRESS_WIDTH),
-      .DATA_WIDTH(ADDRESS_WIDTH)
-  ) agu_initial_inst (
-      .clk(clk),
-      .rst_n(rst_n),
-      .activate(activate),
-      .load_config(load_initial),
-      .is_extended(is_extended),
-      .initial_address(initial_address),
-      .address(addresses[0])
-  );
-
-  genvar i;
-  for (i = 0; i < NUMBER_OF_LEVELS; i++) begin : agu_levels
-    {{fingerprint}}_agu_level #(
-        .ADDR_WIDTH(ADDRESS_WIDTH),
-        .DATA_WIDTH(ADDRESS_WIDTH)
-    ) agu_level_inst (
-        .clk(clk),
-        .rst_n(rst_n),
-        .activate(activate),
-        .load_config(load_level && (level_to_load == i)),
-        .is_extended(is_extended),
-        .step(step),
-        .delay(delay),
-        .iterations(iterations),
-        .higher_levels_activation(higher_levels_activations[i]),
-        .lower_levels_activation(lower_levels_activations[i]),
-        .wait_state(wait_states[i]),
-        .delay_state(delay_states[i]),
-        .count_state(count_states[i]),
-        .address(addresses[i+1])
-    );
-
-    // higher level activation is the AND of all higher levels not counting or delay
-    assign higher_levels_activations[i] = &wait_states[i:0] && &delay_states[i:0];
-    // lower level activation is the AND of all lower levels not counting or delay
-    assign lower_levels_activations[i] = &wait_states[NUMBER_OF_LEVELS-1:i] && &delay_states[NUMBER_OF_LEVELS-1:i];
-  end
-
-  // adder tree to calculate the address
-  always_comb begin
-    address = addresses[0];
-    for (int i = 1; i <= NUMBER_OF_LEVELS; i++) begin
-      address = address + addresses[i];
-    end
-  end
-
-  assign address_valid = |count_states;
-
-endmodule
-
-module {{fingerprint}}_agu_initial #(
-    parameter ADDR_WIDTH = 8,
-    parameter DATA_WIDTH = 8
-) (
-    input logic clk,
-    input logic rst_n,
-    input logic activate,
-    input logic load_config,
-    input logic is_extended,
-    input logic [ADDR_WIDTH-1:0] initial_address,
-    output logic [ADDR_WIDTH-1:0] address
-);
-
-  logic [ADDR_WIDTH-1:0] initial_address_reg;
-
-  // config loading
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      initial_address_reg <= 0;
-    end else begin
-      if (load_config) begin
-        if (is_extended) begin
-          // TODO: implement loading MSB of config values
-          assert (0)
-          else $fatal("AGU: Extended config not implemented yet");
-        end else begin
-          initial_address_reg <= initial_address;
-        end
-      end
-    end
-  end
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      address <= 0;
-    end else begin
-      if (activate) begin
-        address <= initial_address_reg;
-      end
-    end
-  end
-
-endmodule
-
-module {{fingerprint}}_agu_level #(
-    parameter ADDR_WIDTH = 8,
-    parameter DATA_WIDTH = 8
-) (
-    input logic clk,
-    input logic rst_n,
-    input logic activate,
-    input logic load_config,
-    input logic is_extended,
-    input logic [ADDR_WIDTH-1:0] step,
-    input logic [ADDR_WIDTH-1:0] delay,
-    input logic [ADDR_WIDTH-1:0] iterations,
-    input logic higher_levels_activation,  // AND of all higher levels not counting or delay
-    input logic lower_levels_activation,  // AND of all lower levels not counting or delay
-    output logic wait_state,
-    output logic delay_state,
-    output logic count_state,
-    output logic [ADDR_WIDTH-1:0] address
-);
-
-  typedef enum logic [2:0] {
-    IDLE,
-    COUNT,
-    DELAY,
-    WAIT,
-    LOAD
-  } state_t;
-
-  state_t state, next_state;
-  logic [ADDR_WIDTH-1:0] next_address;
-  logic [ADDR_WIDTH-1:0] delay_reg;
-  logic [ADDR_WIDTH-1:0] delay_counter;
-  logic [ADDR_WIDTH-1:0] delay_counter_next;
-  logic [ADDR_WIDTH-1:0] step_reg;
-  logic [ADDR_WIDTH-1:0] iterations_reg;
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      state   <= IDLE;
-      address <= 0;
-    end else begin
-      state   <= next_state;
-      address <= next_address;
-    end
-  end
-
-  assign wait_state  = (state == WAIT);
-  assign delay_state = (state == DELAY);
-  assign count_state = (state == COUNT);
-
-  // config loading registers
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      delay_reg <= 0;
-      step_reg <= 0;
-      iterations_reg <= 0;
-    end else begin
-      if (load_config) begin
-        if (is_extended) begin
-          // TODO: implement loading MSB of config values
-          assert (0)
-          else $fatal("AGU: Extended config not implemented yet");
-        end else begin
-          delay_reg <= delay;
-          step_reg <= step;
-          iterations_reg <= iterations;
-        end
-      end
-    end
-  end
-
-  // delay counter
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      delay_counter <= 0;
-    end else begin
-      delay_counter <= delay_counter_next;
-    end
-  end
-
-  always_comb begin
-    next_state = state;
-    next_address = address;
-    delay_counter_next = delay_counter;
-
-    case (state)
-      IDLE: begin
-        if (activate) begin
-          next_state   = COUNT;
-          next_address = 0;
-        end
-      end
-      COUNT: begin
-        if (delay_reg > 0) begin
-          next_state   = DELAY;
-          next_address = address;
-        end else if (address == iterations_reg) begin
-          next_state   = WAIT;
-          next_address = address;
-        end else begin
-          next_state   = COUNT;
-          next_address = address + step_reg;
-        end
-      end
-      DELAY: begin
-        delay_counter_next = delay_counter + 1;
-        if (delay_counter_next == delay_reg) begin
-          next_state   = COUNT;
-          next_address = address;
-        end else begin
-          next_state   = DELAY;
-          next_address = address;
-        end
-      end
-      WAIT: begin
-        if (higher_levels_activation) begin
-          next_state   = COUNT;
-          next_address = 0;
-        end
-      end
-      default: begin
-        next_state   = IDLE;
-        next_address = 0;
-      end
-    endcase
-  end
 
 endmodule
 

@@ -1064,6 +1064,22 @@ fn gen_rtl(fabric_filepath: String, build_dir: String, output_json: String) -> R
     } else {
         panic!("Failed to generate RTL for fabric");
     }
+
+    // copy .sv files in utils directory to the output directory
+    let utils_string = String::from("utils");
+    let utils_dir = get_path_from_library(&utils_string).unwrap();
+    for entry in fs::read_dir(utils_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            let file_name = path.file_name().unwrap().to_str().unwrap();
+            if file_name.ends_with(".sv") {
+                let output_file = Path::new(&rtl_output_dir).join(file_name);
+                fs::copy(&path, &output_file).unwrap();
+            }
+        }
+    }
+
     Ok(())
 }
 

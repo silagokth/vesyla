@@ -1,5 +1,5 @@
-use crate::isa::*;
 use crate::utils::{get_library_path, get_rtl_template_from_library};
+use crate::{get_path_from_library, isa::*};
 use core::panic;
 use log::warn;
 use minijinja::filters::Filter;

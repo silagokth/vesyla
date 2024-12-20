@@ -40,14 +40,8 @@ import fabric_pkg::*;
         rst_n = 0;
         for (int i=0; i<ROWS; i++) begin
             call[i] = 0;
-            ret[i] = 0;
         end
         for (int i=0; i<COLS; i++) begin
-            io_en_in[i] = 0;
-            io_en_out[i] = 0;
-            io_addr_in[i] = 0;
-            io_addr_out[i] = 0;
-            io_data_out[i] = 0;
             io_data_in[i] = 0;
         end
 

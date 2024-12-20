@@ -6,12 +6,14 @@ epoch <rb0> {
 
         rop <input_r> (slot=1, port=0){
             dsu (slot=1, port=0, init_addr=0)
-            rep (slot=1, port=0, level=0, iter=3, step=1, delay=0)
+            rep (slot=1, port=0, level=0, iter=1, step=2, delay=2)
+            rep (slot=1, port=0, level=1, iter=1, step=1, delay=6)
         }
 
         rop <input_w> (slot=1, port=2){
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, iter=3, step=1, delay=0)
+            rep (slot=1, port=2, level=0, iter=1, step=1, delay=2)
+            rep (slot=1, port=2, level=1, iter=1, step=2, delay=6)
         }
 
         rop <read_ab> (slot=2, port=3){
@@ -28,12 +30,12 @@ epoch <rb0> {
 
         rop <write_a> (slot=1, port=2){
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, iter=1, step=1, delay=0)
+            rep (slot=1, port=2, iter=1, step=1, delay=t0)
         }
 
         rop <write_b> ( slot=2, port=2){
             dsu (slot=2, port=2, init_addr=0)
-            rep (slot=2, port=2, iter=1, step=1, delay=0)
+            rep (slot=2, port=2, iter=1, step=1, delay=t0)
         }
 
         rop <swb> ( slot=0, port=0){
