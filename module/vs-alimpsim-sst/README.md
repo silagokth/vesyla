@@ -37,5 +37,6 @@ Test install:
 ---
 To run the test for the DRRA components:
 ```shell
+cd build
 sst-test-elements -w "drra*"
 ```
