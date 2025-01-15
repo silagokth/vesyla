@@ -1,5 +1,7 @@
 # vs-component: Vesyla RTL generation and extension protocol
 
+![Simplified overviex of the VS-Component RTL generation tool](https://github.com/user-attachments/assets/b84fc75f-9b29-4cf8-9c78-9b41133d6ee1)
+
 ## Introduction
 
 - Brief overview of the project
