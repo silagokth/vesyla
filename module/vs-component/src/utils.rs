@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::path::PathBuf;
 
 pub fn get_library_path() -> String {
-    let lib_path = env::var("VESYLA_LIBRARY_PATH").expect("Environment variable VESYLA_LIBRARY_PATH not set! Did you forget to source the setup script env.sh?");
+    let lib_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").expect("Environment variable VESYLA_SUITE_PATH_COMPONENTS not set! Did you forget to source the setup script env.sh?");
     // get abosulte path
     let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
     abosulte.to_str().unwrap().to_string()

@@ -1,6 +1,0 @@
-{
-  "name": "scratchpad_io",
-  "type": "cell",
-  "controller": "controller_io",
-  "resource_list": ["swb_16_256", "iosram_64x256_1r1w"]
-}
