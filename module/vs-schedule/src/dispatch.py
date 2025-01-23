@@ -162,7 +162,7 @@ def instr_count_in_contents(asmprog, contents, cells):
     
     return instr_count
 
-def schedule_epoch(id, pasm_prog, cstr_prog, cells, output_dir):
+def schedule_epoch(id, pasm_prog, cstr_prog, cells, file_arch, output_dir):
     pasm_path = os.path.join(output_dir, "0.pasm")
     cstr_path = os.path.join(output_dir, "0.cstr")
     asm_path = os.path.join(output_dir, "0.asm")
@@ -174,7 +174,7 @@ def schedule_epoch(id, pasm_prog, cstr_prog, cells, output_dir):
     with open(cstr_path, "w") as file:
         text = codegen.cstrrecord_to_text(id, cstr_prog)
         file.write(text)
-    generate.generate(pasm_path, cstr_path, output_dir)
+    generate.generate(pasm_path, cstr_path, file_arch, output_dir)
     schedule.schedule(model_path, output_dir)
 
     cell_labels = []
@@ -187,7 +187,7 @@ def schedule_epoch(id, pasm_prog, cstr_prog, cells, output_dir):
         asm_epoch = parse.text_to_asm_epoch(txt)
         return asm_epoch
 
-def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, output_dir, asmprog):
+def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, asmprog):
     MAX_SCALAR_REG = 15
     MAX_BOOL_REG = 15
 
@@ -205,7 +205,7 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
         loop_body_contents = []
         for content in record.contents:
             new_asmprog = ds.ASMProg()
-            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, output_dir, new_asmprog)
+            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, new_asmprog)
             loop_body_contents.extend(content_id_vector)
             for record_id in content_id_vector:
                 asmprog.records[record_id].CopyFrom(new_asmprog.records[record_id])
@@ -326,7 +326,7 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
         cond_body_contents = []
         for content in record.contents:
             new_asmprog = ds.ASMProg()
-            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, new_cells, scalar_reg_counters, bool_reg_counters, output_dir, new_asmprog)
+            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, new_cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, new_asmprog)
             cond_body_contents.extend(content_id_vector)
             for record_id in content_id_vector:
                 asmprog.records[record_id].CopyFrom(new_asmprog.records[record_id])
@@ -409,7 +409,7 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
             # schedule the epoch region
             workdir = os.path.join(output_dir, record.id)
             os.makedirs(workdir, exist_ok=True)
-            asm_epoch = schedule_epoch(record.id, pasmprog, cstrprog, cells, workdir)
+            asm_epoch = schedule_epoch(record.id, pasmprog, cstrprog, cells, file_arch, workdir)
             record_id_vector = asm_epoch.contents
             
             for record_id in record_id_vector:
@@ -425,7 +425,7 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
         sys.exit(-1)
     
 
-def create_asm(pasmprog, cstrprog, cells, output_dir):
+def create_asm(pasmprog, cstrprog, cells, file_arch, output_dir):
     record = pasmprog.records[pasmprog.start]
     if record.kind != ds.PASMRecord.Kind.START:
         logging.error("Expected START record, got %s", record.kind)
@@ -440,7 +440,7 @@ def create_asm(pasmprog, cstrprog, cells, output_dir):
         bool_reg_counters[cell_label] = 0
 
     for content in record.contents:
-        content_recoed_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, output_dir, asmprog)
+        content_recoed_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, asmprog)
         asmprog.contents.extend(content_recoed_id_vector)
 
     return asmprog
@@ -561,7 +561,7 @@ def iter_sub_one(asmprog) -> ds.ASMProg:
                 record.parameters["iter"] = str(int(record.parameters["iter"]) - 1)
     return asmprog
 
-def dispatch(file_pasm, file_cstr, output_dir):
+def dispatch(file_pasm, file_cstr, file_arch, output_dir):
     with open(file_pasm, "r") as file:
         pasmprog = parse.parse_pasm(file.read())
         pasmprog = iter_add_one(pasmprog)
@@ -569,7 +569,7 @@ def dispatch(file_pasm, file_cstr, output_dir):
         cstrprog = parse.parse_cstr(file.read())
 
     cells = find_all_cells(pasmprog)
-    asmprog = create_asm(pasmprog, cstrprog, cells, output_dir)
+    asmprog = create_asm(pasmprog, cstrprog, cells, file_arch, output_dir)
     add_halt(asmprog, cells)
     optimize_asm(asmprog)
     asmprog = iter_sub_one(asmprog)

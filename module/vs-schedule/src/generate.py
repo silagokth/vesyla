@@ -5,6 +5,8 @@ import logging
 import uuid
 import operation
 import itertools
+import subprocess
+import json
 
 def generate_uuid():
     return "__"+uuid.uuid4().hex[:6].lower()+"__"
@@ -78,7 +80,7 @@ def parse_proto_asm(proto_asm_file):
             
     return op_table
 
-def extract_control_op_expr_block(op_name, instr_list, event_counter) -> list:
+def extract_control_op_expr_block(op_name, instr_list, event_counter, component_location_table) -> list:
     expr = ""
 
     for instr in instr_list:
@@ -133,89 +135,76 @@ def extract_control_op_expr_block(op_name, instr_list, event_counter) -> list:
             i += 1
     return [expr, event_counter]
 
-def extract_control_op_expr(op) -> str:
-    e, counter = extract_control_op_expr_block(op['name'], op['instr_list'], 0)
+def extract_control_op_expr(op, component_location_table, tmp_dir) -> str:
+    e, counter = extract_control_op_expr_block(op['name'], op['instr_list'], 0, component_location_table)
     return e
 
-def extract_resource_op_expr(op) -> str:
-    # resource operation
-        T={}
-        R={}
-        expr = op['name']+"_e0"
-        for instr in op['instr_list']:
-            instr = instr.strip()
-            pattern = re.compile(r'rep\s+(.*)$')
-            match = pattern.match(instr)
-            if match is not None:
-                level = 0
-                iter = "1"
-                delay = "0"
-                fields = match.group(1).split(',')
-                for field in fields:
-                    field = re.sub(r'\s+', '', field)
-                    pattern = re.compile(r'(\w+)\=(.+)')
-                    match = pattern.match(field)
-                    if match is None:
-                        logging.error('Invalid field format: %s' % field)
-                        sys.exit(1)
-                    field_name = match.group(1)
-                    field_value = match.group(2)
-                    if field_name == 'iter':
-                        iter = field_value
-                        # check if iter is a number
-                        if not iter.isdigit():
-                            logging.error('Invalid iter value: %s. Iteration must be a number!' % iter)
-                            sys.exit(1)
-                    elif field_name == 'delay':
-                        delay = field_value
-                    elif field_name == 'level':
-                        level = int(field_value)
-                R[level] = [iter, delay]
-                continue
-            pattern = re.compile(r'fsm\s+(.*)$')
-            match = pattern.match(instr)
-            if match is not None:
-                T['delay_0'] = "0"
-                T['delay_1'] = "0"
-                T['delay_2'] = "0"
-                fields = match.group(1).split(',')
-                for field in fields:
-                    field = re.sub(r'\s+', '', field)
-                    pattern = re.compile(r'(\w+)\=(.+)')
-                    match = pattern.match(field)
-                    if match is None:
-                        logging.error('Invalid field format: %s' % field)
-                        sys.exit(1)
-                    field_name = match.group(1)
-                    field_value = match.group(2)
-                    if field_name == 'delay_0':
-                        T['delay_0'] = field_value
-                    elif field_name == 't1':
-                        T['delay_1'] = field_value
-                    elif field_name == 't2':
-                        T['delay_2'] = field_value
-                continue
+def extract_resource_op_expr(op, component_location_table, tmp_dir) -> str:
+    expr = ""
+    resource_name = component_location_table[op["cell"]+"_"+str(op["slot"])]
+    input_file_json = {}
+    (r, c) = op["cell"].split('_')
+    input_file_json['row'] = int(r)
+    input_file_json['col'] = int(c)
+    input_file_json['slot'] = op["slot"]
+    input_file_json['port'] = op["port"]
+    input_file_json['op_name'] = op["name"]
+    input_file_json['instr_list'] = []
+    for instr in op['instr_list']:
+        instr = instr.strip()
+        pattern = re.compile(r'^(\w+)\s*$')
+        match = pattern.match(instr)
+        if match is not None:
+            instr_name = match.group(1)
+            input_file_json['instr_list'].append({'name': instr_name, "fields":[]})
+            continue
+        pattern = re.compile(r'^(\w+)\s+(.*)$')
+        match = pattern.match(instr)
+        if match is not None:
+            instr_name = match.group(1)
+            fields = match.group(2).split(',')
+            fileds_json = []
+            for field in fields:
+                field = re.sub(r'\s+', '', field)
+                pattern = re.compile(r'(\w+)\=(.+)')
+                match = pattern.match(field)
+                if match is None:
+                    logging.error('Invalid field format: %s' % field)
+                    sys.exit(1)
+                field_name = match.group(1)
+                field_value = match.group(2)
+                fileds_json.append({'name': field_name, 'value': field_value})
+            input_file_json['instr_list'].append({'name': instr_name, "fields":fileds_json})
+            continue
+    uuid_tag = generate_uuid()
+    input_file_name = os.path.join(tmp_dir, uuid_tag+".json")
+    output_file_name = os.path.join(tmp_dir, uuid_tag+".txt")
+    with open(input_file_name, 'w') as f:
+        json.dump(input_file_json, f)
+    vesyla_suite_path_components = os.environ['VESYLA_SUITE_PATH_COMPONENTS']
+    timing_model_path = os.path.join(vesyla_suite_path_components, "resources", resource_name, "timing_model")
+    
+    # run the timing model executable
+    command = timing_model_path+" "+input_file_name+" "+output_file_name
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+    out, err = process.communicate()
+    retcode = process.returncode
+    if retcode:
+        logging.error("Failed to run timing model: "+command)
+        sys.exit(1)
+    
+    # check the output file and read the expression as plain text
+    with open(output_file_name, 'r') as f:
+        expr = f.read().strip()
+    os.remove(input_file_name)
+    os.remove(output_file_name)
+    return expr
 
-        event_counter = 1
-        for i in range(3):
-            field_name = "delay_"+ str(i)
-            if field_name in T and T[field_name] != "0":
-                expr = "T<"+T[field_name]+">("+expr+", "+op['name']+"_e"+str(event_counter)+")"
-                event_counter += 1
-            else:
-                break
-        for i in range(8):
-            if i in R:
-                expr = "R<"+R[i][0]+","+R[i][1]+">("+expr+")"
-            else:
-                break
-        return expr
-
-def extract_op_expr(op):
+def extract_op_expr(op, component_location_table, tmp_dir) -> str:
     if op['slot'] == -1:
-        return extract_control_op_expr(op)
+        return extract_control_op_expr(op, component_location_table, tmp_dir)
     else:
-        return extract_resource_op_expr(op)
+        return extract_resource_op_expr(op, component_location_table, tmp_dir)
 
 def parse_constraint(constraint_file):
     constraint_list = []
@@ -474,15 +463,35 @@ def add_build_in_constraints(op_table, op_expr_table, constraint_list):
             for anchor in all_control_op_anchors[op['cell']]:
                 constraint_list.append(['linear', op['name']+" != "+anchor])
 
-def generate(proto_asm_file, constraint_file, output_dir):
+def create_component_location_table(file_arch):
+    component_location_table = {}
+    with open(file_arch, 'r') as f:
+        arch_json = json.load(f)
+        for c in arch_json['cells']:
+            coord = str(c["coordinates"]["row"]) + "_" + str(c["coordinates"]["col"])
+            controller = c["cell"]["controller"]
+            component_location_table[coord] = controller["kind"]
+            for rs in c["cell"]["resources_list"]:
+                for i in range(rs["size"]):
+                    label = coord + "_" +  str(rs["slot"]+i)
+                    component_location_table[label] = rs["kind"]
+        return component_location_table
+
+def generate(proto_asm_file, constraint_file, file_arch, output_dir):
+
+    component_location_table = create_component_location_table(file_arch)
+    tmp_dir = os.path.join(output_dir, "tmp")
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
     op_table = parse_proto_asm(proto_asm_file)
     op_expr_table = {}
     for op_name in op_table:
         op = op_table[op_name]
-        expr = extract_op_expr(op)
+        expr = extract_op_expr(op, component_location_table, tmp_dir)
         op_expr_table[op_name] = expr
     constraint_list = parse_constraint(constraint_file)
     add_build_in_constraints(op_table, op_expr_table, constraint_list)
+    os.rmdir(tmp_dir)
 
 
     symbol_table = {}

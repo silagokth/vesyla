@@ -14,8 +14,9 @@ def main(args):
 
     # parse the arguments
     parser = argparse.ArgumentParser(description='vs-schedule')
-    parser.add_argument('-p', '--proto_asm', type=str, help='proto assembly file', required=False)
-    parser.add_argument('-c', '--constraint', type=str, help='constraint file', required=False)
+    parser.add_argument('-p', '--proto_asm', type=str, help='proto assembly file', required=True)
+    parser.add_argument('-c', '--constraint', type=str, help='constraint file', required=True)
+    parser.add_argument('-a', '--arch', type=str, help='architecture file', required=True)
     parser.add_argument('-o', '--output', type=str, help='output directory', default='.')
     args = parser.parse_args(args)
 
@@ -23,12 +24,6 @@ def main(args):
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    if args.proto_asm is None:
-            logging.error("proto_asm is required")
-            sys.exit(1)
-    if args.constraint is None:
-            logging.error("constraint is required")
-            sys.exit(1)
     # check file exist
     if not os.path.exists(args.proto_asm):
             logging.error("proto_asm file does not exist")
@@ -36,8 +31,11 @@ def main(args):
     if not os.path.exists(args.constraint):
             logging.error("constraint file does not exist")
             sys.exit(1)
+    if not os.path.exists(args.arch):
+            logging.error("architecture file does not exist")
+            sys.exit(1)
     
-    dispatch.dispatch(args.proto_asm, args.constraint, args.output)
+    dispatch.dispatch(args.proto_asm, args.constraint, args.arch, args.output)
     
     # record the end time
     end_time = time.time()
