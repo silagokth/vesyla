@@ -80,64 +80,66 @@ def parse_proto_asm(proto_asm_file):
             
     return op_table
 
-def extract_control_op_expr_block(op_name, instr_list, event_counter, component_location_table) -> list:
+def extract_control_op_expr(op, component_location_table, tmp_dir) -> str:
     expr = ""
-
-    for instr in instr_list:
+    controller_name = component_location_table[op["cell"]]
+    input_file_json = {}
+    (r, c) = op["cell"].split('_')
+    input_file_json['row'] = int(r)
+    input_file_json['col'] = int(c)
+    input_file_json['slot'] = -1
+    input_file_json['port'] = -1
+    input_file_json['op_name'] = op["name"]
+    input_file_json['instr_list'] = []
+    for instr in op['instr_list']:
         instr = instr.strip()
-    
-    i=0
-    while i < len(instr_list):
-        instr = instr_list[i] 
-        pattern = re.compile(r'looph\s+(.*)$')
+        pattern = re.compile(r'^(\w+)\s*$')
         match = pattern.match(instr)
         if match is not None:
-                iter = 0
-                fields = match.group(1).split(',')
-                for field in fields:
-                    field = re.sub(r'\s+', '', field)
-                    pattern = re.compile(r'(\w+)\=(.+)')
-                    match = pattern.match(field)
-                    if match is None:
-                        logging.error('Invalid field format: %s' % field)
-                        sys.exit(1)
-                    field_name = match.group(1)
-                    field_value = match.group(2)
-                    if field_name == 'iter':
-                        if not field_value.isdigit():
-                            logging.error('Invalid iter value: %s. Iteration must be a number!' % field_value)
-                            sys.exit(1)
-                        iter = int(field_value)
-                loop_block_contents = []
-                # add all instructions until reaching the last "loopt".
-                for j in range(len(instr_list)-1, i, -1):
-                    pattern = re.compile(r'loopt\s+(.*)$')
-                    match = pattern.match(instr_list[j])
-                    if match is not None:
-                        # found the last "loopt"
-                        for k in range(i+1, j+1):
-                            loop_block_contents.append(instr_list[k])
-
-                        expr = "T<"+generate_uuid()+">("+ expr + ", T<"+generate_uuid()+">("+op_name+"_e"+str(event_counter)+", R<"+str(iter)+", "+generate_uuid()+">("
-                        event_counter += 1
-                        e, event_counter = extract_control_op_expr_block(op_name, loop_block_contents, event_counter)
-                        expr += e+")))"
-                        i = j+1
-                        break
-                continue
-        else:
-            if expr == "":
-                expr = op_name+"_e"+str(event_counter)
-                event_counter += 1
-            else:
-                expr = "T<"+generate_uuid()+">(" + expr + ", "+op_name+"_e"+str(event_counter)+")"
-                event_counter += 1
-            i += 1
-    return [expr, event_counter]
-
-def extract_control_op_expr(op, component_location_table, tmp_dir) -> str:
-    e, counter = extract_control_op_expr_block(op['name'], op['instr_list'], 0, component_location_table)
-    return e
+            instr_name = match.group(1)
+            input_file_json['instr_list'].append({'name': instr_name, "fields":[]})
+            continue
+        pattern = re.compile(r'^(\w+)\s+(.*)$')
+        match = pattern.match(instr)
+        if match is not None:
+            instr_name = match.group(1)
+            fields = match.group(2).split(',')
+            fileds_json = []
+            for field in fields:
+                field = re.sub(r'\s+', '', field)
+                pattern = re.compile(r'(\w+)\=(.+)')
+                match = pattern.match(field)
+                if match is None:
+                    logging.error('Invalid field format: %s' % field)
+                    sys.exit(1)
+                field_name = match.group(1)
+                field_value = match.group(2)
+                fileds_json.append({'name': field_name, 'value': field_value})
+            input_file_json['instr_list'].append({'name': instr_name, "fields":fileds_json})
+            continue
+    uuid_tag = generate_uuid()
+    input_file_name = os.path.join(tmp_dir, uuid_tag+".json")
+    output_file_name = os.path.join(tmp_dir, uuid_tag+".txt")
+    with open(input_file_name, 'w') as f:
+        json.dump(input_file_json, f)
+    vesyla_suite_path_components = os.environ['VESYLA_SUITE_PATH_COMPONENTS']
+    timing_model_path = os.path.join(vesyla_suite_path_components, "controllers", controller_name, "timing_model")
+    
+    # run the timing model executable
+    command = timing_model_path+" "+input_file_name+" "+output_file_name
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+    out, err = process.communicate()
+    retcode = process.returncode
+    if retcode:
+        logging.error("Failed to run timing model: "+command)
+        sys.exit(1)
+    
+    # check the output file and read the expression as plain text
+    with open(output_file_name, 'r') as f:
+        expr = f.read().strip()
+    os.remove(input_file_name)
+    os.remove(output_file_name)
+    return expr
 
 def extract_resource_op_expr(op, component_location_table, tmp_dir) -> str:
     expr = ""
@@ -477,6 +479,27 @@ def create_component_location_table(file_arch):
                     component_location_table[label] = rs["kind"]
         return component_location_table
 
+# check if constraints involves both control operations and resource operations, if so, terminate the program and report error
+def constraint_checking(symbol_list, op_table):
+    has_control_op = False
+    has_resource_op = False
+    for symbol in symbol_list:
+        symbol = symbol.strip()
+        # extract the operation name from the symbol
+        pattern = re.compile(r'^([a-zA-Z_$]+).*$')
+        match = pattern.match(symbol)
+        if match is not None:
+            op_name = match.group(1)
+            if op_name in op_table:
+                if op_table[op_name]['slot'] >= 0:
+                    has_resource_op = True
+                else:
+                    has_control_op = True
+    if has_control_op and has_resource_op:
+        logging.error("Constraint involves both control operations and resource operations:\n\t"+str(symbol_list))
+        sys.exit(1)
+
+
 def generate(proto_asm_file, constraint_file, file_arch, output_dir):
 
     component_location_table = create_component_location_table(file_arch)
@@ -499,6 +522,7 @@ def generate(proto_asm_file, constraint_file, file_arch, output_dir):
     for i in range(len(constraint_list)):
         constraint = constraint_list[i][1]
         symbol_list = extract_anchor_symbols(constraint, op_expr_table, symbol_table, anchor_table)
+        constraint_checking(symbol_list, op_table)
         for symbol in symbol_list:
             constraint = constraint.replace(symbol, symbol_table[symbol])
         constraint_list[i][1] = constraint

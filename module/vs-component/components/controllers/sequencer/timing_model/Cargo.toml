@@ -1,0 +1,9 @@
+[package]
+name = "timing_model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0.64"
+regex = "1.5.4"
+uuid = "0.8.2"
