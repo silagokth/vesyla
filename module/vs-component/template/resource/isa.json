@@ -55,8 +55,14 @@
           "comment": "Send or receive.",
           "bitwidth": 1,
           "verbo_map": [
-            { "key": 0, "val": "s" },
-            { "key": 1, "val": "r" }
+            {
+              "key": 0,
+              "val": "s"
+            },
+            {
+              "key": 1,
+              "val": "r"
+            }
           ]
         },
         {
@@ -85,10 +91,22 @@
           "comment": "The port number",
           "bitwidth": 2,
           "verbo_map": [
-            { "key": 0, "val": "read narrow" },
-            { "key": 1, "val": "read wide" },
-            { "key": 2, "val": "write narrow" },
-            { "key": 3, "val": "write wide" }
+            {
+              "key": 0,
+              "val": "read narrow"
+            },
+            {
+              "key": 1,
+              "val": "read wide"
+            },
+            {
+              "key": 2,
+              "val": "write narrow"
+            },
+            {
+              "key": 3,
+              "val": "write wide"
+            }
           ]
         },
         {
@@ -129,10 +147,22 @@
           "comment": "The port number",
           "bitwidth": 2,
           "verbo_map": [
-            { "key": 0, "val": "read narrow" },
-            { "key": 1, "val": "read wide" },
-            { "key": 2, "val": "write narrow" },
-            { "key": 3, "val": "write wide" }
+            {
+              "key": 0,
+              "val": "read narrow"
+            },
+            {
+              "key": 1,
+              "val": "read wide"
+            },
+            {
+              "key": 2,
+              "val": "write narrow"
+            },
+            {
+              "key": 3,
+              "val": "write wide"
+            }
           ]
         },
         {
@@ -159,7 +189,6 @@
         }
       ]
     },
-
     {
       "code": 2,
       "name": "fsm",

@@ -114,6 +114,9 @@ fn main() {
             output_dir,
         } => {
             info!("Assembling ...");
+            env_logger::Builder::from_default_env()
+                .filter_level(log::LevelFilter::Debug)
+                .init();
             assemble(input_file.clone(), output_dir.clone());
             info!("Done!");
         }
@@ -242,22 +245,21 @@ fn gen_rtl(fabric_filepath: String, build_dir: String, output_json: String) -> R
     let fabric_height = fabric["height"].as_u64().unwrap();
     let fabric_width = fabric["width"].as_u64().unwrap();
 
+    // Create the fabric object
+    let mut fabric_object = Fabric::new(fabric_height, fabric_width);
+    fabric_object.parameters = get_parameters(fabric, Some("custom_properties".to_string()));
+
     // add fabric parameters to the registry
-    let fabric_parameters = get_parameters(fabric, Some("custom_properties".to_string()));
-    if fabric_parameters.is_empty() {
+    if fabric_object.parameters.is_empty() {
         warn!("No fabric parameters found in {}", fabric_filepath);
     } else {
-        match add_parameters(&fabric_parameters, &mut parameter_list) {
+        match add_parameters(&fabric_object.parameters, &mut parameter_list) {
             Ok(_) => (),
             Err(e) => {
                 panic!("Error with fabric.json parameters: ({})", e);
             }
         }
     }
-
-    // Create the fabric object
-    let mut fabric_object = Fabric::new(fabric_height, fabric_width);
-    fabric_object.parameters = fabric_parameters;
 
     // CELLS
     let cell_list = fabric.get("cells_list").expect("Cells not found in fabric");
@@ -352,6 +354,8 @@ fn gen_rtl(fabric_filepath: String, build_dir: String, output_json: String) -> R
                         }
                         cell_object.isa = Some(isa.unwrap());
                     }
+                    // Get parameters for cell_object
+
                     // append parameters from cell_from_lib to cell_parameters
                     overwritten_params.extend(merge_parameters(
                         &mut cell_object.parameters,
@@ -814,6 +818,22 @@ fn gen_rtl(fabric_filepath: String, build_dir: String, output_json: String) -> R
                             &mut resource_object.parameters,
                             &resource_from_lib.parameters,
                         )?);
+                        // if resource_object.parameters.is_empty() {
+                        //     warn!(
+                        //         "No parameters found for resource {} (slot {}) in cell {}",
+                        //         resource_object.name,
+                        //         resource_object.slot.unwrap(),
+                        //         cell_object.name,
+                        //     );
+                        // } else {
+                        //     debug!(
+                        //         "Parameters for resource {} (slot {}) in cell {}: {:?}",
+                        //         resource_object.name,
+                        //         resource_object.slot.unwrap(),
+                        //         cell_object.name,
+                        //         resource_object.parameters
+                        //     );
+                        // }
                         if !overwritten_params.is_empty() {
                             let mut warning = format!(
                             "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
@@ -1134,12 +1154,16 @@ fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
 }
 
 fn add_parameters(
-    parameters: &ParameterList,
-    parameter_list: &mut ParameterList,
+    parameters_to_add: &ParameterList,
+    parameter_list_destination: &mut ParameterList,
 ) -> Result<ParameterList> {
     let mut added_params = ParameterList::new();
-    for (param_name, param_value) in parameters.iter() {
-        match add_parameter(param_name.to_string(), *param_value, parameter_list) {
+    for (param_name, param_value) in parameters_to_add.iter() {
+        match add_parameter(
+            param_name.to_string(),
+            *param_value,
+            parameter_list_destination,
+        ) {
             Ok(true) => {
                 added_params.insert(param_name.to_string(), *param_value);
             }

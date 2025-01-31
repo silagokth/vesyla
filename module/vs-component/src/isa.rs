@@ -192,7 +192,7 @@ impl Serialize for Instruction {
         let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("name", &self.name)?;
         map.serialize_entry("opcode", &self.opcode)?;
-        map.serialize_entry("type", &self.instr_type)?;
+        map.serialize_entry("instr_type", &self.instr_type)?;
         map.serialize_entry("segments", &self.segments)?;
         map.end()
     }
@@ -206,10 +206,10 @@ impl Serialize for InstructionType {
         let mut map = serializer.serialize_map(Some(1))?;
         match self {
             InstructionType::ControlInstruction => {
-                map.serialize_entry("type", &0)?;
+                map.serialize_value(&0)?;
             }
             InstructionType::ResourceInstruction => {
-                map.serialize_entry("type", &1)?;
+                map.serialize_value(&1)?;
             }
         }
         map.end()
