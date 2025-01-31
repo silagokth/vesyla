@@ -25,7 +25,29 @@ public:
         Event::serialize_order(ser);
     }
 
+    bool isResourceInstruction()
+    {
+        return getMSBit() == 1;
+    }
+
+    int32_t getSlot()
+    {
+        if (!isResourceInstruction())
+        {
+            return -1; // Control instruction
+        }
+
+        // Return the 4-bits from bit 27 to 24 (slot number)
+        return (instruction >> 24) & 0xF;
+    };
+
     ImplementSerializable(InstrEvent);
+
+private:
+    uint32_t getMSBit()
+    {
+        return (instruction >> 31) & 0x1;
+    }
 };
 
 #endif // _INSTREVENT_H

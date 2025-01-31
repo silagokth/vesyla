@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find SST package
 find_package(SST REQUIRED)
-
+add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 # Set SST include dir
 execute_process(
     COMMAND sst-config --includedir
@@ -33,6 +33,9 @@ foreach(component_dir ${component_subdirs})
     list(APPEND COMPONENT_LIBRARIES ${component_name})
   endif()
 endforeach()
+
+# Add tests
+add_subdirectory(tests)
 
 # Add DRRA library
 add_library(drra SHARED)
@@ -74,11 +77,11 @@ message(STATUS "Setting SST_DRRA_LIB_DIR to ${CMAKE_CURRENT_SOURCE_DIR}")
 set(ENV{SST_DRRA_LIB_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Register DRRA library and its components
-message(STATUS "Registering SST library: drra")
 add_custom_command(TARGET drra POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lib
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:drra> ${CMAKE_CURRENT_BINARY_DIR}/lib
-    COMMAND sst-register drra drra_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}/lib
-    COMMAND sst-register SST_ELEMENTS_SOURCE drra=${CMAKE_CURRENT_SOURCE_DIR}/components
-    COMMAND sst-register SST_ELEMENTS_TESTS drra=${CMAKE_CURRENT_SOURCE_DIR}/components/tests
+  COMMAND echo "Registering SST library: drra"
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lib
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:drra> ${CMAKE_CURRENT_BINARY_DIR}/lib
+  COMMAND sst-register drra drra_LIBDIR=${CMAKE_CURRENT_BINARY_DIR}/lib
+  COMMAND sst-register SST_ELEMENT_SOURCE drra=${CMAKE_CURRENT_SOURCE_DIR}/components
+  COMMAND sst-register SST_ELEMENT_TESTS drra=${CMAKE_CURRENT_SOURCE_DIR}/tests
 )

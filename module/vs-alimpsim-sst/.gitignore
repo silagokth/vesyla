@@ -1,2 +1,3 @@
 .venv/
 sst_test_outputs/
+tests/bin/

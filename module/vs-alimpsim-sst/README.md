@@ -5,6 +5,7 @@
 - `cmake`
 - `make`
 - [SST framework](http://sst-simulator.org)
+- `gtest` (`sudo apt-get install libgtest-dev` on Ubuntu)
 
 ## How to install SiLago SST sim?
 
@@ -41,7 +42,6 @@ sst-info drra
 To run the test for the DRRA components:
 
 ```shell
-cd build
 sst-test-elements -w "drra*"
 ```
 

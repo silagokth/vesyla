@@ -21,6 +21,17 @@ class testcase_drra(SSTTestCase):
     def test_drra_simpleExample(self):
         self.drra_template("simpleExample")
 
+    def test_drra_switchboxFSMSwitching(self):
+        self.drra_template("switchboxFSMSwitching")
+
+    def test_drra_timingModel(self):
+        test_path = self.get_testsuite_dir()
+        test_script = os.path.join(
+            os.path.dirname(test_path), "build/tests/test_timingModel"
+        )
+        test_value = os.system(test_script)
+        self.assertEqual(test_value, 0)
+
     def drra_template(self, testcase, striptotail=0, checkpoint=False):
         # Get the path to the test files
         test_path = self.get_testsuite_dir()
