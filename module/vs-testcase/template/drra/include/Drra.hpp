@@ -217,50 +217,53 @@ void set_state_reg(int row, int col, int addr, int value) {
 
 void simulate_code_segment(int id) {
   string cmd;
-  cmd = "vesyla-suite schedule -p ../pasm/" + to_string(id) +
-        ".pasm -c ../pasm/" + to_string(id) + ".cstr -o compile";
+
+  cmd = "bash ../script/instr_sim.sh " + to_string(id);
   assert(system(cmd.c_str()) == 0);
-  cmd = "mkdir asm && cp compile/0.asm asm/" + to_string(id) + ".asm";
+}
+
+void assemble() {
+  string cmd;
+  cmd = "bash ../script/assemble.sh";
   assert(system(cmd.c_str()) == 0);
-  cmd = "vesyla-suite manas -i asm/" + to_string(id) +
-        ".asm -s ../isa.json "
-        "-o .";
-  assert(system(cmd.c_str()) == 0);
-  cmd = "vesyla-suite alimpsim --arch ../arch.json "
-        "--instr "
-        "instr.bin --isa ../isa.json --input sram_image_in.bin --output "
-        "sram_image_m1.bin "
-        "--metric metric.json --state_reg state_reg.json";
+}
+
+void compile() {
+  string cmd;
+  cmd = "bash ../script/compile.sh ../pasm";
   assert(system(cmd.c_str()) == 0);
 }
 
 int run_simulation() {
   cout << "Initialization ..." << endl;
   init();
-  store_input_data("sram_image_in.bin");
+  store_input_data("mem/sram_image_in.bin");
 #ifdef DEBUG
-  bin_to_hex_file("sram_image_in.bin", "sram_image_in.hex");
-  bin_to_num_file<DATA_TYPE>("sram_image_in.bin", "sram_image_in.txt");
+  bin_to_hex_file("mem/sram_image_in.bin", "mem/sram_image_in.hex");
+  bin_to_num_file<DATA_TYPE>("mem/sram_image_in.bin", "mem/sram_image_in.txt");
 #endif
   cout << "Run model 0 ..." << endl;
   reset_all();
-  load_input_data("sram_image_in.bin");
+  load_input_data("mem/sram_image_in.bin");
   model_l0();
-  store_output_data("sram_image_m0.bin");
+  store_output_data("mem/sram_image_m0.bin");
 #ifdef DEBUG
-  bin_to_hex_file("sram_image_m0.bin", "sram_image_m0.hex");
-  bin_to_num_file<DATA_TYPE>("sram_image_m0.bin", "sram_image_m0.txt");
+  bin_to_hex_file("mem/sram_image_m0.bin", "mem/sram_image_m0.hex");
+  bin_to_num_file<DATA_TYPE>("mem/sram_image_m0.bin", "mem/sram_image_m0.txt");
 #endif
   cout << "Run model 1 ..." << endl;
+  assemble();
+  compile();
   reset_all();
-  load_input_data("sram_image_in.bin");
+  load_input_data("mem/sram_image_in.bin");
   model_l1();
 #ifdef DEBUG
-  bin_to_hex_file("sram_image_m1.bin", "sram_image_m1.hex");
-  bin_to_num_file<DATA_TYPE>("sram_image_m1.bin", "sram_image_m1.txt");
+  bin_to_hex_file("mem/sram_image_m1.bin", "mem/sram_image_m1.hex");
+  bin_to_num_file<DATA_TYPE>("mem/sram_image_m1.bin", "mem/sram_image_m1.txt");
 #endif
   cout << "Verify model 1 against model 0 ..." << endl;
-  assert(verify("sram_image_m0.bin", "sram_image_m1.bin"));
+  assert(
+      verify("system/mem/sram_image_m0.bin", "system/mem/sram_image_m1.bin"));
   cout << "Success!" << endl;
   return 0;
 }

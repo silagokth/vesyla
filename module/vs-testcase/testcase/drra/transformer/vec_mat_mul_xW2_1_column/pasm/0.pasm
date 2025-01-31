@@ -7,37 +7,37 @@ epoch <rb0> {
 
             # load data from buffer for x vector
             dsu (slot=1, port=0, init_addr=0)
-            rep (slot=1, port=0, level=0, iter=16, step=1, delay=0)
+            rep (slot=1, port=0, level=0, iter=15, step=1, delay=0)
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, level=0, iter=16, step=1, delay=0)
+            rep (slot=1, port=2, level=0, iter=15, step=1, delay=0)
             act (mode=0, param=1, ports=0b0101)
 
 
             # load data from buffer for w matrix
             dsu (slot=1, port=0, init_addr=16)
-            rep (slot=1, port=0, level=0, iter=16, step=1, delay=0)
-            # 1024/16 = 64 iter=64
-            rep (slot=1, port=0, level=1, iter=0, step=16, delay=48)
-            repx (slot=1, port=0, level=1, iter=1, step=0, delay=3)
+            rep (slot=1, port=0, level=0, iter=15, step=1, delay=0)
+            # 1024/16 = 64 iter=63
+            rep (slot=1, port=0, level=1, iter=-1, step=16, delay=48)
+            repx (slot=1, port=0, level=1, iter=0, step=0, delay=3)
 
             dsu (slot=1, port=2, init_addr=32)
-            rep (slot=1, port=2, level=0, iter=16, step=1, delay=0)
-            # 1024/16 = 64 iter=64
-            rep (slot=1, port=2, level=1, iter=0, step=0, delay=48)
-            repx (slot=1, port=2, level=1, iter=1, step=0, delay=3)
+            rep (slot=1, port=2, level=0, iter=15, step=1, delay=0)
+            # 1024/16 = 64 iter=63
+            rep (slot=1, port=2, level=1, iter=-1, step=0, delay=48)
+            repx (slot=1, port=2, level=1, iter=0, step=0, delay=3)
             wait (cycle=6)
             act (mode=0, param=1, ports=0b0101)
 
             # read x_matrix and w_matrix in alternation
             dsu (slot=2, port=3, init_addr=0)
-            rep (slot=2, port=3, level=0, iter=2, step=32, delay=0)
-            rep (slot=2, port=3, level=1, iter=4, step=1, delay=0)
+            rep (slot=2, port=3, level=0, iter=1, step=32, delay=0)
+            rep (slot=2, port=3, level=1, iter=3, step=1, delay=0)
             # repeat 4 times
-            rep (slot=2, port=3, level=2, iter=4, step=4, delay=56)
-            repx (slot=2, port=3, level=2, iter=0, step=0, delay=0)
+            rep (slot=2, port=3, level=2, iter=3, step=4, delay=56)
+            repx (slot=2, port=3, level=2, iter=-1, step=0, delay=0)
             # repeat 64 times
-            rep (slot=2, port=3, level=3, iter=0, step=0, delay=56)
-            repx (slot=2, port=3, level=3, iter=1, step=0, delay=0)
+            rep (slot=2, port=3, level=3, iter=-1, step=0, delay=56)
+            repx (slot=2, port=3, level=3, iter=0, step=0, delay=0)
 
             wait (cycle=1)
             act (mode=0, param=2, ports=0b1000)
@@ -61,37 +61,37 @@ epoch <rb0> {
             # read RF1 64 elements at a time, repeat 256 times
 
             dsu (slot=1, port=1, init_addr=0)
-            rep (slot=1, port=1, level=0, iter=0, step=1, delay=0)
-            repx (slot=1, port=1, level=0, iter=1, step=0, delay=0)
-            rep (slot=1, port=1, level=1, iter=4, step=0, delay=0)
+            rep (slot=1, port=1, level=0, iter=-1, step=1, delay=0)
+            repx (slot=1, port=1, level=0, iter=0, step=0, delay=0)
+            rep (slot=1, port=1, level=1, iter=3, step=0, delay=0)
             # repeat 64 times
-            rep (slot=1, port=1, level=2, iter=0, step=0, delay=0)
-            repx (slot=1, port=1, level=2, iter=1, step=0, delay=0)
+            rep (slot=1, port=1, level=2, iter=-1, step=0, delay=0)
+            repx (slot=1, port=1, level=2, iter=0, step=0, delay=0)
 
             # read RF2 64 elements at a time, repeat 256 times
 
             dsu (slot=2, port=1, init_addr=0)
-            rep (slot=2, port=1, level=0, iter=0, step=1, delay=0)
-            repx (slot=2, port=1, level=0, iter=1, step=0, delay=0)
-            rep (slot=2, port=1, level=1, iter=4, step=0, delay=0)
+            rep (slot=2, port=1, level=0, iter=-1, step=1, delay=0)
+            repx (slot=2, port=1, level=0, iter=0, step=0, delay=0)
+            rep (slot=2, port=1, level=1, iter=3, step=0, delay=0)
             # repeat 64 times
-            rep (slot=2, port=1, level=2, iter=0, step=0, delay=0)
+            rep (slot=2, port=1, level=2, iter=-1, step=0, delay=0)
 
 
             # write to RF1 and RF2
             wait (cycle=2)
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, level=0, iter=4, step=1, delay=1)
-            rep (slot=1, port=2, level=1, iter=4, step=0, delay=57)
-            repx (slot=1, port=2, level=1, iter=0, step=0, delay=0)
-            rep (slot=1, port=2, level=2, iter=0, step=0, delay=57)
-            repx (slot=1, port=2, level=2, iter=1, step=0, delay=0)
+            rep (slot=1, port=2, level=0, iter=3, step=1, delay=1)
+            rep (slot=1, port=2, level=1, iter=3, step=0, delay=57)
+            repx (slot=1, port=2, level=1, iter=-1, step=0, delay=0)
+            rep (slot=1, port=2, level=2, iter=-1, step=0, delay=57)
+            repx (slot=1, port=2, level=2, iter=0, step=0, delay=0)
             dsu (slot=2, port=2, init_addr=0)
-            rep (slot=2, port=2, level=0, iter=4, step=1, delay=1)
-            rep (slot=2, port=2, level=1, iter=4, step=0, delay=57)
-            repx (slot=2, port=2, level=1, iter=0, step=0, delay=0)
-            rep (slot=2, port=2, level=2, iter=0, step=0, delay=57)
-            repx (slot=2, port=2, level=2, iter=1, step=0, delay=0)
+            rep (slot=2, port=2, level=0, iter=3, step=1, delay=1)
+            rep (slot=2, port=2, level=1, iter=3, step=0, delay=57)
+            repx (slot=2, port=2, level=1, iter=-1, step=0, delay=0)
+            rep (slot=2, port=2, level=2, iter=-1, step=0, delay=57)
+            repx (slot=2, port=2, level=2, iter=0, step=0, delay=0)
 
             act (mode=0, param=1, ports=0b0100)
             act (mode=0, param=2, ports=0b0100)
@@ -99,27 +99,27 @@ epoch <rb0> {
             # read from RF1 RF2, write to dpu
 
 
-            repx (slot=2, port=1, level=2, iter=1, step=0, delay=0)
+            repx (slot=2, port=1, level=2, iter=0, step=0, delay=0)
 
             # dpu reset repeat 64 times
             dpu (slot=4, option=0, mode=8)
-            rep (slot=4, level=0, iter=0, step=0, delay=63)
-            repx (slot=4, level=0, iter=1, step=0, delay=3)
+            rep (slot=4, level=0, iter=-1, step=0, delay=63)
+            repx (slot=4, level=0, iter=0, step=0, delay=3)
 
             act (mode=0, param=1, ports=34)
             act (ports=1, param=4)
 
             # write to RF3 from dpu
             dsu (slot=3, port=0, init_addr=0)
-            rep (slot=3, port=0, level=0, iter=0, step=1, delay=63)
-            repx (slot=3, port=0, level=0, iter=1, step=0, delay=3)
+            rep (slot=3, port=0, level=0, iter=-1, step=1, delay=63)
+            repx (slot=3, port=0, level=0, iter=0, step=0, delay=3)
             wait (cycle=251)
             act (ports=1, param=3)
 
             # read bulk RF3, wait till next 16, repeat 16 times
             dsu (slot=3, port=3, init_addr=0)
-            rep (slot=3, port=3, level=0, iter=4, step=1, delay=0)
-            repx (slot=3, port=3, level=0, iter=0, step=0, delay=0)
+            rep (slot=3, port=3, level=0, iter=3, step=1, delay=0)
+            repx (slot=3, port=3, level=0, iter=-1, step=0, delay=0)
 
             wait (cycle=16122)
             act (ports=0b1000, param=3)
@@ -137,18 +137,18 @@ epoch <rb0> {
 
             # store to IO
             dsu (slot=1, port=3, init_addr=0)
-            rep (slot=1, port=3, level=0, iter=4, step=1, delay=0)
-            repx (slot=1, port=3, level=0, iter=0, step=0, delay=0)
+            rep (slot=1, port=3, level=0, iter=3, step=1, delay=0)
+            repx (slot=1, port=3, level=0, iter=-1, step=0, delay=0)
             dsu (slot=1, port=1, init_addr=0)
-            rep (slot=1, port=1, level=0, iter=4, step=1, delay=0)
-            repx (slot=1, port=1, level=0, iter=0, step=0, delay=0)
+            rep (slot=1, port=1, level=0, iter=3, step=1, delay=0)
+            repx (slot=1, port=1, level=0, iter=-1, step=0, delay=0)
 
 
             wait (cycle=16412)
             # write data 
             dsu (slot=2, port=2, init_addr=0)
-            rep (slot=2, port=2, level=0, iter=4, step=1, delay=0)
-            repx (slot=2, port=2, level=0, iter=0, step=0, delay=0)
+            rep (slot=2, port=2, level=0, iter=3, step=1, delay=0)
+            repx (slot=2, port=2, level=0, iter=-1, step=0, delay=0)
             act (mode=0, param=2, ports=0b0100)
 
 

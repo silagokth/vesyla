@@ -287,6 +287,15 @@ def insert_instr(instr_table: dict, op_table, time_table):
                 instr_list = new_instr_list
                 # reverse the order of the instructions
                 instr_list = instr_list[::-1]
+                tt = t-1
+                for instr in instr_list:
+                    while True:
+                        if tt in cell_instr_list:
+                            tt -= 1
+                        else:
+                            cell_instr_list[tt] = instr
+                            tt -= 1
+                            break
 
                 
         # now the instructions are inserted in the correct order
