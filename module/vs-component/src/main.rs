@@ -28,6 +28,9 @@ enum Command {
         arch: String,
         #[arg(short, long)]
         output: String,
+        // Debug mode (default: false)
+        #[arg(short, long, default_value_t = false)]
+        debug: bool,
     },
     #[command(about = "Generate RTL", name = "gen_rtl")]
     GenRtl {
@@ -78,9 +81,18 @@ fn main() {
     let cli_args = Args::parse();
 
     match &cli_args.command {
-        Command::Assemble { arch, output } => {
+        Command::Assemble {
+            arch,
+            output,
+            debug,
+        } => {
+            let debug_level = if *debug {
+                log::LevelFilter::Debug
+            } else {
+                log::LevelFilter::Info
+            };
             env_logger::Builder::from_default_env()
-                .filter_level(log::LevelFilter::Info)
+                .filter_level(debug_level)
                 .init();
             info!("Assembling ...");
             assemble(arch, output);
