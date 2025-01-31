@@ -11,6 +11,7 @@
     "rust-analyzer.linkedProjects": [
       "module/vs-component/Cargo.toml",
       "module/vs-testcase/Cargo.toml"
+      "module/vs-manas/Cargo.toml"
     ]
   }
 }

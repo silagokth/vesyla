@@ -1,9 +1,0 @@
-{
-  "format": {
-    "instr_bitwidth": 32,
-    "instr_type_bitwidth": 1,
-    "instr_opcode_bitwidth": 3,
-    "instr_slot_bitwidth": 4
-  },
-  "instructions": []
-}

@@ -14,7 +14,6 @@ fn main() {
         "VESYLA_SUITE_PATH_SHARE".to_string(),
         "VESYLA_SUITE_PATH_TEMPLATE".to_string(),
         "VESYLA_SUITE_PATH_TESTCASE".to_string(),
-        "VESYLA_SUITE_PATH_COMPONENTS".to_string(),
         "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION".to_string(),
     ];
 
@@ -71,7 +70,6 @@ fn init() {
     let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla-suite");
     let vesyla_suite_path_template = vesyla_suite_path_share.join("template");
     let vesyla_suite_path_testcase = vesyla_suite_path_share.join("testcase");
-    let vesyla_suite_path_components = vesyla_suite_path_share.join("components");
 
     env::set_var("VESYLA_SUITE_PATH_PROG", vesyla_suite_path_prog);
     env::set_var("VESYLA_SUITE_PATH_BIN", vesyla_suite_path_bin);
@@ -80,7 +78,6 @@ fn init() {
     env::set_var("VESYLA_SUITE_PATH_SHARE", vesyla_suite_path_share);
     env::set_var("VESYLA_SUITE_PATH_TEMPLATE", vesyla_suite_path_template);
     env::set_var("VESYLA_SUITE_PATH_TESTCASE", vesyla_suite_path_testcase);
-    env::set_var("VESYLA_SUITE_PATH_COMPONENTS", vesyla_suite_path_components);
 
     // set protobuf for python
     env::set_var("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python");

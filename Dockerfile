@@ -10,7 +10,7 @@ RUN pacman -Syu --noconfirm python python-pip cmake gcc make boost protobuf && \
     make -j$(nproc) && \
     make install
 
-# Test Image ##################################################################
+# Test Image ###################################################################
 FROM archlinux:base as tester
 RUN pacman -Syu --noconfirm python python-pip gcc boost-libs && \
     pip3 install --break-system-packages --upgrade pip setuptools && \

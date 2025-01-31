@@ -5,16 +5,16 @@ epoch <rb0> {
             act (mode=0, param=0, ports=0b0100)
 
             dsu (slot=1, port=0, init_addr=0)
-            rep (slot=1, port=0, level=0, step=1, iter=32, delay=0)
+            rep (slot=1, port=0, level=0, step=1, iter=31, delay=0)
 
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, level=0, step=1, iter=32, delay=0)
+            rep (slot=1, port=2, level=0, step=1, iter=31, delay=0)
 
             # io -> rf1
             dsu (slot=2, port=3, init_addr=0)
-            rep (slot=2, port=3, level=0, iter=4, step=1, delay=1)
-            rep (slot=2, port=3, level=1, iter=4, step=4, delay=57)
-            repx (slot=2, port=3, level=1, iter=0, step=0, delay=3)
+            rep (slot=2, port=3, level=0, iter=3, step=1, delay=1)
+            rep (slot=2, port=3, level=1, iter=3, step=4, delay=57)
+            repx (slot=2, port=3, level=1, iter=-1, step=0, delay=3)
 
             act (mode=0, param=1, ports=0b0101)
             wait (cycle = 10)
@@ -23,9 +23,9 @@ epoch <rb0> {
 
             # io -> rf2
             dsu (slot=2, port=3, init_addr=16)
-            rep (slot=2, port=3, level=0, iter=4, step=1, delay=1)
-            rep (slot=2, port=3, level=1, iter=4, step=4, delay=57)
-            rep (slot=2, port=3, level=2, iter=4, step=0, delay=57)
+            rep (slot=2, port=3, level=0, iter=3, step=1, delay=1)
+            rep (slot=2, port=3, level=1, iter=3, step=4, delay=57)
+            rep (slot=2, port=3, level=2, iter=3, step=0, delay=57)
 
             act (mode=0, param=2, ports=0b1000)
             halt
@@ -39,13 +39,13 @@ epoch <rb0> {
             route (slot=0, option=0, sr=0, source=3, target= 128)
 
             #fsm (slot=0, port=2, delay_0=16)
-            #rep (slot=0, port=2, level=0, iter=16, delay=46)
-            #repx (slot=0, port=2, level=0, iter=0, delay=0)
+            #rep (slot=0, port=2, level=0, iter=15, delay=46)
+            #repx (slot=0, port=2, level=0, iter=-1, delay=0)
 
             dsu (slot=1, port=2, init_addr=0)
-            rep (slot=1, port=2, level=0, iter=4, step=1, delay=1)
-            rep (slot=1, port=2, level=1, iter=4, step=0, delay=57)
-            repx (slot=1, port=2, level=1, iter=0, step=0, delay=3)
+            rep (slot=1, port=2, level=0, iter=3, step=1, delay=1)
+            rep (slot=1, port=2, level=1, iter=3, step=0, delay=57)
+            repx (slot=1, port=2, level=1, iter=-1, step=0, delay=3)
 
             swb (slot=0, option=0, source=1, target=4)
             swb (slot=0, option=0, source=2, target=5)
@@ -55,28 +55,28 @@ epoch <rb0> {
 
             #to-dpu
             dsu (slot=1, port=1, init_addr=0)
-            rep (slot=1, port=1, level=0, iter=0, step=1, delay=0)
-            repx (slot=1, port=1, level=0, iter=1, step=0, delay=0)
-            rep (slot=1, port=1, level=1, iter=16, step=0, delay=0)
+            rep (slot=1, port=1, level=0, iter=-1, step=1, delay=0)
+            repx (slot=1, port=1, level=0, iter=0, step=0, delay=0)
+            rep (slot=1, port=1, level=1, iter=15, step=0, delay=0)
 
             dsu (slot=2, port=1, init_addr=0)
-            rep (slot=2, port=1, level=0, iter=0, step=1, delay=0)
-            repx (slot=2, port=1, level=0, iter=1, step=0, delay=0)
-            rep (slot=2, port=1, level=1, iter=16, step=0, delay=0)
+            rep (slot=2, port=1, level=0, iter=-1, step=1, delay=0)
+            repx (slot=2, port=1, level=0, iter=0, step=0, delay=0)
+            rep (slot=2, port=1, level=1, iter=15, step=0, delay=0)
 
             dpu (slot=4, option=0, mode=8)
-            rep (slot=4, level=0, iter=16, step=0, delay=63)
+            rep (slot=4, level=0, iter=15, step=0, delay=63)
 
             dsu (slot=3, port=0, init_addr=0)
-            rep (slot=3, port=0, level=0, iter=16, step=1, delay=63)
+            rep (slot=3, port=0, level=0, iter=15, step=1, delay=63)
 
             act (mode=0, param=0, ports=0b0100)
             act (mode=0, ports=4, param=1)
 
             dsu (slot=2, port=2, init_addr=0)
-            rep (slot=2, port=2, level=0, iter=4, step=1, delay=1)
-            rep (slot=2, port=2, level=1, iter=4, step=0, delay=57)
-            rep (slot=2, port=2, level=2, iter=4, step=0, delay=57)
+            rep (slot=2, port=2, level=0, iter=3, step=1, delay=1)
+            rep (slot=2, port=2, level=1, iter=3, step=0, delay=57)
+            rep (slot=2, port=2, level=2, iter=3, step=0, delay=57)
 
             act (mode=0, ports=4, param=2)
 
@@ -90,7 +90,7 @@ epoch <rb0> {
             wait (cycle = 957)
 
             dsu (slot=3, port=3, init_addr=0)
-            rep (slot=3, port=3, level=0, iter=1, step=1, delay=0)
+            rep (slot=3, port=3, level=0, iter=0, step=1, delay=0)
 
             act (ports=0b1000, param=3)
             halt
@@ -104,12 +104,12 @@ epoch <rb0> {
             wait (cycle = 1047)
 
             dsu (slot=2, port=2, init_addr=0)
-            rep (slot=2, port=2, level=0, iter=1, step=0, delay=0)
+            rep (slot=2, port=2, level=0, iter=0, step=0, delay=0)
 
             dsu (slot=1, port=3, init_addr=0)
-            rep (slot=1, port=3, level=0, iter=1, step=0, delay=0)
+            rep (slot=1, port=3, level=0, iter=0, step=0, delay=0)
             dsu (slot=1, port=1, init_addr=0)
-            rep (slot=1, port=1, level=0, iter=1, step=0, delay=0)
+            rep (slot=1, port=1, level=0, iter=0, step=0, delay=0)
 
 
             act (mode=0, param=0, ports=0b0100)
