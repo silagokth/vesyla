@@ -149,7 +149,7 @@ impl InstructionSet {
                         std::io::ErrorKind::InvalidData,
                         "Segments must be an array in ISA JSON",
                     ));
-                } else if !segments_json.unwrap().as_array().unwrap().is_empty() {
+                } else {
                     for segment in segments_json.unwrap().as_array().unwrap().iter() {
                         let seg_name = segment.get("name").unwrap().as_str().unwrap().to_string();
                         let comment = segment
