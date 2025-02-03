@@ -23,11 +23,11 @@ if [ ! -d "system/instr/${id}" ]; then
   echo "system/instr/${id} directory does not exist"
   exit 1
 fi
-if [ ! -d "system/mem" ]; then
-  echo "system/mem directory does not exist"
+if [ ! -d "mem" ]; then
+  echo "mem directory does not exist"
   exit 1
 fi
-mkdir -p work/archive
+mkdir -p archive
 mkdir -p system/metric
 mkdir -p system/state
 
@@ -40,8 +40,8 @@ vesyla-suite alimpsim \
     --arch system/arch/arch.json \
     --instr system/instr/${id}/instr.bin \
     --isa system/isa/isa.json \
-    --input system/mem/sram_image_in.bin \
-    --output system/mem/sram_image_m1.bin \
+    --input mem/sram_image_in.bin \
+    --output mem/sram_image_m1.bin \
     --metric system/metric/metric.json \
     --state_reg system/state/state_reg.json
 

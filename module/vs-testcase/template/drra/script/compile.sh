@@ -60,8 +60,8 @@ for id in ${ids}; do
 
   # preserve the instructions
   mkdir -p system/instr/${id}
-  cp temp/instr.bin system/instr
-  cp temp/instr.txt system/instr
+  cp temp/instr.bin system/instr/${id}
+  cp temp/instr.txt system/instr/${id}
 
   # archive everything
   mv temp archive/compile_${id}

@@ -14,4 +14,4 @@ Modify the **main.cpp** file to create the verification environment. You need to
 
 ## Write Assembly Code Segments
 
-Put the assembly code segments in the **asm** folder. The file names should be purely natural numbers starting from 0. Each code segment should be self contained in terms of timing. Meaning that it cannot have any part that relies on event-driving mechanism. After execution of each code segment, the global controller on the fabric is fully synchronized and ready for the next code segment.
+Put the assembly code segments in the **pasm** folder. The file names should be purely natural numbers starting from 0. Each code segment should be self contained in terms of timing. Meaning that it cannot have any part that relies on event-driving mechanism. After execution of each code segment, the global controller on the fabric is fully synchronized and ready for the next code segment.
