@@ -348,6 +348,14 @@ fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &String) -
                         }
                         debug!("{}", warning);
                     }
+
+                    // append parameters from cell_from_lib to required_parameters
+                    for param_key in cell_from_lib.parameters.keys() {
+                        if !cell_object.required_parameters.contains(param_key) {
+                            cell_object.required_parameters.push(param_key.clone());
+                        }
+                    }
+
                     // append required parameters from cell_from_lib to cell
                     if !cell_from_lib.required_parameters.is_empty() {
                         cell_object
@@ -499,6 +507,25 @@ fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &String) -
                         }
                         warn!("{}", warning);
                     }
+
+                    // append parameters from controller_from_lib to required_parameters
+                    for param_key in controller_from_lib.parameters.keys() {
+                        if !cell_object
+                            .controller
+                            .as_ref()
+                            .unwrap()
+                            .required_parameters
+                            .contains(param_key)
+                        {
+                            cell_object
+                                .controller
+                                .as_mut()
+                                .unwrap()
+                                .required_parameters
+                                .push(param_key.clone());
+                        }
+                    }
+
                     // append required parameters from controller_from_lib to controller
                     if !controller_from_lib.required_parameters.is_empty() {
                         cell_object
@@ -823,6 +850,14 @@ fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &String) -
                             }
                             warn!("{}", warning);
                         }
+
+                        // append parameters from resource_from_lib to required_parameters
+                        for param_key in resource_from_lib.parameters.keys() {
+                            if !resource_object.required_parameters.contains(param_key) {
+                                resource_object.required_parameters.push(param_key.clone());
+                            }
+                        }
+
                         // append required parameters from resource_from_lib to resource
                         if !resource_from_lib.required_parameters.is_empty() {
                             resource_object

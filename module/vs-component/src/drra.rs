@@ -330,21 +330,18 @@ impl Resource {
         // Parameters (optional)
         let json_resource_params = json_value.get("custom_properties");
         if let Some(json_resource_params) = json_resource_params {
-            let json_params_list = json_resource_params.as_array().unwrap();
-            if json_params_list.is_empty() {
-                for param in json_resource_params.as_array().unwrap() {
-                    let name = param
-                        .get("name")
-                        .expect("Parameter name not found")
-                        .as_str()
-                        .unwrap();
-                    let value = param
-                        .get("value")
-                        .expect("Parameter value not found")
-                        .as_u64()
-                        .unwrap();
-                    resource.add_parameter(name.to_string(), value);
-                }
+            for param in json_resource_params.as_array().unwrap() {
+                let name = param
+                    .get("name")
+                    .expect("Parameter name not found")
+                    .as_str()
+                    .unwrap();
+                let value = param
+                    .get("value")
+                    .expect("Parameter value not found")
+                    .as_u64()
+                    .unwrap();
+                resource.add_parameter(name.to_string(), value);
             }
         }
         // Required parameters (optional)
