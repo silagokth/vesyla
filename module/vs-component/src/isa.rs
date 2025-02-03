@@ -1,3 +1,4 @@
+use core::panic;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::io::Error;
 
@@ -43,6 +44,15 @@ pub struct Segment {
     pub name: String,
     pub comment: String,
     pub bitwidth: u8,
+    pub verbo_map: Vec<VerboMapEntry>,
+    pub default_val: Option<u64>,
+    pub is_signed: bool,
+}
+
+#[derive(Clone)]
+pub struct VerboMapEntry {
+    pub key: u64,
+    pub val: String,
 }
 
 impl ISAFormat {
@@ -159,10 +169,35 @@ impl InstructionSet {
                             .unwrap()
                             .to_string();
                         let seg_bitwidth = segment.get("bitwidth").unwrap().as_u64().unwrap() as u8;
+
+                        // Parse verbo_map
+                        let mut verbo_map: Vec<VerboMapEntry> = Vec::new();
+                        let verbo_map_json = segment.get("verbo_map");
+                        if verbo_map_json.is_some() {
+                            verbo_map = VerboMapEntry::from_json(verbo_map_json.unwrap().clone())
+                                .expect("Failed to parse verbo_map");
+                        }
+
+                        let default_val = segment.get("default_val");
+                        let default_val = match default_val {
+                            Some(default_val) => Some(default_val.as_u64().unwrap()),
+                            None => None,
+                        };
+
+                        let is_signed = segment.get("is_signed");
+                        let is_signed = match is_signed {
+                            Some(is_signed) => is_signed.as_bool().unwrap(),
+                            None => false,
+                        };
+
+                        // Add to segments vector
                         segments.push(Segment {
                             name: seg_name,
                             comment,
                             bitwidth: seg_bitwidth,
+                            verbo_map,
+                            default_val,
+                            is_signed,
                         });
                     }
                     instructions.push(Instruction {
@@ -178,6 +213,19 @@ impl InstructionSet {
             format,
             instructions,
         })
+    }
+}
+
+impl VerboMapEntry {
+    pub fn from_json(verbo_map_json: serde_json::Value) -> Result<Vec<VerboMapEntry>, Error> {
+        let mut verbo_map = Vec::new();
+        println!("{:?}", verbo_map_json);
+        for entry in verbo_map_json.as_array().unwrap().iter() {
+            let key = entry.get("key").unwrap().as_u64().unwrap();
+            let val = entry.get("val").unwrap().as_str().unwrap().to_string();
+            verbo_map.push(VerboMapEntry { key, val });
+        }
+        Ok(verbo_map)
     }
 }
 
@@ -216,6 +264,27 @@ impl Serialize for Segment {
         map.serialize_entry("name", &self.name)?;
         map.serialize_entry("comment", &self.comment)?;
         map.serialize_entry("bitwidth", &self.bitwidth)?;
+        if !self.verbo_map.is_empty() {
+            map.serialize_entry("verbo_map", &self.verbo_map)?;
+        }
+        if self.default_val.is_some() {
+            map.serialize_entry("default_val", &self.default_val)?;
+        }
+        if self.is_signed {
+            map.serialize_entry("is_signed", &self.is_signed)?;
+        }
+        map.end()
+    }
+}
+
+impl Serialize for VerboMapEntry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("key", &self.key)?;
+        map.serialize_entry("val", &self.val)?;
         map.end()
     }
 }
