@@ -36,43 +36,6 @@ def create_cell_library():
     }
     return library
 
-def add_components(dir, controller_library, resource_library, cell_library):
-    # scan recursively the directory, and find all files named as "arch.json"
-    for root, dirs, files in os.walk(dir):
-        for file in files:
-            if file == "arch.json":
-                # read the json file
-                with open(os.path.join(root, file), "r") as f:
-                    arch = json.load(f)
-                
-                # check if arch is a json object
-                if not isinstance(arch, dict):
-                    logging.error("The architecture file is not a json object")
-                    exit(1)
-                
-                # check if it has a name and a type
-                if "name" not in arch:
-                    logging.error("The architecture file does not have a name")
-                    exit(1)
-                if "type" not in arch:
-                    logging.error("The architecture file does not have a type")
-                    exit(1)
-                
-                # check if the type is controller or resource
-                if arch["type"] == "controller":
-                    # add the component to the library
-                    controller_library["elements"][arch["name"]] = arch
-                elif arch["type"] == "resource":
-                    # add the component to the library
-                    resource_library["elements"][arch["name"]] = arch
-                elif arch["type"] == "cell":
-                    # add the component to the library
-                    cell_library["elements"][arch["name"]] = arch
-                else:
-                    logging.error("The architecture file has an invalid type: {0}".format(arch["type"]))
-                    exit(1)
-
-
 def read_architecture(file):
     # load the json file
     with open(file, "r") as f:
@@ -81,28 +44,18 @@ def read_architecture(file):
         return j
 
 def add_custom_components(j, controller_library, resource_library, cell_library):
-    if j.get("resources") is not None:
-        for resource in j["resources"]:
-            resource_name = resource["name"]
-            resource_library["elements"][resource_name] = resource
-    if j.get("controllers") is not None:
-        for controller in j["controllers"]:
-            controller_name = controller["name"]
-            controller_library["elements"][controller_name] = controller
     if j.get("cells") is not None:
-        for cell in j["cells"]:
+        for c in j["cells"]:
+            cell = c["cell"]
             cell_library["elements"][cell["name"]] = cell
-
             # check if the components are in the library
-            if cell["controller"] not in controller_library["elements"]:
-                logging.error("Controller {0} is not in the library".format(cell["controller"]))
-                exit(1)
-            for resource in cell["resource_list"]:
-                if resource not in resource_library["elements"]:
-                    logging.error("Resource {0} is not in the library".format(resource))
-                    exit(1)
-
-
+            if cell["controller"]["name"] not in controller_library["elements"]:
+                # add controller to the library
+                controller_library["elements"][cell["controller"]["name"]] = cell["controller"]
+            for resource in cell["resources_list"]:
+                if resource["name"] not in resource_library["elements"]:
+                    # add resource to the library
+                    resource_library["elements"][resource["name"]] = resource
 
 
 def draw_resource(svg_obj, x, y, resource_type, controller_library, resource_library, cell_library):
@@ -157,12 +110,12 @@ def draw_cell(svg_obj, x, y, cell_type, coord, controller_library, resource_libr
         
         xx = x + offset + 10
         yy = y + offset + 50
-        draw_controller(svg_obj, xx, yy, cell_properties["controller"], controller_library, resource_library, cell_library)
+        draw_controller(svg_obj, xx, yy, cell_properties["controller"]["name"], controller_library, resource_library, cell_library)
         curr_yy = yy = y + offset + 60
-        for i, resource in enumerate(cell_properties["resource_list"]):
+        for i, resource in enumerate(cell_properties["resources_list"]):
             xx = x + 100
-            draw_resource(svg_obj, xx, yy, resource, controller_library, resource_library, cell_library)
-            resource_properties = resource_library["elements"][resource]
+            draw_resource(svg_obj, xx, yy, resource["name"], controller_library, resource_library, cell_library)
+            resource_properties = resource_library["elements"][resource["name"]]
             resource_height = resource_library["geometry"]["height"]
             resource_size = resource_properties["size"]
             yy += resource_height*resource_size
@@ -184,7 +137,7 @@ def draw_cells(svg_obj, row, col, cell_list, controller_library, resource_librar
         y = coord[0]*cell_library["geometry"]["height"] + 100
         draw_cell(svg_obj, x, y, "", coord, controller_library, resource_library, cell_library)
 
-def draw_io_buffers(svg_obj, row, col, input_buffer_depth, output_buffer_depth, controller_library, resource_library, cell_library):
+def draw_io_buffers(svg_obj, row, col, controller_library, resource_library, cell_library):
     offset = 5
     buffer_width = col * cell_library["geometry"]["width"]
     buffer_height = 100
@@ -195,32 +148,32 @@ def draw_io_buffers(svg_obj, row, col, input_buffer_depth, output_buffer_depth, 
     svg_obj["elements"].append(svg.Rect(x=offset, y=offset, width=buffer_width-2*offset, height=buffer_height-2*offset, fill=buffer_color_fill, stroke=buffer_color_border, stroke_width=2))
     text_x = buffer_width/2
     text_y = buffer_height/2
-    svg_obj["elements"].append(svg.Text(x=text_x, y=text_y, text="Input Buffer ({}x256b)".format(input_buffer_depth), fill=buffer_color_text, font_size=20, text_anchor="middle"))
+    svg_obj["elements"].append(svg.Text(x=text_x, y=text_y, text="Input Buffer", fill=buffer_color_text, font_size=20, text_anchor="middle"))
     # output buffer
     yy = buffer_height + row * cell_library["geometry"]["height"]
     svg_obj["elements"].append(svg.Rect(x=offset, y=offset+yy, width=buffer_width-2*offset, height=buffer_height-2*offset, fill=buffer_color_fill, stroke=buffer_color_border, stroke_width=2))
     text_x = buffer_width/2
     text_y = yy + buffer_height/2
-    svg_obj["elements"].append(svg.Text(x=text_x, y=text_y, text="Output Buffer ({}x256b)".format(output_buffer_depth), fill=buffer_color_text, font_size=20, text_anchor="middle"))
+    svg_obj["elements"].append(svg.Text(x=text_x, y=text_y, text="Output Buffer", fill=buffer_color_text, font_size=20, text_anchor="middle"))
 
 def draw(arch, output_dir, controller_library, resource_library, cell_library):
     cell_list = {}
 
-    for cl in arch["fabric"]["cell_lists"]:
-        cell_name = cl["cell_name"]
+    for cl in arch["cells"]:
+        cell_name = cl["cell"]["name"]
         coordinates = cl["coordinates"]
-        coord = [(c["row"], c["col"]) for c in coordinates]
+        coord = [(coordinates["row"], coordinates["col"])]
         if cell_name not in cell_list:
             cell_list[cell_name] = []
         cell_list[cell_name].extend(coord)
 
     svg_obj = {}
-    svg_obj["width"] = cell_library["geometry"]["width"] * arch["fabric"]["width"]
-    svg_obj["height"] = cell_library["geometry"]["height"] * arch["fabric"]["height"] + 200
+    svg_obj["width"] = cell_library["geometry"]["width"] * arch["width"]
+    svg_obj["height"] = cell_library["geometry"]["height"] * arch["height"] + 200
     svg_obj["elements"] = []
 
-    draw_io_buffers(svg_obj, arch["fabric"]["height"], arch["fabric"]["width"], arch["interface"]["input_buffer_depth"], arch["interface"]["output_buffer_depth"], controller_library, resource_library, cell_library)
-    draw_cells(svg_obj, arch["fabric"]["height"], arch["fabric"]["width"], cell_list, controller_library, resource_library, cell_library)
+    draw_io_buffers(svg_obj, arch["height"], arch["width"], controller_library, resource_library, cell_library)
+    draw_cells(svg_obj, arch["height"], arch["width"], cell_list, controller_library, resource_library, cell_library)
 
     # create a canvas from string
     canvas = svg.SVG(width=svg_obj["width"], height=svg_obj["height"], elements=svg_obj["elements"])
@@ -237,17 +190,14 @@ def draw(arch, output_dir, controller_library, resource_library, cell_library):
 def main():
     # parse arguments
     parser = argparse.ArgumentParser(description="Visualize the architecture")
-    parser.add_argument("-i", "--input", type=str, help="Path to the architecture file", default="arch.json")
+    parser.add_argument("-a", "--input", type=str, help="Path to the architecture file", default="arch.json")
     parser.add_argument("-o", "--output", type=str, help="Path to the output directory", default=".")
-    parser.add_argument("-c", "--components", type=str, help="Path to the components directory", default=None)
     args = parser.parse_args()
 
     controller_library = create_controller_library()
     resource_library = create_resource_library()
     cell_library = create_cell_library()
     arch = read_architecture(args.input)
-    if args.components is not None:
-        add_components(args.components, controller_library, resource_library, cell_library)
     add_custom_components(arch, controller_library, resource_library, cell_library)
     draw(arch, args.output, controller_library, resource_library, cell_library)
 
