@@ -7,7 +7,7 @@ set -e
 if [ -f /etc/lsb-release ]; then
     # Ubuntu
     sudo apt-get update
-    sudo apt-get install -y make gcc g++ cmake boost libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip
+    sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip
 elif [ -f /etc/debian_version ]; then
     # Debian
     sudo apt-get update
