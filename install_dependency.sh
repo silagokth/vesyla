@@ -7,11 +7,11 @@ set -e
 if [ -f /etc/lsb-release ]; then
     # Ubuntu
     sudo apt-get update
-    sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip
+    sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip libfuse2
 elif [ -f /etc/debian_version ]; then
     # Debian
     sudo apt-get update
-    sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip
+    sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip libfuse2
 elif [ -f /etc/fedora-release ]; then
     # Fedora
     sudo dnf install -y python python3-pip make gcc gcc-c++ cmake boost boost-devel protobuf protobuf-devel
