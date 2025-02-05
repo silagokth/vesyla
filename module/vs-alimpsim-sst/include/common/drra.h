@@ -73,6 +73,7 @@ public:
     clock = params.find<std::string>("clock", "100MHz");
     printFrequency = params.find<Cycle_t>("printFrequency", 1000);
     io_data_width = params.find<uint32_t>("io_data_width", 256);
+    word_bitwidth = params.find<size_t>("word_bitwidth", 16);
 
     slot_id = params.find<int16_t>("slot_id", -1);
     has_io_input_connection =
@@ -131,6 +132,7 @@ protected:
     params.push_back(
         {"printFrequency", "Frequency to print tick messages", "1000"});
     params.push_back({"io_data_width", "Width of the IO data", "256"});
+    params.push_back({"word_bitwidth", "Width of the word", "16"});
     params.push_back({"slot_id", "Slot ID", "-1"});
     params.push_back({"instr_bitwidth", "Instruction bitwidth", "32"});
     params.push_back({"instr_type_bitwidth", "Instruction type", "1"});
@@ -158,12 +160,15 @@ protected:
   uint32_t cellCoordinates[2] = {0, 0};
 
   // Links (controller and data)
-  Link *controllerLink;
-  Link *dataLink;
+  Link *controller_link;
+  Link *data_link;
 
   // IO settings
-  uint32_t io_data_width;
+  uint32_t io_data_width; // in bits
   bool has_io_input_connection, has_io_output_connection;
+
+  // Narrow level
+  size_t word_bitwidth;
 
   // Timing model state
   TimingState timingState = TimingState();
