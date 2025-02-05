@@ -33,13 +33,13 @@ drra.Sequencer [0_0] - Sent INSTRUCTION event to slot 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 1 ---
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 1 ---
 drra.Switchbox [0_0_0] - Received instruction event
-drra.Switchbox [0_0_0] - Adding connection from slot 0 to slot 1 in FSM 2
+drra.Switchbox [0_0_0] - Adding connection from slot 1 to slot 2 in FSM 0
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 2 ---
 drra.Sequencer [0_0] - Sent INSTRUCTION event to slot 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 2 ---
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 2 ---
 drra.Switchbox [0_0_0] - Received instruction event
-drra.Switchbox [0_0_0] - Adding connection from slot 0 to slot 2 in FSM 1
+drra.Switchbox [0_0_0] - Adding connection from slot 2 to slot 1 in FSM 1
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 3 ---
 drra.Sequencer [0_0] - Sent INSTRUCTION event to slot 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 3 ---
@@ -61,172 +61,172 @@ drra.Sequencer [0_0] - ACTIVATE: slots=0000000000000001, mode=0000, param=000000
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 6 ---
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 6 ---
 drra.Switchbox [0_0_0] - Received activation event
-drra.Switchbox [0_0_0] - Built timing model: (null)
+drra.Switchbox [0_0_0] - Built timing model: R<2,4>(R<2,2>(T<2>(e0,e1)))
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 7 ---
 drra.Sequencer [0_0] - WAIT
 drra.Sequencer [0_0] - WAIT: mode=0, cycles=24
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 7 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 0 events
+drra.Switchbox [0_0_0] - Active cycle 0: 1 events
 drra.Switchbox [0_0_0] - FSM switched to 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 7 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 1 events
+drra.Switchbox [0_0_0] - Active cycle 1: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 8 ---
 drra.Sequencer [0_0] - Waiting 23 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 8 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 2 events
-drra.Switchbox [0_0_0] -  FSM switched to 0
+drra.Switchbox [0_0_0] - Active cycle 2: 1 events
+drra.Switchbox [0_0_0] -  FSM switched to 1
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 8 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 3 events
+drra.Switchbox [0_0_0] - Active cycle 3: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 9 ---
 drra.Sequencer [0_0] - Waiting 22 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 9 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 4 events
+drra.Switchbox [0_0_0] - Active cycle 4: 1 events
 drra.Switchbox [0_0_0] - FSM switched to 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 9 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 5 events
+drra.Switchbox [0_0_0] - Active cycle 5: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 10 ---
 drra.Sequencer [0_0] - Waiting 21 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 10 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 6 events
-drra.Switchbox [0_0_0] -  FSM switched to 0
+drra.Switchbox [0_0_0] - Active cycle 6: 1 events
+drra.Switchbox [0_0_0] -  FSM switched to 1
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 10 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 7 events
+drra.Switchbox [0_0_0] - Active cycle 7: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 11 ---
 drra.Sequencer [0_0] - Waiting 20 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 11 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 8 events
+drra.Switchbox [0_0_0] - Active cycle 8: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 11 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 9 events
+drra.Switchbox [0_0_0] - Active cycle 9: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 12 ---
 drra.Sequencer [0_0] - Waiting 19 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 12 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 10 events
+drra.Switchbox [0_0_0] - Active cycle 10: 1 events
 drra.Switchbox [0_0_0] - FSM switched to 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 12 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 11 events
+drra.Switchbox [0_0_0] - Active cycle 11: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 13 ---
 drra.Sequencer [0_0] - Waiting 18 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 13 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 12 events
-drra.Switchbox [0_0_0] -  FSM switched to 0
+drra.Switchbox [0_0_0] - Active cycle 12: 1 events
+drra.Switchbox [0_0_0] -  FSM switched to 1
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 13 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 13 events
+drra.Switchbox [0_0_0] - Active cycle 13: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 14 ---
 drra.Sequencer [0_0] - Waiting 17 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 14 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 14 events
+drra.Switchbox [0_0_0] - Active cycle 14: 1 events
 drra.Switchbox [0_0_0] - FSM switched to 0
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 14 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 15 events
+drra.Switchbox [0_0_0] - Active cycle 15: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 15 ---
 drra.Sequencer [0_0] - Waiting 16 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 15 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 16 events
-drra.Switchbox [0_0_0] -  FSM switched to 0
+drra.Switchbox [0_0_0] - Active cycle 16: 1 events
+drra.Switchbox [0_0_0] -  FSM switched to 1
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 15 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 17 events
+drra.Switchbox [0_0_0] - Active cycle 17: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 16 ---
 drra.Sequencer [0_0] - Waiting 15 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 16 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 18 events
+drra.Switchbox [0_0_0] - Active cycle 18: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 16 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 19 events
+drra.Switchbox [0_0_0] - Active cycle 19: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 17 ---
 drra.Sequencer [0_0] - Waiting 14 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 17 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 20 events
+drra.Switchbox [0_0_0] - Active cycle 20: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 17 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 21 events
+drra.Switchbox [0_0_0] - Active cycle 21: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 18 ---
 drra.Sequencer [0_0] - Waiting 13 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 18 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 22 events
+drra.Switchbox [0_0_0] - Active cycle 22: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 18 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 23 events
+drra.Switchbox [0_0_0] - Active cycle 23: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 19 ---
 drra.Sequencer [0_0] - Waiting 12 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 19 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 24 events
+drra.Switchbox [0_0_0] - Active cycle 24: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 19 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 25 events
+drra.Switchbox [0_0_0] - Active cycle 25: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 20 ---
 drra.Sequencer [0_0] - Waiting 11 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 20 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 26 events
+drra.Switchbox [0_0_0] - Active cycle 26: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 20 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 27 events
+drra.Switchbox [0_0_0] - Active cycle 27: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 21 ---
 drra.Sequencer [0_0] - Waiting 10 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 21 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 28 events
+drra.Switchbox [0_0_0] - Active cycle 28: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 21 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 29 events
+drra.Switchbox [0_0_0] - Active cycle 29: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 22 ---
 drra.Sequencer [0_0] - Waiting 9 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 22 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 30 events
+drra.Switchbox [0_0_0] - Active cycle 30: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 22 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 31 events
+drra.Switchbox [0_0_0] - Active cycle 31: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 23 ---
 drra.Sequencer [0_0] - Waiting 8 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 23 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 32 events
+drra.Switchbox [0_0_0] - Active cycle 32: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 23 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 33 events
+drra.Switchbox [0_0_0] - Active cycle 33: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 24 ---
 drra.Sequencer [0_0] - Waiting 7 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 24 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 34 events
+drra.Switchbox [0_0_0] - Active cycle 34: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 24 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 35 events
+drra.Switchbox [0_0_0] - Active cycle 35: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 25 ---
 drra.Sequencer [0_0] - Waiting 6 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 25 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 36 events
+drra.Switchbox [0_0_0] - Active cycle 36: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 25 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 37 events
+drra.Switchbox [0_0_0] - Active cycle 37: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 26 ---
 drra.Sequencer [0_0] - Waiting 5 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 26 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 38 events
+drra.Switchbox [0_0_0] - Active cycle 38: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 26 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 39 events
+drra.Switchbox [0_0_0] - Active cycle 39: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 27 ---
 drra.Sequencer [0_0] - Waiting 4 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 27 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 40 events
+drra.Switchbox [0_0_0] - Active cycle 40: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 27 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 41 events
+drra.Switchbox [0_0_0] - Active cycle 41: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 28 ---
 drra.Sequencer [0_0] - Waiting 3 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 28 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 42 events
+drra.Switchbox [0_0_0] - Active cycle 42: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 28 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 43 events
+drra.Switchbox [0_0_0] - Active cycle 43: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 29 ---
 drra.Sequencer [0_0] - Waiting 2 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 29 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 44 events
+drra.Switchbox [0_0_0] - Active cycle 44: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 29 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 45 events
+drra.Switchbox [0_0_0] - Active cycle 45: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 30 ---
 drra.Sequencer [0_0] - Waiting 1 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 30 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 46 events
+drra.Switchbox [0_0_0] - Active cycle 46: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 30 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 47 events
+drra.Switchbox [0_0_0] - Active cycle 47: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 31 ---
 drra.Sequencer [0_0] - Waiting 0 cycles
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 31 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 48 events
+drra.Switchbox [0_0_0] - Active cycle 48: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 31 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 49 events
+drra.Switchbox [0_0_0] - Active cycle 49: 0 events
 drra.Sequencer [0_0] - --- SEQUENCER CYCLE 32 ---
 drra.Sequencer [0_0] - HALT
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 32 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 50 events
+drra.Switchbox [0_0_0] - Active cycle 50: 0 events
 drra.Switchbox [0_0_0] - --- SWITCHBOX CYCLE 32 ---
-drra.Switchbox [0_0_0] - Active cycle 0: 51 events
+drra.Switchbox [0_0_0] - Active cycle 51: 0 events
 drra.Switchbox [0_0_0] - Switchbox completed
 drra.Sequencer [0_0] - Completed
 drra.Switchbox [0_0_0] - Switchbox finishing

@@ -24,6 +24,9 @@ class testcase_drra(SSTTestCase):
     def test_drra_switchboxFSMSwitching(self):
         self.drra_template("switchboxFSMSwitching")
 
+    def test_drra_registerFileReadWrite(self):
+        self.drra_template("registerFileReadWrite")
+
     def test_drra_timingModel(self):
         test_path = self.get_testsuite_dir()
         test_script = os.path.join(

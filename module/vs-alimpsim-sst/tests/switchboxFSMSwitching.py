@@ -31,7 +31,7 @@ switch_box.addParams(
     }
 )
 
-# Connect VecAdd to Sequencer
+# Connect slots to controller
 print("[SST SIM] - Connecting components")
 for index, slot in enumerate([switch_box]):
     slot_controller_link = sst.Link(f"slot_{index}_controller_link")
