@@ -36,6 +36,11 @@ public:
   static std::vector<SST::ElementInfoParam> getComponentParams() {
     auto params = DRRAComponent::getBaseParams();
     params.push_back({"access_time", "Time to access the IO buffer", "0ns"});
+    params.push_back(
+        {"backing", "Type of backing store (malloc, mmap)", "malloc"});
+    params.push_back(
+        {"backing_size_unit", "Size of the backing store", "1MiB"});
+    params.push_back({"memory_file", "Memory file for mmap backing", ""});
     return params;
   }
   SST_ELI_DOCUMENT_PARAMS(getComponentParams())
