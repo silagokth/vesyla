@@ -31,6 +31,7 @@ public:
   static vector<ElementInfoParam> getComponentParams() {
     auto params = DRRAComponent::getBaseParams();
     params.push_back({"number_of_fsms", "Number of FSMs", "4"});
+    params.push_back({"num_slots", "Number of slots", "16"});
     return params;
   }
 
@@ -99,6 +100,7 @@ private:
   Link *controller_link;
 
   // Slot links
+  uint32_t num_slots;
   vector<Link *> slot_links;
 
   // Cell links
@@ -111,7 +113,7 @@ private:
   void handleSlotEventWithID(Event *event, uint32_t id);
   void handleCellEventWithID(Event *event, uint32_t id);
 
-  // Events handlers map
+  // Events handlers list
   vector<function<void()>> eventsHandlers;
 
   uint32_t numFSMs = 4;

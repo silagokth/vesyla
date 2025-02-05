@@ -31,28 +31,34 @@ Switchbox::Switchbox(ComponentId_t id, Params &params)
       new Event::Handler<Switchbox>(this, &Switchbox::handleEvent));
 
   // Slot ports
+  num_slots = params.find<uint32_t>("num_slots", 16);
+  slot_links.reserve(num_slots);
   std::string linkPrefix = "slot_port";
-  std::string linkName = linkPrefix + "0";
+  std::string linkName;
   int portNum = 0;
-  while (isPortConnected(linkName)) {
-    Link *link = configureLink(
-        linkName, "0ns",
-        new Event::Handler2<Switchbox, &Switchbox::handleSlotEventWithID,
-                            uint32_t>(this, portNum));
-    sst_assert(link, CALL_INFO, -1, "Failed to configure link %s\n",
-               linkName.c_str());
+  for (uint32_t slot_port_id = 0; slot_port_id < num_slots; slot_port_id++) {
+    linkName = linkPrefix + std::to_string(slot_port_id);
+    if (isPortConnected(linkName)) {
+      if (slot_port_id == slot_id) {
+        out.fatal(CALL_INFO, -1,
+                  "SWB cannot be connected to itself (slot %d)\n", slot_id);
+      }
+      Link *link = configureLink(
+          linkName, "0ns",
+          new Event::Handler2<Switchbox, &Switchbox::handleSlotEventWithID,
+                              uint32_t>(this, slot_port_id));
+      sst_assert(link, CALL_INFO, -1, "Failed to configure link %s\n",
+                 linkName.c_str());
 
-    if (!link) {
-      out.fatal(CALL_INFO, -1, "Failed to configure link %s\n",
-                linkName.c_str());
+      if (!link) {
+        out.fatal(CALL_INFO, -1, "Failed to configure link %s\n",
+                  linkName.c_str());
+      }
+      slot_links[slot_port_id] = link;
+      portNum++;
     }
-    slot_links.push_back(link);
-
-    // Next link
-    portNum++;
-    linkName = linkPrefix + std::to_string(portNum);
   }
-  out.output("Connected %lu slot links\n", slot_id, slot_links.size());
+  out.output("Connected %lu slot links\n", portNum);
 
   // Cell ports
   linkPrefix = "cell_port";
@@ -60,10 +66,10 @@ Switchbox::Switchbox(ComponentId_t id, Params &params)
   for (uint8_t dir = CellDirection::NW; dir <= CellDirection::SE; ++dir) {
     linkName = linkPrefix + std::to_string(dir);
     if (isPortConnected(linkName)) {
-      Link *link = configureLink(
-          linkName, "0ns",
+      auto handler =
           new Event::Handler2<Switchbox, &Switchbox::handleCellEventWithID,
-                              uint32_t>(this, dir));
+                              uint32_t>(this, dir);
+      Link *link = configureLink(linkName, "0ns", handler);
       sst_assert(link, CALL_INFO, -1, "Failed to configure link %s\n",
                  linkName.c_str());
 
@@ -75,7 +81,7 @@ Switchbox::Switchbox(ComponentId_t id, Params &params)
       totalConnections++;
     }
   }
-  out.output("Connected %u cell links\n", slot_id, totalConnections);
+  out.output("Connected %u cell links\n", totalConnections);
 
   registerClock(
       clock, new SST::Clock::Handler<Switchbox>(this, &Switchbox::clockTick));
@@ -115,8 +121,7 @@ bool Switchbox::clockTick(Cycle_t currentCycle) {
   if (isActive) {
     // Get events from the timing model
     auto events = timingState.getEventsForCycle(activeCycle);
-    out.output("Active cycle %lu: %lu events\n", slot_id, activeCycle,
-               events.size());
+    out.output("Active cycle %lu: %lu events\n", activeCycle, events.size());
     for (auto event : events) {
       auto handler = eventsHandlers[event->getEventNumber()];
       handler();
@@ -134,8 +139,7 @@ void Switchbox::handleEvent(Event *event) {
       out.output("Received activation event\n", slot_id);
       isActive = true;
       timingState.build();
-      out.output("Built timing model: %s\n", slot_id,
-                 timingState.toString().c_str());
+      out.output("Built timing model: %s\n", timingState.toString().c_str());
       return;
     }
 
@@ -165,26 +169,26 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
     // Verify if the slot is mapped to another slot
     if (connections.find(id) != connections.end()) {
       uint32_t target = connections[id];
-      out.output("Forwarding data to slot %u\n", slot_id, target);
+      out.output("Forwarding data to slot %u\n", target);
       slot_links[target]->send(event);
       switch (dataEvent->portType) {
       case DataEvent::PortType::WriteNarrow:
-        out.output("Received write narrow event from slot %u\n", slot_id, id);
+        out.output("Received write narrow event from slot %u\n", id);
         break;
       case DataEvent::PortType::ReadNarrow:
-        out.output("Received read narrow event from slot %u\n", slot_id, id);
+        out.output("Received read narrow event from slot %u\n", id);
         break;
       case DataEvent::PortType::WriteWide:
-        out.output("Received write wide event from slot %u\n", slot_id, id);
+        out.output("Received write wide event from slot %u\n", id);
         break;
       case DataEvent::PortType::ReadWide:
-        out.output("Received read wide event from slot %u\n", slot_id, id);
+        out.output("Received read wide event from slot %u\n", id);
         break;
       default:
         out.fatal(CALL_INFO, -1, "Invalid port type\n", slot_id);
       }
     } else {
-      out.fatal(CALL_INFO, -1, "Slot %u is not linked\n", slot_id, id);
+      out.fatal(CALL_INFO, -1, "Slot %u is not linked\n", id);
     }
   }
 }
@@ -236,7 +240,7 @@ void Switchbox::handleRep(uint32_t instr) {
   // For now, we only support increasing repetition levels (and no skipping)
   if (level != lastRepLevel + 1) {
     out.fatal(CALL_INFO, -1, "Invalid repetition level (last=%u, curr=%u)\n",
-              slot_id, lastRepLevel, level);
+              lastRepLevel, level);
   } else {
     lastRepLevel = level;
   }
@@ -245,8 +249,7 @@ void Switchbox::handleRep(uint32_t instr) {
   try {
     timingState.addRepetition(iter, step);
   } catch (const std::exception &e) {
-    out.fatal(CALL_INFO, -1, "Failed to add repetition: %s\n", slot_id,
-              e.what());
+    out.fatal(CALL_INFO, -1, "Failed to add repetition: %s\n", e.what());
   }
 }
 
@@ -265,15 +268,14 @@ void Switchbox::handleFsm(uint32_t instr) {
     timingState.addTransition(delay_0,
                               "event_" + std::to_string(currentEventNumber));
     eventsHandlers.push_back([this, port] {
-      out.output(" FSM switched to %d\n", slot_id, port);
+      out.output(" FSM switched to %d\n", port);
       connections = connection_maps[port];
       sending_routes = sending_routes_maps[port];
       receiving_routes = receiving_routes_maps[port];
     });
     currentEventNumber++;
   } catch (const std::exception &e) {
-    out.fatal(CALL_INFO, -1, "Failed to add transition: %s\n", slot_id,
-              e.what());
+    out.fatal(CALL_INFO, -1, "Failed to add transition: %s\n", e.what());
   }
 }
 
@@ -287,8 +289,7 @@ void Switchbox::handleSwb(uint32_t instr) {
   if (channel != target) {
     out.fatal(CALL_INFO, -1,
               "Invalid channel\nSWB implemented as a "
-              "crossbar\n",
-              slot_id);
+              "crossbar\n");
   }
 
   // Add the connection to the SWB map
@@ -296,7 +297,7 @@ void Switchbox::handleSwb(uint32_t instr) {
 
   out.output("Adding connection from slot %u to slot %u "
              "in FSM %u\n",
-             slot_id, source, target, option);
+             source, target, option);
 }
 
 void Switchbox::handleRoute(uint32_t instr) {
@@ -318,6 +319,6 @@ void Switchbox::handleRoute(uint32_t instr) {
     sending_routes_maps[option][source] = target;
   }
 
-  out.output("Adding %s route from %u to %u in FSM %u\n", slot_id,
+  out.output("Adding %s route from %u to %u in FSM %u\n",
              sr ? "receiving" : "sending", source, target, option);
 }
