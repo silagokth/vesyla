@@ -17,6 +17,25 @@ public:
   enum PortType { WriteNarrow, ReadNarrow, WriteWide, ReadWide };
   PortType portType; // Port type
 
+  DataEvent(PortType portType) : portType(portType) {
+    switch (portType) {
+    case WriteNarrow:
+      setPriority(MEMEVENTPRIORITY + 1);
+      break;
+    case ReadNarrow:
+      setPriority(MEMEVENTPRIORITY);
+      break;
+    case WriteWide:
+      setPriority(MEMEVENTPRIORITY + 1);
+      break;
+    case ReadWide:
+      setPriority(MEMEVENTPRIORITY);
+      break;
+    default:
+      break;
+    }
+  }
+
   DataEvent *clone() override { return new DataEvent(*this); }
 
   void serialize_order(SST::Core::Serialization::serializer &ser) override {
