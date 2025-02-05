@@ -3,8 +3,6 @@
 #include "activationEvent.h"
 #include "instructionEvent.h"
 #include "memoryEvents.h"
-#include "sst/elements/memHierarchy/memEvent.h"
-#include "sst/elements/memHierarchy/memEventBase.h"
 #include "vec_add.h"
 
 VecAdd::VecAdd(ComponentId_t id, Params &params) : DRRAComponent(id, params) {
