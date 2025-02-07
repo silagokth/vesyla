@@ -12,6 +12,7 @@ regex
 lark
 uuid
 svglib
+svg.py
 reportlab
 robotframework
 robotframework-pabot

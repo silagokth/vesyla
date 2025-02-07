@@ -2,6 +2,7 @@
 mod drra;
 mod isa;
 mod isa_gen;
+mod rtl_sim_gen;
 mod utils;
 
 use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
@@ -1223,6 +1224,8 @@ fn assemble(arch: &String, output: &String) {
     fs::create_dir_all(output).expect("Failed to create output directory");
     fs::create_dir_all(Path::new(output).join("arch")).expect("Failed to create arch directory");
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
+    fs::create_dir_all(Path::new(output).join("rtl_sim"))
+        .expect("Failed to create rtl_sim directory");
     match gen_rtl(&arch, &output, &format!("{}/arch/arch.json", output)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
@@ -1234,6 +1237,10 @@ fn assemble(arch: &String, output: &String) {
     isa_gen::gen_isa_doc(
         &format!("{}/isa/isa.json", output),
         &format!("{}/isa/isa.md", output),
+    );
+    rtl_sim_gen::generate(
+        &format!("{}/arch/arch.json", output),
+        &format!("{}/rtl_sim", output),
     );
 }
 

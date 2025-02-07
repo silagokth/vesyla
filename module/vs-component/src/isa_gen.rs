@@ -39,7 +39,7 @@ instr_opcode_bitwidth | {{isa.format.instr_opcode_bitwidth}} | Instruction opcod
 instr_slot_bitwidth | {{isa.format.instr_slot_bitwidth}} | Instruction slot bitwidth, only used for resource components
 
 ## Instructions For Each Component
-{%- for c in isa.component %}
+{%- for c in isa.components %}
 
 ### {{c.kind}} ( {{c.component_type}} )
 
