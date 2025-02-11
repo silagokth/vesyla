@@ -17,7 +17,7 @@ Python packages:
 - lark
 - uuid
 - svglib
-- svg
+- svg.py
 - reportlab
 - robotframework
 - robotframework-pabot

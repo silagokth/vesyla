@@ -22,3 +22,8 @@ minijinja = { version = "2.0.2" }
 bs58 = "0.5.1"
 jsonschema = "0.26.1"
 walkdir = "2.5.0"
+svg = "0.7.1"
+usvg = "0.21"
+resvg = "0.21.0"
+printpdf = "0.3"
+svg2pdf = "0.1.0"

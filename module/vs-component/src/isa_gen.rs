@@ -10,7 +10,14 @@ use std::fs;
 use std::hash::Hash;
 use std::string;
 
-pub fn gen_isa_doc(isa_file: &String, doc_file: &String) {
+pub fn generate(arch_file: &String, output_dir: &String) {
+    let isa_file = format!("{}/isa.json", output_dir);
+    gen_isa_json(arch_file, &isa_file);
+    let doc_file = format!("{}/isa.md", output_dir);
+    gen_isa_doc(&isa_file, &doc_file);
+}
+
+fn gen_isa_doc(isa_file: &String, doc_file: &String) {
     // if the output directory does not exist, create it
     let output_dir = std::path::Path::new(doc_file).parent().unwrap();
     if !output_dir.exists() {
@@ -76,7 +83,7 @@ Field | Position | Width | Default Value | Description
     std::fs::write(doc_file, result).expect("Failed to write file");
 }
 
-pub fn gen_isa_json(arch_file: &String, isa_file: &String) {
+fn gen_isa_json(arch_file: &String, isa_file: &String) {
     // if output directory does not exist, create it
     let output_dir = std::path::Path::new(isa_file).parent().unwrap();
     if !output_dir.exists() {

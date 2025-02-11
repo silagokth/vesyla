@@ -778,9 +778,11 @@ impl RTLComponent for Fabric {
         let rtl_template =
             get_rtl_template_from_library(&"fabric".to_string(), Some("fabric.sv".to_string()))
                 .unwrap();
-        let tb_template =
-            get_rtl_template_from_library(&"fabric".to_string(), Some("fabric_tb.sv".to_string()))
-                .unwrap();
+        let tb_template = get_rtl_template_from_library(
+            &"fabric".to_string(),
+            Some("fabric_tb:sim.sv".to_string()),
+        )
+        .unwrap();
         // Create output file
         fs::File::create(output_file).expect("Failed to create file");
         // Create output file for testbench
@@ -793,7 +795,7 @@ impl RTLComponent for Fabric {
                 .split(".")
                 .collect::<Vec<&str>>()[0]
                 .to_string()
-                + "_tb.sv",
+                + "_tb:sim.sv",
         );
 
         // Render fabric RTL
