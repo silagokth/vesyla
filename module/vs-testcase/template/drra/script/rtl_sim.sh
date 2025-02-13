@@ -7,14 +7,6 @@ if [ "$#" -ne 1 ]; then
   exit 1
 fi
 
-################################################################################
-# We by pass this process for now since the instr simulator is not ready
-
-cp -r mem/sram_image_m0.bin mem/sram_image_m1.bin
-exit 0
-
-################################################################################
-
 # get the id of the code segment from the first argument
 id=$1
 
@@ -41,17 +33,19 @@ mkdir -p system/state
 
 # create the necessary directories
 mkdir -p temp
-mkdir -p archive/instr_sim_${id}
+mkdir -p archive/rtl_sim_${id}
 
 # simulate the code segment
-vesyla-suite alimpsim \
-    --arch system/arch/arch.json \
-    --instr system/instr/${id}/instr.bin \
-    --isa system/isa/isa.json \
-    --input mem/sram_image_in.bin \
-    --output mem/sram_image_m1.bin \
-    --metric system/metric/metric.json \
-    --state_reg system/state/state_reg.json
+cp -r system/rtl/* temp
+cp system/instr/${id}/instr.bin temp
+cp mem/sram_image_in.bin temp
+cd temp
+bender script vsim -t sim > read_src.do
+echo "exit" >> read_src.do
+vsim -c -do read_src.do
+vsim -c -voptargs=+acc -debugDB -do "log * -r;run -all" work.fabric_tb
+cd ..
+cp temp/sram_image_out.bin mem/sram_image_m2.bin
 
 # archive everything
-mv temp archive/instr_sim_${id}
+mv temp archive/rtl_sim_${id}

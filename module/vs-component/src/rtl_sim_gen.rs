@@ -150,20 +150,27 @@ dependencies:
 {% endif %}
 sources:
   {%- for source in data.sources %}
+  {%- if source.target=="*" %}
+  - files:
+    {%- for file in source.files %}
+    - {{ file }}
+    {%- endfor %}
+  {%- else %}
   - target: {{ source.target }}
     files:
     {%- for file in source.files %}
     - {{ file }}
     {%- endfor %}
+  {%- endif %}
   {%- endfor %}
-}"#;
+"#;
 
     let mut env = minijinja::Environment::new();
-    env.add_template("bender", template).unwrap();
-    let tmpl = env.get_template("bender").unwrap();
+    env.add_template("Bender", template).unwrap();
+    let tmpl = env.get_template("Bender").unwrap();
     let result = tmpl.render(minijinja::context!(data)).unwrap();
 
     // write the result to the output file
-    let output_file = output_dir.join("bender.yaml");
+    let output_file = output_dir.join("Bender.yml");
     std::fs::write(output_file, result).expect("Failed to write file");
 }

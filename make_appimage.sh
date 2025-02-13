@@ -7,7 +7,10 @@ set -e
 BUILDDIR=$(pwd)/build
 APPDIR=$BUILDDIR/appdir
 mkdir -p ${BUILDDIR}
-mkdir -p ${APPDIR}
+if [ -d $APPDIR ]; then
+    rm -rf $APPDIR
+fi
+mkdir -p $APPDIR
 
 # compile the application to a fakeroot directory: $APPDIR
 cd $BUILDDIR

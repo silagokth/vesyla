@@ -18,7 +18,7 @@ impl Generator {
             let cell_label_split = cell_label.split("_").collect::<Vec<&str>>();
             let x = cell_label_split[0].parse::<i64>().unwrap();
             let y = cell_label_split[1].parse::<i64>().unwrap();
-            bin_str = bin_str + &format!("cell (x={}, y={})\n", x, y);
+            bin_str = bin_str + &format!("cell {} {}\n", x, y);
             for instruction in instr_list.iter() {
                 let bin = instruction.to_bin();
                 bin_str = bin_str + &format!("{}\n", bin);

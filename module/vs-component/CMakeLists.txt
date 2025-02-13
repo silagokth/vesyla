@@ -1,29 +1,5 @@
 set(CURRENT_SUBPROJECT_NAME "vs-component")
 
-# Find includes in corresponding build directories
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-# Instruct CMake to run moc automatically when needed.
-set(CMAKE_AUTOMOC OFF)
-# Show verbose command while compiling
-#set(CMAKE_VERBOSE_MAKEFILE ON)
-
-# The project version number.
-set(VERSION_MAJOR 2 CACHE STRING "Project major version number.")
-set(VERSION_MINOR 3 CACHE STRING "Project minor version number.")
-set(VERSION_PATCH 0 CACHE STRING "Project patch version number.")
-mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
-
-
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_SHARED_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/share/${PROJECT_NAME})
-set(INSTALL_ARCHIVE_OUTPUT_DIRECTORY lib)
-set(INSTALL_LIBRARY_OUTPUT_DIRECTORY lib)
-set(INSTALL_RUNTIME_OUTPUT_DIRECTORY bin)
-set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
-
-
 # Find cargo and rustc
 find_program(CARGO_EXECUTABLE cargo)
 find_program(RUSTC_EXECUTABLE rustc)
@@ -31,7 +7,6 @@ find_program(RUSTC_EXECUTABLE rustc)
 # Assuming the Rust project is also using modules or dependencies managed by Cargo
 # and the main source file is located at "src/main.rs"
 file(GLOB SRC "src/*.rs")
-
 
 add_custom_command(
    OUTPUT ${CMAKE_BINARY_DIR}/cargo/${CURRENT_SUBPROJECT_NAME}/release/${CURRENT_SUBPROJECT_NAME}

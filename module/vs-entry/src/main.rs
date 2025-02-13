@@ -39,7 +39,7 @@ fn main() {
         "-v" | "--version" => {
             info!("vesyla-suite 4.0.0");
         }
-        "alimpsim" | "archvis" | "component" | "manas" | "schedule" | "testcase" => {
+        "alimpsim" | "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
             let status = process::Command::new(prog)
                 .args(&args[2..])

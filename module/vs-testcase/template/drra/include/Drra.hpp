@@ -32,6 +32,8 @@ using namespace std;
 
 typedef Array<ARCH_IO_DEPTH, ARCH_IO_WIDTH> IO;
 
+int current_model = 0;
+
 /*
  * IO interface
  */
@@ -216,10 +218,18 @@ void set_state_reg(int row, int col, int addr, int value) {
 }
 
 void simulate_code_segment(int id) {
-  string cmd;
-
-  cmd = "bash ../script/instr_sim.sh " + to_string(id);
-  assert(system(cmd.c_str()) == 0);
+  if (current_model == 1) {
+    string cmd;
+    cmd = "bash ../script/instr_sim.sh " + to_string(id);
+    assert(system(cmd.c_str()) == 0);
+  } else if (current_model == 2) {
+    string cmd;
+    cmd = "bash ../script/rtl_sim.sh " + to_string(id);
+    assert(system(cmd.c_str()) == 0);
+  } else {
+    cout << "Error: current_model is not allowed: " << current_model << endl;
+    abort();
+  }
 }
 
 void assemble() {
@@ -245,6 +255,7 @@ int run_simulation() {
   cout << "Run model 0 ..." << endl;
   reset_all();
   load_input_data("mem/sram_image_in.bin");
+  current_model = 0;
   model_l0();
   store_output_data("mem/sram_image_m0.bin");
 #ifdef DEBUG
@@ -256,14 +267,25 @@ int run_simulation() {
   compile();
   reset_all();
   load_input_data("mem/sram_image_in.bin");
+  current_model = 1;
   model_l1();
 #ifdef DEBUG
   bin_to_hex_file("mem/sram_image_m1.bin", "mem/sram_image_m1.hex");
   bin_to_num_file<DATA_TYPE>("mem/sram_image_m1.bin", "mem/sram_image_m1.txt");
 #endif
   cout << "Verify model 1 against model 0 ..." << endl;
-  assert(
-      verify("system/mem/sram_image_m0.bin", "system/mem/sram_image_m1.bin"));
+  assert(verify("mem/sram_image_m0.bin", "mem/sram_image_m1.bin"));
+
+  reset_all();
+  load_input_data("mem/sram_image_in.bin");
+  current_model = 2;
+  model_l1();
+#ifdef DEBUG
+  bin_to_hex_file("mem/sram_image_m2.bin", "mem/sram_image_m2.hex");
+  bin_to_num_file<DATA_TYPE>("mem/sram_image_m2.bin", "mem/sram_image_m2.txt");
+#endif
+  cout << "Verify model 2 against model 0 ..." << endl;
+  assert(verify("mem/sram_image_m0.bin", "mem/sram_image_m2.bin"));
   cout << "Success!" << endl;
   return 0;
 }

@@ -1,6 +1,0 @@
-[submodule "third_party/sst-core"]
-	path = third_party/sst-core
-	url = https://github.com/sstsimulator/sst-core
-[submodule "third_party/sst-elements"]
-	path = third_party/sst-elements
-	url = https://github.com/sstsimulator/sst-elements
