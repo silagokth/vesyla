@@ -37,7 +37,7 @@ fn main() {
     let command = &args[1];
     match command.as_str() {
         "-v" | "--version" => {
-            info!("vesyla-suite 4.0.0");
+            info!("vesyla-suite 4.0.4");
         }
         "alimpsim" | "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;

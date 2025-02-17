@@ -51,9 +51,9 @@ instr_slot_bitwidth | {{isa.format.instr_slot_bitwidth}} | Instruction slot bitw
 ### {{c.kind}} ( {{c.component_type}} )
 
 {% if c.component_type=="controller" %}
-{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth -%}
+{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - 1 -%}
 {% else %}
-{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth -%}
+{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth - 1 -%}
 {% endif %}
 
 {%- for i in c.instructions %}

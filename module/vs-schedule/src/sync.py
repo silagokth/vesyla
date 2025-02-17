@@ -43,9 +43,9 @@ def analyze_rep_instr(instr: str) -> list:
             
         # check if iter, delay, step is equal or greater than 64
         flag_repx = False
-        if iter >= 64 or delay >= 64 or step >= 64:
-            repx_iter = iter // 64
-            iter = iter % 64
+        if iter > 64 or delay >= 64 or step >= 64:
+            repx_iter = (iter-1) // 64
+            iter = (iter-1) % 64 + 1
             repx_delay = delay // 64
             delay = delay % 64
             repx_step = step // 64

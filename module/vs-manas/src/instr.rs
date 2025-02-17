@@ -244,6 +244,16 @@ impl Instruction {
         txt = txt + &self.name;
         txt = txt + " (";
         let mut flag_first = true;
+        // if it's a resource instruction, print the slot
+        if self.component_type == "resource" {
+            let mut slot = 0;
+            if let Some(value) = self.value_map.get("slot") {
+                slot = *value;
+            }
+            txt = txt + "slot=";
+            txt = txt + &slot.to_string();
+            flag_first = false;
+        }
         if self.template["segments"] != serde_json::Value::Null {
             for field in self.template["segments"].as_array().unwrap() {
                 if !flag_first {

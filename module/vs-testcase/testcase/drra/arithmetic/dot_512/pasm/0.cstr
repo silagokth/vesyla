@@ -3,11 +3,12 @@ epoch <rb0> {
     linear (route0r < read_ab)
     linear (route1wr < write_a)
     linear (route1wr < write_b)
-
-    linear (read_ab.e0[0][0] + 1 == write_a.e0[0][0])
-    linear (read_ab.e0[0][1] + 1 == write_b.e0[0][0])
-    linear (read_ab.e0[1][0] + 1 == write_a.e0[1][0])
-    linear (read_ab.e0[1][1] + 1 == write_b.e0[1][0])
+    linear (input_w < read_ab)
+    
+    linear (read_ab.e0[0][0] == write_a.e0[0][0])
+    linear (read_ab.e0[0][1] == write_b.e0[0][0])
+    linear (read_ab.e0[1][0] == write_a.e0[1][0])
+    linear (read_ab.e0[1][1] == write_b.e0[1][0])
 
     linear (write_a.e0[0][0] < read_a_seq.e0[0][0])
     linear (write_b.e0[0][0] < read_b_seq.e0[0][0])
@@ -23,17 +24,14 @@ epoch <rb0> {
     linear (swb < read_a_seq)
     linear (read_a_seq == read_b_seq)
     linear (read_a_seq + 1 > compute)
-    linear (write_c_seq == read_a_seq + 2)
-
-    linear (compute != route1wr)
-    linear (compute != swb)
+    linear (write_c_seq == read_a_seq + 1)
 
     linear (read_c.e0[0][3] > write_c_seq.e0[0][63])
     linear (read_c.e0[1][3] > write_c_seq.e0[1][63])
     linear (read_c.e0[7][3] > write_c_seq.e0[7][63])
     linear (write_c_seq.e0[1][0] > read_c.e0[0][0])
 
-    linear (write_c == read_c + 1)
+    linear (write_c == read_c)
     linear (output_r.e0[31] > write_c.e0[7][3])
     linear (output_r == output_w)
 }

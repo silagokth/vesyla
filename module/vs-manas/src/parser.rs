@@ -134,6 +134,7 @@ impl Parser {
                 let mut value_map: HashMap<String, i64> = HashMap::new();
                 for (key, value) in record.parameters {
                     // if value does not start with number, it is a label, we use the pc_table to resolve it
+                    println!("key: {}, value: {}", key, value);
                     if !value.chars().next().unwrap().is_numeric() {
                         let pc = pc_table.get(&label).unwrap().get(&value).unwrap();
                         value_map.insert(key.clone(), *pc as i64);
