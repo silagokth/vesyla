@@ -277,3 +277,120 @@ impl Instruction {
         txt
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_bin() {
+        let isa = serde_json::from_str(
+            r#"
+            {
+                "format": {
+                    "instr_bitwidth": 32,
+                    "instr_type_bitwidth": 1,
+                    "instr_opcode_bitwidth": 3,
+                    "instr_slot_bitwidth": 4
+                },
+                "components": [
+                    {
+                        "kind": "dpu",
+                        "component_type": "resource",
+                        "instructions": [
+                            {
+                                "name": "add",
+                                "opcode": 1,
+                                "segments": [
+                                    {
+                                        "name": "src1",
+                                        "bitwidth": 4,
+                                        "is_signed": true
+                                    },
+                                    {
+                                        "name": "src2",
+                                        "bitwidth": 4,
+                                        "is_signed": true
+                                    },
+                                    {
+                                        "name": "dst",
+                                        "bitwidth": 4
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        "#,
+        )
+        .unwrap();
+        let value_map = {
+            let mut value_map = HashMap::new();
+            value_map.insert("slot".to_string(), 1);
+            value_map.insert("src1".to_string(), -2);
+            value_map.insert("src2".to_string(), 3);
+            value_map.insert("dst".to_string(), 4);
+            value_map
+        };
+        let instr =
+            Instruction::new_from_map(&"add".to_string(), &"dpu".to_string(), &isa, &value_map);
+        assert!(instr.to_bin() == "10010001111000110100000000000000");
+    }
+
+    #[test]
+    fn test_to_txt() {
+        let isa = serde_json::from_str(
+            r#"
+            {
+                "format": {
+                    "instr_bitwidth": 32,
+                    "instr_type_bitwidth": 1,
+                    "instr_opcode_bitwidth": 3,
+                    "instr_slot_bitwidth": 4
+                },
+                "components": [
+                    {
+                        "kind": "dpu",
+                        "component_type": "resource",
+                        "instructions": [
+                            {
+                                "name": "add",
+                                "opcode": 1,
+                                "segments": [
+                                    {
+                                        "name": "src1",
+                                        "bitwidth": 4,
+                                        "is_signed": true
+                                    },
+                                    {
+                                        "name": "src2",
+                                        "bitwidth": 4,
+                                        "is_signed": true
+                                    },
+                                    {
+                                        "name": "dst",
+                                        "bitwidth": 4
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        "#,
+        )
+        .unwrap();
+        let value_map = {
+            let mut value_map = HashMap::new();
+            value_map.insert("slot".to_string(), 1);
+            value_map.insert("src1".to_string(), -2);
+            value_map.insert("src2".to_string(), 3);
+            value_map.insert("dst".to_string(), 4);
+            value_map
+        };
+        let instr =
+            Instruction::new_from_map(&"add".to_string(), &"dpu".to_string(), &isa, &value_map);
+        assert!(instr.to_txt().trim().replace(" ", "") == "add(slot=1,src1=-2,src2=3,dst=4)");
+    }
+}

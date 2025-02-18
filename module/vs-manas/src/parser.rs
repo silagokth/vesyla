@@ -3,6 +3,8 @@ use log::{debug, error, info, trace, warn};
 use serde_json;
 use std::cell;
 use std::collections::HashMap;
+use std::f32::consts::E;
+use std::fmt::format;
 use std::fs::File;
 use uuid::Uuid;
 
@@ -40,20 +42,55 @@ impl Parser {
         }
     }
 
-    pub fn convert_num(s: String) -> i64 {
-        // remove underscore from the number
-        let ss = s.trim().replace("_", "");
-        let num;
-        if s.starts_with("0b") {
-            num = i64::from_str_radix(&ss[2..], 2).unwrap();
-        } else if s.starts_with("0x") {
-            num = i64::from_str_radix(&ss[2..], 16).unwrap();
-        } else if s.starts_with("0o") {
-            num = i64::from_str_radix(&ss[2..], 8).unwrap();
-        } else {
-            num = ss.parse::<i64>().unwrap();
+    pub fn eval_num(s: String) -> Result<i64, String> {
+        // trim all whitespaces
+        let ss = s.trim();
+        // check positive or negative number
+        let mut sign = false;
+        let mut num_str = ss;
+        if ss.starts_with("-") {
+            sign = true;
+            num_str = &ss[1..];
+        } else if ss.starts_with("+") {
+            num_str = &ss[1..];
         }
-        num
+        // remove underscore from the number
+        let pure_num_str = num_str.replace("_", "");
+
+        // convert the number based on the prefix, if no prefix, it is a decimal number
+        let num = if pure_num_str.starts_with("0b") {
+            match i64::from_str_radix(&pure_num_str[2..], 2) {
+                Ok(num) => Ok(num),
+                Err(_) => Err(()),
+            }
+        } else if pure_num_str.starts_with("0x") {
+            match i64::from_str_radix(&pure_num_str[2..], 16) {
+                Ok(num) => Ok(num),
+                Err(_) => Err(()),
+            }
+        } else if pure_num_str.starts_with("0o") {
+            match i64::from_str_radix(&pure_num_str[2..], 8) {
+                Ok(num) => Ok(num),
+                Err(_) => Err(()),
+            }
+        } else {
+            match pure_num_str.parse::<i64>() {
+                Ok(num) => Ok(num),
+                Err(_) => Err(()),
+            }
+        };
+
+        // if number is negative, make it negative
+        match num {
+            Ok(num) => {
+                if sign {
+                    Ok(-num)
+                } else {
+                    Ok(num)
+                }
+            }
+            Err(()) => Err(format!("Invalid number: {}", s)),
+        }
     }
 
     pub fn find_component_kind(arch: &serde_json::Value, row: i64, col: i64, slot: i64) -> String {
@@ -96,8 +133,8 @@ impl Parser {
         let mut label = String::new();
         for record in prog.clone().records {
             if record.name == "cell" {
-                x = Parser::convert_num(record.parameters.get("x").unwrap().clone());
-                y = Parser::convert_num(record.parameters.get("y").unwrap().clone());
+                x = Parser::eval_num(record.parameters.get("x").unwrap().clone()).unwrap();
+                y = Parser::eval_num(record.parameters.get("y").unwrap().clone()).unwrap();
                 label = format!("{}_{}", x, y);
                 if !pc_table.contains_key(&label) {
                     pc_table.insert(label.clone(), HashMap::new());
@@ -122,8 +159,8 @@ impl Parser {
         label = String::new();
         for record in prog.clone().records {
             if record.name == "cell" {
-                x = Parser::convert_num(record.parameters.get("x").unwrap().clone());
-                y = Parser::convert_num(record.parameters.get("y").unwrap().clone());
+                x = Parser::eval_num(record.parameters.get("x").unwrap().clone()).unwrap();
+                y = Parser::eval_num(record.parameters.get("y").unwrap().clone()).unwrap();
                 label = format!("{}_{}", x, y);
                 if !instructions.contains_key(&label) {
                     instructions.insert(label.clone(), Vec::new());
@@ -133,16 +170,18 @@ impl Parser {
                 let mut slot = -1;
                 let mut value_map: HashMap<String, i64> = HashMap::new();
                 for (key, value) in record.parameters {
-                    // if value does not start with number, it is a label, we use the pc_table to resolve it
+                    // try to evaluate the value as a number, if it fails, it is a label
                     println!("key: {}, value: {}", key, value);
-                    if !value.chars().next().unwrap().is_numeric() {
+                    let ret = Parser::eval_num(value.clone());
+                    if ret.is_ok() {
+                        let num = ret.unwrap();
+                        value_map.insert(key.clone(), num);
+                        if key == "slot" {
+                            slot = num;
+                        }
+                    } else {
                         let pc = pc_table.get(&label).unwrap().get(&value).unwrap();
                         value_map.insert(key.clone(), *pc as i64);
-                    } else {
-                        value_map.insert(key.clone(), Parser::convert_num(value.clone()));
-                        if key == "slot" {
-                            slot = Parser::convert_num(value);
-                        }
                     }
                 }
                 let component_kind = Parser::find_component_kind(&self.arch, x, y, slot);
@@ -166,5 +205,33 @@ impl Parser {
 
         // Now resolve the labels
         instructions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eval_num() {
+        assert_eq!(Parser::eval_num("0b1010".to_string()), Ok(10));
+        assert_eq!(Parser::eval_num("0x10".to_string()), Ok(16));
+        assert_eq!(Parser::eval_num("0o10".to_string()), Ok(8));
+        assert_eq!(Parser::eval_num("10".to_string()), Ok(10));
+        assert_eq!(Parser::eval_num("-10".to_string()), Ok(-10));
+        assert_eq!(Parser::eval_num("+10".to_string()), Ok(10));
+        assert_eq!(Parser::eval_num("10_000".to_string()), Ok(10000));
+        assert_eq!(Parser::eval_num("0b10_000".to_string()), Ok(16));
+        assert_eq!(Parser::eval_num("0x10_000".to_string()), Ok(65536));
+        assert_eq!(Parser::eval_num("0o10_000".to_string()), Ok(4096));
+        assert_eq!(Parser::eval_num("10_000_000".to_string()), Ok(10000000));
+        assert_eq!(Parser::eval_num("0b10_000_000".to_string()), Ok(128));
+        assert_eq!(Parser::eval_num("0x10_0e0_000".to_string()), Ok(269352960));
+        assert_eq!(Parser::eval_num("0o10_000_071".to_string()), Ok(2097209));
+        assert_eq!(Parser::eval_num("0b10_000_000_000".to_string()), Ok(1024));
+        assert_eq!(
+            Parser::eval_num("0b10_000_000_002".to_string()),
+            Err("Invalid number: 0b10_000_000_002".to_string())
+        );
     }
 }
