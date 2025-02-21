@@ -7,10 +7,12 @@
 #include <sst/core/interfaces/stdMem.h>
 #include <sst/core/params.h>
 
+#include "ioEvents.h"
+
 using namespace std;
 using namespace SST;
 
-class VecAdd : public DRRAComponent {
+class VecAdd : public DRRAResource {
 public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(VecAdd,   // Class name
@@ -24,7 +26,7 @@ public:
 
   // Add component-specific parameters
   static vector<ElementInfoParam> getComponentParams() {
-    auto params = DRRAComponent::getBaseParams();
+    auto params = DRRAResource::getBaseParams();
     params.push_back({"chunckWidth", "Width of the chunck", "16"});
     return params;
   }
@@ -58,7 +60,7 @@ public:
 
   // SST event handler
   void handleEvent(Event *event) override;
-  void handleMemoryEvent(MemoryEvent *memEvent);
+  void handleMemoryEvent(IOEvent *memEvent);
 
 private:
   uint8_t chunckWidth;

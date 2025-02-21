@@ -13,7 +13,7 @@ seq_obj.addParams(
     {
         "clock": global_clock,
         "assembly_program_path": script_path
-        + "/refFiles/registerFileReadWrite_asm.bin",
+        + "/refFiles/registerFileReadWriteNarrow_asm.bin",
         "printFrequency": 1,
         "cell_coordinates": [0, 0],
     }

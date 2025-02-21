@@ -9,7 +9,7 @@
 using namespace std;
 using namespace SST;
 
-class Sequencer : public DRRAComponent {
+class Sequencer : public DRRAController {
 public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(Sequencer,   // Class name
@@ -23,24 +23,21 @@ public:
 
   // Add component-specific parameters
   static vector<ElementInfoParam> getComponentParams() {
-    auto params = DRRAComponent::getBaseParams();
+    auto params = DRRAController::getBaseParams();
     params.push_back(
         {"assembly_program_path", "Path to the assembly program file", ""});
-    params.push_back({"num_slots",
-                      "Number of slots that can be connected to "
-                      "the sequencer",
-                      "16"});
     params.push_back({"fsm_per_slot", "Number of FSM per slot"});
-    // params.push_back({"instr_data_width", "Instruction data width", "32"});
     params.push_back({"instr_addr_width", "Instruction address width", "6"});
     params.push_back({"instr_hops_width", "Instruction hops width", "4"});
     return params;
   }
   SST_ELI_DOCUMENT_PARAMS(getComponentParams())
 
-  SST_ELI_DOCUMENT_PORTS(
-      {"slot_port%(portnum)d",
-       "Link(s) to resources in slots. Connect slot_port0, slot_port1, etc."})
+  static vector<ElementInfoPort> getControllerPorts() {
+    auto ports = DRRAController::getBasePorts();
+    return ports;
+  }
+  SST_ELI_DOCUMENT_PORTS(getControllerPorts())
   SST_ELI_DOCUMENT_STATISTICS()
   SST_ELI_DOCUMENT_SUBCOMPONENT_SLOTS()
 
@@ -68,23 +65,18 @@ private:
   // Cycle_t printFrequency;
   bool readyToFinish = false;
 
-  // uint32_t cellCoordinates[2] = {0, 0};
+  // uint32_t cell_coordinates[2] = {0, 0};
   uint32_t cyclesToWait = 0;
 
   std::string assemblyProgramPath;
   std::vector<uint32_t> assemblyProgram;
 
   // Params (from arch.json file)
-  uint32_t numSlots;
   uint32_t resourceInstrWidth;
   uint32_t fsmPerSlot;
   uint32_t instrDataWidth;
   uint32_t instrAddrWidth;
   uint32_t instrHopsWidth;
-
-  std::vector<Link *> slotLinks;
-
-  uint32_t pc = 0;
 
   // Add scalar and bool registers
   std::vector<uint32_t> scalarRegisters;

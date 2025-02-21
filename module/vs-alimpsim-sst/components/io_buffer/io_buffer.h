@@ -14,7 +14,7 @@
 
 class ScratchBackendConvertor;
 
-class IOBuffer : public DRRAComponent {
+class IOBuffer : public Component {
 public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(IOBuffer,   // Class name
@@ -28,7 +28,12 @@ public:
 
   // Add component-specific parameters
   static std::vector<SST::ElementInfoParam> getComponentParams() {
-    auto params = DRRAComponent::getBaseParams();
+    std::vector<SST::ElementInfoParam> params;
+    params.push_back({"clock", "Clock frequency", "100MHz"});
+    params.push_back(
+        {"printFrequency", "Frequency to print tick messages", "1000"});
+    params.push_back({"io_data_width", "Width of the IO data", "256"});
+    params.push_back({"word_bitwidth", "Width of the word", "16"});
     params.push_back({"access_time", "Time to access the IO buffer", "0ns"});
     params.push_back(
         {"backing", "Type of backing store (malloc, mmap)", "malloc"});
@@ -62,22 +67,30 @@ public:
   virtual void finish() override;
 
   // SST clock handler
-  bool clockTick(SST::Cycle_t currentCycle) override;
+  bool clockTick(SST::Cycle_t currentCycle);
 
   // SST event handler
-  void handleEvent(SST::Event *event) override;
+  void handleEvent(SST::Event *event);
+  void handleEventFromColumn(SST::Event *event, uint32_t column_id);
 
 private:
-  // SST::Output out;
-  // std::string clock;
-  // uint64_t printFrequency;
-  // uint64_t io_data_width;
+  DRRAOutput out;
+  std::string clock;
+  uint64_t printFrequency;
+  uint64_t io_data_width;
+  uint64_t word_bitwidth;
   std::string access_time;
+
+  uint32_t num_columns;
 
   SST::MemHierarchy::Backend::Backing *backend = nullptr;
   ScratchBackendConvertor *backendConvertor = nullptr;
 
-  std::vector<SST::Link *> columnLinks;
+  int64_t read_address_buffer = -1;
+  int64_t write_address_buffer = -1;
+  std::vector<uint8_t> read_data_buffer, write_data_buffer;
+
+  std::vector<SST::Link *> column_links;
 };
 
 #endif // _IOBUFFER_H

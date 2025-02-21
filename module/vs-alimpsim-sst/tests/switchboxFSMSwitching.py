@@ -36,7 +36,7 @@ print("[SST SIM] - Connecting components")
 for index, slot in enumerate([switch_box]):
     slot_controller_link = sst.Link(f"slot_{index}_controller_link")
     slot_controller_link.connect(
-        (seq_obj, f"slot_port{index}", "0ps"), (slot, "controller_port", "0ps")
+        (seq_obj, f"slot_port{index}", "0ps"), (slot, f"controller_port{index}", "0ps")
     )
 
 print("[SST SIM] - Simulation is starting")

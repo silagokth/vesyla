@@ -34,21 +34,24 @@ foreach(component_dir ${component_subdirs})
   endif()
 endforeach()
 
+# Add common library
+add_subdirectory(common)
+
 # Add tests
 add_subdirectory(tests)
 
 # Add DRRA library
 add_library(drra SHARED)
+# set_property(TARGET ${component_name} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(drra
   INTERFACE
     ${SST_INCLUDE_DIR}
     $ENV{SST_ELEMENTS_HOME}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
 )
+target_link_libraries(drra PRIVATE timingModel)
 
-# Link all component libraries to libdrra
-#target_link_libraries(libdrra PRIVATE)
 
 foreach(component_dir ${component_subdirs})
   if(IS_DIRECTORY ${component_dir})
@@ -61,7 +64,7 @@ foreach(component_dir ${component_subdirs})
         PRIVATE
           ${SST_INCLUDE_DIR}
           $ENV{SST_ELEMENTS_HOME}/include
-          ${CMAKE_CURRENT_SOURCE_DIR}/include/common
+          ${CMAKE_CURRENT_SOURCE_DIR}/common
       )
       target_link_libraries(drra PRIVATE ${component_name})
     else()

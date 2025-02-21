@@ -2,10 +2,10 @@
 
 #include "activationEvent.h"
 #include "instructionEvent.h"
-#include "memoryEvents.h"
+#include "ioEvents.h"
 #include "vec_add.h"
 
-VecAdd::VecAdd(ComponentId_t id, Params &params) : DRRAComponent(id, params) {
+VecAdd::VecAdd(ComponentId_t id, Params &params) : DRRAResource(id, params) {
   // Clock
   TimeConverter *tc = registerClock(
       clock, new SST::Clock::Handler<VecAdd>(this, &VecAdd::clockTick));
@@ -121,7 +121,7 @@ void VecAdd::handleEvent(Event *event) {
     }
 
     // Check if the event is a memory request
-    MemoryEvent *readReq = dynamic_cast<MemoryEvent *>(event);
+    IOEvent *readReq = dynamic_cast<IOEvent *>(event);
     if (readReq) {
       // Read from memory
       handleMemoryEvent(readReq);
@@ -130,8 +130,8 @@ void VecAdd::handleEvent(Event *event) {
   }
 }
 
-void VecAdd::handleMemoryEvent(MemoryEvent *memEvent) {
-  ReadResponse *readResp = dynamic_cast<ReadResponse *>(memEvent);
+void VecAdd::handleMemoryEvent(IOEvent *memEvent) {
+  IOReadResponse *readResp = dynamic_cast<IOReadResponse *>(memEvent);
   if (readResp) {
     out.output("Received read response\n");
     out.output("DataBuffer (%d bits) = ", io_data_width);
@@ -182,10 +182,10 @@ void VecAdd::read_from_io() {
   out.output("Reading from input buffer\n");
 
   // Create read request
-  ReadRequest *readReq = new ReadRequest();
+  IOReadRequest *readReq = new IOReadRequest();
   readReq->address = instr.addr;
   readReq->size = io_data_width / 8;
-  readReq->column_id = cellCoordinates[1];
+  readReq->column_id = cell_coordinates[1];
 
   // Send read request
   inputBufferLink->send(readReq);
@@ -233,7 +233,7 @@ void VecAdd::write_to_io() {
   out.output("Writing to output buffer\n");
   // Interfaces::StandardMem::Request *req;
   // Interfaces::StandardMem::Addr addr = instr.addr;
-  WriteRequest *writeReq = new WriteRequest();
+  IOWriteRequest *writeReq = new IOWriteRequest();
   writeReq->address = instr.addr;
   for (int i = 0; i < io_data_width / 8; i++) {
     writeReq->data.push_back(dataBuffer[i]);

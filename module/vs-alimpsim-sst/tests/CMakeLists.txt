@@ -23,6 +23,6 @@ list(FILTER SOURCES EXCLUDE REGEX "/build") # Exclude build dir
 foreach(SOURCE ${SOURCES})
     get_filename_component(EXECUTABLE_NAME ${SOURCE} NAME_WE)
     add_executable(${EXECUTABLE_NAME} ${SOURCE})
-    target_include_directories(${EXECUTABLE_NAME} PRIVATE ${SST_INCLUDE_DIR} $ENV{SST_ELEMENTS_HOME}/include ${CMAKE_CURRENT_SOURCE_DIR}/include/common)
-    target_link_libraries(${EXECUTABLE_NAME} PRIVATE GTest::GTest GTest::Main)
+    target_include_directories(${EXECUTABLE_NAME} PRIVATE ${SST_INCLUDE_DIR} $ENV{SST_ELEMENTS_HOME}/include ${CMAKE_CURRENT_SOURCE_DIR}/common)
+    target_link_libraries(${EXECUTABLE_NAME} PRIVATE GTest::GTest GTest::Main timingModel)
 endforeach()

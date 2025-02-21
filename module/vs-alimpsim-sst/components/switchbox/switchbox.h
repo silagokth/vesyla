@@ -15,7 +15,7 @@
 using namespace std;
 using namespace SST;
 
-class Switchbox : public DRRAComponent {
+class Switchbox : public DRRAResource {
 public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(Switchbox,   // Class name
@@ -27,25 +27,30 @@ public:
                              COMPONENT_CATEGORY_PROCESSOR // Category
   )
 
-  // Add component-specific parameters
+  /* Element Library Params */
   static vector<ElementInfoParam> getComponentParams() {
-    auto params = DRRAComponent::getBaseParams();
+    auto params = DRRAResource::getBaseParams();
     params.push_back({"number_of_fsms", "Number of FSMs", "4"});
     params.push_back({"num_slots", "Number of slots", "16"});
     return params;
   }
-
-  // Register the component parameters
   SST_ELI_DOCUMENT_PARAMS(getComponentParams())
 
-  SST_ELI_DOCUMENT_PORTS(
-      {"controller_port", "Link to the controller"}, // to receive instructions
-      {"slot_port%(portnum)d",
-       "Link(s) to resources slots (slot_port0, slot_port1, etc.)"},
-      // {"slot_output_port%(portnum)d", "Link(s) to resources slots
-      // (output_port0, output_port1, etc.)"},
-      {"cell_port%(portnum)d",
-       "Link(s) to cells (cell_port0, cell_port1, etc.)"})
+  /* Element Library Ports */
+  static vector<ElementInfoPort> getComponentPorts() {
+    auto ports = DRRAResource::getBasePorts();
+    ports.push_back(
+        {"slot_port%(portnum)d",
+         "Link(s) to resources slots (slot_port0, slot_port1, etc.)"});
+    ports.push_back({"cell_port%(portnum)d",
+                     "Link(s) to cells (cell_port0, cell_port1, etc.)"});
+    ports.push_back(
+        {"input_buffer_port", "Link to the input buffer (optional)"});
+    ports.push_back(
+        {"output_buffer_port", "Link to the output buffer (optional)"});
+    return ports;
+  }
+  SST_ELI_DOCUMENT_PORTS(getComponentPorts())
 
   SST_ELI_DOCUMENT_STATISTICS()
   SST_ELI_DOCUMENT_SUBCOMPONENT_SLOTS()
@@ -72,6 +77,11 @@ private:
   // Decode instruction
   void decodeInstr(uint32_t instr);
 
+  void switchToFSM(uint32_t fsmPort) {
+    currentFsmPort = fsmPort;
+    out.output("Switching to FSM port %u\n", currentFsmPort);
+  }
+
   // Different supported opcodes
   enum Opcode {
     REP,
@@ -91,9 +101,6 @@ private:
   vector<map<uint32_t, uint32_t>> connection_maps;
   vector<map<uint32_t, uint32_t>> sending_routes_maps;
   vector<map<uint32_t, uint32_t>> receiving_routes_maps;
-  map<uint32_t, uint32_t> connections;
-  map<uint32_t, uint32_t> sending_routes;
-  map<uint32_t, uint32_t> receiving_routes;
 
   // SST links
   // Controller link
@@ -104,10 +111,12 @@ private:
   vector<Link *> slot_links;
 
   // Cell links
-  array<Link *, 9> cell_links;
+  vector<Link *> cell_links;
 
   // Cell directions
   enum CellDirection { NW, N, NE, W, C, E, SW, S, SE };
+  string cell_directions_str[9] = {"NW", "N",  "NE", "W", "C",
+                                   "E",  "SW", "S",  "SE"};
 
   // Handlers
   void handleSlotEventWithID(Event *event, uint32_t id);
@@ -117,6 +126,7 @@ private:
   vector<function<void()>> eventsHandlers;
 
   uint32_t numFSMs = 4;
+  uint32_t currentFsmPort = 0;
   int32_t lastRepLevel = -1;
   uint32_t currentEventNumber = 0;
   uint32_t pendingFSMInstr = 0;

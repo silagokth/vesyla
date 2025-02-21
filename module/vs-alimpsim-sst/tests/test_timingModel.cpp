@@ -1,4 +1,4 @@
-#include "../include/common/timingModel.h"
+#include "../common/timingModel.h"
 #include <gtest/gtest.h>
 
 // Initialize static member
@@ -22,7 +22,7 @@ TEST(TimingModelTest, BasicEventSchedulingWithCreateFromEvent) {
 
 TEST(TimingModelTest, BasicEventSchedulingWithAddEvent) {
   TimingState state = TimingState();
-  state.addEvent("TestEvent");
+  state.addEvent("TestEvent", [] {});
   state.build(); // Schedule events
 
   auto events = state.getEventsForCycle(0);
@@ -43,7 +43,7 @@ TEST(TimingModelTest, AddRepetitionWithNoEventsError) {
 
 TEST(TimingModelTest, AddTransitionWithNoEventsError) {
   TimingState state = TimingState();
-  EXPECT_THROW(state.addTransition(1, "NextEvent"), std::runtime_error);
+  EXPECT_THROW(state.addTransition(1, "NextEvent", [] {}), std::runtime_error);
 }
 
 TEST(TimingModelTest, FindEventByNameTest) {
@@ -54,7 +54,7 @@ TEST(TimingModelTest, FindEventByNameTest) {
 
 TEST(TimingModelTest, TransitionOperator) {
   TimingState state = TimingState::createFromEvent("Event1");
-  state.addTransition(5, "Event2");
+  state.addTransition(5, "Event2", [] {});
   state.build(); // Schedule events
 
   // Check Event1 at cycle 0
@@ -87,8 +87,8 @@ TEST(TimingModelTest, RepetitionOperator) {
 
 TEST(TimingModelTest, ComplexPattern) {
   TimingState state = TimingState::createFromEvent("Start");
-  state.addTransition(2, "Middle")
-      .addTransition(3, "End")
+  state.addTransition(2, "Middle", [] { printf("Middle\n"); })
+      .addTransition(3, "End", [] { printf("End\n"); })
       .addRepetition(2, 10)
       .build();
 
@@ -120,10 +120,10 @@ TEST(TimingModelTest, TransitionToString) {
 
 TEST(TimingModelTest, ComplexPatternToString) {
   TimingState state = TimingState();
-  state.addEvent("Start");
-  state.addTransition(2, "Middle");
+  state.addEvent("Start", [] {});
+  state.addTransition(2, "Middle", [] {});
   state.addRepetition(2, 10);
-  state.addTransition(3, "End");
+  state.addTransition(3, "End", [] {});
   state.addRepetition(2, 10);
   state.build();
 
@@ -132,7 +132,7 @@ TEST(TimingModelTest, ComplexPatternToString) {
 
 TEST(TimingModelTest, RepetitionTesting) {
   TimingState state = TimingState::createFromEvent("e0");
-  state.addTransition(2, "e1");
+  state.addTransition(2, "e1", [] {});
   state.addRepetition(2, 4);
   state.addRepetition(2, 2);
   state.build();

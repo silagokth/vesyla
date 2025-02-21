@@ -14,7 +14,7 @@ public:
   std::vector<uint8_t> payload; // Payload data
   size_t size;                  // Size of the payload (in bits)
 
-  enum PortType { WriteNarrow, ReadNarrow, WriteWide, ReadWide };
+  enum PortType { ReadNarrow, ReadWide, WriteNarrow, WriteWide };
   PortType portType; // Port type
 
   DataEvent(PortType portType) : portType(portType) {
