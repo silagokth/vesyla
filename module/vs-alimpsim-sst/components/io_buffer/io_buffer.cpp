@@ -3,6 +3,8 @@
 #include <sst/core/componentExtension.h>
 #include <sst/core/interfaces/stdMem.h>
 
+#include "custom_backing.h"
+
 #include "ioEvents.h"
 
 IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
@@ -14,6 +16,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
   clock = params.find<std::string>("clock", "100MHz");
   printFrequency = params.find<SST::Cycle_t>("printFrequency", 1000);
   io_data_width = params.find<uint32_t>("io_data_width", 256);
+  io_depth = params.find<uint32_t>("io_depth", 65536);
   word_bitwidth = params.find<uint32_t>("word_bitwidth", 16);
   access_time = params.find<std::string>("access_time", "0ns");
   num_columns = params.find<uint32_t>("num_columns", 1);
@@ -25,7 +28,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
   // Backing store
   bool found = false;
   std::string backingType = params.find<std::string>(
-      "backing", "malloc",
+      "backing", "mfile",
       found); /* Default to using an mmap backing store, fall back on malloc */
   if (!found) {
     bool oldBackVal = params.find<bool>("do-not-back", false, found);
@@ -43,7 +46,25 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
   }
   size_t sizeBytes = size.getRoundedValue();
 
-  if (backingType == "mmap") {
+  if (backingType == "mfile") {
+    std::string memoryFile = params.find<std::string>("memory_file", "");
+    if (0 == memoryFile.compare("")) {
+      memoryFile.clear();
+    }
+    try {
+      backend = new SST::MemHierarchy::Backend::BackingIO(
+          memoryFile, io_data_width, io_depth);
+    } catch (int e) {
+      if (e == 1) {
+        out.fatal(CALL_INFO, -1, "Failed to open memory file: %s\n",
+                  memoryFile.c_str());
+      } else {
+        out.fatal(CALL_INFO, -1, "Failed to map memory file: %s\n",
+                  memoryFile.c_str());
+      }
+    }
+
+  } else if (backingType == "mmap") {
     std::string memoryFile = params.find<std::string>("memory_file", "");
     if (0 == memoryFile.compare("")) {
       memoryFile.clear();
@@ -123,12 +144,12 @@ void IOBuffer::handleEventFromColumn(SST::Event *event, uint32_t column_id) {
   IOReadRequest *readReq = dynamic_cast<IOReadRequest *>(event);
   std::vector<uint8_t> data;
   if (readReq) {
-    out.output("Received read request\n");
+    out.output("Received read request (addr=%d, size=%d)\n", readReq->address,
+               readReq->size);
+    data.reserve(readReq->size);
     if (backend) {
-      for (int i = 0; i < readReq->size; i++) {
-        data.push_back(backend->get(readReq->address + i));
-      }
-      out.output("Read from backend\n");
+      backend->get(readReq->address, readReq->size * 8 / io_data_width, data);
+      out.output("Read %d bits from backend\n", data.size() * 8);
     } else {
       data.resize(readReq->size, 0); // send zeros if no backend
     }

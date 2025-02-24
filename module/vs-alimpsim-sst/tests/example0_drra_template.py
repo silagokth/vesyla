@@ -23,16 +23,16 @@ buffer_params = {
     "io_data_width": io_data_width,
     "access_time": "0ns",
     "printFrequency": 1,
-    "backing": "malloc",  # "mmap",
+    "backing": "mfile",
 }
 input_buffer.addParams(buffer_params)
 input_buffer_params = {
-    "memory_file": script_path + "/refFiles/example0_drra_template_inputBuffer.mem",
+    "memory_file": script_path + "/refFiles/example0_drra_template_inputBuffer.bin",
 }
 input_buffer.addParams(input_buffer_params)
 output_buffer.addParams(buffer_params)
 output_buffer_params = {
-    "memory_file": script_path + "/refFiles/example0_drra_template_outputBuffer.mem",
+    "memory_file": script_path + "/refFiles/example0_drra_template_outputBuffer.bin",
 }
 output_buffer.addParams(output_buffer_params)
 

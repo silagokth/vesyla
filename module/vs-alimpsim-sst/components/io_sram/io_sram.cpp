@@ -115,13 +115,7 @@ void IOSRAM::handleIOEvent(Event *event) {
       out.output("Received IO read response: address: %d, data: %s\n",
                  ioReadResponse->address,
                  formatRawDataToWords(ioReadResponse->data).c_str());
-      // for (int i = 0; i < ioReadResponse->data.size(); i++) {
-      //   if (i == ioReadResponse->data.size() - 1) {
-      //     out.print("%d\n", ioReadResponse->data[i]);
-      //     break;
-      //   }
-      //   out.print("%d, ", ioReadResponse->data[i]);
-      // }
+
       // Write data to the backend
       backend->set(ioReadResponse->address, ioReadResponse->data.size(),
                    ioReadResponse->data);
