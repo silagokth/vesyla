@@ -9,7 +9,7 @@ class IOEvent : public Event {};
 
 class IOReadRequest : public IOEvent {
 public:
-  IOReadRequest() {}
+  IOReadRequest() { setPriority(EXITPRIORITY); }
   ~IOReadRequest() {}
 
   // Data members
@@ -28,7 +28,7 @@ public:
 
 class IOReadResponse : public IOEvent {
 public:
-  IOReadResponse() {}
+  IOReadResponse() { setPriority(EXITPRIORITY); }
   ~IOReadResponse() {}
 
   // Data members

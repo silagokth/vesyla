@@ -30,26 +30,17 @@ void DPU::complete(unsigned int phase) {
 void DPU::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool DPU::clockTick(SST::Cycle_t currentCycle) {
-  if (currentCycle % printFrequency == 0) {
-    out.output("--- DPU CYCLE %" PRIu64 " ---\n", currentCycle);
+  if (currentCycle % 10 == 0) {
+    out.output("--- DPU CYCLE %" PRIu64 " ---\n", currentCycle / 10);
   }
 
-  for (auto &port : active_ports) {
-    if (isPortActive(port.first)) {
-      auto events =
-          getPortEventsForCycle(port.first, getPortActiveCycle(port.first));
-      for (auto event : events) {
-        event->execute();
-      }
-    }
-  }
+  executeScheduledEventsForCycle(currentCycle);
 
   // Execute DPU operation
   // fsmHandlers[current_fsm]();
 
   // // Increment the active cycle
   // activeCycle++;
-
   return false;
 }
 
@@ -138,7 +129,7 @@ void DPU::handleRep(uint32_t instr) {
 
   // add repetition to the timing model
   try {
-    next_timing_states[0].addRepetition(iter, step);
+    next_timing_states[0].addRepetition(iter, delay, level, step);
   } catch (const std::exception &e) {
     out.fatal(CALL_INFO, -1, "Failed to add repetition: %s\n", e.what());
   }

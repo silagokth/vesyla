@@ -125,6 +125,8 @@ protected:
   }
 
   // Simulation global variables
+  TimeConverter *tc;
+  Clock::HandlerBase *clockHandler;
   DRRAOutput out;
   std::string clock;
   Cycle_t printFrequency;
@@ -205,6 +207,11 @@ protected:
 class DRRAResource : public DRRAComponent {
 public:
   DRRAResource(ComponentId_t id, Params &params) : DRRAComponent(id, params) {
+    // Clock
+    // clockHandler =
+    //     new Clock::Handler<DRRAResource>(this, &DRRAResource::clockTick);
+    // tc = registerClock(clock, clockHandler);
+
     // Resource-specific params
     slot_id = params.find<int16_t>("slot_id", -1);
     io_data_width = params.find<uint32_t>("io_data_width", 256);
@@ -226,8 +233,7 @@ public:
         active_ports[i * 4 + j] = false;
         active_ports_cycles[i * 4 + j] = 0;
         next_timing_states[i * 4 + j] = TimingState();
-        next_timing_states[i * 4 + j].addEvent(
-            "event_0", [this] { out.output(" FSM switched to 0\n"); });
+        next_timing_states[i * 4 + j].addEvent("event_0", [this] {});
         port_last_rep_level[i * 4 + j] = -1;
       }
     }
@@ -264,6 +270,39 @@ public:
                "Data links size mismatch");
   }
 
+  virtual ~DRRAResource() {}
+
+  // SST lifecycle methods
+  virtual void init(unsigned int phase) override = 0;
+  virtual void setup() override = 0;
+  virtual void complete(unsigned int phase) override = 0;
+  virtual void finish() override = 0;
+
+  // SST clock handler
+  // bool clockTick(Cycle_t currentCycle) override {
+  //   if (currentCycle % printFrequency == 0) {
+  //     out.output("--- CYCLE %" PRIu64 " ---\n", currentCycle / 10);
+  //   }
+
+  //   for (auto &port : active_ports) {
+  //     if (isPortActive(port.first)) {
+  //       auto events =
+  //           getPortEventsForCycle(port.first,
+  //           getPortActiveCycle(port.first));
+  //       for (auto event : events) {
+  //         if (event->getPriority() == currentCycle % 10) {
+  //           event->execute();
+  //         }
+  //       }
+  //       if (getPortActiveCycle(port.first) % 10 == 9) {
+  //         incrementPortActiveCycle(port.first);
+  //       }
+  //     }
+  //   }
+
+  //   return false;
+  // }
+
 protected:
   static std::vector<SST::ElementInfoParam> getBaseParams() {
     std::vector<SST::ElementInfoParam> params = DRRAComponent::getBaseParams();
@@ -298,6 +337,8 @@ protected:
     current_timing_states[port] = next_timing_states[port];
     next_timing_states[port] = TimingState();
     current_timing_states[port].build();
+    out.output("port %d timing: %s\n", port,
+               current_timing_states[port].toString().c_str());
     port_last_rep_level[port] = -1;
   }
 
@@ -319,14 +360,109 @@ protected:
     }
   }
 
+  uint32_t getRelativePortNum(uint32_t slot_id, uint32_t port_id) {
+    uint8_t slot_pos = std::distance(
+        slot_ids.begin(), std::find(slot_ids.begin(), slot_ids.end(), slot_id));
+    return slot_pos * 4 + port_id;
+  }
+
   uint32_t getPortActiveCycle(uint32_t port) {
     return active_ports_cycles[port];
   }
 
-  auto getPortEventsForCycle(uint32_t port, uint32_t cycle) {
+  void incrementPortActiveCycle(uint32_t port) { active_ports_cycles[port]++; }
+
+  std::set<std::shared_ptr<const TimingEvent>>
+  getPortEventsForCycle(uint32_t port, uint32_t cycle) {
     return current_timing_states[port].getEventsForCycle(cycle);
   }
 
+  void executeScheduledEventsForCycle(Cycle_t currentSSTCycle) {
+    // if first subcycle of the cycle -> gather events for the cycle
+    if (currentSSTCycle % 10 == 1) {
+      for (auto &port : active_ports) { // for each port
+        if (isPortActive(port.first)) { // if port is active
+          auto events =
+              getPortEventsForCycle(port.first, getPortActiveCycle(port.first));
+          // out.output("port %d, cycle %lu, events %lu (", port.first,
+          //            getPortActiveCycle(port.first), events.size());
+          // for (auto event : events) {
+          //   out.print("%d,", event->getPriority());
+          // }
+          // out.print(")\n");
+          // add events to the list
+          for (auto event : events) {
+            events_for_cycle.push_back(event);
+            corresponding_ports.push_back(port.first);
+          }
+        }
+      }
+      if (events_for_cycle.size() > 0) {
+        out.output("Events to execute for cycle %lu: %lu (",
+                   currentSSTCycle / 10, events_for_cycle.size());
+        for (int i = 0; i < events_for_cycle.size(); i++) {
+          auto event = events_for_cycle[i];
+          auto port = corresponding_ports[i];
+          out.print("port %d prio %d", port, event->getPriority());
+          if (i != events_for_cycle.size() - 1) {
+            out.print(", ");
+          }
+        }
+        out.print(")\n");
+      }
+    }
+
+    // execute events with priority equal to the current subcycle
+    for (size_t i = 0; i < events_for_cycle.size(); i++) {
+      auto event = events_for_cycle[i];
+      auto port = corresponding_ports[i];
+      if (event->getPriority() == currentSSTCycle % 10) {
+        // out.output("Executing event port %d prio %d\n", port,
+        //            event->getPriority());
+        event->execute();
+        current_timing_states[port].incrementLevels();
+      }
+    }
+
+    if (currentSSTCycle % 10 == 9) {
+      for (auto &port : active_ports) {
+        if (isPortActive(port.first)) {
+          // out.output("incrementing port %d active cycle (old: %lu)\n",
+          //            port.first, getPortActiveCycle(port.first));
+          incrementPortActiveCycle(port.first);
+        }
+      }
+      events_for_cycle.clear();
+      corresponding_ports.clear();
+    }
+  }
+
+  // void executeScheduledEventsForCycle(Cycle_t currentSSTCycle) {
+  //   for (auto &port : active_ports) {
+  //     if (isPortActive(port.first)) {
+  //       auto events =
+  //           getPortEventsForCycle(port.first,
+  //           getPortActiveCycle(port.first));
+  //       for (auto event : events) {
+  //         if (event->getPriority() == currentSSTCycle % 10) {
+  //           out.output("Executing event of priority %d\n",
+  //                      event->getPriority());
+  //           event->execute();
+  //           current_timing_states[port.first].incrementLevels();
+  //         }
+  //       }
+  //       if (currentSSTCycle % 10 == 9) {
+  //         // if (getPortActiveCycle(port.first) % 10 == 9) {
+  //         // out.output("currentSSTCycle: %lu (%lu)\n", currentSSTCycle,
+  //         //            currentSSTCycle % 10);
+  //         // out.output("getPortActiveCycle: %lu (%lu)\n",
+  //         //            getPortActiveCycle(port.first),
+  //         //            getPortActiveCycle(port.first) % 10);
+  //         incrementPortActiveCycle(port.first);
+  //       }
+  //     }
+  //   }
+  // }
   // void resetTimingStates() {
   //   for (uint8_t i = 0; i < resource_size * 4; i++) {
   //     timing_states[i] = TimingState();
@@ -340,6 +476,10 @@ protected:
   // Activation
   std::map<uint32_t, bool> active_ports;
   std::map<uint32_t, uint32_t> active_ports_cycles;
+
+  // Event execution
+  std::vector<std::shared_ptr<const TimingEvent>> events_for_cycle;
+  std::vector<uint32_t> corresponding_ports;
 
   // IO settings
   uint32_t io_data_width; // in bits

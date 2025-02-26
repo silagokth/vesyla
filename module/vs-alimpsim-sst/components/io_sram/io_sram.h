@@ -3,7 +3,6 @@
 
 #include "dataEvent.h"
 #include "drra.h"
-#include "ioEvents.h"
 
 #include <sst/core/component.h>
 #include <sst/core/event.h>
@@ -65,6 +64,7 @@ public:
   bool clockTick(SST::Cycle_t currentCycle) override;
   void handleEvent(SST::Event *event) override;
   void handleIOEvent(SST::Event *event);
+  void handleSelfEvent(SST::Event *event);
 
 private:
   std::string access_time;
@@ -74,17 +74,32 @@ private:
 
   // Map ports to links
   enum PortMap {
-    IOPortAGUOut = 0,
-    IOPortAGUIn = 1,
-    IOPortDSUIn = 2,
-    IOPortDSUOut = 3,
-    BulkIn = 4,
-    BulkOut = 5
+    SRAMReadFromIO = 0,
+    SRAMWriteToIO = 1,
+    IOWriteToSRAM = 2,
+    IOReadFromSRAM = 3,
+    WriteBulk = 6,
+    ReadBulk = 7
   };
 
   SST::Link *io_link = nullptr;
-  int64_t io_address_buffer = -1;
-  std::vector<uint8_t> io_data_buffer;
+  SST::Link *self_link = nullptr;
+  int64_t sram_read_from_io_address_buffer = -1;
+  int64_t sram_read_from_io_initial_addr = -1;
+  int64_t sram_write_to_io_address_buffer = -1;
+  int64_t sram_write_to_io_initial_addr = -1;
+  std::vector<uint8_t> from_io_data_buffer;
+  std::vector<uint8_t> to_io_data_buffer;
+  int64_t io_write_to_sram_address_buffer = -1;
+  int64_t io_write_to_sram_initial_addr = -1;
+  int64_t io_read_from_sram_address_buffer = -1;
+  int64_t io_read_from_sram_initial_addr = -1;
+
+  // Bulk read/write
+  int64_t read_bulk_address_buffer = -1;
+  int64_t write_bulk_address_buffer = -1;
+  int64_t read_bulk_initial_addr = -1;
+  int64_t write_bulk_initial_addr = -1;
 
   // Supported opcodes
   void decodeInstr(uint32_t instr);
@@ -95,8 +110,10 @@ private:
 
   void readFromIO();
   void writeToIO();
-  void receiveWideData(DataEvent *);
-  void sendWideData();
+  void writeToSRAM();
+  void readFromSRAM();
+  void writeBulk(DataEvent *);
+  void readBulk();
 
   int32_t agu_initial_addr = -1;
   uint32_t current_event_number = 0;

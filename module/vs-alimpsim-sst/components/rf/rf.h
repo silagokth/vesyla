@@ -79,10 +79,10 @@ private:
   void handleRepx(uint32_t instr);
   void handleDSU(uint32_t instr);
 
-  void sendWideData();
-  void sendNarrowData();
-  void receiveWideData();
-  void receiveNarrowData();
+  void readWide();
+  void readNarrow();
+  void writeWide();
+  void writeNarrow();
 
   uint32_t current_event_number = 0;
   // int32_t lastRepLevel = -1;

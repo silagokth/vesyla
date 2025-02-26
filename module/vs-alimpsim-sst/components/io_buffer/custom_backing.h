@@ -21,6 +21,7 @@ class BackingIO : public Backing {
 private:
   std::string memory_file_;
   size_t width_, depth_;
+  bool read_only_ = true;
   Array<MAX_DEPTH, MAX_WIDTH> *io_;
 
 public:
@@ -56,7 +57,8 @@ public:
 
   ~BackingIO() {
     // Dump memory to file
-    dump(nullptr);
+    if (!read_only_)
+      dump(nullptr);
     delete io_;
   }
 
@@ -85,9 +87,8 @@ public:
     string raw_data = io_->read(addr, size);
     // printf("raw_data: %s\n", raw_data.c_str());
     for (size_t i = 0; i < width_ / 8; i++) {
-      data.push_back(std::bitset<8>(raw_data.substr(i * 8, 8)).to_ulong());
-      // printf("data[%zu]: %s\n", i,
-      // std::bitset<8>(data[i]).to_string().c_str());
+      data.push_back(
+          std::bitset<8>(raw_data.substr(width_ - 8 * (i + 1), 8)).to_ulong());
     }
   }
 

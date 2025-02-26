@@ -5,7 +5,7 @@ script_path = os.path.abspath(__file__)
 script_path = os.path.dirname(script_path)
 
 # Global parameters
-global_clock = "100MHz"
+global_clock = str(100e6 * 10) + "Hz"  # 10x the real clock frequency (for priorities)
 io_data_width = 256
 io_buffer_size = 1024
 word_bitwidth = 16

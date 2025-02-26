@@ -109,19 +109,12 @@ void Switchbox::finish() {
 }
 
 bool Switchbox::clockTick(Cycle_t currentCycle) {
-  if (currentCycle % printFrequency == 0) {
-    out.output("--- SWITCHBOX CYCLE %" PRIu64 " ---\n", currentCycle);
+  if (currentCycle % 10 == 0) {
+    out.output("--- SWITCHBOX CYCLE %" PRIu64 " ---\n", currentCycle / 10);
   }
 
-  for (auto &port : active_ports) {
-    if (isPortActive(port.first)) {
-      auto events =
-          getPortEventsForCycle(port.first, getPortActiveCycle(port.first));
-      for (auto event : events) {
-        event->execute();
-      }
-    }
-  }
+  executeScheduledEventsForCycle(currentCycle);
+
   return false;
 }
 
@@ -183,7 +176,8 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
       if (cell_links[target] == nullptr) {
         out.fatal(CALL_INFO, -1, "Cell link %u is not linked\n", id);
       }
-      out.output("Forwarding data to cell %u\n", target);
+      out.output("Forwarding data to adjacent cell (direction: %s)\n",
+                 cell_directions_str[target].c_str());
       cell_links[target]->send(event);
     } else {
       for (uint32_t fsm_id = 0; fsm_id < numFSMs; fsm_id++) {
@@ -214,7 +208,7 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
 }
 
 void Switchbox::handleCellEventWithID(Event *event, uint32_t id) {
-  out.output("Received cell event from direction %s\n",
+  out.output("Received data from adjacent cell (direction: %s)\n",
              cell_directions_str[id].c_str());
 }
 
@@ -272,7 +266,7 @@ void Switchbox::handleRep(uint32_t instr) {
 
   // add repetition to the timing model
   try {
-    next_timing_states[port].addRepetition(iter, step);
+    next_timing_states[port].addRepetition(iter, delay, level, step);
   } catch (const std::exception &e) {
     out.fatal(CALL_INFO, -1, "Failed to add repetition: %s\n", e.what());
   }
@@ -291,10 +285,8 @@ void Switchbox::handleFsm(uint32_t instr) {
   // add transition to the timing model
   try {
     next_timing_states[port].addTransition(
-        delay_0, "event_" + std::to_string(currentEventNumber), [this, port] {
-          out.output("FSM switched to %d\n", port);
-          switchToFSM(port);
-        });
+        delay_0, "event_" + std::to_string(currentEventNumber),
+        [this, port] { switchToFSM(port); });
     currentEventNumber++;
   } catch (const std::exception &e) {
     out.fatal(CALL_INFO, -1, "Failed to add transition: %s\n", e.what());

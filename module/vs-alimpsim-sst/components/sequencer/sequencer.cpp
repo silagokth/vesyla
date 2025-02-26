@@ -45,25 +45,25 @@ void Sequencer::complete(unsigned int phase) {
 void Sequencer::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool Sequencer::clockTick(Cycle_t currentCycle) {
-  if (currentCycle % printFrequency == 0) {
-    out.output("--- SEQUENCER CYCLE %" PRIu64 " ---\n", currentCycle);
-  }
+  if (currentCycle % 10 == 0) {
+    out.output("--- SEQUENCER CYCLE %" PRIu64 " ---\n", currentCycle / 10);
 
-  if (cyclesToWait > 0) {
-    cyclesToWait--;
-    out.output("Waiting %u cycles\n", cyclesToWait);
-    return false;
-  }
+    if (cyclesToWait > 0) {
+      cyclesToWait--;
+      out.output("Waiting %u cycles\n", cyclesToWait);
+      return false;
+    }
 
-  if (pc >= assemblyProgram.size()) {
-    out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
-  }
-  uint32_t instruction = assemblyProgram[pc];
-  fetch_decode(instruction);
+    if (pc >= assemblyProgram.size()) {
+      out.fatal(CALL_INFO, -1, "Program counter out of bounds\n");
+    }
+    uint32_t instruction = assemblyProgram[pc];
+    fetch_decode(instruction);
 
-  if (readyToFinish) {
-    primaryComponentOKToEndSim();
-    return true;
+    if (readyToFinish) {
+      primaryComponentOKToEndSim();
+      return true;
+    }
   }
   return false;
 }
@@ -86,8 +86,8 @@ void Sequencer::load_assembly_program(std::string assemblyProgramPath) {
     // out.output("Read line: %s\n", line.c_str());
     if (line.find("cell") != std::string::npos) {
       out.output("Found cell section in line: %s\n", line.c_str());
-      if (line.find("cell " + std::to_string(cell_coordinates[0]) + "_" +
-                    std::to_string(cell_coordinates[1])) != std::string::npos) {
+      if (line.find("cell " + std::to_string(cell_coordinates[1]) + " " +
+                    std::to_string(cell_coordinates[0])) != std::string::npos) {
         isSelfCell = true;
       } else {
         isSelfCell = false;
@@ -250,7 +250,7 @@ void Sequencer::activate(uint32_t content) {
       // Print debug info
       out.output("act instr: %s\n",
                  std::bitset<28>(content).to_string().c_str());
-      out.output("act (slot=%u, mode=%d, param=%d, ports=%s\n", current_slot,
+      out.output("act (slot=%u, mode=%d, param=%d, ports=%s)\n", current_slot,
                  mode, param,
                  std::bitset<4>(target_ports_for_slot).to_string().c_str());
 

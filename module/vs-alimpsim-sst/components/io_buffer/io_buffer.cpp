@@ -119,23 +119,23 @@ void IOBuffer::complete(unsigned int phase) {
 void IOBuffer::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool IOBuffer::clockTick(SST::Cycle_t currentCycle) {
-  if (currentCycle % printFrequency == 0) {
-    out.output("--- IOBUFFER CYCLE %" PRIu64 " ---\n", currentCycle);
+  if (currentCycle % 10 == 0) {
+    out.output("--- IOBUFFER CYCLE %" PRIu64 " ---\n", currentCycle / 10);
   }
 
-  if (read_address_buffer != -1) {
-    IOReadResponse *readResp = new IOReadResponse();
-    readResp->address = read_address_buffer;
-    readResp->set_data(read_data_buffer);
-    column_links[0]->send(readResp);
-    read_address_buffer = -1;
-  }
+  // if (read_address_buffer != -1) {
+  //   IOReadResponse *readResp = new IOReadResponse();
+  //   readResp->address = read_address_buffer;
+  //   readResp->set_data(read_data_buffer);
+  //   column_links[0]->send(readResp);
+  //   read_address_buffer = -1;
+  // }
 
-  if (write_address_buffer != -1) {
-    backend->set(write_address_buffer, write_data_buffer.size(),
-                 write_data_buffer);
-    write_address_buffer = -1;
-  }
+  // if (write_address_buffer != -1) {
+  //   backend->set(write_address_buffer, write_data_buffer.size(),
+  //                write_data_buffer);
+  //   write_address_buffer = -1;
+  // }
 
   return false;
 }
@@ -144,12 +144,11 @@ void IOBuffer::handleEventFromColumn(SST::Event *event, uint32_t column_id) {
   IOReadRequest *readReq = dynamic_cast<IOReadRequest *>(event);
   std::vector<uint8_t> data;
   if (readReq) {
-    out.output("Received read request (addr=%d, size=%d)\n", readReq->address,
-               readReq->size);
+    out.output("Received read request (addr=%d, size=%dbits)\n",
+               readReq->address, readReq->size * 8);
     data.reserve(readReq->size);
     if (backend) {
       backend->get(readReq->address, readReq->size * 8 / io_data_width, data);
-      out.output("Read %d bits from backend\n", data.size() * 8);
     } else {
       data.resize(readReq->size, 0); // send zeros if no backend
     }
@@ -161,7 +160,8 @@ void IOBuffer::handleEventFromColumn(SST::Event *event, uint32_t column_id) {
     readResp->address = readReq->address;
     readResp->set_data(data);
     column_links[column_id]->send(readResp);
-    out.output("Sent read response\n");
+    out.output("Sending read response (addr=%d, size=%dbits)\n",
+               readReq->address, readReq->size * 8);
 
     return;
   }
@@ -172,17 +172,18 @@ void IOBuffer::handleEventFromColumn(SST::Event *event, uint32_t column_id) {
     if (backend) {
       write_address_buffer = writeReq->address;
       write_data_buffer = writeReq->data;
-      // out.output("Writing to backend\n");
-      // backend->set(writeReq->address, writeReq->data.size(), writeReq->data);
-      // out.output("Data (%lu bits) = ", writeReq->data.size() * 8);
-      // for (int i = writeReq->data.size() - 1; i >= 0; i--) {
-      //   out.print("%08b", writeReq->data[i]);
-      //   if ((i % 2 == 0) && (i != 0)) {
-      //     out.print(" ");
-      //   }
-      // }
-      // out.print("\n");
-      // out.output("Wrote to backend\n");
+      out.output("Writing to backend (addr=%d, size=%dbits)\n",
+                 writeReq->address, writeReq->data.size() * 8);
+      backend->set(writeReq->address, writeReq->data.size(), writeReq->data);
+      out.output("Data (%lu bits) = ", writeReq->data.size() * 8);
+      for (int i = writeReq->data.size() - 1; i >= 0; i--) {
+        out.print("%08b", writeReq->data[i]);
+        if ((i % 2 == 0) && (i != 0)) {
+          out.print(" ");
+        }
+      }
+      out.print("\n");
+      out.output("Wrote to backend\n");
     }
 
     return;

@@ -26,6 +26,9 @@ private:
   std::shared_ptr<TimingExpression> expression;
   uint64_t eventCounter;
   uint64_t lastScheduledCycle;
+  std::vector<uint64_t> levels_current_iteration;
+  std::vector<uint64_t> levels_total_iterations;
+  std::vector<uint64_t> levels_step;
 
 public:
   TimingState();
@@ -40,9 +43,17 @@ public:
   void updateLastScheduledCycle(uint64_t cycle);
   static TimingState createFromEvent(const std::string &name);
   TimingState &addEvent(const std::string &name, std::function<void()> handler);
+  TimingState &addEvent(const std::string &name, uint8_t priority,
+                        std::function<void()> handler);
   TimingState &addTransition(uint64_t delay, const std::string &nextEventName,
                              std::function<void()> handler);
-  TimingState &addRepetition(uint64_t iterations, uint64_t step);
+  TimingState &addTransition(uint64_t delay, const std::string &nextEventName,
+                             uint8_t priority, std::function<void()> handler);
+  TimingState &addRepetition(uint64_t iterations, uint64_t delay);
+  TimingState &addRepetition(uint64_t iterations, uint64_t delay,
+                             uint64_t level, uint64_t step);
+  uint64_t getRepIncrementForCycle(uint64_t cycle);
+  void incrementLevels(void);
   TimingState &build();
   std::shared_ptr<TimingExpression> getExpression() const;
   void scheduleEvent(std::shared_ptr<const TimingEvent> event, uint64_t cycle);
@@ -59,6 +70,7 @@ private:
   std::string name;
   uint64_t eventNumber;
   std::function<void()> handler;
+  uint8_t priority;
 
 public:
   TimingEvent(const std::string &name, uint64_t eventNumber);
@@ -71,6 +83,10 @@ public:
   std::string lastEventName() const override;
   void execute() const;
   void setHandler(std::function<void()> handler);
+  std::function<void()> getHandler() const;
+
+  void setPriority(uint8_t priority);
+  uint8_t getPriority() const;
 };
 
 class TransitionOperator : public TimingExpression {
@@ -92,11 +108,11 @@ public:
 class RepetitionOperator : public TimingExpression {
 private:
   uint64_t iterations;
-  uint64_t step;
+  uint64_t delay;
   std::shared_ptr<TimingExpression> expression;
 
 public:
-  RepetitionOperator(uint64_t iterations, uint64_t step,
+  RepetitionOperator(uint64_t iterations, uint64_t delay,
                      std::shared_ptr<TimingExpression> expression);
   uint64_t scheduleEvents(TimingState &state,
                           uint64_t startCycle) const override;

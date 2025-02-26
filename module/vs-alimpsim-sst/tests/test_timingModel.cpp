@@ -74,15 +74,17 @@ TEST(TimingModelTest, RepetitionOperator) {
   state.build();             // Schedule events
 
   // Check events at cycles 0, 2, and 4
-  for (uint64_t cycle = 0; cycle < 6; cycle += 2) {
+  for (uint64_t cycle = 0; cycle < 12; cycle++) {
     auto events = state.getEventsForCycle(cycle);
-    ASSERT_EQ(events.size(), 1) << "at cycle " << cycle;
-    EXPECT_EQ((*events.begin())->getName(), "RepeatedEvent");
+    if (cycle > 4) {
+      ASSERT_EQ(events.size(), 0) << "at cycle " << cycle;
+    } else if (cycle % 2 == 0) {
+      ASSERT_EQ(events.size(), 1) << "at cycle " << cycle;
+      EXPECT_EQ((*events.begin())->getName(), "RepeatedEvent");
+    } else {
+      EXPECT_EQ(events.size(), 0) << "at cycle " << cycle;
+    }
   }
-
-  // Check no events at cycle 6
-  auto events6 = state.getEventsForCycle(6);
-  EXPECT_EQ(events6.size(), 0);
 }
 
 TEST(TimingModelTest, ComplexPattern) {
