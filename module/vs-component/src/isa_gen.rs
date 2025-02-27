@@ -33,9 +33,9 @@ fn gen_isa_doc(isa_file: &String, doc_file: &String) {
 
 # ISA Specification
 
-Instructions are {{isa.format.instr_bitwidth}}-bit wide. The MSB indicates whether it's a control instruction or a resource instruction. [0]: control; [1]: resource; The next {{instr_opcode_bitwidth}} bits represent the instruction opcode. The rest of the bits are used to encode the instruction content. For resource instructions, another {{instr_slot_bitwidth}} bits in the instruction content are used to indicate the slot number. The rest of the bits are used to encode the instruction content.
+Instructions are {{isa.format.instr_bitwidth}}-bit wide. The MSB indicates whether it's a control instruction or a resource instruction. [0]: control; [1]: resource; The next {{isa.format.instr_opcode_bitwidth}} bits represent the instruction opcode. The rest of the bits are used to encode the instruction content. For resource instructions, another {{isa.format.instr_slot_bitwidth}} bits in the instruction content are used to indicate the slot number. The rest of the bits are used to encode the instruction content.
 
-Note that, specifically for resource instructions, if instruction opcode start with "11", the instruction contains a field that need to be replaced by RACCU registers if the filed is marked "dynamic".
+Note that, specifically for resource instructions, if instruction opcode start with "11", the instruction contains a field that need to be replaced by scalar registers if the filed is marked "dynamic".
 
 ## ISA Format
 Parameter | Width | Description
