@@ -9,10 +9,6 @@
 
 Sequencer::Sequencer(ComponentId_t id, Params &params)
     : DRRAController(id, params) {
-  // Clock
-  SST::TimeConverter *tc = registerClock(
-      clock, new SST::Clock::Handler<Sequencer>(this, &Sequencer::clockTick));
-
   assemblyProgramPath = params.find<std::string>("assembly_program_path");
 
   // Register as primary component
@@ -36,18 +32,14 @@ void Sequencer::init(unsigned int phase) {
   out.verbose(CALL_INFO, 1, 0, "Initialized\n");
 }
 
-void Sequencer::setup() { out.verbose(CALL_INFO, 1, 0, "Setup\n"); }
+void Sequencer::setup() {}
 
-void Sequencer::complete(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Completed\n");
-}
+void Sequencer::complete(unsigned int phase) {}
 
 void Sequencer::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool Sequencer::clockTick(Cycle_t currentCycle) {
   if (currentCycle % 10 == 0) {
-    out.output("--- SEQUENCER CYCLE %" PRIu64 " ---\n", currentCycle / 10);
-
     if (cyclesToWait > 0) {
       cyclesToWait--;
       out.output("Waiting %u cycles\n", cyclesToWait);
@@ -67,8 +59,6 @@ bool Sequencer::clockTick(Cycle_t currentCycle) {
   }
   return false;
 }
-
-void Sequencer::handleEvent(Event *event) { out.output("Received event\n"); }
 
 void Sequencer::load_assembly_program(std::string assemblyProgramPath) {
   // Load the assembly program
@@ -114,10 +104,6 @@ void Sequencer::fetch_decode(uint32_t instruction) {
   uint32_t instruction_type = getInstrType(instruction);
   uint32_t opcode = getInstrOpcode(instruction);
   uint32_t slot = getInstrSlot(instruction);
-  uint32_t content =
-      (instruction & ((1 << (instrBitwidth - instrTypeBitwidth -
-                             instrOpcodeWidth - instrSlotWidth)) -
-                      1));
 
   if (instruction_type == 1) // Send event to resource
   {
@@ -135,21 +121,21 @@ void Sequencer::fetch_decode(uint32_t instruction) {
       break;
 
     case 1: // WAIT
-      wait(content);
+      wait(instruction);
       break;
 
     case 2: // ACT
-      activate(content);
+      activate(instruction);
       break;
 
     case 3: // CALC
       out.fatal(CALL_INFO, -1, "TODO implement CALC\n");
-      calculate(content);
+      calculate(instruction);
       break;
 
     case 4: // BRN
       out.fatal(CALL_INFO, -1, "TODO implement BRN\n");
-      branch(content);
+      branch(instruction);
       break;
 
     default:
@@ -166,7 +152,7 @@ void Sequencer::halt() {
   readyToFinish = true;
 }
 
-void Sequencer::wait(uint32_t content) {
+void Sequencer::wait(uint32_t instr) {
   out.output("WAIT\n");
   uint32_t mode_segment_length = 1;
   uint32_t cycleSegmentLength = 27;
@@ -178,12 +164,12 @@ void Sequencer::wait(uint32_t content) {
   }
 
   // Extract segments
-  uint32_t mode = (content & ((1 << mode_segment_length) - 1)
-                                 << (instrBitwidth - instrTypeBitwidth -
-                                     instrOpcodeWidth - mode_segment_length)) >>
+  uint32_t mode = (instr & ((1 << mode_segment_length) - 1)
+                               << (instrBitwidth - instrTypeBitwidth -
+                                   instrOpcodeWidth - mode_segment_length)) >>
                   (instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                    mode_segment_length);
-  uint32_t cycles = (content & ((1 << cycleSegmentLength) - 1));
+  uint32_t cycles = (instr & ((1 << cycleSegmentLength) - 1));
 
   if (mode == 0) {
     wait_cycles(cycles);
@@ -199,31 +185,18 @@ void Sequencer::wait_cycles(uint32_t cycles) { cyclesToWait = cycles; }
 
 void Sequencer::wait_event() { out.output("WAIT EVENT\n"); }
 
-void Sequencer::activate(uint32_t content) {
+void Sequencer::activate(uint32_t instr) {
   uint32_t ports_segment_length = 16;
   uint32_t mode_segment_length = 4;
   uint32_t param_segment_length = 8;
 
-  // Check validity
-  if (ports_segment_length + mode_segment_length + param_segment_length >
-      instrBitwidth - instrTypeBitwidth - instrOpcodeWidth) {
-    out.fatal(CALL_INFO, -1, "Invalid instruction format\n");
-  }
-
   // Extract segments
-  uint32_t ports = getInstrField(content, ports_segment_length,
-                                 instrBitwidth - instrTypeBitwidth -
-                                     instrOpcodeWidth - ports_segment_length);
-  uint32_t mode =
-      getInstrField(content, mode_segment_length,
-                    instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
-                        ports_segment_length - mode_segment_length);
-  uint32_t param = getInstrField(
-      content, param_segment_length,
-      instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
-          ports_segment_length - mode_segment_length - param_segment_length);
+  uint32_t ports = getInstrField(instr, ports_segment_length, 12);
+  uint32_t mode = getInstrField(instr, mode_segment_length, 8);
+  uint32_t param = getInstrField(instr, param_segment_length, 0);
 
   uint32_t target_ports_for_slot = 0;
+  uint32_t temp_ports = ports;
   uint32_t current_slot = 0;
 
   switch (mode) {
@@ -231,8 +204,8 @@ void Sequencer::activate(uint32_t content) {
     current_slot = param;
     for (uint32_t i = 0; i < ports_segment_length; i += 4) {
       // Extract 1-bit activation for each port and accumulate
-      target_ports_for_slot = ports & 0b1111;
-      ports >>= 4;
+      target_ports_for_slot = temp_ports & 0b1111;
+      temp_ports >>= 4;
 
       // Skip this slot if no ports are activated or not linked
       if ((target_ports_for_slot == 0) ||
@@ -248,8 +221,9 @@ void Sequencer::activate(uint32_t content) {
       slot_links[current_slot]->send(event);
 
       // Print debug info
-      out.output("act instr: %s\n",
-                 std::bitset<28>(content).to_string().c_str());
+      out.output("act instr: %s (ports=%d, mode=%d, param=%d)\n",
+                 std::bitset<32>(instr).to_string().c_str(), ports, mode,
+                 param);
       out.output("act (slot=%u, mode=%d, param=%d, ports=%s)\n", current_slot,
                  mode, param,
                  std::bitset<4>(target_ports_for_slot).to_string().c_str());
@@ -266,7 +240,7 @@ void Sequencer::activate(uint32_t content) {
   }
 }
 
-void Sequencer::calculate(uint32_t content) {
+void Sequencer::calculate(uint32_t instr) {
   uint32_t mode_segment_length = 6;
   uint32_t operand1SegmentLength = 4;
   uint32_t operand2SDSegmentLength = 1;
@@ -281,25 +255,25 @@ void Sequencer::calculate(uint32_t content) {
   }
 
   // Extract segments
-  uint32_t mode = getInstrField(content, mode_segment_length,
+  uint32_t mode = getInstrField(instr, mode_segment_length,
                                 instrBitwidth - instrTypeBitwidth -
                                     instrOpcodeWidth - mode_segment_length);
   uint32_t operand1 =
-      getInstrField(content, operand1SegmentLength,
+      getInstrField(instr, operand1SegmentLength,
                     instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                         mode_segment_length - operand1SegmentLength);
   uint32_t operand2SD =
-      getInstrField(content, operand2SDSegmentLength,
+      getInstrField(instr, operand2SDSegmentLength,
                     instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                         mode_segment_length - operand1SegmentLength -
                         operand2SDSegmentLength);
   uint32_t operand2 =
-      getInstrField(content, operand2SegmentLength,
+      getInstrField(instr, operand2SegmentLength,
                     instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                         mode_segment_length - operand1SegmentLength -
                         operand2SDSegmentLength - operand2SegmentLength);
   uint32_t result =
-      getInstrField(content, resultSegmentLength,
+      getInstrField(instr, resultSegmentLength,
                     instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                         mode_segment_length - operand1SegmentLength -
                         operand2SDSegmentLength - operand2SegmentLength -
@@ -409,7 +383,7 @@ void Sequencer::calculate(uint32_t content) {
              std::bitset<4>(result).to_string().c_str());
 }
 
-void Sequencer::branch(uint32_t content) {
+void Sequencer::branch(uint32_t instr) {
   uint32_t regSegmentLength = 4;
   int32_t targetTrueSegmentLength = 9;
   int32_t targetFalseSegmentLength = 9;
@@ -421,15 +395,15 @@ void Sequencer::branch(uint32_t content) {
   }
 
   // Extract segments
-  uint32_t reg = getInstrField(content, regSegmentLength,
+  uint32_t reg = getInstrField(instr, regSegmentLength,
                                instrBitwidth - instrTypeBitwidth -
                                    instrOpcodeWidth - regSegmentLength);
   int32_t targetTrue =
-      getInstrField(content, targetTrueSegmentLength,
+      getInstrField(instr, targetTrueSegmentLength,
                     instrBitwidth - instrTypeBitwidth - instrOpcodeWidth -
                         regSegmentLength - targetTrueSegmentLength);
   int32_t targetFalse = getInstrField(
-      content, targetFalseSegmentLength,
+      instr, targetFalseSegmentLength,
       instrBitwidth - instrTypeBitwidth - instrOpcodeWidth - regSegmentLength -
           targetTrueSegmentLength - targetFalseSegmentLength);
 

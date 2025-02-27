@@ -1,7 +1,6 @@
 #include "io_sram.h"
 
-#include "activationEvent.h"
-#include "instructionEvent.h"
+#include "dataEvent.h"
 #include "ioEvents.h"
 #include "sst/core/event.h"
 #include <bitset>
@@ -10,10 +9,6 @@ using namespace SST;
 
 IOSRAM::IOSRAM(SST::ComponentId_t id, SST::Params &params)
     : DRRAResource(id, params) {
-  // Clock
-  clockHandler = new SST::Clock::Handler<IOSRAM>(this, &IOSRAM::clockTick);
-  tc = registerClock(clock, clockHandler);
-
   access_time = params.find<std::string>("access_time", "0ns");
 
   // Backing store
@@ -60,139 +55,22 @@ IOSRAM::IOSRAM(SST::ComponentId_t id, SST::Params &params)
   out.output("Created backing store (type: %s)\n", backingType.c_str());
 
   // IO port
-  io_link = configureLink(
-      "io_port",
-      access_time); //,new Event::Handler<IOSRAM>(this,&IOSRAM::handleIOEvent));
-
-  // // Controller port
-  // controller_link =
-  //     configureLink("controller_port", "0ns",
-  //                   new Event::Handler<IOSRAM>(this, &IOSRAM::handleEvent));
-
-  // // Data port
-  // data_link =
-  //     configureLink("data_port", "0ns",
-  //                   new Event::Handler<IOSRAM>(this, &IOSRAM::handleEvent));
+  io_link = configureLink("io_port", access_time);
 }
 
 void IOSRAM::init(unsigned int phase) {
   out.verbose(CALL_INFO, 1, 0, "Initialized\n");
 }
 
-void IOSRAM::setup() { out.verbose(CALL_INFO, 1, 0, "Setup\n"); }
+void IOSRAM::setup() {}
 
-void IOSRAM::complete(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Completed\n");
-}
+void IOSRAM::complete(unsigned int phase) {}
 
 void IOSRAM::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool IOSRAM::clockTick(SST::Cycle_t currentCycle) {
-  if (currentCycle % 10 == 0) {
-    out.output("--- IOSRAM CYCLE %" PRIu64 " ---\n", currentCycle / 10);
-  }
-
-  // Execute scheduled events
   executeScheduledEventsForCycle(currentCycle);
-
   return false;
-}
-
-// void IOSRAM::handleIOEvent(Event *event) {
-//   IOEvent *ioEvent = dynamic_cast<IOEvent *>(event);
-//   if (ioEvent) {
-//     IOReadResponse *ioReadResponse = dynamic_cast<IOReadResponse *>(ioEvent);
-//     if (ioReadResponse) {
-//       // next_timing_states[PortMap::IOPortDSUIn].addEvent(
-//       //     "dsu_read_io_" + std::to_string(current_event_number),
-//       //     [this, ioReadResponse] {
-//       out.output(
-//           "Received read response from IO (addr=%d, size=%dbits, data=%s)\n",
-//           ioReadResponse->address, ioReadResponse->data.size() * 8,
-//           formatRawDataToWords(ioReadResponse->data).c_str());
-
-//       // Write data to the buffer
-//       if (from_io_data_buffer.size() == 0) {
-//         from_io_data_buffer = ioReadResponse->data;
-//       } else {
-//         //   // Write data to the backend
-//         //   backend->set(ioReadResponse->address,
-//         ioReadResponse->data.size(),
-//         //                ioReadResponse->data);
-//         //   // });
-
-//         //   out.output("Wrote data to the backend\n");
-//         //   from_io_data_ready = false;
-//         // } else {
-//         out.fatal(CALL_INFO, -1,
-//                   "Buffer is not empty, cannot write data from IO\n");
-//       }
-//       return;
-//     }
-//   }
-// }
-
-void IOSRAM::handleEvent(SST::Event *event) {
-  if (event) {
-    // Check if the event is an ActEvent
-    ActEvent *actEvent = dynamic_cast<ActEvent *>(event);
-    if (actEvent) {
-      out.output("Received ActEvent: slot_id: %d, ports: %s\n",
-                 actEvent->slot_id,
-                 bitset<4>(actEvent->ports).to_string().c_str());
-      activatePortsForSlot(actEvent->slot_id, actEvent->ports);
-
-      return;
-    }
-
-    // Check if the event is an InstrEvent
-    InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(event);
-    if (instrEvent) {
-      instrBuffer = instrEvent->instruction;
-      decodeInstr(instrBuffer);
-      // out.output("Received InstrEvent: %08x\n", instrBuffer);
-      return;
-    }
-
-    // Check if the event is a data event
-    DataEvent *dataEvent = dynamic_cast<DataEvent *>(event);
-    if (dataEvent) {
-      switch (dataEvent->portType) {
-      // case DataEvent::PortType::WriteNarrow:
-      //   if (current_dsu_mode != DataEvent::PortType::ReadNarrow) {
-      //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-      //   } else {
-      //     out.output("Received data event of size %d bytes (%d words): [",
-      //                dataEvent->size / 8, dataEvent->size / word_bitwidth);
-      //     for (int i = 0; i < (dataEvent->size / 8) - 1; i++) {
-      //       out.print("%d: %d, ", i, dataEvent->payload[i]);
-      //     }
-      //     out.print("%d: %d]\n", (dataEvent->size / 8) - 1,
-      //               dataEvent->payload[(dataEvent->size / 8) - 1]);
-      //   }
-      //   break;
-      // case DataEvent::PortType::ReadNarrow:
-      //   if (current_dsu_mode != DataEvent::PortType::WriteNarrow) {
-      //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-      //   }
-      //   break;
-      case DataEvent::PortType::WriteWide:
-        writeBulk(dataEvent);
-        break;
-        // case DataEvent::PortType::ReadWide:
-        //   if (current_dsu_mode != DataEvent::PortType::WriteWide) {
-        //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-        //   }
-        //   break;
-
-      default:
-        out.fatal(CALL_INFO, -1, "Invalid port type\n");
-        break;
-      }
-      out.output("Received data event\n");
-      return;
-    }
-  }
 }
 
 void IOSRAM::decodeInstr(uint32_t instr) {
@@ -294,22 +172,18 @@ void IOSRAM::handleDSU(uint32_t instr) {
   case PortMap::IOWriteToSRAM:
     io_write_to_sram_initial_addr = init_addr;
     writeToSRAM();
-    out.output("IO Write to SRAM\n");
     break;
   case PortMap::IOReadFromSRAM:
     io_read_from_sram_initial_addr = init_addr;
     readFromSRAM();
-    out.output("IO Read from SRAM\n");
     break;
   case PortMap::WriteBulk:
     write_bulk_initial_addr = init_addr;
-    // writeBulk();
-    out.output("Write bulk\n");
+    writeBulk();
     break;
   case PortMap::ReadBulk:
     read_bulk_initial_addr = init_addr;
     readBulk();
-    out.output("Read bulk\n");
     break;
 
   default:
@@ -345,23 +219,29 @@ void IOSRAM::readFromIO() {
 void IOSRAM::writeToIO() {
   // Writing buffer data to the IO
   next_timing_states[PortMap::SRAMWriteToIO].addEvent(
-      "dsu_write_to_io_" + std::to_string(current_event_number), 6, [this] {
+      "dsu_write_to_io_" + std::to_string(current_event_number), 9, [this] {
         sram_write_to_io_address_buffer =
             sram_write_to_io_initial_addr +
             current_timing_states[PortMap::SRAMWriteToIO]
                 .getRepIncrementForCycle(
                     getPortActiveCycle(PortMap::SRAMWriteToIO));
+
         IOWriteRequest *writeReq = new IOWriteRequest();
         writeReq->address = sram_write_to_io_address_buffer;
         writeReq->data = to_io_data_buffer;
         io_link->send(writeReq);
+
+        out.output(
+            "Sending write request to IO (addr=%d, size=%dbits, data=%s)\n",
+            writeReq->address, writeReq->data.size() * 8,
+            formatRawDataToWords(writeReq->data).c_str());
       });
 }
 
 void IOSRAM::writeToSRAM() {
   // Writing buffer data to the backend
   next_timing_states[PortMap::IOWriteToSRAM].addEvent(
-      "dsu_write_to_sram_" + std::to_string(current_event_number), 9, [this] {
+      "dsu_write_to_sram_" + std::to_string(current_event_number), 8, [this] {
         // Check if the IO responded
         IOReadResponse *ioReadResponse =
             dynamic_cast<IOReadResponse *>(io_link->recv());
@@ -388,7 +268,7 @@ void IOSRAM::writeToSRAM() {
         // Write data to the backend (SRAM)
         backend->set(io_write_to_sram_address_buffer,
                      from_io_data_buffer.size(), from_io_data_buffer);
-        out.output("Wrote to SRAM (adrr=%d, size=%dbits, data=%s)\n",
+        out.output("Writing to SRAM (adrr=%d, size=%dbits, data=%s)\n",
                    io_write_to_sram_address_buffer,
                    from_io_data_buffer.size() * 8,
                    formatRawDataToWords(from_io_data_buffer).c_str());
@@ -401,22 +281,31 @@ void IOSRAM::writeToSRAM() {
 void IOSRAM::readFromSRAM() {
   // Reading data from the backend to the buffer
   next_timing_states[PortMap::IOReadFromSRAM].addEvent(
-      "dsu_read_from_sram_" + std::to_string(current_event_number), 4, [this] {
+      "dsu_read_from_sram_" + std::to_string(current_event_number), 2, [this] {
         io_read_from_sram_address_buffer =
             io_read_from_sram_initial_addr +
             current_timing_states[PortMap::IOReadFromSRAM]
                 .getRepIncrementForCycle(
                     getPortActiveCycle(PortMap::IOReadFromSRAM));
+
         to_io_data_buffer.resize(io_data_width / 8);
+        for (int i = 0; i < io_data_width / 8; i++) {
+          to_io_data_buffer[i] = 0;
+        }
+
         backend->get(io_read_from_sram_address_buffer, io_data_width / 8,
                      to_io_data_buffer);
+
+        out.output("Reading from SRAM (addr=%d, size=%dbits, data=%s)\n",
+                   io_read_from_sram_address_buffer, io_data_width,
+                   formatRawDataToWords(to_io_data_buffer).c_str());
       });
 }
 
 void IOSRAM::readBulk() {
-  out.output("Add event read bulk (port %d prio %d)\n", PortMap::ReadBulk, 4);
+  out.output("Add event read bulk (port %d prio %d)\n", PortMap::ReadBulk, 1);
   next_timing_states[PortMap::ReadBulk].addEvent(
-      "dsu_send_" + std::to_string(current_event_number), 4, [this] {
+      "dsu_send_" + std::to_string(current_event_number), 1, [this] {
         read_bulk_address_buffer =
             read_bulk_initial_addr +
             current_timing_states[PortMap::ReadBulk].getRepIncrementForCycle(
@@ -426,30 +315,34 @@ void IOSRAM::readBulk() {
         vector<uint8_t> data;
         data.resize(io_data_width / 8);
         backend->get(read_bulk_address_buffer, io_data_width / 8, data);
-        out.output(
-            "Reading bulk data from IOSRAM (addr=%d, size=%dbits, data=%s)\n",
-            read_bulk_address_buffer, io_data_width,
-            formatRawDataToWords(data).c_str());
+        out.output("Reading bulk data (addr=%d, size=%dbits, data=%s)\n",
+                   read_bulk_address_buffer, io_data_width,
+                   formatRawDataToWords(data).c_str());
         dataEvent->size = io_data_width;
         dataEvent->payload = data;
         data_links[1]->send(dataEvent);
       });
 }
 
-void IOSRAM::writeBulk(DataEvent *dataEvent) {
+void IOSRAM::writeBulk() {
   next_timing_states[PortMap::WriteBulk].addEvent(
-      "dsu_receive_" + std::to_string(current_event_number), 3,
-      [this, dataEvent] {
-        out.output("Received data event of size %d bytes (%d words): [",
-                   dataEvent->size / 8, dataEvent->size / word_bitwidth);
+      "dsu_receive_" + std::to_string(current_event_number), 9, [this] {
+        write_bulk_address_buffer =
+            write_bulk_initial_addr +
+            current_timing_states[PortMap::WriteBulk].getRepIncrementForCycle(
+                getPortActiveCycle(PortMap::WriteBulk));
+
+        // Check if some data was received
+        DataEvent *dataEvent = dynamic_cast<DataEvent *>(data_links[1]->recv());
+        if (dataEvent == nullptr)
+          out.fatal(CALL_INFO, -1, "No data received\n");
+
+        out.output("Writing bulk data (addr=%d, size=%dbits, data=%s)\n",
+                   write_bulk_address_buffer, dataEvent->size,
+                   formatRawDataToWords(dataEvent->payload).c_str());
 
         // Write data to the backend
-        backend->set(agu_initial_addr, dataEvent->size, dataEvent->payload);
-
-        for (int i = 0; i < (dataEvent->size / 8) - 1; i++) {
-          out.print("%d: %d, ", i, dataEvent->payload[i]);
-        }
-        out.print("%d: %d]\n", (dataEvent->size / 8) - 1,
-                  dataEvent->payload[(dataEvent->size / 8) - 1]);
+        backend->set(write_bulk_address_buffer, dataEvent->size,
+                     dataEvent->payload);
       });
 }

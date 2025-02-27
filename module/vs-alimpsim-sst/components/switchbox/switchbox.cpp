@@ -1,33 +1,22 @@
 #include "switchbox.h"
 
+#include <bitset>
 #include <sst/core/component.h>
 #include <sst/core/link.h>
 
-#include "activationEvent.h"
 #include "dataEvent.h"
-#include "instructionEvent.h"
-#include "ioEvents.h"
 
 Switchbox::Switchbox(ComponentId_t id, Params &params)
     : DRRAResource(id, params) {
-  // Clock
-  TimeConverter *tc = registerClock(
-      clock, new SST::Clock::Handler<Switchbox>(this, &Switchbox::clockTick));
-
   // Number of FSMs
   numFSMs = params.find<uint32_t>("number_of_fsms", 4);
   for (uint32_t i = 0; i < numFSMs; i++) {
     connection_maps.push_back(map<uint32_t, uint32_t>());
-    sending_routes_maps.push_back(map<uint32_t, uint32_t>());
-    receiving_routes_maps.push_back(map<uint32_t, uint32_t>());
+    sending_routes_maps.push_back(map<uint32_t, vector<uint32_t>>());
+    receiving_routes_maps.push_back(map<uint32_t, vector<uint32_t>>());
   }
   // Set FSM 0 as the default FSM
   switchToFSM(0);
-
-  // Controller port
-  controller_link = configureLink(
-      "controller_port", "0ns",
-      new Event::Handler<Switchbox>(this, &Switchbox::handleEvent));
 
   // Slot ports
   num_slots = params.find<uint32_t>("num_slots", 16);
@@ -92,55 +81,18 @@ Switchbox::Switchbox(ComponentId_t id, Params &params)
 Switchbox::~Switchbox() {}
 
 void Switchbox::init(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Switchbox initialized\n");
+  out.verbose(CALL_INFO, 1, 0, "Initialized\n");
 }
 
-void Switchbox::setup() {
-  out.verbose(CALL_INFO, 1, 0, "Switchbox setup\n");
-  currentEventNumber++;
-}
+void Switchbox::setup() { currentEventNumber++; }
 
-void Switchbox::complete(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Switchbox completed\n");
-}
+void Switchbox::complete(unsigned int phase) {}
 
-void Switchbox::finish() {
-  out.verbose(CALL_INFO, 1, 0, "Switchbox finishing\n");
-}
+void Switchbox::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool Switchbox::clockTick(Cycle_t currentCycle) {
-  if (currentCycle % 10 == 0) {
-    out.output("--- SWITCHBOX CYCLE %" PRIu64 " ---\n", currentCycle / 10);
-  }
-
   executeScheduledEventsForCycle(currentCycle);
-
   return false;
-}
-
-void Switchbox::handleEvent(Event *event) {
-  if (event) {
-    ActEvent *actEvent = dynamic_cast<ActEvent *>(event);
-    if (actEvent) {
-      out.output("Received activation event\n", slot_id);
-      activatePortsForSlot(actEvent->slot_id, actEvent->ports);
-      return;
-    }
-
-    InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(event);
-    if (instrEvent) {
-      out.output("Received instruction event\n", slot_id);
-      // Decode instruction
-      decodeInstr(instrEvent->instruction);
-      return;
-    }
-
-    IOEvent *memEvent = dynamic_cast<IOEvent *>(event);
-    if (memEvent) {
-      out.output("Received memory event\n", slot_id);
-      return;
-    }
-  }
 }
 
 void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
@@ -153,32 +105,17 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
     // Verify if the slot is mapped to another slot
     if (connection_maps[currentFsmPort].count(id)) {
       uint32_t target = connection_maps[currentFsmPort][id];
-      out.output("Forwarding data to slot %u\n", target);
+      out.output("Forwarding data from slot %u to slot %u\n", id, target);
       slot_links[target]->send(event);
-      switch (dataEvent->portType) {
-      case DataEvent::PortType::WriteNarrow:
-        out.output("Received write narrow event from slot %u\n", id);
-        break;
-      case DataEvent::PortType::ReadNarrow:
-        out.output("Received read narrow event from slot %u\n", id);
-        break;
-      case DataEvent::PortType::WriteWide:
-        out.output("Received write wide event from slot %u\n", id);
-        break;
-      case DataEvent::PortType::ReadWide:
-        out.output("Received read wide event from slot %u\n", id);
-        break;
-      default:
-        out.fatal(CALL_INFO, -1, "Invalid port type\n", slot_id);
-      }
     } else if (sending_routes_maps[currentFsmPort].count(id)) {
-      uint32_t target = sending_routes_maps[currentFsmPort][id];
-      if (cell_links[target] == nullptr) {
-        out.fatal(CALL_INFO, -1, "Cell link %u is not linked\n", id);
+      for (auto target : sending_routes_maps[currentFsmPort][id]) {
+        if (cell_links[target] == nullptr) {
+          out.fatal(CALL_INFO, -1, "Cell link %u is not linked\n", id);
+        }
+        out.output("Forwarding data to adjacent cell (direction: %s)\n",
+                   cell_directions_str[target].c_str());
+        cell_links[target]->send(event);
       }
-      out.output("Forwarding data to adjacent cell (direction: %s)\n",
-                 cell_directions_str[target].c_str());
-      cell_links[target]->send(event);
     } else {
       for (uint32_t fsm_id = 0; fsm_id < numFSMs; fsm_id++) {
         out.output("Current FSM: %u\n", currentFsmPort);
@@ -191,14 +128,22 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
         out.output("FSM %u receiving routes: %lu\n", fsm_id,
                    receiving_routes_maps[fsm_id].size());
         for (const auto &route : receiving_routes_maps[fsm_id]) {
-          out.output("FSM %u receiving route from cell %u to slot %u\n", fsm_id,
-                     route.first, route.second);
+          out.output("FSM %u receiving route from cell %u to slots ", fsm_id,
+                     route.first);
+          for (const auto &slot : route.second) {
+            out.print("%u,", slot);
+          }
+          out.print("\n");
         }
         out.output("FSM %u sending routes: %lu\n", fsm_id,
                    sending_routes_maps[fsm_id].size());
         for (const auto &route : sending_routes_maps[fsm_id]) {
-          out.output("FSM %u sending route from slot %u to cell %u\n", fsm_id,
-                     route.first, route.second);
+          out.output("FSM %u sending route from slot %u to cells ", fsm_id,
+                     route.first);
+          for (const auto &cell : route.second) {
+            out.print("%s,", cell_directions_str[cell].c_str());
+          }
+          out.print("\n");
         }
       }
 
@@ -208,8 +153,32 @@ void Switchbox::handleSlotEventWithID(Event *event, uint32_t id) {
 }
 
 void Switchbox::handleCellEventWithID(Event *event, uint32_t id) {
-  out.output("Received data from adjacent cell (direction: %s)\n",
-             cell_directions_str[id].c_str());
+  DataEvent *dataEvent = dynamic_cast<DataEvent *>(event);
+  if (dataEvent)
+    out.output("Received data from adjacent cell (direction: %s)\n",
+               cell_directions_str[id].c_str());
+
+  // Verify if the slot is mapped to another slot
+  if (receiving_routes_maps[currentFsmPort].count(id)) {
+    if (receiving_routes_maps[currentFsmPort][id].size() > 1) {
+      out.output("Broadcasting data from cell %s to slots ",
+                 cell_directions_str[id].c_str());
+    } else {
+      out.output("Forwarding from cell %s data to slot ",
+                 cell_directions_str[id].c_str());
+    }
+    for (int i = 0; i < receiving_routes_maps[currentFsmPort][id].size(); i++) {
+      uint32_t target = receiving_routes_maps[currentFsmPort][id][i];
+      out.print("%u", target);
+      if (i < receiving_routes_maps[currentFsmPort][id].size() - 1) {
+        out.print(", ");
+      }
+      slot_links[target]->send(event);
+    }
+    out.print("\n");
+  } else {
+    out.fatal(CALL_INFO, -1, "Cell %u is not linked\n", id);
+  }
 }
 
 void Switchbox::decodeInstr(uint32_t instr) {
@@ -320,6 +289,11 @@ void Switchbox::handleRoute(uint32_t instr) {
   bool is_receive = getInstrField(instr, 1, 21) == 1;
   uint32_t source = getInstrField(instr, 4, 17);
   uint32_t target = getInstrField(instr, 16, 1);
+  vector<uint32_t> targets;
+
+  out.output("route (slot=%u, option=%u, sr=%u, source=%u, target=%s)\n",
+             getInstrSlot(instr), option, is_receive, source,
+             bitset<16>(target).to_string().c_str());
 
   if (is_receive) {
     // Receive
@@ -329,11 +303,10 @@ void Switchbox::handleRoute(uint32_t instr) {
     // Convert 1-hot encoded target to slot number
     for (uint32_t i = 0; i < 16; i++) {
       if (target & (1 << i)) {
-        target = i;
-        break;
+        targets.push_back(i);
+        receiving_routes_maps[option][source].push_back(i);
       }
     }
-    receiving_routes_maps[option][source] = target;
   } else {
     // Send
     // source is slot number
@@ -342,13 +315,25 @@ void Switchbox::handleRoute(uint32_t instr) {
     // Convert 1-hot encoded target to cell number
     for (uint32_t i = 0; i < 16; i++) {
       if (target & (1 << i)) {
-        target = i;
-        break;
+        targets.push_back(i);
+        sending_routes_maps[option][source].push_back(i);
       }
     }
-    sending_routes_maps[option][source] = target;
   }
 
-  out.output("Adding %s route from %u to %u in FSM %u\n",
-             is_receive ? "receiving" : "sending", source, target, option);
+  out.output("Adding %s route from %s to [",
+             is_receive ? "receiving" : "sending",
+             is_receive ? cell_directions_str[source].c_str()
+                        : to_string(source).c_str());
+  for (size_t i = 0; i < targets.size(); ++i) {
+    if (is_receive) {
+      out.print("%u", targets[i]);
+    } else {
+      out.print("%s", cell_directions_str[targets[i]].c_str());
+    }
+    if (i < targets.size() - 1) {
+      out.print(", ");
+    }
+  }
+  out.print("] in FSM %u\n", option);
 }

@@ -56,13 +56,7 @@ public:
   // SST clock handler
   bool clockTick(Cycle_t currentCycle) override;
 
-  // SST event handler
-  void handleEvent(Event *event) override;
-
 private:
-  // Output out;
-  // std::string clock;
-  // Cycle_t printFrequency;
   bool readyToFinish = false;
 
   // uint32_t cell_coordinates[2] = {0, 0};

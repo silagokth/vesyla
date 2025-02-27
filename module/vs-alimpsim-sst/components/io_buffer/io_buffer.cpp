@@ -20,6 +20,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
   word_bitwidth = params.find<uint32_t>("word_bitwidth", 16);
   access_time = params.find<std::string>("access_time", "0ns");
   num_columns = params.find<uint32_t>("num_columns", 1);
+  read_only = params.find<bool>("read_only", false);
 
   // Clock
   SST::TimeConverter *tc = registerClock(
@@ -53,7 +54,7 @@ IOBuffer::IOBuffer(SST::ComponentId_t id, SST::Params &params) : Component(id) {
     }
     try {
       backend = new SST::MemHierarchy::Backend::BackingIO(
-          memoryFile, io_data_width, io_depth);
+          memoryFile, io_data_width, io_depth, read_only);
     } catch (int e) {
       if (e == 1) {
         out.fatal(CALL_INFO, -1, "Failed to open memory file: %s\n",
@@ -110,32 +111,16 @@ void IOBuffer::init(unsigned int phase) {
   out.verbose(CALL_INFO, 1, 0, "IO Buffer Initialized\n");
 }
 
-void IOBuffer::setup() { out.verbose(CALL_INFO, 1, 0, "Setup\n"); }
+void IOBuffer::setup() {}
 
-void IOBuffer::complete(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Completed\n");
-}
+void IOBuffer::complete(unsigned int phase) {}
 
 void IOBuffer::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool IOBuffer::clockTick(SST::Cycle_t currentCycle) {
   if (currentCycle % 10 == 0) {
-    out.output("--- IOBUFFER CYCLE %" PRIu64 " ---\n", currentCycle / 10);
+    out.output("--- CYCLE %" PRIu64 " ---\n", currentCycle / 10);
   }
-
-  // if (read_address_buffer != -1) {
-  //   IOReadResponse *readResp = new IOReadResponse();
-  //   readResp->address = read_address_buffer;
-  //   readResp->set_data(read_data_buffer);
-  //   column_links[0]->send(readResp);
-  //   read_address_buffer = -1;
-  // }
-
-  // if (write_address_buffer != -1) {
-  //   backend->set(write_address_buffer, write_data_buffer.size(),
-  //                write_data_buffer);
-  //   write_address_buffer = -1;
-  // }
 
   return false;
 }
@@ -160,30 +145,25 @@ void IOBuffer::handleEventFromColumn(SST::Event *event, uint32_t column_id) {
     readResp->address = readReq->address;
     readResp->set_data(data);
     column_links[column_id]->send(readResp);
-    out.output("Sending read response (addr=%d, size=%dbits)\n",
-               readReq->address, readReq->size * 8);
+    out.output("Reading from IOBuffer (addr=%d, size=%dbits, data=%s)\n",
+               readReq->address, readReq->size * 8,
+               formatRawDataToWords(data).c_str());
 
     return;
   }
 
   IOWriteRequest *writeReq = dynamic_cast<IOWriteRequest *>(event);
   if (writeReq) {
-    out.output("Received write request\n");
+    out.output("Received write request (addr=%d, size=%dbits)\n",
+               writeReq->address, writeReq->data.size() * 8);
     if (backend) {
       write_address_buffer = writeReq->address;
       write_data_buffer = writeReq->data;
-      out.output("Writing to backend (addr=%d, size=%dbits)\n",
-                 writeReq->address, writeReq->data.size() * 8);
+      out.output("Writing to IOBuffer (addr=%d, size=%dbits, data=%s)\n",
+                 writeReq->address, writeReq->data.size() * 8,
+                 formatRawDataToWords(writeReq->data).c_str());
+
       backend->set(writeReq->address, writeReq->data.size(), writeReq->data);
-      out.output("Data (%lu bits) = ", writeReq->data.size() * 8);
-      for (int i = writeReq->data.size() - 1; i >= 0; i--) {
-        out.print("%08b", writeReq->data[i]);
-        if ((i % 2 == 0) && (i != 0)) {
-          out.print(" ");
-        }
-      }
-      out.print("\n");
-      out.output("Wrote to backend\n");
     }
 
     return;

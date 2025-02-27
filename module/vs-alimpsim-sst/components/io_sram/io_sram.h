@@ -1,7 +1,6 @@
 #ifndef _IOSRAM_H
 #define _IOSRAM_H
 
-#include "dataEvent.h"
 #include "drra.h"
 
 #include <sst/core/component.h>
@@ -62,9 +61,6 @@ public:
   virtual void finish() override;
 
   bool clockTick(SST::Cycle_t currentCycle) override;
-  void handleEvent(SST::Event *event) override;
-  void handleIOEvent(SST::Event *event);
-  void handleSelfEvent(SST::Event *event);
 
 private:
   std::string access_time;
@@ -102,7 +98,7 @@ private:
   int64_t write_bulk_initial_addr = -1;
 
   // Supported opcodes
-  void decodeInstr(uint32_t instr);
+  void decodeInstr(uint32_t instr) override;
   enum OpCode { REP = 0, REPX = 1, DSU = 6 };
   void handleRep(uint32_t instr);
   void handleRepx(uint32_t instr);
@@ -112,7 +108,7 @@ private:
   void writeToIO();
   void writeToSRAM();
   void readFromSRAM();
-  void writeBulk(DataEvent *);
+  void writeBulk();
   void readBulk();
 
   int32_t agu_initial_addr = -1;

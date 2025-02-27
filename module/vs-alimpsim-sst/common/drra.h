@@ -6,6 +6,8 @@
 #include <sst/core/output.h>
 #include <sst/core/params.h>
 
+#include "activationEvent.h"
+#include "instructionEvent.h"
 #include "timingModel.h"
 
 using namespace SST;
@@ -74,6 +76,9 @@ public:
     printFrequency = params.find<Cycle_t>("printFrequency", 1);
     word_bitwidth = params.find<size_t>("word_bitwidth", 16);
 
+    tc = registerClock(clock, new Clock::Handler<DRRAComponent>(
+                                  this, &DRRAComponent::clockTickBase));
+
     // Cell coordinates
     std::vector<int> paramsCellCoordinates;
     params.find_array<int>("cell_coordinates", paramsCellCoordinates);
@@ -102,12 +107,19 @@ public:
   virtual void finish() override = 0;
 
   // SST clock handler
-  virtual bool clockTick(Cycle_t currentCycle) = 0;
+  bool clockTickBase(Cycle_t currentCycle) {
+    if (currentCycle % 10 == 0) {
+      out.output("--- CYCLE %" PRIu64 " ---\n", currentCycle / 10);
+    }
+    bool result = clockTick(currentCycle);
+    return result;
+  }
 
   // SST event handler
-  virtual void handleEvent(Event *event) = 0;
+  // virtual void handleEvent(Event *event) = 0;
 
 protected:
+  virtual bool clockTick(Cycle_t currentCycle) { return false; }
   // Document params
   static std::vector<SST::ElementInfoParam> getBaseParams() {
     std::vector<SST::ElementInfoParam> params;
@@ -136,10 +148,6 @@ protected:
 
   // Cell coordinates
   uint32_t cell_coordinates[2] = {0, 0};
-
-  // // Links (controller and data)
-  // Link *controller_link;
-  // Link *data_link;
 
   // Narrow level
   size_t word_bitwidth;
@@ -207,11 +215,6 @@ protected:
 class DRRAResource : public DRRAComponent {
 public:
   DRRAResource(ComponentId_t id, Params &params) : DRRAComponent(id, params) {
-    // Clock
-    // clockHandler =
-    //     new Clock::Handler<DRRAResource>(this, &DRRAResource::clockTick);
-    // tc = registerClock(clock, clockHandler);
-
     // Resource-specific params
     slot_id = params.find<int16_t>("slot_id", -1);
     io_data_width = params.find<uint32_t>("io_data_width", 256);
@@ -250,16 +253,15 @@ public:
         controller_links.push_back(
             configureLink("controller_port" + std::to_string(i),
                           new Event::Handler<DRRAResource>(
-                              this, &DRRAResource::handleEvent)));
+                              this, &DRRAResource::handleEventBase)));
       } else {
         controller_links.push_back(nullptr);
       }
 
       if (isPortConnected("data_port" + std::to_string(i))) {
-        data_links.push_back(
-            configureLink("data_port" + std::to_string(i),
-                          new Event::Handler<DRRAResource>(
-                              this, &DRRAResource::handleEvent)));
+        data_links.push_back(configureLink("data_port" + std::to_string(i)));
+        //, new Event::Handler<DRRAResource>(this,
+        //&DRRAResource::handleEvent)));
       } else {
         data_links.push_back(nullptr);
       }
@@ -278,30 +280,26 @@ public:
   virtual void complete(unsigned int phase) override = 0;
   virtual void finish() override = 0;
 
-  // SST clock handler
-  // bool clockTick(Cycle_t currentCycle) override {
-  //   if (currentCycle % printFrequency == 0) {
-  //     out.output("--- CYCLE %" PRIu64 " ---\n", currentCycle / 10);
-  //   }
+  virtual void decodeInstr(uint32_t instr) = 0;
 
-  //   for (auto &port : active_ports) {
-  //     if (isPortActive(port.first)) {
-  //       auto events =
-  //           getPortEventsForCycle(port.first,
-  //           getPortActiveCycle(port.first));
-  //       for (auto event : events) {
-  //         if (event->getPriority() == currentCycle % 10) {
-  //           event->execute();
-  //         }
-  //       }
-  //       if (getPortActiveCycle(port.first) % 10 == 9) {
-  //         incrementPortActiveCycle(port.first);
-  //       }
-  //     }
-  //   }
+  void handleEventBase(Event *event) {
+    if (event) {
+      // Check if the event is an ActEvent
+      ActEvent *actEvent = dynamic_cast<ActEvent *>(event);
+      if (actEvent) {
+        activatePortsForSlot(actEvent->slot_id, actEvent->ports);
+        return;
+      }
 
-  //   return false;
-  // }
+      // Check if the event is an InstrEvent
+      InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(event);
+      if (instrEvent) {
+        instrBuffer = instrEvent->instruction;
+        decodeInstr(instrBuffer);
+        return;
+      }
+    }
+  }
 
 protected:
   static std::vector<SST::ElementInfoParam> getBaseParams() {
@@ -337,18 +335,10 @@ protected:
     current_timing_states[port] = next_timing_states[port];
     next_timing_states[port] = TimingState();
     current_timing_states[port].build();
-    out.output("port %d timing: %s\n", port,
-               current_timing_states[port].toString().c_str());
+    // out.output("port %d timing: %s\n", port,
+    //            current_timing_states[port].toString().c_str());
     port_last_rep_level[port] = -1;
   }
-
-  // void activatePorts(uint32_t ports) {
-  //   for (uint32_t i = 0; i < resource_size; i++) {
-  //     if ((ports & (1 << i)) >> i) {
-  //       activatePort(i);
-  //     }
-  //   }
-  // }
 
   void activatePortsForSlot(uint32_t slot_id, uint32_t ports) {
     uint8_t slot_pos = std::distance(
@@ -356,6 +346,7 @@ protected:
     for (uint8_t i = 0; i < 4; i++) {
       if ((ports & (1 << i)) >> i) {
         activatePort(slot_pos * 4 + i);
+        out.output("Activated port %d\n", slot_pos * 4 + i);
       }
     }
   }
@@ -384,12 +375,7 @@ protected:
         if (isPortActive(port.first)) { // if port is active
           auto events =
               getPortEventsForCycle(port.first, getPortActiveCycle(port.first));
-          // out.output("port %d, cycle %lu, events %lu (", port.first,
-          //            getPortActiveCycle(port.first), events.size());
-          // for (auto event : events) {
-          //   out.print("%d,", event->getPriority());
-          // }
-          // out.print(")\n");
+
           // add events to the list
           for (auto event : events) {
             events_for_cycle.push_back(event);
@@ -421,6 +407,7 @@ protected:
         //            event->getPriority());
         event->execute();
         current_timing_states[port].incrementLevels();
+        // out.output("port %d incremented levels\n", port);
       }
     }
 
@@ -437,37 +424,21 @@ protected:
     }
   }
 
-  // void executeScheduledEventsForCycle(Cycle_t currentSSTCycle) {
-  //   for (auto &port : active_ports) {
-  //     if (isPortActive(port.first)) {
-  //       auto events =
-  //           getPortEventsForCycle(port.first,
-  //           getPortActiveCycle(port.first));
-  //       for (auto event : events) {
-  //         if (event->getPriority() == currentSSTCycle % 10) {
-  //           out.output("Executing event of priority %d\n",
-  //                      event->getPriority());
-  //           event->execute();
-  //           current_timing_states[port.first].incrementLevels();
-  //         }
-  //       }
-  //       if (currentSSTCycle % 10 == 9) {
-  //         // if (getPortActiveCycle(port.first) % 10 == 9) {
-  //         // out.output("currentSSTCycle: %lu (%lu)\n", currentSSTCycle,
-  //         //            currentSSTCycle % 10);
-  //         // out.output("getPortActiveCycle: %lu (%lu)\n",
-  //         //            getPortActiveCycle(port.first),
-  //         //            getPortActiveCycle(port.first) % 10);
-  //         incrementPortActiveCycle(port.first);
-  //       }
-  //     }
-  //   }
-  // }
-  // void resetTimingStates() {
-  //   for (uint8_t i = 0; i < resource_size * 4; i++) {
-  //     timing_states[i] = TimingState();
-  //   }
-  // }
+  uint64_t vectorToUint64(std::vector<uint8_t> data) {
+    uint64_t result = 0;
+    for (size_t i = 0; i < data.size(); i++) {
+      result |= data[i] << (i * 8);
+    }
+    return result;
+  }
+
+  std::vector<uint8_t> uint64ToVector(uint64_t data) {
+    std::vector<uint8_t> result;
+    for (size_t i = 0; i < 8; i++) {
+      result.push_back((data >> (i * 8)) & 0xFF);
+    }
+    return result;
+  }
 
   // Links
   std::vector<Link *> controller_links;
@@ -512,10 +483,7 @@ public:
     uint8_t num_connected_links = 0;
     for (uint32_t i = 0; i < num_slots; i++) {
       if (isPortConnected("slot_port" + std::to_string(i))) {
-        slot_links.push_back(
-            configureLink("slot_port" + std::to_string(i),
-                          new Event::Handler<DRRAController>(
-                              this, &DRRAController::handleEvent)));
+        slot_links.push_back(configureLink("slot_port" + std::to_string(i)));
         num_connected_links++;
       } else {
         slot_links.push_back(nullptr);

@@ -1,7 +1,6 @@
 #ifndef _RF_H
 #define _RF_H
 
-#include "dataEvent.h"
 #include "drra.h"
 
 using namespace std;
@@ -53,24 +52,14 @@ public:
   // SST clock handler
   bool clockTick(Cycle_t currentCycle) override;
 
-  // SST event handler
-  void handleEvent(Event *event) override;
-
 private:
   // Register File
   uint32_t register_file_size;
   std::string access_time;
-  map<uint32_t, uint64_t> registers;
-
-  enum PortMap {
-    NarrowIn = 0,
-    NarrowOut = 1,
-    BulkIn = 2,
-    BulkOut = 3,
-  };
+  map<uint32_t, vector<uint8_t>> registers;
 
   // Decode instructions
-  void decodeInstr(uint32_t instr);
+  void decodeInstr(uint32_t instr) override;
 
   // Supported opcodes
   enum OpCode { REP = 0, REPX = 1, DSU = 6 };
@@ -85,8 +74,17 @@ private:
   void writeNarrow();
 
   uint32_t current_event_number = 0;
-  // int32_t lastRepLevel = -1;
+  map<uint32_t, uint32_t> port_agus_init;
   map<uint32_t, uint32_t> port_agus;
+
+  void updatePortAGUs(uint32_t port) {
+    port_agus[port] = port_agus_init[port] +
+                      current_timing_states[port].getRepIncrementForCycle(
+                          getPortActiveCycle(port));
+    if (port_agus[port] >= register_file_size) {
+      out.fatal(CALL_INFO, -1, "Invalid AGU address (greater than RF size)\n");
+    }
+  }
 };
 
 #endif // _RF_H

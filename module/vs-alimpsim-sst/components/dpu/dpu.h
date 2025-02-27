@@ -43,23 +43,22 @@ public:
   virtual void finish() override;
 
   bool clockTick(SST::Cycle_t currentCycle) override;
-  void handleEvent(SST::Event *event) override;
   void handleEventWithSlotID(SST::Event *event, uint32_t slot_id);
 
 private:
-  // Links
-  SST::Link *data_links[2];
-
   // buffers
-  uint64_t data_buffers[2];
+  std::map<uint32_t, std::vector<uint8_t>> data_buffers;
+  std::vector<uint8_t> accumulate_register;
 
   // Supported opcodes
-  void decodeInstr(uint32_t instr);
+  void decodeInstr(uint32_t instr) override;
   enum OpCode { REP, REPX, FSM, DPU_OP };
   void handleRep(uint32_t instr);
   void handleRepx(uint32_t instr);
   void handleFSM(uint32_t instr);
   void handleDPU(uint32_t instr);
+  void handleOperation(std::string name,
+                       std::function<uint64_t(uint64_t, uint64_t)> operation);
 
   // DPU modes
   enum DPU_MODE {
@@ -71,9 +70,9 @@ private:
     SUBT_ABS,
     MODE_6,
     MULT,
-    MAC,
+    MULT_ADD,
     MULT_CONST,
-    ACCUMULATE,
+    MAC,
     LD_IR,
     AXPY,
     MAX_MIN_ACC,
@@ -97,70 +96,48 @@ private:
     MODE_31
   };
 
-  // DSU handlers
-  void handleIdle(void);
-  void handleAdd(void);
-  void handleSumAcc(void);
-  void handleSubt(void);
-  void handleMode6(void);
-  void handleMult(void);
-  void handleMAC(void);
-  void handleAccumulate(void);
-  void handleLD_IR(void);
-  void handleAXPY(void);
-  void handleMaxMinAcc(void);
-  void handleMode15(void);
-  void handleMaxMin(void);
-  void handleShiftL(void);
-  void handleShiftR(void);
-  void handleSigm(void);
-  void handleTanhyp(void);
-  void handleExpon(void);
-  void handleLkRelu(void);
-  void handleRelu(void);
-  void handleDiv(void);
-  void handleAccSoftmax(void);
-  void handleDivSoftmax(void);
-  void handleLdAcc(void);
-  void handleScaleDw(void);
-  void handleScaleUp(void);
-  void handleMacInter(void);
-  void handleMode31(void);
-
   // Map of DSU modes to handlers
   std::map<DPU_MODE, std::function<void()>> dsuHandlers = {
-      {IDLE, std::bind(&DPU::handleIdle, this)},
-      {ADD, std::bind(&DPU::handleAdd, this)},
-      {SUM_ACC, std::bind(&DPU::handleSumAcc, this)},
-      {ADD_CONST, std::bind(&DPU::handleAdd, this)},
-      {SUBT, std::bind(&DPU::handleSubt, this)},
-      {SUBT_ABS, std::bind(&DPU::handleSubt, this)},
-      {MODE_6, std::bind(&DPU::handleMode6, this)},
-      {MULT, std::bind(&DPU::handleMult, this)},
-      {MAC, std::bind(&DPU::handleMAC, this)},
-      {MULT_CONST, std::bind(&DPU::handleMult, this)},
-      {ACCUMULATE, std::bind(&DPU::handleAccumulate, this)},
-      {LD_IR, std::bind(&DPU::handleLD_IR, this)},
-      {AXPY, std::bind(&DPU::handleAXPY, this)},
-      {MAX_MIN_ACC, std::bind(&DPU::handleMaxMinAcc, this)},
-      {MAX_MIN_CONST, std::bind(&DPU::handleMaxMin, this)},
-      {MODE_15, std::bind(&DPU::handleMode15, this)},
-      {MAX_MIN, std::bind(&DPU::handleMaxMin, this)},
-      {SHIFT_L, std::bind(&DPU::handleShiftL, this)},
-      {SHIFT_R, std::bind(&DPU::handleShiftR, this)},
-      {SIGM, std::bind(&DPU::handleSigm, this)},
-      {TANHYP, std::bind(&DPU::handleTanhyp, this)},
-      {EXPON, std::bind(&DPU::handleExpon, this)},
-      {LK_RELU, std::bind(&DPU::handleLkRelu, this)},
-      {RELU, std::bind(&DPU::handleRelu, this)},
-      {DIV, std::bind(&DPU::handleDiv, this)},
-      {ACC_SOFTMAX, std::bind(&DPU::handleAccSoftmax, this)},
-      {DIV_SOFTMAX, std::bind(&DPU::handleDivSoftmax, this)},
-      {LD_ACC, std::bind(&DPU::handleLdAcc, this)},
-      {SCALE_DW, std::bind(&DPU::handleScaleDw, this)},
-      {SCALE_UP, std::bind(&DPU::handleScaleUp, this)},
-      {MAC_INTER, std::bind(&DPU::handleMacInter, this)},
-      {MODE_31, std::bind(&DPU::handleMode31, this)}};
+      {IDLE, [this] { out.output("IDLE\n"); }},
+      {ADD,
+       [this] {
+         handleOperation("ADD", [](uint64_t a, uint64_t b) { return a + b; });
+       }},
+      {ADD_CONST,
+       [this] {
+         handleOperation("ADD_CONST",
+                         [](uint64_t a, uint64_t b) { return a + b; });
+       }},
+      {SUBT,
+       [this] {
+         handleOperation("SUBT", [](uint64_t a, uint64_t b) { return a - b; });
+       }},
+      {SUBT_ABS,
+       [this] {
+         handleOperation("SUBT_ABS",
+                         [](uint64_t a, uint64_t b) { return a - b; });
+       }},
+      {MULT,
+       [this] {
+         handleOperation("MULT", [](uint64_t a, uint64_t b) { return a * b; });
+       }},
+      {MULT_CONST,
+       [this] {
+         handleOperation("MULT_CONST",
+                         [](uint64_t a, uint64_t b) { return a * b; });
+       }},
+      {LD_IR,
+       [this] {
+         handleOperation("LD_IR", [](uint64_t a, uint64_t b) { return b; });
+       }},
+  };
+
+  std::function<void()> getDSUHandler(DPU_MODE mode) {
+    if (dsuHandlers.find(mode) == dsuHandlers.end())
+      out.fatal(CALL_INFO, -1, "DSU mode %d not implemented\n", mode);
+
+    return dsuHandlers[mode];
+  }
 
   // Events handlers list
   std::vector<std::function<void()>> eventsHandlers;

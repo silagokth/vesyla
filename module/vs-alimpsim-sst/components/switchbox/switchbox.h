@@ -70,12 +70,9 @@ public:
   // SST clock handler
   bool clockTick(Cycle_t currentCycle) override;
 
-  // SST event handler
-  void handleEvent(Event *event) override;
-
 private:
   // Decode instruction
-  void decodeInstr(uint32_t instr);
+  void decodeInstr(uint32_t instr) override;
 
   void switchToFSM(uint32_t fsmPort) {
     currentFsmPort = fsmPort;
@@ -99,12 +96,8 @@ private:
 
   // Map input ports to output ports ([source] = target)
   vector<map<uint32_t, uint32_t>> connection_maps;
-  vector<map<uint32_t, uint32_t>> sending_routes_maps;
-  vector<map<uint32_t, uint32_t>> receiving_routes_maps;
-
-  // SST links
-  // Controller link
-  Link *controller_link;
+  vector<map<uint32_t, vector<uint32_t>>> sending_routes_maps;
+  vector<map<uint32_t, vector<uint32_t>>> receiving_routes_maps;
 
   // Slot links
   uint32_t num_slots;

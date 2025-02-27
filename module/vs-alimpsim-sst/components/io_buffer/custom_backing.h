@@ -25,9 +25,10 @@ private:
   Array<MAX_DEPTH, MAX_WIDTH> *io_;
 
 public:
-  BackingIO(std::string memory_file, size_t io_width, size_t io_depth)
+  BackingIO(std::string memory_file, size_t io_width, size_t io_depth,
+            bool read_only)
       : Backing(), memory_file_(memory_file), width_(io_width),
-        depth_(io_depth) {
+        depth_(io_depth), read_only_(read_only) {
     // Check if exceeding maximum width or depth
     if ((io_width > MAX_WIDTH) || (io_depth > MAX_DEPTH)) {
       throw std::runtime_error("Exceeding maximum width or depth");
@@ -107,6 +108,8 @@ public:
     }
     ofs.close();
   }
+
+  void setReadOnly(bool ro) { read_only_ = ro; }
 };
 } // namespace Backend
 } // namespace MemHierarchy

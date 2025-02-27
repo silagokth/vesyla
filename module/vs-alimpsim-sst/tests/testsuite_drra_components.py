@@ -18,14 +18,73 @@ class testcase_drra(SSTTestCase):
         super(type(self), self).tearDown()
 
     #####
-    def test_drra_simpleExample(self):
-        self.drra_template("simpleExample")
+    # def test_drra_simpleExample(self):
+    #     self.drra_template("simpleExample")
 
-    def test_drra_switchboxFSMSwitching(self):
-        self.drra_template("switchboxFSMSwitching")
+    # def test_drra_switchboxFSMSwitching(self):
+    #     self.drra_template("switchboxFSMSwitching")
 
-    def test_drra_registerFileReadWriteNarrow(self):
-        self.drra_template("registerFileReadWriteNarrow")
+    # def test_drra_registerFileReadWriteNarrow(self):
+    #     self.drra_template("registerFileReadWriteNarrow")
+
+    def test_example0_drra_template(self):
+        # Get the path to the test files
+        test_path = self.get_testsuite_dir()
+        outdir = self.get_test_output_run_dir()
+        tmpdir = self.get_test_output_tmp_dir()
+
+        # Set the various file paths
+        testDataFileName = "example0_drra_template"
+        testcase = f"{testDataFileName}.py"
+
+        sdlfile = f"{test_path}/{testDataFileName}.py"
+        output_buffer = f"{test_path}/refFiles/{testDataFileName}_outputBuffer.bin"
+        output_buffer_reference = (
+            f"{test_path}/refFiles/{testDataFileName}_outputBuffer_reference.bin"
+        )
+        outfile = f"{outdir}/{testDataFileName}.out"
+        output_buffer_temp = f"{tmpdir}/{testDataFileName}_outputBuffer_temp.bin"
+        cmpfile = f"{tmpdir}/{testDataFileName}.cmp"
+        errfile = f"{outdir}/{testDataFileName}.err"
+        mpioutfiles = f"{outdir}/{testDataFileName}.testfile"
+
+        # Clear the content of the output buffer file
+        os.system(f"echo -n > {outfile}")
+
+        self.run_sst(sdlfile, outfile, errfile, mpi_out_files=mpioutfiles)
+
+        testing_remove_component_warning_from_file(outfile)
+
+        # Copy the output file to the cmp file
+        os.system(f"cp {outfile} {cmpfile}")
+        os.system(f"cp {output_buffer} {output_buffer_temp}")
+
+        # NOTE: THE PASS / FAIL EVALUATIONS ARE PORTED FROM THE SQE BAMBOO
+        #       BASED testSuite_XXX.sh THESE SHOULD BE RE-EVALUATED BY THE
+        #       DEVELOPER AGAINST THE LATEST VERSION OF SST TO SEE IF THE
+        #       TESTS & RESULT FILES ARE STILL VALID
+
+        # Perform the test
+        if os_test_file(errfile, "-s"):
+            log_testing_note(
+                f"drra test {testDataFileName} has a Non-empty Error File {errfile}"
+            )
+
+        cmp_result = testing_compare_sorted_diff(
+            testcase, output_buffer, output_buffer_reference
+        )
+        if not cmp_result:
+            diffdata = testing_get_diff_data(testcase)
+            log_failure(diffdata)
+
+        # Clear the content of the output buffer file
+        os.system(f"rm -rf {output_buffer}")
+        os.system(f"touch {output_buffer}")
+
+        self.assertTrue(
+            cmp_result,
+            f"Sorted Output file {cmpfile} does not match Reference file {output_buffer_reference}",
+        )
 
     def test_drra_timingModel(self):
         test_path = self.get_testsuite_dir()

@@ -35,13 +35,6 @@ TimingState TimingState::createFromEvent(const std::string &name) {
   return TimingState(std::static_pointer_cast<TimingExpression>(event));
 }
 
-// TimingState &TimingState::addEvent(const std::string &name) {
-//   auto event = std::make_shared<TimingEvent>(name, eventCounter++);
-//   addEventName(name);
-//   expression = std::static_pointer_cast<TimingExpression>(event);
-//   return *this;
-// }
-
 TimingState &TimingState::addEvent(const std::string &name,
                                    std::function<void()> handler) {
   auto event = std::make_shared<TimingEvent>(name, eventCounter++);
@@ -61,18 +54,6 @@ TimingState &TimingState::addEvent(const std::string &name, uint8_t priority,
   expression = std::static_pointer_cast<TimingExpression>(event);
   return *this;
 }
-
-// TimingState &TimingState::addTransition(uint64_t delay,
-//                                         const std::string &nextEventName) {
-//   if (!expression) {
-//     throw std::runtime_error("Cannot add transition without an event");
-//   }
-//   auto nextEvent = std::make_shared<TimingEvent>(nextEventName,
-//   eventCounter++); auto transition =
-//       std::make_shared<TransitionOperator>(delay, expression, nextEvent);
-//   expression = std::static_pointer_cast<TimingExpression>(transition);
-//   return *this;
-// }
 
 TimingState &TimingState::addTransition(uint64_t delay,
                                         const std::string &nextEventName,
@@ -120,12 +101,13 @@ TimingState &TimingState::addRepetition(uint64_t iterations, uint64_t delay,
   if (!expression) {
     throw std::runtime_error("Cannot add repetition without an event");
   }
+  delay++;      // delay is always incremented by 1
+  iterations++; // iterations is always incremented by 1
+
   levels_current_iteration.push_back(0);
   levels_total_iterations.push_back(iterations);
   levels_step.push_back(step);
 
-  delay++;      // delay is always incremented by 1
-  iterations++; // iterations is always incremented by 1
   auto repetition =
       std::make_shared<RepetitionOperator>(iterations, delay, expression);
   expression = std::static_pointer_cast<TimingExpression>(repetition);
@@ -136,7 +118,12 @@ uint64_t TimingState::getRepIncrementForCycle(uint64_t cycle) {
   uint64_t increment = 0;
   for (uint64_t i = 0; i < levels_current_iteration.size(); i++) {
     increment += levels_step[i] * levels_current_iteration[i];
+    // printf("level %lu, current_iteration %lu, step %lu, total_iterations
+    // %lu\n",
+    //        i, levels_current_iteration[i], levels_step[i],
+    //        levels_total_iterations[i]);
   }
+  // printf("increment: %lu\n", increment);
   return increment;
 }
 

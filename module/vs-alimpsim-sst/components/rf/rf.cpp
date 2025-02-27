@@ -1,19 +1,12 @@
 #include "rf.h"
 
-#include "activationEvent.h"
-#include "instructionEvent.h"
-#include "ioEvents.h"
+#include "dataEvent.h"
 
 RegisterFile::RegisterFile(ComponentId_t id, Params &params)
     : DRRAResource(id, params) {
-  // Clock
-  TimeConverter *tc = registerClock(
-      clock,
-      new SST::Clock::Handler<RegisterFile>(this, &RegisterFile::clockTick));
-
   // Register file parameters
   access_time = params.find<std::string>("access_time", "0ns");
-  register_file_size = params.find<int>("register_file_size", 1024);
+  register_file_size = params.find<int>("register_file_size", 64);
 }
 
 RegisterFile::~RegisterFile() {}
@@ -23,100 +16,20 @@ void RegisterFile::init(unsigned int phase) {
 }
 
 void RegisterFile::setup() {
-  out.verbose(CALL_INFO, 1, 0, "Setup\n");
-  if (slot_id == 1) {
-    // Initialize registers
-    // out.output("Initializing register file\n");
-    for (int i = 0; i < register_file_size; i++) {
-      registers[i] = 10 + i;
-      // out.output("registers[%d] = %d\n", i, registers[i]);
+  for (int i = 0; i < register_file_size; i++) {
+    for (int j = 0; j < word_bitwidth / 8; j++) {
+      registers[i].push_back(0);
     }
   }
 }
 
-void RegisterFile::complete(unsigned int phase) {
-  out.verbose(CALL_INFO, 1, 0, "Completed\n");
-}
+void RegisterFile::complete(unsigned int phase) {}
 
 void RegisterFile::finish() { out.verbose(CALL_INFO, 1, 0, "Finishing\n"); }
 
 bool RegisterFile::clockTick(Cycle_t currentCycle) {
-  if (currentCycle % 10 == 0) {
-    out.output("--- REGISTERFILE CYCLE %" PRIu64 " ---\n", currentCycle / 10);
-  }
-
   executeScheduledEventsForCycle(currentCycle);
-
   return false;
-}
-
-void RegisterFile::handleEvent(Event *event) {
-  if (event) {
-    // Check if the event is an ActEvent
-    ActEvent *actEvent = dynamic_cast<ActEvent *>(event);
-    if (actEvent) {
-      out.output("Received ActEvent\n");
-      activatePortsForSlot(actEvent->slot_id, actEvent->ports);
-      return;
-    }
-
-    // Check if the event is an InstrEvent
-    InstrEvent *instrEvent = dynamic_cast<InstrEvent *>(event);
-    if (instrEvent) {
-      instrBuffer = instrEvent->instruction;
-      decodeInstr(instrBuffer);
-      out.output("Received InstrEvent: %08x\n", instrBuffer);
-      return;
-    }
-
-    // Check if the event is a memory request
-    IOEvent *readReq = dynamic_cast<IOEvent *>(event);
-    if (readReq) {
-      out.output("Received memory request\n");
-      return;
-    }
-
-    // Check if the event is a data event
-    DataEvent *dataEvent = dynamic_cast<DataEvent *>(event);
-    if (dataEvent) {
-      switch (dataEvent->portType) {
-      case DataEvent::PortType::WriteNarrow:
-        // if (current_dsu_mode != DataEvent::PortType::ReadNarrow) {
-        //   out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-        // } else {
-        out.output("Received data event of size %d bytes (%d words): [",
-                   dataEvent->size / 8, dataEvent->size / word_bitwidth);
-        for (int i = 0; i < (dataEvent->size / 8) - 1; i++) {
-          out.print("%d: %d, ", i, dataEvent->payload[i]);
-        }
-        out.print("%d: %d]\n", (dataEvent->size / 8) - 1,
-                  dataEvent->payload[(dataEvent->size / 8) - 1]);
-        // }
-        break;
-        // case DataEvent::PortType::ReadNarrow:
-        //   if (current_dsu_mode != DataEvent::PortType::WriteNarrow) {
-        //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-        //   }
-        //   break;
-        // case DataEvent::PortType::WriteWide:
-        //   if (current_dsu_mode != DataEvent::PortType::ReadWide) {
-        //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-        //   }
-        //   break;
-        // case DataEvent::PortType::ReadWide:
-        //   if (current_dsu_mode != DataEvent::PortType::WriteWide) {
-        //     out.fatal(CALL_INFO, -1, "Invalid DSU mode\n");
-        //   }
-        //   break;
-
-      default:
-        out.fatal(CALL_INFO, -1, "Invalid port type\n");
-        break;
-      }
-      out.output("Received data event\n");
-      return;
-    }
-  }
 }
 
 void RegisterFile::decodeInstr(uint32_t instr) {
@@ -179,29 +92,37 @@ void RegisterFile::handleDSU(uint32_t instr) {
   uint16_t init_addr = getInstrField(instr, 16, 7);
   uint32_t port = getInstrField(instr, 2, 5);
 
-  port_agus[port] = init_addr;
+  port_agus_init[port] = init_addr;
 
   // Add the event handler
   switch (port) {
-  case DataEvent::PortType::WriteNarrow:
-    next_timing_states[port].addEvent("dsu_write_narrow_" +
-                                          std::to_string(current_event_number),
-                                      [this] { writeNarrow(); });
-    break;
   case DataEvent::PortType::ReadNarrow:
-    next_timing_states[port].addEvent("dsu_read_narrow_" +
-                                          std::to_string(current_event_number),
-                                      [this] { readNarrow(); });
-    break;
-  case DataEvent::PortType::WriteWide:
-    next_timing_states[port].addEvent("dsu_write_wide_" +
-                                          std::to_string(current_event_number),
-                                      [this] { writeWide(); });
+    next_timing_states[port].addEvent(
+        "dsu_read_narrow_" + std::to_string(current_event_number), 1, [this] {
+          updatePortAGUs(DataEvent::PortType::ReadNarrow);
+          readNarrow();
+        });
     break;
   case DataEvent::PortType::ReadWide:
-    next_timing_states[port].addEvent("dsu_read_wide_" +
-                                          std::to_string(current_event_number),
-                                      [this] { readWide(); });
+    next_timing_states[port].addEvent(
+        "dsu_read_wide_" + std::to_string(current_event_number), 1, [this] {
+          updatePortAGUs(DataEvent::PortType::ReadWide);
+          readWide();
+        });
+    break;
+  case DataEvent::PortType::WriteNarrow:
+    next_timing_states[port].addEvent(
+        "dsu_write_narrow_" + std::to_string(current_event_number), 9, [this] {
+          updatePortAGUs(DataEvent::PortType::WriteNarrow);
+          writeNarrow();
+        });
+    break;
+  case DataEvent::PortType::WriteWide:
+    next_timing_states[port].addEvent(
+        "dsu_write_wide_" + std::to_string(current_event_number), 9, [this] {
+          updatePortAGUs(DataEvent::PortType::WriteWide);
+          writeWide();
+        });
     break;
 
   default:
@@ -213,85 +134,109 @@ void RegisterFile::handleDSU(uint32_t instr) {
 }
 
 void RegisterFile::readWide() {
-  DataEvent *dataEvent = new DataEvent(DataEvent::PortType::WriteWide);
   vector<uint8_t> data;
-  out.output("Sending wide data of size %d bytes (%d words): [",
-             io_data_width / 8, io_data_width / word_bitwidth);
-  for (int i = 0; i < io_data_width / 8; i++) {
-    data.push_back(registers[port_agus[PortMap::BulkOut] + i]);
-    out.print("%d: %d, ", i, data[i]);
+  uint32_t addr =
+      port_agus[DataEvent::PortType::ReadWide] * io_data_width / word_bitwidth;
+
+  out.output("Reading bulk data (");
+  vector<uint8_t> current_data;
+  for (int i = 0; i < io_data_width / word_bitwidth; i++) {
+    for (int j = 0; j < word_bitwidth / 8; j++) {
+      data.push_back(registers[addr][j]);
+    }
+    current_data = registers[addr];
+    out.print("@%d: %s", addr, formatRawDataToWords(current_data).c_str());
+    current_data.clear();
+    if (i < io_data_width / word_bitwidth - 1) {
+      out.print(", ");
+    }
+    addr++;
   }
-  out.print("]\n");
+  out.print(")\n");
+
+  DataEvent *dataEvent = new DataEvent(DataEvent::PortType::WriteWide);
   dataEvent->size = io_data_width;
   dataEvent->payload = data;
+
   data_links[0]->send(dataEvent);
-  port_agus[PortMap::BulkOut] += io_data_width / 8;
 }
 
 void RegisterFile::readNarrow() {
   DataEvent *dataEvent = new DataEvent(DataEvent::PortType::WriteNarrow);
-  vector<uint8_t> data = {};
-  for (int i = 0; i < word_bitwidth / 8; i++) {
-    data.push_back((registers[port_agus[PortMap::NarrowOut]] >> (i * 8)) &
-                   0xFF);
-  }
+  vector<uint8_t> data = registers[port_agus[DataEvent::PortType::ReadNarrow]];
+  data.resize(word_bitwidth / 8); // Resize to word size
+
   dataEvent->size = word_bitwidth;
   dataEvent->payload = data;
-  out.output("Sending narrow data of size %d bytes (%d words): %s\n",
-             dataEvent->size / 8, dataEvent->size / word_bitwidth,
-             formatRawDataToWords(dataEvent->payload).c_str());
+  out.output("Reading narrow data (addr=%d, size=%dbits, data=%s)\n",
+             port_agus[DataEvent::PortType::ReadNarrow], word_bitwidth,
+             formatRawDataToWords(data).c_str());
+
   data_links[0]->send(dataEvent);
-  port_agus[PortMap::NarrowOut]++;
 }
 
 void RegisterFile::writeWide() {
-  // out.output("Receive wide data\n");
-  // // Receive data from the switchbox
-  // DataEvent *dataEvent;
+  Event *temp_event;
+  DataEvent *data_event;
+  do {
+    temp_event = data_links[0]->recv();
+    if (temp_event != nullptr) {
+      data_event = dynamic_cast<DataEvent *>(temp_event);
+    }
+  } while (temp_event != nullptr);
+  delete temp_event;
 
-  // while ((dataEvent = dynamic_cast<DataEvent *>(data_link->recv())) !=
-  //        nullptr) {
-  //   if (dataEvent->portType != DataEvent::PortType::WriteWide) {
-  //     out.fatal(CALL_INFO, -1, "Invalid port type\n");
-  //   }
-  //   for (int i = 0; i < io_data_width / 8; i++) {
-  //     registers[agu_initial_addr + i] = dataEvent->payload[i];
-  //   }
+  if (data_event == nullptr)
+    out.fatal(CALL_INFO, -1, "Failed to receive data event\n");
+  if (data_event->portType != DataEvent::PortType::WriteWide)
+    out.fatal(CALL_INFO, -1, "Invalid port type\n");
 
-  //   out.output("dataEvent->size = %d\n", dataEvent->size);
-  //   out.output("dataEvent->payload = [");
-  //   for (int i = 0; i < (dataEvent->size / 8) - 1; i++) {
-  //     out.print("%d: %d, ", i, dataEvent->payload[i]);
-  //   }
-  //   out.print("%d: %d]\n", (dataEvent->size / 8) - 1,
-  //             dataEvent->payload[(dataEvent->size / 8) - 1]);
-  // }
+  // Calculate starting address
+  uint32_t addr =
+      port_agus[DataEvent::PortType::WriteWide] * io_data_width / word_bitwidth;
+
+  out.output("Writing bulk data (");
+  vector<uint8_t> data;
+  for (int i = 0; i < data_event->payload.size(); i++) {
+    data.push_back(data_event->payload[i]);
+    if (data.size() == word_bitwidth / 8) {
+      registers[addr] = data;
+      out.print("@%d: %s", addr, formatRawDataToWords(data).c_str());
+      if (i < data_event->payload.size() - 1) {
+        out.print(", ");
+      }
+      data.clear();
+      addr++;
+    }
+  }
+  out.print(")\n");
 }
 
 void RegisterFile::writeNarrow() {
-  // out.output("Waiting to receive narrow data...\n");
-  // // Receive data from the switchbox
-  // Event *event = data_link->recv();
+  Event *temp_event;
+  DataEvent *data_event;
+  do {
+    temp_event = data_links[0]->recv();
+    if (temp_event != nullptr)
+      data_event = dynamic_cast<DataEvent *>(temp_event);
+  } while (temp_event != nullptr);
+  delete temp_event;
 
-  // if (event == nullptr) {
-  //   out.fatal(CALL_INFO, -1, "Failed to receive data event\n");
-  // }
-  // DataEvent *dataEvent = dynamic_cast<DataEvent *>(event);
+  if (data_event == nullptr)
+    out.fatal(CALL_INFO, -1, "Failed to receive data event\n");
+  if (data_event->portType != DataEvent::PortType::WriteNarrow)
+    out.fatal(CALL_INFO, -1, "Invalid port type\n");
 
-  // if (dataEvent->portType != DataEvent::PortType::WriteNarrow) {
-  //   out.fatal(CALL_INFO, -1, "Invalid port type\n");
-  // }
-  // uint64_t data = 0;
-  // for (int i = 0; i < word_bitwidth / 8; i++) {
-  //   data |= dataEvent->payload[i] << (i * 8);
-  // }
-  // registers[agu_initial_addr] = data;
+  vector<uint8_t> data;
+  data.resize(word_bitwidth / 8);
+  for (int i = 0; i < word_bitwidth / 8; i++) {
+    data[i] = data_event->payload[i];
+  }
+  registers[port_agus[DataEvent::PortType::WriteNarrow]] = data;
 
-  // out.output("dataEvent->size = %d\n", dataEvent->size);
-  // out.output("dataEvent->payload = [");
-  // for (int i = 0; i < (dataEvent->size / 8) - 1; i++) {
-  //   out.print("%d: %d, ", i, dataEvent->payload[i]);
-  // }
-  // out.print("%d: %d]\n", (dataEvent->size / 8) - 1,
-  //           dataEvent->payload[(dataEvent->size / 8) - 1]);
+  out.output("Writing narrow data (addr=%d, size=%dbits, data=%s)\n",
+             port_agus[DataEvent::PortType::WriteNarrow], word_bitwidth,
+             formatRawDataToWords(
+                 registers[port_agus[DataEvent::PortType::WriteNarrow]])
+                 .c_str());
 }

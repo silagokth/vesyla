@@ -41,6 +41,8 @@ public:
     params.push_back(
         {"backing_size_unit", "Size of the backing store", "1MiB"});
     params.push_back({"memory_file", "Memory file for mmap backing", ""});
+    params.push_back({"read_only", "Read-only mode", "false"});
+    params.push_back({"num_columns", "Number of columns", "1"});
     return params;
   }
   SST_ELI_DOCUMENT_PARAMS(getComponentParams())
@@ -82,10 +84,29 @@ private:
   uint64_t word_bitwidth;
   std::string access_time;
 
+  std::string formatRawDataToWords(std::vector<uint8_t> raw_data) {
+    std::string formatted_data = "[";
+    size_t word_size = word_bitwidth / 8;
+    uint64_t current_word = 0;
+    for (size_t i = 0; i < raw_data.size(); i++) {
+      current_word |= raw_data[i] << (i % word_size * 8);
+      if ((i + 1) % word_size == 0) {
+        formatted_data += std::to_string(current_word);
+        current_word = 0;
+        if (i + 1 < raw_data.size()) {
+          formatted_data += ", ";
+        }
+      }
+    }
+    formatted_data += "]";
+    return formatted_data;
+  }
+
   uint32_t num_columns;
 
   SST::MemHierarchy::Backend::Backing *backend = nullptr;
   ScratchBackendConvertor *backendConvertor = nullptr;
+  bool read_only;
 
   int64_t read_address_buffer = -1;
   int64_t write_address_buffer = -1;
