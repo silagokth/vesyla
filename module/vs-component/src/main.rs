@@ -27,21 +27,6 @@ enum Command {
         #[arg(short, long, default_value_t = false)]
         debug: bool,
     },
-    #[command(about = "Generate RTL", name = "gen_rtl")]
-    GenRtl {
-        /// Path to the fabric.json file
-        #[arg(short, long)]
-        fabric_description: String,
-        /// Debug mode (default: false)
-        #[arg(short, long, default_value_t = false)]
-        debug: bool,
-        /// Build directory
-        #[arg(short, long, default_value = "build")]
-        build_dir: String,
-        /// Output JSON file path
-        #[arg(short, long, default_value = "")]
-        output_json: String,
-    },
     #[command(about = "Validate JSON file", name = "validate_json")]
     ValidateJson {
         /// Path to the JSON file
@@ -92,27 +77,6 @@ fn main() {
             info!("Assembling ...");
             assemble(arch, output);
             info!("Done!");
-        }
-        Command::GenRtl {
-            fabric_description,
-            build_dir,
-            output_json,
-            debug,
-        } => {
-            info!("Generating RTL...");
-            if *debug {
-                env_logger::Builder::from_default_env()
-                    .filter_level(log::LevelFilter::Debug)
-                    .init();
-            } else {
-                env_logger::Builder::from_default_env()
-                    .filter_level(log::LevelFilter::Info)
-                    .init();
-            }
-            match rtl_code_gen::gen_rtl(fabric_description, build_dir, output_json) {
-                Ok(_) => info!("Done!"),
-                Err(e) => error!("Error: {}", e),
-            };
         }
         Command::ValidateJson {
             json_file,
