@@ -1,3 +1,5 @@
+use crate::drra::Fabric;
+use crate::utils;
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -18,8 +20,11 @@ fn gen_picture(arch_file: &String, output_dir: &String) {
     // read the json file
     let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    let _row = arch["height"].as_i64().unwrap();
-    let col = arch["width"].as_i64().unwrap();
+    let fabric_json = arch.get("fabric").expect("Fabric not found in .json");
+    let mut fabric = Fabric::new();
+    fabric.parameters = utils::get_parameters(fabric_json, Some("custom_properties".to_string()));
+    let _row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
+    let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
 
     let mut color_map: HashMap<String, String> = HashMap::new();
     color_map.insert("buffer_color_fill".to_string(), "#B2E0E0".to_string());
@@ -60,9 +65,15 @@ fn draw_fabric(
     color_map: &HashMap<String, String>,
     geometry_map: &HashMap<String, i64>,
 ) -> Document {
+    // get row and col from fabric
+    let fabric_json = j.get("fabric").expect("Fabric not found in .json");
+    let mut fabric = Fabric::new();
+    fabric.parameters = utils::get_parameters(fabric_json, Some("custom_properties".to_string()));
+    let row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
+    let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
+
+    // create svg document
     let mut document: Document = Document::new();
-    let row = j["height"].as_i64().unwrap();
-    let col = j["width"].as_i64().unwrap();
 
     // draw fabric
     let fabric_width = col * geometry_map["cell_width"];

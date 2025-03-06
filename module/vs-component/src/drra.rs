@@ -706,32 +706,24 @@ impl Serialize for CellWithCoordinates {
 }
 
 pub struct Fabric {
-    pub height: u64,
-    pub width: u64,
     pub cells: Vec<Vec<Cell>>,
     pub parameters: ParameterList,
 }
 
 impl Fabric {
-    pub fn new(height: u64, width: u64) -> Self {
-        let mut cells = Vec::new();
-        for _ in 0..height {
-            let mut row = Vec::new();
-            for _ in 0..width {
-                row.push(Cell::new("".to_string(), vec![]));
-            }
-            cells.push(row);
-        }
+    pub fn new() -> Self {
         Fabric {
-            height,
-            width,
-            cells,
+            cells: Vec::new(),
             parameters: ParameterList::new(),
         }
     }
 
     pub fn add_cell(&mut self, cell: &Cell, row: u64, col: u64) {
         self.cells[row as usize][col as usize] = cell.clone();
+    }
+
+    pub fn get_parameter(&self, name: &str) -> Option<u64> {
+        self.parameters.get(name).cloned()
     }
 
     fn get_fingerprint_table(&self) -> HashMap<String, String> {
@@ -818,10 +810,7 @@ impl RTLComponent for Fabric {
         if let Ok(output_str) = mj_env.render_str(&tb_template, self) {
             fs::write(tb_output_file, output_str)?;
         } else {
-            panic!(
-                "Failed to render template for fabric testbench {}",
-                self.height
-            );
+            panic!("Failed to render template for fabric testbench");
         }
         Ok(())
     }
@@ -838,8 +827,6 @@ impl Serialize for Fabric {
         // - cells
         // - custom_properties
         let mut state = serializer.serialize_map(Some(4))?;
-        state.serialize_entry("height", &self.height)?;
-        state.serialize_entry("width", &self.width)?;
         let mut cells_with_coords = Vec::new();
         for (row_idx, row) in self.cells.iter().enumerate() {
             for (col_idx, cell) in row.iter().enumerate() {

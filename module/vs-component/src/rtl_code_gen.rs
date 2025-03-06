@@ -16,20 +16,6 @@ pub fn get_rtl_output_dir(build_dir: &String) -> Result<PathBuf> {
     Ok(rtl_output_dir)
 }
 
-fn get_parameters(component: &serde_json::Value, param_key: Option<String>) -> ParameterList {
-    let param_key = param_key.unwrap_or("parameters".to_string());
-    let mut parameters = ParameterList::new();
-    let component_params = component.get(param_key);
-    if let Some(component_params) = component_params {
-        for param in component_params.as_array().unwrap() {
-            let name = param.get("name").unwrap().as_str().unwrap();
-            let value = param.get("value").unwrap();
-            parameters.insert(name.to_string(), value.as_u64().unwrap());
-        }
-    }
-    parameters
-}
-
 /// Merge parameters from params2 into params1
 fn merge_parameters(
     params1: &mut ParameterList,
@@ -160,12 +146,8 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         .get("fabric")
         .expect("Fabric not found in .json");
 
-    // Get fabric dimensions
-    let fabric_height = fabric["height"].as_u64().unwrap();
-    let fabric_width = fabric["width"].as_u64().unwrap();
-
     // Create the fabric object
-    let mut fabric_object = Fabric::new(fabric_height, fabric_width);
+    let mut fabric_object = Fabric::new();
     fabric_object.parameters = get_parameters(fabric, Some("custom_properties".to_string()));
 
     // add fabric parameters to the registry

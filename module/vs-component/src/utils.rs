@@ -1,3 +1,4 @@
+use crate::drra::ParameterList;
 use log::{debug, warn};
 use std::env;
 use std::io::{Error, Result};
@@ -8,6 +9,20 @@ pub fn get_library_path() -> String {
     // get abosulte path
     let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
     abosulte.to_str().unwrap().to_string()
+}
+
+pub fn get_parameters(component: &serde_json::Value, param_key: Option<String>) -> ParameterList {
+    let param_key = param_key.unwrap_or("parameters".to_string());
+    let mut parameters = ParameterList::new();
+    let component_params = component.get(param_key);
+    if let Some(component_params) = component_params {
+        for param in component_params.as_array().unwrap() {
+            let name = param.get("name").unwrap().as_str().unwrap();
+            let value = param.get("value").unwrap();
+            parameters.insert(name.to_string(), value.as_u64().unwrap());
+        }
+    }
+    parameters
 }
 
 pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
