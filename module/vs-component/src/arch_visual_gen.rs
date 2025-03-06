@@ -100,13 +100,12 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         )
         .add(
-            Text::new()
+            Text::new("Input Buffer")
                 .set("x", buffer_width / 2)
                 .set("y", buffer_height / 2)
                 .set("fill", buffer_color_text.clone())
                 .set("font-size", 20)
-                .set("text-anchor", "middle")
-                .add(svg::node::Text::new("Input Buffer")),
+                .set("text-anchor", "middle"),
         )
         .add(
             Rectangle::new()
@@ -122,7 +121,7 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         )
         .add(
-            Text::new()
+            Text::new("Output Buffer")
                 .set("x", buffer_width / 2)
                 .set(
                     "y",
@@ -130,8 +129,7 @@ fn draw_fabric(
                 )
                 .set("fill", buffer_color_text)
                 .set("font-size", 20)
-                .set("text-anchor", "middle")
-                .add(svg::node::Text::new("Output Buffer")),
+                .set("text-anchor", "middle"),
         );
 
     // draw cells
@@ -161,15 +159,14 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         );
         cell_group = cell_group.add(
-            Text::new()
+            Text::new(format!("[{},{}]", rr, cc))
                 .set("x", x + cell_width / 2)
                 .set("y", y + 40)
                 .set("fill", cell_color_text.clone())
                 .set("font-size", 20)
                 .set("font-weight", "bold")
                 .set("text-anchor", "middle")
-                .set("font-style", "normal")
-                .add(svg::node::Text::new(format!("[{},{}]", rr, cc))),
+                .set("font-style", "normal"),
         );
 
         let controller_width = geometry_map["controller_width"];
@@ -191,7 +188,7 @@ fn draw_fabric(
         let text_x = x + 11 + controller_width / 2;
         let text_y = y + 11 + controller_height / 2;
         cell_group = cell_group.add(
-            Text::new()
+            Text::new(controller["name"].as_str().unwrap())
                 .set("x", text_x)
                 .set("y", text_y)
                 .set("fill", controller_color_text.clone())
@@ -199,8 +196,7 @@ fn draw_fabric(
                 .set("font-weight", "bold")
                 .set("text-anchor", "middle")
                 .set("font-style", "normal")
-                .set("transform", format!("rotate(90, {}, {})", text_x, text_y))
-                .add(svg::node::Text::new(controller["name"].as_str().unwrap())),
+                .set("transform", format!("rotate(90, {}, {})", text_x, text_y)),
         );
 
         let resource_width = geometry_map["resource_width"];
@@ -229,15 +225,14 @@ fn draw_fabric(
                 + 5
                 + (resource_height * resource_size) / 2;
             cell_group = cell_group.add(
-                Text::new()
+                Text::new(resource["name"].as_str().unwrap())
                     .set("x", text_x)
                     .set("y", text_y)
                     .set("fill", resource_color_text.clone())
                     .set("font-size", 16)
                     .set("font-weight", "bold")
                     .set("text-anchor", "middle")
-                    .set("font-style", "normal")
-                    .add(svg::node::Text::new(resource["name"].as_str().unwrap())),
+                    .set("font-style", "normal"),
             );
             resource_y -= resource_height * resource_size;
         }
