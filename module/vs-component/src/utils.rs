@@ -16,10 +16,18 @@ pub fn get_parameters(component: &serde_json::Value, param_key: Option<String>) 
     let mut parameters = ParameterList::new();
     let component_params = component.get(param_key);
     if let Some(component_params) = component_params {
-        for param in component_params.as_array().unwrap() {
-            let name = param.get("name").unwrap().as_str().unwrap();
-            let value = param.get("value").unwrap();
-            parameters.insert(name.to_string(), value.as_u64().unwrap());
+        // check if the parameters are an array
+        if component_params.is_array() {
+            for param in component_params.as_array().unwrap() {
+                let name = param.get("name").unwrap().as_str().unwrap();
+                let value = param.get("value").unwrap();
+                parameters.insert(name.to_string(), value.as_u64().unwrap());
+            }
+        } else {
+            // check if the parameters are an object
+            for (name, value) in component_params.as_object().unwrap() {
+                parameters.insert(name.to_string(), value.as_u64().unwrap());
+            }
         }
     }
     parameters

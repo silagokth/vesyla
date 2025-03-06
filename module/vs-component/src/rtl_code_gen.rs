@@ -148,7 +148,10 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
 
     // Create the fabric object
     let mut fabric_object = Fabric::new();
-    fabric_object.parameters = get_parameters(fabric, Some("custom_properties".to_string()));
+    fabric_object.add_parameters(get_parameters(
+        fabric,
+        Some("custom_properties".to_string()),
+    ));
 
     // add fabric parameters to the registry
     if fabric_object.parameters.is_empty() {

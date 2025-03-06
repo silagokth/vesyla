@@ -20,9 +20,9 @@ fn gen_picture(arch_file: &String, output_dir: &String) {
     // read the json file
     let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    let fabric_json = arch.get("fabric").expect("Fabric not found in .json");
+    // let fabric_json = arch.get("fabric").expect("Fabric not found in .json");
     let mut fabric = Fabric::new();
-    fabric.parameters = utils::get_parameters(fabric_json, Some("custom_properties".to_string()));
+    fabric.add_parameters(utils::get_parameters(&arch, None));
     let _row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
     let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
 
@@ -66,9 +66,8 @@ fn draw_fabric(
     geometry_map: &HashMap<String, i64>,
 ) -> Document {
     // get row and col from fabric
-    let fabric_json = j.get("fabric").expect("Fabric not found in .json");
     let mut fabric = Fabric::new();
-    fabric.parameters = utils::get_parameters(fabric_json, Some("custom_properties".to_string()));
+    fabric.add_parameters(utils::get_parameters(&j, None));
     let row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
     let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
 

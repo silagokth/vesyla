@@ -718,6 +718,17 @@ impl Fabric {
         }
     }
 
+    pub fn add_parameters(&mut self, parameters: ParameterList) {
+        // Check if ROWS and COLS are defined
+        if parameters.contains_key("ROWS") && parameters.contains_key("COLS") {
+            let rows = parameters.get("ROWS").unwrap();
+            let cols = parameters.get("COLS").unwrap();
+            self.cells =
+                vec![vec![Cell::new("".to_string(), Vec::new()); *cols as usize]; *rows as usize];
+        }
+        self.parameters.extend(parameters);
+    }
+
     pub fn add_cell(&mut self, cell: &Cell, row: u64, col: u64) {
         self.cells[row as usize][col as usize] = cell.clone();
     }
