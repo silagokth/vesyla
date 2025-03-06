@@ -27,7 +27,7 @@ fn gen_picture(arch_file: &String, output_dir: &String) {
     // read the json file
     let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    let row = arch["height"].as_i64().unwrap();
+    let _row = arch["height"].as_i64().unwrap();
     let col = arch["width"].as_i64().unwrap();
 
     let mut color_map: HashMap<String, String> = HashMap::new();

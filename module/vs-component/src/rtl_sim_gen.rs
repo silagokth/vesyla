@@ -95,7 +95,7 @@ fn gen_bender(arch_file: &String, output_dir: &String) {
         }
         // sort the targets
         targets.sort();
-        let mut targets_str = String::new();
+        let targets_str;
         if targets.len() == 1 {
             targets_str = targets[0].clone();
         } else {
