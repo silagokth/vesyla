@@ -1,16 +1,7 @@
-#![allow(unused_imports)]
-
-use jsonschema::output;
-use log::{debug, error, info, trace, warn};
-use minijinja;
 use serde_json;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
-use std::hash::Hash;
-use std::string;
-use std::sync::Arc;
-use svg::node::element::{Circle, Group, Line, Rectangle, Text};
+use svg::node::element::{Group, Rectangle, Text};
 use svg::Document;
 
 pub fn generate(arch_file: &String, output_dir: &String) {
