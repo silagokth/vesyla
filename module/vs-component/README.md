@@ -21,24 +21,16 @@
 
 ## Usage
 
-- Basic usage instructions: `vs-component gen_rtl --help`
+- Basic usage instructions: `vs-component assemble --help`
 
 ```shell
-Usage: vs-component gen_rtl [OPTIONS] --fabric-description <FABRIC_DESCRIPTION>
+Usage: vs-component assemble [OPTIONS] --arch <ARCH> --output <OUTPUT>
 
 Options:
-  -f, --fabric-description <FABRIC_DESCRIPTION>  Path to the fabric.json file
-  -d, --debug                                    Debug mode (default: false)
-  -b, --build-dir <BUILD_DIR>                    Build directory [default: build]
-  -h, --help                                     Print help
+  -a, --arch <ARCH>      Architecture JSON file path
+  -o, --output <OUTPUT>  Output directory path
+  -d, --debug
+  -h, --help
 ```
 
-- Examples
-  A [simple fabric description example](simple_example.json) is provided together with the necessary [library components](components/).
-  This example can be run using:
-
-```shell
-vs-component gen_rtl -f simple_example.json
-```
-
-This will generate the fabric RTL code in the default `build` directory.
+- Testcases can be found in the [DRRA Testcase](https://github.com/silagokth/drra-testcase) repository.
