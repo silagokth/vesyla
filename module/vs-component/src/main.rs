@@ -4,6 +4,7 @@ mod drra;
 mod isa;
 mod isa_gen;
 mod rtl_sim_gen;
+mod sst_sim_gen;
 mod utils;
 
 use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
@@ -26,8 +27,10 @@ use std::{cell, env};
 enum Command {
     #[command(about = "Assemble the system", name = "assemble")]
     Assemble {
+        /// Architecture JSON file path
         #[arg(short, long)]
         arch: String,
+        /// Output directory path
         #[arg(short, long)]
         output: String,
         // Debug mode (default: false)
@@ -133,9 +136,10 @@ fn main() {
         }
         Command::Clean { build_dir } => {
             info!("Cleaning build directory ...");
-            match clean(build_dir.clone()) {
+            let rtl_output_dir = get_rtl_output_dir(build_dir).unwrap();
+            match clean(rtl_output_dir.to_str().unwrap().to_string()) {
                 Ok(_) => info!("Done!"),
-                Err(e) => error!("Error: {}", e),
+                Err(e) => error!("Error:  --output <OUTPUT>{}", e),
             };
         }
     }
@@ -173,13 +177,15 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
     }
 }
 
+fn get_rtl_output_dir(build_dir: &String) -> Result<PathBuf> {
+    let rtl_output_dir = Path::new(&build_dir).join("rtl");
+    fs::create_dir_all(&rtl_output_dir)?;
+    Ok(rtl_output_dir)
+}
+
 fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &String) -> Result<()> {
     // Clean build directory
-    clean(build_dir.clone())?;
-
-    // Find or create the build directory
-    let rtl_output_dir = Path::new(&build_dir).join("rtl");
-    fs::create_dir_all(&rtl_output_dir).expect("Failed to create build directory");
+    let rtl_output_dir = get_rtl_output_dir(build_dir)?;
 
     // Create lists for implemented cells, resources and controllers
     let mut implemented_cells: HashMap<String, Cell> = HashMap::new();
@@ -1226,6 +1232,7 @@ fn assemble(arch: &String, output: &String) {
     fs::create_dir_all(Path::new(output).join("arch")).expect("Failed to create arch directory");
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
     fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
+    fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
     match gen_rtl(&arch, &output, &format!("{}/arch/arch.json", output)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
@@ -1241,6 +1248,10 @@ fn assemble(arch: &String, output: &String) {
     arch_visual_gen::generate(
         &format!("{}/arch/arch.json", output),
         &format!("{}/arch", output),
+    );
+    sst_sim_gen::generate(
+        &format!("{}/arch/arch.json", output),
+        &format!("{}/sst", output),
     );
 }
 
