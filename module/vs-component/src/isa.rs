@@ -219,7 +219,6 @@ impl InstructionSet {
 impl VerboMapEntry {
     pub fn from_json(verbo_map_json: serde_json::Value) -> Result<Vec<VerboMapEntry>, Error> {
         let mut verbo_map = Vec::new();
-        println!("{:?}", verbo_map_json);
         for entry in verbo_map_json.as_array().unwrap().iter() {
             let key = entry.get("key").unwrap().as_u64().unwrap();
             let val = entry.get("val").unwrap().as_str().unwrap().to_string();
