@@ -1,14 +1,12 @@
-use crate::utils::{get_library_path, get_rtl_template_from_library};
-use crate::{get_path_from_library, isa::*};
+use crate::isa::*;
+use crate::utils::get_rtl_template_from_library;
 use core::panic;
 use log::warn;
-use minijinja::filters::Filter;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::write,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 pub type ParameterList = BTreeMap<String, u64>;
