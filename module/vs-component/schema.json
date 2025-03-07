@@ -140,14 +140,6 @@
     "fabric": {
       "type": "object",
       "properties": {
-        "height": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "width": {
-          "type": "integer",
-          "minimum": 1
-        },
         "cell_lists": {
           "type": "array",
           "items": {
@@ -204,8 +196,6 @@
         }
       },
       "required": [
-        "height",
-        "width",
         "cell_lists"
       ]
     },

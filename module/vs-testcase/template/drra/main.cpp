@@ -5,13 +5,13 @@
 /*
  * Uncomment the following macro to enable debug mode.
  */
-// #define DEBUG
+#define DEBUG
 
 /*
  * Uncomment the following macro to generate human readable output file for
  * debugging. It is mandatory to enable define DATA_TYPE if DEBUG is enabled.
  */
-// #define DATA_TYPE int16_t
+#define DATA_TYPE int16_t
 
 int main() { return run_simulation(); }
 

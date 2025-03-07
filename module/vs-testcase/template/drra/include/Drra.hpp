@@ -218,11 +218,11 @@ void set_state_reg(int row, int col, int addr, int value) {
 }
 
 void simulate_code_segment(int id) {
-  if (current_model == 1) {
+  if (current_model == 2) {
     string cmd;
     cmd = "bash ../script/instr_sim.sh " + to_string(id);
     assert(system(cmd.c_str()) == 0);
-  } else if (current_model == 2) {
+  } else if (current_model == 3) {
     string cmd;
     cmd = "bash ../script/rtl_sim.sh " + to_string(id);
     assert(system(cmd.c_str()) == 0);
@@ -267,17 +267,6 @@ int run_simulation() {
   compile();
   reset_all();
   load_input_data("mem/sram_image_in.bin");
-  current_model = 1;
-  model_l1();
-#ifdef DEBUG
-  bin_to_hex_file("mem/sram_image_m1.bin", "mem/sram_image_m1.hex");
-  bin_to_num_file<DATA_TYPE>("mem/sram_image_m1.bin", "mem/sram_image_m1.txt");
-#endif
-  cout << "Verify model 1 against model 0 ..." << endl;
-  assert(verify("mem/sram_image_m0.bin", "mem/sram_image_m1.bin"));
-
-  reset_all();
-  load_input_data("mem/sram_image_in.bin");
   current_model = 2;
   model_l1();
 #ifdef DEBUG
@@ -286,6 +275,17 @@ int run_simulation() {
 #endif
   cout << "Verify model 2 against model 0 ..." << endl;
   assert(verify("mem/sram_image_m0.bin", "mem/sram_image_m2.bin"));
+
+  reset_all();
+  load_input_data("mem/sram_image_in.bin");
+  current_model = 3;
+  model_l1();
+#ifdef DEBUG
+  bin_to_hex_file("mem/sram_image_m3.bin", "mem/sram_image_m3.hex");
+  bin_to_num_file<DATA_TYPE>("mem/sram_image_m3.bin", "mem/sram_image_m3.txt");
+#endif
+  cout << "Verify model 3 against model 0 ..." << endl;
+  assert(verify("mem/sram_image_m0.bin", "mem/sram_image_m3.bin"));
   cout << "Success!" << endl;
   return 0;
 }

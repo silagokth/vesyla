@@ -1,14 +1,8 @@
-#![allow(unused_imports)]
-
-use jsonschema::output;
-use log::{debug, error, info, trace, warn};
 use minijinja;
 use serde_json;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::hash::Hash;
-use std::string;
 
 pub fn generate(arch_file: &String, output_dir: &String) {
     gen_bender(arch_file, output_dir);
@@ -95,7 +89,7 @@ fn gen_bender(arch_file: &String, output_dir: &String) {
         }
         // sort the targets
         targets.sort();
-        let mut targets_str = String::new();
+        let targets_str;
         if targets.len() == 1 {
             targets_str = targets[0].clone();
         } else {

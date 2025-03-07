@@ -1,14 +1,7 @@
-#![allow(unused_imports)]
-
-use jsonschema::output;
-use log::{debug, error, info, trace, warn};
 use minijinja;
 use serde_json;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::hash::Hash;
-use std::string;
 
 pub fn generate(arch_file: &String, output_dir: &String) {
     let isa_file = format!("{}/isa.json", output_dir);

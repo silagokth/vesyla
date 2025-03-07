@@ -1,16 +1,9 @@
-#![allow(unused_imports)]
-
-use jsonschema::output;
-use log::{debug, error, info, trace, warn};
-use minijinja;
+use crate::drra::Fabric;
+use crate::utils;
 use serde_json;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
-use std::hash::Hash;
-use std::string;
-use std::sync::Arc;
-use svg::node::element::{Circle, Group, Line, Rectangle, Text};
+use svg::node::element::{Group, Rectangle, Text};
 use svg::Document;
 
 pub fn generate(arch_file: &String, output_dir: &String) {
@@ -27,8 +20,11 @@ fn gen_picture(arch_file: &String, output_dir: &String) {
     // read the json file
     let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
-    let row = arch["height"].as_i64().unwrap();
-    let col = arch["width"].as_i64().unwrap();
+    // let fabric_json = arch.get("fabric").expect("Fabric not found in .json");
+    let mut fabric = Fabric::new();
+    fabric.add_parameters(utils::get_parameters(&arch, None));
+    let _row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
+    let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
 
     let mut color_map: HashMap<String, String> = HashMap::new();
     color_map.insert("buffer_color_fill".to_string(), "#B2E0E0".to_string());
@@ -69,9 +65,14 @@ fn draw_fabric(
     color_map: &HashMap<String, String>,
     geometry_map: &HashMap<String, i64>,
 ) -> Document {
+    // get row and col from fabric
+    let mut fabric = Fabric::new();
+    fabric.add_parameters(utils::get_parameters(&j, None));
+    let row: i64 = fabric.get_parameter("ROWS").unwrap().try_into().unwrap();
+    let col: i64 = fabric.get_parameter("COLS").unwrap().try_into().unwrap();
+
+    // create svg document
     let mut document: Document = Document::new();
-    let row = j["height"].as_i64().unwrap();
-    let col = j["width"].as_i64().unwrap();
 
     // draw fabric
     let fabric_width = col * geometry_map["cell_width"];
@@ -100,13 +101,12 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         )
         .add(
-            Text::new()
+            Text::new("Input Buffer")
                 .set("x", buffer_width / 2)
                 .set("y", buffer_height / 2)
                 .set("fill", buffer_color_text.clone())
                 .set("font-size", 20)
-                .set("text-anchor", "middle")
-                .add(svg::node::Text::new("Input Buffer")),
+                .set("text-anchor", "middle"),
         )
         .add(
             Rectangle::new()
@@ -122,7 +122,7 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         )
         .add(
-            Text::new()
+            Text::new("Output Buffer")
                 .set("x", buffer_width / 2)
                 .set(
                     "y",
@@ -130,8 +130,7 @@ fn draw_fabric(
                 )
                 .set("fill", buffer_color_text)
                 .set("font-size", 20)
-                .set("text-anchor", "middle")
-                .add(svg::node::Text::new("Output Buffer")),
+                .set("text-anchor", "middle"),
         );
 
     // draw cells
@@ -161,15 +160,14 @@ fn draw_fabric(
                 .set("stroke-width", 2),
         );
         cell_group = cell_group.add(
-            Text::new()
+            Text::new(format!("[{},{}]", rr, cc))
                 .set("x", x + cell_width / 2)
                 .set("y", y + 40)
                 .set("fill", cell_color_text.clone())
                 .set("font-size", 20)
                 .set("font-weight", "bold")
                 .set("text-anchor", "middle")
-                .set("font-style", "normal")
-                .add(svg::node::Text::new(format!("[{},{}]", rr, cc))),
+                .set("font-style", "normal"),
         );
 
         let controller_width = geometry_map["controller_width"];
@@ -191,7 +189,7 @@ fn draw_fabric(
         let text_x = x + 11 + controller_width / 2;
         let text_y = y + 11 + controller_height / 2;
         cell_group = cell_group.add(
-            Text::new()
+            Text::new(controller["name"].as_str().unwrap())
                 .set("x", text_x)
                 .set("y", text_y)
                 .set("fill", controller_color_text.clone())
@@ -199,8 +197,7 @@ fn draw_fabric(
                 .set("font-weight", "bold")
                 .set("text-anchor", "middle")
                 .set("font-style", "normal")
-                .set("transform", format!("rotate(90, {}, {})", text_x, text_y))
-                .add(svg::node::Text::new(controller["name"].as_str().unwrap())),
+                .set("transform", format!("rotate(90, {}, {})", text_x, text_y)),
         );
 
         let resource_width = geometry_map["resource_width"];
@@ -229,15 +226,14 @@ fn draw_fabric(
                 + 5
                 + (resource_height * resource_size) / 2;
             cell_group = cell_group.add(
-                Text::new()
+                Text::new(resource["name"].as_str().unwrap())
                     .set("x", text_x)
                     .set("y", text_y)
                     .set("fill", resource_color_text.clone())
                     .set("font-size", 16)
                     .set("font-weight", "bold")
                     .set("text-anchor", "middle")
-                    .set("font-style", "normal")
-                    .add(svg::node::Text::new(resource["name"].as_str().unwrap())),
+                    .set("font-style", "normal"),
             );
             resource_y -= resource_height * resource_size;
         }
