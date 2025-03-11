@@ -35,10 +35,10 @@ io_output_buffer_filepath = args.io_output_buffer_filepath
 
 assembly_program_path = args.assembly_program_path
 
-default_backing = "malloc"
+default_backing = "mfile"
 default_backing_size_unit = "1MiB"
 default_access_time = "0ns"
-
+default_backing_file = ""
 
 # Initialize input and output buffers
 print("[SST SIM] - Initializing input and output buffers")
@@ -87,6 +87,8 @@ seq_obj_{{r}}_{{c}}_params = {
     "word_bitwidth": word_bitwidth,
     "cell_coordinates": [{{r}}, {{c}}],
     "num_slots": {{ thiscell.cell.controller.parameters.NUM_SLOTS }},
+    "backing_type": default_backing,
+    "memory_file": default_backing_file,
 }
 seq_obj_{{r}}_{{c}}.addParams(seq_obj_{{r}}_{{c}}_params)
 

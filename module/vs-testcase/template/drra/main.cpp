@@ -1,7 +1,3 @@
-#include "Drra.hpp"
-#include "Util.hpp"
-#include <cstdlib>
-
 /*
  * Uncomment the following macro to enable debug mode.
  */
@@ -12,6 +8,12 @@
  * debugging. It is mandatory to enable define DATA_TYPE if DEBUG is enabled.
  */
 #define DATA_TYPE int16_t
+
+#include "Drra.hpp"
+#include "Util.hpp"
+#include <cstdlib>
+
+
 
 int main() { return run_simulation(); }
 

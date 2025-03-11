@@ -6,7 +6,7 @@ find_program(RUSTC_EXECUTABLE rustc)
 
 # Assuming the Rust project is also using modules or dependencies managed by Cargo
 # and the main source file is located at "src/main.rs"
-file(GLOB SRC "src/*.rs")
+file(GLOB SRC "src/*.rs" "sst/*.j2")
 
 add_custom_command(
    OUTPUT ${CMAKE_BINARY_DIR}/cargo/${CURRENT_SUBPROJECT_NAME}/release/${CURRENT_SUBPROJECT_NAME}
