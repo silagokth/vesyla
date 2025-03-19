@@ -61,7 +61,7 @@ def schedule(model_file, output_dir):
     operation.add_var_to_timing_var_dict(op_table, node_map, start_time_table, timing_variable_table)
     anchor.add_anchor_to_timing_var_dict(anchor_dict, op_table, event_dict, node_map, duration_table, timing_variable_table)
 
-    [latency, solution] = solver.solve(timing_variable_table, constraint_list, op_table, duration_table, 2**15)
+    [latency, solution] = solver.solve(timing_variable_table, constraint_list, op_table, duration_table, 2**32-1)
 
     output_dict = {}
     output_dict["latency"] = latency

@@ -87,8 +87,6 @@ seq_obj_{{r}}_{{c}}_params = {
     "word_bitwidth": word_bitwidth,
     "cell_coordinates": [{{r}}, {{c}}],
     "num_slots": {{ thiscell.cell.controller.parameters.NUM_SLOTS }},
-    "backing_type": default_backing,
-    "memory_file": default_backing_file,
 }
 seq_obj_{{r}}_{{c}}.addParams(seq_obj_{{r}}_{{c}}_params)
 
@@ -175,29 +173,32 @@ for cell_index, cell_slots in enumerate(all_cells_slots):
     current_cell_controller = all_cells_controllers[cell_index]
     current_cell_swb = all_cells_slots[cell_index][0]
     # Slot connections
+    slot_index = 0
     for index, slot in enumerate(cell_slots):
         current_params = current_cell_slots_params[index]
         # Connect sequencer to all slots
         for i in range(get_resource_size(current_params)):
-            seq_link = sst.Link(f"link_seq_{cell_index}_slot{index + i}")
+            seq_link = sst.Link(f"link_seq_{cell_index}_slot{slot_index}")
             seq_link.connect(
-                (current_cell_controller, f"slot_port{index + i}", default_access_time),
+                (current_cell_controller, f"slot_port{slot_index}", default_access_time),
                 (slot, f"controller_port{i}", default_access_time),
             )
             print(
-                f"[SST SIM] - Connected controller ({cell_index}) to slot {index+i} ({slot.getType()} ({index}))"
+                f"[SST SIM] - Connected controller ({cell_index}) to slot {slot_index} ({slot.getType()} ({index}))"
             )
 
             # Connect slots to swb
             if index != 0:  # all except swb
-                swb_link = sst.Link(f"link_swb_{cell_index}_slot{index + i}")
+                swb_link = sst.Link(f"link_swb_{cell_index}_slot{slot_index}")
                 swb_link.connect(
-                    (current_cell_swb, f"slot_port{index + i}", default_access_time),
+                    (current_cell_swb, f"slot_port{slot_index}", default_access_time),
                     (slot, f"data_port{i}", default_access_time),
                 )
                 print(
-                    f"[SST SIM] - Connected switchbox ({cell_index}) to slot {index+i} ({slot.getType()} ({index}))"
+                    f"[SST SIM] - Connected switchbox ({cell_index}) to slot {slot_index} ({slot.getType()} ({index}))"
                 )
+            
+            slot_index += 1
 
 # Connect cells SWB to each other
 for col in range({{parameters.COLS}}):
