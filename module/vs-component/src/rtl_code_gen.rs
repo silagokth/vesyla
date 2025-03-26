@@ -924,5 +924,14 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         }
     }
 
+    // Copy the testbench directory to the output directory
+    let testbench_dir = get_path_from_library(&"tb".to_string()).unwrap();
+    let output_dir = Path::new(&rtl_output_dir).join("tb");
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir).expect("Failed to create output directory");
+    }
+    debug!("Copying directory: {:?} to {:?}", testbench_dir, output_dir);
+    copy_dir(&testbench_dir, &output_dir).expect("Failed to copy directory");
+
     Ok(())
 }
