@@ -2,11 +2,9 @@ use crate::drra;
 use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
 use crate::isa::InstructionSet;
 use crate::utils::*;
-use bs58::encode;
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::fs;
-use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
 use std::path::{Path, PathBuf};
 
@@ -35,21 +33,6 @@ fn merge_parameters(
         }
     }
     Ok(overwritten_params)
-}
-
-fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
-    let mut hasher = DefaultHasher::new();
-    for name in names {
-        hasher.write(name.as_bytes());
-    }
-    for (param_name, param_value) in parameters.iter() {
-        hasher.write(param_name.as_bytes());
-        hasher.write(&param_value.to_be_bytes());
-    }
-    let hash = hasher.finish();
-
-    let str_hash = encode(hash.to_be_bytes()).into_string().to_lowercase();
-    "_".to_string() + &str_hash
 }
 
 fn add_parameters(
@@ -168,7 +151,6 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
     // CELLS
     let cell_list = fabric.get("cells_list").expect("Cells not found in fabric");
     for cell in cell_list.as_array().unwrap() {
-        let mut resource_hashes = Vec::new();
         let mut cell_object = match Cell::from_json(&cell.to_string()) {
             Ok(cell) => cell,
             Err(drra::Error::ComponentWithoutNameOrKind) => {
@@ -347,87 +329,78 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         }
 
         // CONTROLLER
+        let controller_object = cell_object.controller.as_mut().unwrap();
         let mut overwritten_params = Vec::new();
         // Get the controller from the controller pool
-        if cell_object.controller.as_mut().unwrap().size.is_none() {
-            if let Some(controller) = controller_pool.as_array().unwrap().iter().find(|entry| {
-                entry["name"].as_str().unwrap() == cell_object.controller.as_ref().unwrap().name
-            }) {
+        if controller_object.size.is_none() {
+            if let Some(controller) = controller_pool
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"].as_str().unwrap() == controller_object.name)
+            {
                 if let Ok(controller_from_pool) = Controller::from_json(&controller.to_string()) {
                     // Check size
-                    if cell_object.controller.as_ref().unwrap().size.is_none()
-                        && controller_from_pool.size.is_some()
-                    {
-                        cell_object.controller.as_mut().unwrap().size = controller_from_pool.size;
+                    if controller_object.size.is_none() && controller_from_pool.size.is_some() {
+                        controller_object.size = controller_from_pool.size;
                     }
                     // append parameters from controller_from_pool to controller_parameters
                     overwritten_params.extend(merge_parameters(
-                        &mut cell_object.controller.as_mut().unwrap().parameters,
+                        &mut controller_object.parameters,
                         &controller_from_pool.parameters,
                     )?);
                     // append required parameters from controller_from_pool to controller
                     if !controller_from_pool.required_parameters.is_empty() {
-                        cell_object
-                            .controller
-                            .as_mut()
-                            .unwrap()
+                        controller_object
                             .required_parameters
                             .extend(controller_from_pool.required_parameters);
                     }
                     // check if the controller has kind
-                    if controller_from_pool.kind.is_some()
-                        && cell_object.controller.as_ref().unwrap().kind.is_none()
-                    {
-                        cell_object.controller.as_mut().unwrap().kind = controller_from_pool.kind;
+                    if controller_from_pool.kind.is_some() && controller_object.kind.is_none() {
+                        controller_object.kind = controller_from_pool.kind;
                     }
                     // check io input
                     if controller_from_pool.io_input.is_some()
-                        && cell_object.controller.as_ref().unwrap().io_input.is_none()
+                        && controller_object.io_input.is_none()
                     {
-                        cell_object.controller.as_mut().unwrap().io_input =
-                            controller_from_pool.io_input;
+                        controller_object.io_input = controller_from_pool.io_input;
                     }
                     // check io output
                     if controller_from_pool.io_output.is_some()
-                        && cell_object.controller.as_ref().unwrap().io_output.is_none()
+                        && controller_object.io_output.is_none()
                     {
-                        cell_object.controller.as_mut().unwrap().io_output =
-                            controller_from_pool.io_output;
+                        controller_object.io_output = controller_from_pool.io_output;
                     }
                 }
             }
         }
 
         // Check if the controller has kind
-        if cell_object.controller.as_ref().unwrap().kind.is_none() {
+        if controller_object.kind.is_none() {
             panic!(
                 "Kind not found for controller {} in cell {}",
-                cell_object.controller.as_ref().unwrap().name,
-                cell_object.name,
+                controller_object.name, cell_object.name,
             );
         }
 
         // Get the controller from the library if kind is provided
-        if let Some(controller_kind) = cell_object.controller.as_ref().unwrap().kind.clone() {
+        if let Some(controller_kind) = controller_object.kind.clone() {
             if let Ok(lib_controller) = get_arch_from_library(&controller_kind.clone()) {
                 if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
                 {
                     // Check size
-                    if cell_object.controller.as_ref().unwrap().size.is_none()
-                        && controller_from_lib.size.is_some()
-                    {
-                        cell_object.controller.as_mut().unwrap().size = controller_from_lib.size;
+                    if controller_object.size.is_none() && controller_from_lib.size.is_some() {
+                        controller_object.size = controller_from_lib.size;
                     }
                     // append parameters from controller_from_lib to controller_parameters
                     overwritten_params.extend(merge_parameters(
-                        &mut cell_object.controller.as_mut().unwrap().parameters,
+                        &mut controller_object.parameters,
                         &controller_from_lib.parameters,
                     )?);
                     if !overwritten_params.is_empty() {
                         let mut warning = format!(
                             "Some parameters from controller {} in cell {} were overwritten:",
-                            cell_object.controller.as_ref().unwrap().name,
-                            cell_object.name,
+                            controller_object.name, cell_object.name,
                         );
                         for param in overwritten_params.iter() {
                             warning.push_str(&format!(
@@ -440,17 +413,8 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
 
                     // append parameters from controller_from_lib to required_parameters
                     for param_key in controller_from_lib.parameters.keys() {
-                        if !cell_object
-                            .controller
-                            .as_ref()
-                            .unwrap()
-                            .required_parameters
-                            .contains(param_key)
-                        {
-                            cell_object
-                                .controller
-                                .as_mut()
-                                .unwrap()
+                        if !controller_object.required_parameters.contains(param_key) {
+                            controller_object
                                 .required_parameters
                                 .push(param_key.clone());
                         }
@@ -458,122 +422,81 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
 
                     // append required parameters from controller_from_lib to controller
                     if !controller_from_lib.required_parameters.is_empty() {
-                        cell_object
-                            .controller
-                            .as_mut()
-                            .unwrap()
+                        controller_object
                             .required_parameters
                             .extend(controller_from_lib.required_parameters);
                     }
                     // check io input
                     if controller_from_lib.io_input.is_some()
-                        && cell_object.controller.as_ref().unwrap().io_input.is_none()
+                        && controller_object.io_input.is_none()
                     {
-                        cell_object.controller.as_mut().unwrap().io_input =
-                            controller_from_lib.io_input;
+                        controller_object.io_input = controller_from_lib.io_input;
                     }
                     // check io output
                     if controller_from_lib.io_output.is_some()
-                        && cell_object.controller.as_ref().unwrap().io_output.is_none()
+                        && controller_object.io_output.is_none()
                     {
-                        cell_object.controller.as_mut().unwrap().io_output =
-                            controller_from_lib.io_output;
+                        controller_object.io_output = controller_from_lib.io_output;
                     }
                     // get ISA from library if is None
-                    if cell_object.controller.as_ref().unwrap().isa.is_none() {
+                    if controller_object.isa.is_none() {
                         let isa_json = get_isa_from_library(&controller_kind.clone()).unwrap();
                         let isa = InstructionSet::from_json(isa_json);
                         if isa.is_err() {
                             panic!(
                                 "Error with ISA for controller {} in cell {} from library (kind: {}) -> {}",
-                                cell_object.controller.as_ref().unwrap().name,
+                                controller_object.name,
                                 cell_object.name,
                                 controller_kind,
                                 isa.err().unwrap()
                             );
                         }
-                        cell_object.controller.as_mut().unwrap().isa = Some(isa.unwrap());
+                        controller_object.isa = Some(isa.unwrap());
                     }
                 }
             }
         }
 
         // Check controller validity
-        if cell_object.controller.as_ref().unwrap().size.is_none() {
+        if controller_object.size.is_none() {
             panic!(
                 "Size not found for controller {} in cell {}",
-                cell_object.controller.as_ref().unwrap().name,
-                cell_object.name,
+                controller_object.name, cell_object.name,
             );
         }
-        if cell_object.controller.as_ref().unwrap().isa.is_none() {
+        if controller_object.isa.is_none() {
             panic!(
                 "ISA not found for controller {} in cell {} (kind: {})",
-                cell_object.controller.as_ref().unwrap().name,
+                controller_object.name,
                 cell_object.name,
-                cell_object
-                    .controller
-                    .as_ref()
-                    .unwrap()
-                    .kind
-                    .as_ref()
-                    .unwrap(),
+                controller_object.kind.as_ref().unwrap(),
             );
         }
 
         // Get the required parameters for the resource
-        if cell_object
-            .controller
-            .as_ref()
-            .unwrap()
-            .required_parameters
-            .is_empty()
-        {
-            cell_object.controller.as_mut().unwrap().required_parameters = cell_object
-                .controller
-                .as_ref()
-                .unwrap()
-                .parameters
-                .keys()
-                .cloned()
-                .collect();
+        if controller_object.required_parameters.is_empty() {
+            controller_object.required_parameters =
+                controller_object.parameters.keys().cloned().collect();
             warn!(
                     "No required parameters found for controller {} in cell {}, using all parameters as required",
-                    cell_object.controller.as_ref().unwrap().name,
+                    controller_object.name,
                     cell_object.name,
                 );
         }
 
         // Add controller required parameters to the registry
         let mut controller_added_parameters = ParameterList::new();
-        if cell_object
-            .controller
-            .as_ref()
-            .unwrap()
-            .parameters
-            .is_empty()
-            && cell_object
-                .controller
-                .as_ref()
-                .unwrap()
-                .required_parameters
-                .is_empty()
+        if controller_object.parameters.is_empty()
+            && controller_object.required_parameters.is_empty()
         {
             warn!(
                 "No parameters found for controller {} in cell {}",
-                cell_object.controller.as_ref().unwrap().name,
-                cell_object.name,
+                controller_object.name, cell_object.name,
             );
         } else {
             let mut filtered_parameters = ParameterList::new();
-            for required_param in &cell_object.controller.as_ref().unwrap().required_parameters {
-                if let Some(param_value) = cell_object
-                    .controller
-                    .as_ref()
-                    .unwrap()
-                    .parameters
-                    .get(required_param)
-                {
+            for required_param in &controller_object.required_parameters {
+                if let Some(param_value) = controller_object.parameters.get(required_param) {
                     filtered_parameters.insert(required_param.clone(), *param_value);
                 } else if let Some(param_value) = cell_object.parameters.get(required_param) {
                     filtered_parameters.insert(required_param.clone(), *param_value);
@@ -582,13 +505,11 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                 } else {
                     panic!(
                         "Required parameter {} not found for controller {} in cell {}",
-                        required_param,
-                        cell_object.controller.as_ref().unwrap().name,
-                        cell_object.name,
+                        required_param, controller_object.name, cell_object.name,
                     );
                 }
             }
-            cell_object.controller.as_mut().unwrap().parameters = filtered_parameters.clone();
+            controller_object.parameters = filtered_parameters.clone();
             match add_parameters(&filtered_parameters, &mut parameter_list) {
                 Ok(added_params) => {
                     controller_added_parameters = added_params;
@@ -596,82 +517,47 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                 Err(e) => {
                     panic!(
                         "Error with controller parameters for controller {} in cell {}: ({})",
-                        cell_object.controller.as_ref().unwrap().name,
-                        cell_object.name,
-                        e
+                        controller_object.name, cell_object.name, e
                     );
                 }
             }
         }
 
         // generate a hash based on the required parameters for the controller
-        let controller_hash = generate_hash(
-            vec![cell_object
-                .controller
-                .as_ref()
-                .unwrap()
-                .kind
-                .clone()
-                .unwrap()],
-            &parameter_list,
-        );
-        resource_hashes.push(controller_hash.clone());
-        cell_object.controller.as_mut().unwrap().fingerprint = Some(controller_hash.clone());
+        let controller_hash = controller_object.get_fingerprint();
 
         // Check if two controllers with same parameters have the same hash
-        if !implemented_controllers.contains_key(&controller_hash) {
-            implemented_controllers.insert(
-                controller_hash.clone(),
-                cell_object.controller.as_ref().unwrap().clone(),
-            );
+        if !implemented_controllers.contains_key(&controller_hash.clone()) {
+            implemented_controllers
+                .insert(controller_hash.clone(), controller_object.clone().clone());
         } else {
-            cell_object.controller.as_mut().unwrap().already_defined = true;
+            controller_object.already_defined = true;
         }
-
         debug!(
             "Controller: {} in cell: {} (hash: {})",
-            cell_object.controller.as_ref().unwrap().name,
-            cell_object.name,
-            controller_hash,
+            controller_object.name, cell_object.name, controller_hash,
         );
         debug!(
             "Serialized controller: \n{}",
-            serde_json::to_string_pretty(&cell_object.controller.as_ref()).unwrap()
+            serde_json::to_string_pretty(&controller_object).unwrap()
         );
 
-        // Check if the RTL has already been generated for this controller
-        let rtl_output_file = Path::new(&rtl_output_dir).join(format!(
-            "{}.sv",
-            cell_object.controller.as_ref().unwrap().name
-        ));
-        if Path::exists(&rtl_output_file) {
-            debug!(
-                "Using existing RTL for controller {} (hash: {})",
-                cell_object.controller.as_ref().unwrap().name,
-                controller_hash,
-            );
-        } else {
-            // Generate the controller RTL here
-            if cell_object
-                .controller
-                .as_ref()
-                .unwrap()
-                .generate_rtl(&rtl_output_file)
-                .is_ok()
-            {
-                debug!(
-                    "Generated RTL for controller {} (hash: {})",
-                    cell_object.controller.as_ref().unwrap().name,
-                    controller_hash,
-                );
-            } else {
-                panic!(
-                    "Failed to generate RTL for controller {} (hash: {})",
-                    cell_object.controller.as_ref().unwrap().name,
-                    controller_hash,
-                );
-            }
+        // Generate RTL
+        let controller_with_hash = format!("{}_{}", controller_object.name, controller_hash);
+        let bender_output_folder = Path::new(&rtl_output_dir)
+            .join("controllers")
+            .join(controller_with_hash);
+        let rtl_output_folder = bender_output_folder.join("rtl");
+
+        // Generate the controller RTL here
+        if !controller_object.already_defined {
+            controller_object
+                .generate_rtl(&rtl_output_folder)
+                .expect("Failed to generate RTL for controller");
         }
+        controller_object
+            .generate_bender(&bender_output_folder)
+            .unwrap();
 
         // Remove the controller parameters from the registry
         remove_parameters(&controller_added_parameters, &mut parameter_list).unwrap();
@@ -900,10 +786,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
             }
 
             // generate a hash based on the required parameters for the resource
-            let resource_hash =
-                generate_hash(vec![resource_object.kind.clone().unwrap()], &parameter_list);
-            resource_hashes.push(resource_hash.clone());
-            resource_object.fingerprint = Some(resource_hash.clone());
+            let resource_hash = resource_object.get_fingerprint();
 
             // Check if two resources with same parameters have the same hash
             if !implemented_resources.contains_key(&resource_hash) {
@@ -925,41 +808,27 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
             );
 
             // Check if the RTL has already been generated for this resource
-            let rtl_output_file =
-                Path::new(&rtl_output_dir).join(format!("{}.sv", resource_object.name));
-            if Path::exists(&rtl_output_file) {
-                debug!(
-                    "Using existing RTL for resource {} (hash: {})",
-                    resource_object.name, resource_hash,
-                );
-            } else {
-                // Generate the resource RTL here
-                if resource_object.generate_rtl(&rtl_output_file).is_ok() {
-                    debug!(
-                        "Generated RTL for resource {} (hash: {})",
-                        resource_object.name, resource_hash,
-                    );
-                } else {
-                    panic!(
-                        "Failed to generate RTL for resource {} (hash: {})",
-                        resource_object.name, resource_hash,
-                    );
-                }
+            let resource_with_hash = format!("{}_{}", resource_object.name, resource_hash);
+            let bender_output_folder = Path::new(&rtl_output_dir)
+                .join("resources")
+                .join(resource_with_hash);
+            let rtl_output_folder = bender_output_folder.join("rtl");
+
+            // Generate the resource RTL
+            if !resource_object.already_defined {
+                resource_object
+                    .generate_rtl(&rtl_output_folder)
+                    .expect("Failed to generate RTL for resource");
             }
+            resource_object
+                .generate_bender(&bender_output_folder)
+                .unwrap();
 
             // Remove the resource parameters from the registry
             remove_parameters(&resource_added_parameters, &mut parameter_list).unwrap();
         }
-        // generate a hash based on the required parameters for the cell
-        let mut cell_hash_content = Vec::new();
-        if cell_object.kind.is_none() {
-            cell_hash_content = resource_hashes.clone();
-        } else {
-            cell_hash_content.push(cell_object.kind.clone().unwrap());
-            cell_hash_content.extend(resource_hashes.clone());
-        }
-        let cell_hash = generate_hash(cell_hash_content, &parameter_list);
-        cell_object.fingerprint = Some(cell_hash.clone());
+
+        let cell_hash = cell_object.get_fingerprint();
 
         // Check if two cells with same parameters have the same hash
         if !implemented_cells.contains_key(&cell_hash) {
@@ -973,30 +842,20 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
             fabric_object.add_cell(&cell_object, *row, *col);
         }
 
-        let rtl_output_file = Path::new(&rtl_output_dir).join(format!("{}.sv", cell_object.name));
-        // Check if the RTL has already been generated for this cell
-        if Path::exists(&rtl_output_file) {
-            debug!(
-                "Using existing RTL for cell {} (hash: {})",
-                cell_object.name, cell_hash,
-            );
-        } else {
-            debug!(
-                "Serialized cell: \n{}",
-                serde_json::to_string_pretty(&cell_object).unwrap()
-            );
-            if cell_object.generate_rtl(&rtl_output_file).is_ok() {
-                debug!(
-                    "Generated RTL for cell {} (hash: {})",
-                    cell_object.name, cell_hash,
-                );
-            } else {
-                panic!(
-                    "Failed to generate RTL for cell {} (hash: {})",
-                    cell_object.name, cell_hash,
-                );
-            }
+        let cell_with_hash = format!("{}_{}", cell_object.name, cell_hash);
+        let bender_output_folder = Path::new(&rtl_output_dir)
+            .join("cells")
+            .join(cell_with_hash);
+        let rtl_output_folder = bender_output_folder.join("rtl");
+
+        // Generate the cell RTL
+        if !cell_object.already_defined {
+            cell_object
+                .generate_rtl(&rtl_output_folder)
+                .expect("Failed to generate RTL for cell");
         }
+        cell_object.generate_bender(&bender_output_folder).unwrap();
+
         // remove cell parameters from the registry
         remove_parameters(&cell_added_parameters, &mut parameter_list).unwrap();
     }
@@ -1020,24 +879,47 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
     }
 
     // Output the fabric RTL
-    let fabric_output_file = Path::new(&rtl_output_dir).join("fabric.sv");
-    if fabric_object.generate_rtl(&fabric_output_file).is_ok() {
-        debug!("Generated RTL for fabric");
-    } else {
-        panic!("Failed to generate RTL for fabric");
+    let bender_output_folder = Path::new(&rtl_output_dir).join("fabric");
+    // Remove files in the output directory
+    if bender_output_folder.exists() {
+        fs::remove_dir_all(&bender_output_folder).expect("Failed to remove output directory");
     }
+    let rtl_output_folder = bender_output_folder.join("rtl");
+    fabric_object
+        .generate_rtl(&rtl_output_folder)
+        .expect("Failed to generate RTL for fabric");
+    fabric_object
+        .generate_bender(&bender_output_folder)
+        .unwrap();
 
     // copy .sv files in utils directory to the output directory
-    let utils_string = String::from("utils");
-    let utils_dir = get_path_from_library(&utils_string).unwrap();
-    for entry in fs::read_dir(utils_dir).unwrap() {
+    let common_dir = get_path_from_library(&"common".to_string()).unwrap();
+    for entry in fs::read_dir(common_dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if path.is_file() {
-            let file_name = path.file_name().unwrap().to_str().unwrap();
-            if file_name.ends_with(".sv") {
-                let output_file = Path::new(&rtl_output_dir).join(file_name);
-                fs::copy(&path, &output_file).unwrap();
+        if path.is_dir() {
+            let rtl_path = path.join("rtl");
+            debug!("Checking directory: {:?}", rtl_path);
+            // if contains a Bender.yml
+            let bender_yml = path.join("Bender.yml");
+            if bender_yml.exists() {
+                debug!("Found Bender.yml in directory: {:?}", path);
+                // Copy the directory to the output directory/common
+                let output_dir = Path::new(&rtl_output_dir).join("common");
+                if !output_dir.exists() {
+                    fs::create_dir_all(&output_dir).expect("Failed to create output directory");
+                }
+                let output_dir = output_dir.join(path.file_name().unwrap());
+                if !output_dir.exists() {
+                    fs::create_dir_all(&output_dir).expect("Failed to create output directory");
+                }
+                // Copy bender file
+                let bender_yml_output = output_dir.join("Bender.yml");
+                debug!("Copying file: {:?} to {:?}", bender_yml, bender_yml_output);
+                fs::copy(&bender_yml, &bender_yml_output).expect("Failed to copy file");
+                let output_dir = output_dir.join("rtl");
+                debug!("Copying directory: {:?} to {:?}", rtl_path, output_dir);
+                copy_dir(&rtl_path, &output_dir).expect("Failed to copy directory");
             }
         }
     }
