@@ -1,5 +1,5 @@
 use crate::isa::*;
-use crate::utils::get_rtl_template_from_library;
+use crate::utils::{generate_hash, generate_rtl_for_component, get_path_from_library};
 use core::panic;
 use log::warn;
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -39,7 +39,10 @@ impl std::convert::From<std::io::Error> for Error {
 }
 
 pub trait RTLComponent {
-    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error>;
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()>;
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error>;
+    fn generate_hash(&mut self) -> String;
+    fn get_fingerprint(&mut self) -> String;
 }
 
 #[derive(Clone)]
@@ -173,23 +176,53 @@ impl Controller {
 }
 
 impl RTLComponent for Controller {
-    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
-        // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
-            // Create output file
-            fs::File::create(output_file).expect("Failed to create file");
-            let mut mj_env = minijinja::Environment::new();
-            mj_env.set_trim_blocks(true);
-            mj_env.set_lstrip_blocks(true);
-            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
-                fs::write(output_file, output_str)?;
-            } else {
-                panic!("Failed to render template for controller {}", self.name);
-            }
-        } else {
-            panic!("Failed to get RTL template for controller {}", self.name);
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
+        generate_rtl_for_component(
+            &self.kind.as_ref().unwrap(),
+            &self.name.as_str(),
+            output_folder,
+            &self,
+        )
+    }
+
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let bender_filepath = Path::new(&component_path).join("Bender.yml");
+        let component_with_hash: String =
+            format!("{}_{}", self.name, self.clone().get_fingerprint());
+
+        // Read the bender file
+        let mut bender_file =
+            serde_yml::from_str::<serde_yml::Value>(&fs::read_to_string(&bender_filepath).unwrap())
+                .unwrap();
+        bender_file["package"]["name"] = serde_yml::Value::String(component_with_hash);
+        if !bender_filepath.exists() {
+            panic!(
+                "Bender file not found for component: {:?} (looking for {:?})",
+                self.kind.as_ref().unwrap(),
+                bender_filepath
+            );
         }
+        // Write the bender file
+        let bender_file_path = output_folder.join("Bender.yml");
+        fs::write(
+            bender_file_path,
+            serde_yml::to_string(&bender_file).unwrap(),
+        )?;
         Ok(())
+    }
+
+    fn generate_hash(&mut self) -> String {
+        self.fingerprint = Some(generate_hash(vec![self.name.clone()], &self.parameters));
+        self.fingerprint.clone().unwrap()
+    }
+
+    fn get_fingerprint(&mut self) -> String {
+        if self.fingerprint.is_none() {
+            self.generate_hash()
+        } else {
+            self.fingerprint.clone().unwrap()
+        }
     }
 }
 
@@ -370,29 +403,53 @@ impl Resource {
 }
 
 impl RTLComponent for Resource {
-    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
-        // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
-            // Create output file
-            fs::File::create(output_file).expect("Failed to create file");
-            let mut mj_env = minijinja::Environment::new();
-            mj_env.set_trim_blocks(true);
-            mj_env.set_lstrip_blocks(true);
-            match mj_env.render_str(&rtl_template, self) {
-                Ok(output_str) => {
-                    fs::write(output_file, output_str)?;
-                }
-                Err(err) => {
-                    panic!(
-                        "Failed to render template for resource {}: {}",
-                        self.name, err
-                    );
-                }
-            }
-        } else {
-            panic!("Failed to get RTL template for controller {}", self.name);
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
+        generate_rtl_for_component(
+            &self.kind.as_ref().unwrap(),
+            &self.name.as_str(),
+            output_folder,
+            &self,
+        )
+    }
+
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let bender_filepath = Path::new(&component_path).join("Bender.yml");
+        let component_with_hash: String =
+            format!("{}_{}", self.name, self.clone().get_fingerprint());
+
+        // Read the bender file
+        let mut bender_file =
+            serde_yml::from_str::<serde_yml::Value>(&fs::read_to_string(&bender_filepath).unwrap())
+                .unwrap();
+        bender_file["package"]["name"] = serde_yml::Value::String(component_with_hash);
+        if !bender_filepath.exists() {
+            panic!(
+                "Bender file not found for component: {:?} (looking for {:?})",
+                self.kind.as_ref().unwrap(),
+                bender_filepath
+            );
         }
+        // Write the bender file
+        let bender_file_path = output_folder.join("Bender.yml");
+        fs::write(
+            bender_file_path,
+            serde_yml::to_string(&bender_file).unwrap(),
+        )?;
         Ok(())
+    }
+
+    fn generate_hash(&mut self) -> String {
+        self.fingerprint = Some(generate_hash(vec![self.name.clone()], &self.parameters));
+        self.fingerprint.clone().unwrap()
+    }
+
+    fn get_fingerprint(&mut self) -> String {
+        if self.fingerprint.is_none() {
+            self.generate_hash()
+        } else {
+            self.fingerprint.clone().unwrap()
+        }
     }
 }
 
@@ -614,23 +671,109 @@ impl Cell {
 }
 
 impl RTLComponent for Cell {
-    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
-        // Get the RTL template for the controller
-        if let Ok(rtl_template) = get_rtl_template_from_library(self.kind.as_ref().unwrap(), None) {
-            // Create output file
-            fs::File::create(output_file).expect("Failed to create file");
-            let mut mj_env = minijinja::Environment::new();
-            mj_env.set_trim_blocks(true);
-            mj_env.set_lstrip_blocks(true);
-            if let Ok(output_str) = mj_env.render_str(&rtl_template, self) {
-                fs::write(output_file, output_str)?;
-            } else {
-                panic!("Failed to render template for cell {}", self.name);
-            }
-        } else {
-            panic!("Failed to get RTL template for cell {}", self.name);
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
+        generate_rtl_for_component(
+            &self.kind.as_ref().unwrap(),
+            &self.name.as_str(),
+            output_folder,
+            &self,
+        )
+    }
+
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let bender_filepath = Path::new(&component_path).join("Bender.yml");
+
+        if !bender_filepath.exists() {
+            panic!(
+                "Bender file not found for component: {:?} (looking for {:?})",
+                self.kind.as_ref().unwrap(),
+                bender_filepath
+            );
         }
+
+        // Read the bender file
+        let mut bender_file =
+            serde_yml::from_str::<serde_yml::Value>(&fs::read_to_string(&bender_filepath).unwrap())
+                .unwrap();
+
+        // Replace package["name"] with the cell name with the hash
+        let cell_with_hash: String = format!("{}_{}", self.name, self.clone().get_fingerprint());
+        bender_file["package"]["name"] = serde_yml::Value::String(cell_with_hash);
+
+        // Add controller and all resources to the dependencies
+        let mut dependencies = serde_yml::Mapping::new();
+        if let Some(controller) = &self.controller {
+            let controller_with_hash: String = format!(
+                "{}_{}",
+                controller.name,
+                controller.clone().get_fingerprint()
+            );
+            let mut controller_path_map = serde_yml::Mapping::new();
+            controller_path_map.insert(
+                serde_yml::Value::String("path".to_string()),
+                serde_yml::Value::String(format!("../../controllers/{}", controller_with_hash)),
+            );
+            dependencies.insert(
+                serde_yml::Value::String(controller_with_hash),
+                serde_yml::Value::Mapping(controller_path_map),
+            );
+        }
+        if let Some(resources) = &self.resources {
+            for resource in resources.iter() {
+                let resource_with_hash: String =
+                    format!("{}_{}", resource.name, resource.clone().get_fingerprint());
+                let mut resource_path_map = serde_yml::Mapping::new();
+                resource_path_map.insert(
+                    serde_yml::Value::String("path".to_string()),
+                    serde_yml::Value::String(format!("../../resources/{}", resource_with_hash)),
+                );
+                dependencies.insert(
+                    serde_yml::Value::String(resource_with_hash),
+                    serde_yml::Value::Mapping(resource_path_map),
+                );
+            }
+        }
+
+        bender_file["dependencies"] = serde_yml::Value::Mapping(dependencies.clone());
+
+        // Write the bender file
+        let bender_file_path = output_folder.join("Bender.yml");
+        fs::write(
+            bender_file_path,
+            serde_yml::to_string(&bender_file).unwrap(),
+        )?;
+
         Ok(())
+    }
+
+    fn generate_hash(&mut self) -> String {
+        let controller_fingerprint = self
+            .controller
+            .as_ref()
+            .unwrap()
+            .fingerprint
+            .clone()
+            .unwrap();
+        let resources_fingerprints = self
+            .resources
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|x| x.fingerprint.clone().unwrap())
+            .collect::<Vec<String>>();
+        let mut fingerprints = vec![controller_fingerprint];
+        fingerprints.extend(resources_fingerprints);
+        self.fingerprint = Some(generate_hash(fingerprints, &self.parameters));
+        self.fingerprint.clone().unwrap()
+    }
+
+    fn get_fingerprint(&mut self) -> String {
+        if self.fingerprint.is_none() {
+            self.generate_hash()
+        } else {
+            self.fingerprint.clone().unwrap()
+        }
     }
 }
 
@@ -774,56 +917,69 @@ impl Fabric {
 }
 
 impl RTLComponent for Fabric {
-    fn generate_rtl(&self, output_file: &Path) -> Result<(), Error> {
-        // Get the RTL template for the controller
-        let rtl_template =
-            get_rtl_template_from_library(&"fabric".to_string(), Some("fabric.sv".to_string()))
-                .unwrap();
-        let tb_template = get_rtl_template_from_library(
-            &"fabric".to_string(),
-            Some("fabric_tb:sim.sv".to_string()),
-        )
-        .unwrap();
-        // Create output file
-        fs::File::create(output_file).expect("Failed to create file");
-        // Create output file for testbench
-        let tb_output_file = output_file.with_file_name(
-            output_file
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .split(".")
-                .collect::<Vec<&str>>()[0]
-                .to_string()
-                + "_tb:sim.sv",
-        );
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
+        generate_rtl_for_component("fabric", "fabric", output_folder, &self)
+    }
 
-        // Render fabric RTL
-        let mut mj_env = minijinja::Environment::new();
-        mj_env.set_trim_blocks(true);
-        mj_env.set_lstrip_blocks(true);
-        let result = mj_env.render_str(&rtl_template, self);
-        if result.is_err() {
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+        let component_path = get_path_from_library(&"fabric".to_string()).unwrap();
+        let bender_filepath = Path::new(&component_path).join("Bender.yml");
+        if !bender_filepath.exists() {
             panic!(
-                "Failed to render template for fabric RTL: {}",
-                result.err().unwrap()
+                "Bender file not found for fabric (looking for {:?})",
+                bender_filepath
             );
-        } else {
-            let output_str = result.unwrap();
-            fs::write(output_file, output_str).expect("Failed to write to file");
         }
 
-        // Render fabric testbench
-        let mut mj_env = minijinja::Environment::new();
-        mj_env.set_trim_blocks(true);
-        mj_env.set_lstrip_blocks(true);
-        if let Ok(output_str) = mj_env.render_str(&tb_template, self) {
-            fs::write(tb_output_file, output_str)?;
-        } else {
-            panic!("Failed to render template for fabric testbench");
+        // Read the bender file
+        let mut bender_file =
+            serde_yml::from_str::<serde_yml::Value>(&fs::read_to_string(&bender_filepath).unwrap())
+                .unwrap();
+
+        // Add controller and all resources to the dependencies
+        let mut dependencies = serde_yml::Mapping::new();
+
+        for row in self.cells.iter() {
+            for cell in row.iter() {
+                let cell_with_hash = format!("{}_{}", cell.name, cell.clone().get_fingerprint());
+                let mut cell_path_map = serde_yml::Mapping::new();
+                cell_path_map.insert(
+                    serde_yml::Value::String("path".to_string()),
+                    serde_yml::Value::String(format!("../cells/{}", cell_with_hash)),
+                );
+                dependencies.insert(
+                    serde_yml::Value::String(cell_with_hash),
+                    serde_yml::Value::Mapping(cell_path_map),
+                );
+            }
         }
+
+        bender_file["dependencies"] = serde_yml::Value::Mapping(dependencies.clone());
+
+        // Write the bender file
+        let bender_file_path = output_folder.join("Bender.yml");
+        fs::write(
+            bender_file_path,
+            serde_yml::to_string(&bender_file).unwrap(),
+        )?;
+
         Ok(())
+    }
+
+    fn generate_hash(&mut self) -> String {
+        let mut fingerprints = Vec::new();
+        for row in self.cells.iter() {
+            for cell in row.iter() {
+                if let Some(fingerprint) = &cell.fingerprint {
+                    fingerprints.push(fingerprint.clone());
+                }
+            }
+        }
+        generate_hash(fingerprints, &self.parameters)
+    }
+
+    fn get_fingerprint(&mut self) -> String {
+        self.generate_hash()
     }
 }
 

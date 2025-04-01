@@ -3,7 +3,6 @@ mod drra;
 mod isa;
 mod isa_gen;
 mod rtl_code_gen;
-mod rtl_sim_gen;
 mod sst_sim_gen;
 mod utils;
 
@@ -144,10 +143,6 @@ fn assemble(arch: &String, output: &String) {
     isa_gen::generate(
         &format!("{}/arch/arch.json", output),
         &format!("{}/isa", output),
-    );
-    rtl_sim_gen::generate(
-        &format!("{}/arch/arch.json", output),
-        &format!("{}/rtl", output),
     );
     arch_visual_gen::generate(
         &format!("{}/arch/arch.json", output),

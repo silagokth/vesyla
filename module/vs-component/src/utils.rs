@@ -1,14 +1,38 @@
 use crate::drra::ParameterList;
+use bs58::encode;
 use log::{debug, warn};
-use std::env;
+use serde::Serialize;
+use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 pub fn get_library_path() -> String {
     let lib_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").expect("Environment variable VESYLA_SUITE_PATH_COMPONENTS not set! Did you forget to source the setup script env.sh?");
     // get abosulte path
     let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
     abosulte.to_str().unwrap().to_string()
+}
+
+pub fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let path = entry.path();
+        let dst_path = dst.join(path.file_name().unwrap());
+
+        if ty.is_dir() {
+            copy_dir(&path, &dst_path)?;
+        } else {
+            fs::copy(&path, &dst_path)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn get_parameters(component: &serde_json::Value, param_key: Option<String>) -> ParameterList {
@@ -138,21 +162,12 @@ pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value
     }
 }
 
-pub fn get_rtl_template_from_library(
-    component_name: &String,
-    template_name: Option<String>,
-) -> Result<String> {
-    let template_name = template_name.unwrap_or("rtl.sv".to_string()).clone();
-    debug!(
-        "Looking for RTL template for component \"{}\" (template: {})",
-        component_name, template_name
-    );
+pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>> {
     let component_path = get_path_from_library(component_name)?;
-    // Check if a folder in the library is named the same as the cell
-    let rtl_path = component_path.join(template_name);
+    let rtl_path = component_path.join("rtl");
     if !rtl_path.exists() {
         warn!(
-            "RTL template for component \"{}\" not found in library (component path: {})",
+            "RTL files for component \"{}\" not found in library (component path: {})",
             component_name,
             component_path.to_str().unwrap()
         );
@@ -164,13 +179,143 @@ pub fn get_rtl_template_from_library(
             ),
         ));
     }
+
+    // Run the bender command to get the list of files
+    let mut bender_cmd = std::process::Command::new("bender");
+    let cmd = bender_cmd
+        .arg("-d")
+        .arg(component_path.to_str().unwrap())
+        .arg("script")
+        .arg("flist");
+
+    let output = match cmd.output() {
+        Ok(output) => output,
+        Err(e) => {
+            warn!(
+                "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
+                component_name,
+                component_path.to_str().unwrap(),
+                e
+            );
+            return Err(Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Failed to run bender command to get the list of RTL files for component {}",
+                    component_name
+                ),
+            ));
+        }
+    };
+
+    // Check if the command was successful
+    if !output.status.success() {
+        warn!(
+            "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
+            component_name,
+            component_path.to_str().unwrap(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Err(Error::new(
+            std::io::ErrorKind::Other,
+            format!(
+                "Failed to run bender command to get the list of RTL files for component {}",
+                component_name
+            ),
+        ));
+    }
+
+    // Parse the output of the bender command
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let mut rtl_files = Vec::new();
+    for line in output_str.lines() {
+        rtl_files.push(line.to_string());
+    }
+
+    // Remove Bender.lock file from directory
+    let lock_file = component_path.join("Bender.lock");
+    if lock_file.exists() {
+        fs::remove_file(lock_file).expect("Failed to remove Bender.lock file");
+    }
+
+    Ok(rtl_files)
+}
+
+pub fn generate_rtl_for_component(
+    kind: &str,
+    name: &str,
+    output_folder: &Path,
+    component: &impl Serialize,
+) -> Result<()> {
+    // Check if output folder exists
+    if !output_folder.exists() {
+        fs::create_dir_all(output_folder)?;
+    } else {
+        warn!(
+            "Overwriting existing RTL for controller {} (path: {})",
+            name,
+            output_folder.to_str().unwrap()
+        );
+    }
+
+    let rtl_files_list = get_rtl_files_from_library(&kind.to_string()).expect(&format!(
+        "Failed to get RTL files from library for {}",
+        kind
+    ));
+    debug!("RTL files: {:?}", rtl_files_list);
+
+    for rtl_file in rtl_files_list {
+        if rtl_file.is_empty() {
+            continue;
+        }
+        // Get the name of the file from the path
+        let rtl_filename = Path::new(&rtl_file).file_name().unwrap();
+        // Create output file
+        let output_file = output_folder.join(&rtl_filename);
+        debug!("Generating RTL file: {}", output_file.to_str().unwrap());
+        // Check if file exists with .j2 extension
+        let rtl_template_str = rtl_file.clone() + ".j2";
+        let rtl_template_path = Path::new(&rtl_template_str);
+        if rtl_template_path.exists() {
+            let mut mj_env = minijinja::Environment::new();
+            mj_env.set_trim_blocks(true);
+            mj_env.set_lstrip_blocks(true);
+            let rtl_template_content =
+                fs::read_to_string(&rtl_template_path).expect("Failed to read template file");
+            mj_env
+                .add_template("rtl_template", &rtl_template_content.as_str())
+                .expect("Failed to add template");
+            let result = mj_env
+                .get_template("rtl_template")
+                .expect("Failed to get template")
+                .render(&component);
+            let output_str = result.expect("Failed to render template");
+            fs::write(&output_file, output_str).expect("Failed to write file");
+        } else {
+            // Copy the file
+            fs::copy(Path::new(&rtl_file), output_file).expect("Failed to copy file");
+        }
+    }
+
     debug!(
-        "RTL template found for component \"{}\" (path: {})",
-        component_name,
-        rtl_path.to_str().unwrap()
+        "Generated RTL for component {} (path: {})",
+        name,
+        output_folder.to_str().unwrap()
     );
 
-    // Read the rtl.sv file
-    let rtl_str = std::fs::read_to_string(&rtl_path).expect("Failed to read file");
-    Ok(rtl_str)
+    Ok(())
+}
+
+pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
+    let mut hasher = DefaultHasher::new();
+    for name in names {
+        hasher.write(name.as_bytes());
+    }
+    for (param_name, param_value) in parameters.iter() {
+        hasher.write(param_name.as_bytes());
+        hasher.write(&param_value.to_be_bytes());
+    }
+    let hash = hasher.finish();
+
+    let str_hash = encode(hash.to_be_bytes()).into_string().to_lowercase();
+    "_".to_string() + &str_hash
 }

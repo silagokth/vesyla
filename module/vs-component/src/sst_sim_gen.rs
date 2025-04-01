@@ -1,12 +1,25 @@
-use log::info;
+use log::{info, warn};
 use minijinja;
 use serde_json;
 use std::fs;
+use std::io::Error;
 
-fn register_drra_library() {
+fn register_drra_library() -> Result<(), Error> {
     // Get the VESYLA_SUITE_PATH_COMPONENTS environment variable
     let vesyla_suite_path_components = std::env::var("VESYLA_SUITE_PATH_COMPONENTS")
         .expect("VESYLA_SUITE_PATH_COMPONENTS environment variable is not set");
+
+    // Check if the sst-register command is available
+    let output = std::process::Command::new("sst-register")
+        .arg("--help")
+        .output();
+    if output.is_err() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "sst-register command not found",
+        ));
+    }
+
     // Execute sst-register command
     let output = std::process::Command::new("sst-register")
         .arg("drra")
@@ -15,8 +28,13 @@ fn register_drra_library() {
         .expect("Failed to execute sst-register command");
 
     if !output.status.success() {
-        panic!("sst-register command failed: {:?}", output);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "sst-register command failed",
+        ));
     }
+
+    Ok(())
 }
 
 fn gen_sst_config(arch_file: &String, output_dir: &String) {
@@ -49,6 +67,9 @@ fn gen_sst_config(arch_file: &String, output_dir: &String) {
 }
 
 pub fn generate(arch_file: &String, output_dir: &String) {
-    register_drra_library();
-    gen_sst_config(arch_file, output_dir);
+    if register_drra_library().is_ok() {
+        gen_sst_config(arch_file, output_dir);
+    } else {
+        warn!("SST DRRA library registration failed, skipping SST configuration generation");
+    }
 }
