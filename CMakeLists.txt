@@ -27,7 +27,6 @@ set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 add_subdirectory("module/vs-manas")
-add_subdirectory("module/vs-alimpsim")
 add_subdirectory("module/vs-component")
 add_subdirectory("module/vs-testcase")
 add_subdirectory("module/vs-schedule")
