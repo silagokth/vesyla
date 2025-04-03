@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use log::{debug, error, info, trace, warn};
+use regex;
 use std::env;
 use std::fs;
 use std::process;
@@ -39,9 +40,10 @@ fn main() {
     let command = &args[1];
     match command.as_str() {
         "-v" | "--version" => {
-            info!("vesyla-suite 4.0.5");
+            let version = extract_version();
+            info!("vesyla-suite {}", version);
         }
-        "alimpsim" | "component" | "manas" | "schedule" | "testcase" => {
+        "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
             let status = process::Command::new(prog)
                 .args(&args[2..])
@@ -62,6 +64,25 @@ fn main() {
 
     // restore the environment variables
     pop_env(&name_list, saved_env);
+}
+
+fn extract_version() -> String {
+    let changelog = include_str!("../../../CHANGELOG.md");
+    let mut version = "Unknown".to_string();
+    for line in changelog.lines() {
+        if line.starts_with("## ") || line.starts_with("##\t") {
+            let title = line[3..].to_string().trim().to_string();
+            // if it matches the pattern "## [x.y.z]..."
+            if let Some(captures) = regex::Regex::new(r"^\[([0-9]+\.[0-9]+\.[0-9]+)\].*$")
+                .unwrap()
+                .captures(&title)
+            {
+                version = captures[1].to_string();
+                break;
+            }
+        }
+    }
+    version
 }
 
 fn init() {
