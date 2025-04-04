@@ -1,7 +1,9 @@
 #![allow(unused_imports)]
 
 use log::{debug, error, info, trace, warn};
+use regex;
 use std::env;
+use std::fs;
 use std::process;
 
 fn main() {
@@ -14,6 +16,7 @@ fn main() {
         "VESYLA_SUITE_PATH_SHARE".to_string(),
         "VESYLA_SUITE_PATH_TEMPLATE".to_string(),
         "VESYLA_SUITE_PATH_TESTCASE".to_string(),
+        "VESYLA_SUITE_PATH_TMP".to_string(),
         "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION".to_string(),
     ];
 
@@ -37,9 +40,10 @@ fn main() {
     let command = &args[1];
     match command.as_str() {
         "-v" | "--version" => {
-            info!("vesyla-suite 4.0.5");
+            let version = extract_version();
+            info!("vesyla-suite {}", version);
         }
-        "alimpsim" | "component" | "manas" | "schedule" | "testcase" => {
+        "component" | "manas" | "schedule" | "testcase" => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
             let status = process::Command::new(prog)
                 .args(&args[2..])
@@ -55,8 +59,30 @@ fn main() {
         }
     }
 
+    // finalize the environment variables
+    finish();
+
     // restore the environment variables
     pop_env(&name_list, saved_env);
+}
+
+fn extract_version() -> String {
+    let changelog = include_str!("../../../CHANGELOG.md");
+    let mut version = "Unknown".to_string();
+    for line in changelog.lines() {
+        if line.starts_with("## ") || line.starts_with("##\t") {
+            let title = line[3..].to_string().trim().to_string();
+            // if it matches the pattern "## [x.y.z]..."
+            if let Some(captures) = regex::Regex::new(r"^\[([0-9]+\.[0-9]+\.[0-9]+)\].*$")
+                .unwrap()
+                .captures(&title)
+            {
+                version = captures[1].to_string();
+                break;
+            }
+        }
+    }
+    version
 }
 
 fn init() {
@@ -70,6 +96,8 @@ fn init() {
     let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla-suite");
     let vesyla_suite_path_template = vesyla_suite_path_share.join("template");
     let vesyla_suite_path_testcase = vesyla_suite_path_share.join("testcase");
+    let random_number: u32 = rand::random();
+    let vesyla_suite_path_tmp = format!("/tmp/vesyla_suite_{}", random_number);
 
     env::set_var("VESYLA_SUITE_PATH_PROG", vesyla_suite_path_prog);
     env::set_var("VESYLA_SUITE_PATH_BIN", vesyla_suite_path_bin);
@@ -78,9 +106,20 @@ fn init() {
     env::set_var("VESYLA_SUITE_PATH_SHARE", vesyla_suite_path_share);
     env::set_var("VESYLA_SUITE_PATH_TEMPLATE", vesyla_suite_path_template);
     env::set_var("VESYLA_SUITE_PATH_TESTCASE", vesyla_suite_path_testcase);
+    env::set_var("VESYLA_SUITE_PATH_TMP", vesyla_suite_path_tmp);
 
     // set protobuf for python
     env::set_var("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python");
+
+    // create the temporary directory
+    let path = env::var("VESYLA_SUITE_PATH_TMP").unwrap();
+    fs::create_dir_all(path).unwrap();
+}
+
+fn finish() {
+    // remove the temporary directory
+    let path = env::var("VESYLA_SUITE_PATH_TMP").unwrap();
+    fs::remove_dir_all(path).unwrap();
 }
 
 fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {

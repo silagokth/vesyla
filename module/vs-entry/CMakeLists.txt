@@ -1,6 +1,6 @@
 set(CURRENT_SUBPROJECT_NAME "vs-entry")
 
-file(GLOB SRC "src/*.rs")
+file(GLOB SRC "src/*.rs" "../../CHANGELOG.md")
 
 add_custom_command(
    OUTPUT ${CMAKE_BINARY_DIR}/cargo/${CURRENT_SUBPROJECT_NAME}/release/${CURRENT_SUBPROJECT_NAME}
