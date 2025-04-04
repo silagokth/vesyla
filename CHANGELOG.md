@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add changelog
+- Add a new environment variable `VESYLA_SUITE_PATH_TMP` to store the temporary files. It is initialized in vs-entry. Note that, all temporary files are stored this directory should have some random name to avoid conflicts with other files.
 
 ### Fixed
 
 ### Changed
 
 - Modify the vs-entry to read the version from the changelog to automatically determine the software version.
+- Modify the vs-schedule to use VESYLA_SUITE_PATH_TMP to store the temporary files.
 
 ### Removed
 

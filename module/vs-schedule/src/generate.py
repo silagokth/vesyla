@@ -503,7 +503,13 @@ def constraint_checking(symbol_list, op_table):
 def generate(proto_asm_file, constraint_file, file_arch, output_dir):
 
     component_location_table = create_component_location_table(file_arch)
-    tmp_dir = os.path.join(output_dir, "tmp")
+    # use environment variable to get tmp_dir
+    vesyla_suite_path_tmp = os.environ['VESYLA_SUITE_PATH_TMP']
+    if vesyla_suite_path_tmp == "":
+        print("Warning: VESYLA_SUITE_PATH_TMP is empty!")
+        exit(-1)
+
+    tmp_dir = os.path.join(vesyla_suite_path_tmp, "schedule_", generate_uuid())
     if not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
     op_table = parse_proto_asm(proto_asm_file)
