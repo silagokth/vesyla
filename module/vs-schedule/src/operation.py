@@ -45,7 +45,7 @@ def add_node(expr, node_map, counter) -> int:
 def create_tree(node_map, counter, expr: str) -> list:
     # remove all whitespaces, includeing tabs, newlines, etc.
     expr = re.sub(r"\s+", "", expr)
-    logging.debug("Analyze expression: "+expr)
+    # logging.debug("Analyze expression: "+expr)
 
     # check if it matches the pattern for repeatition operator
     pattern = re.compile(r"^R<(\d+),([^>]+)>\((.+)\)$")

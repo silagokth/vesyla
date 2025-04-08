@@ -151,8 +151,6 @@ def cstrrecord_to_text(id, prog):
     text = ""
     if id in prog.records:
         record = prog.records[id]
-        print(id)
-        print(record)
         if record.kind == ds.CSTRRecord.Kind.EPOCH:
             for content in record.contents:
                 text += cstrrecord_to_text(content, prog)
