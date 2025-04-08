@@ -506,7 +506,7 @@ def generate(proto_asm_file, constraint_file, file_arch, output_dir):
     # use environment variable to get tmp_dir
     vesyla_suite_path_tmp = os.environ['VESYLA_SUITE_PATH_TMP']
     if vesyla_suite_path_tmp == "":
-        print("Warning: VESYLA_SUITE_PATH_TMP is empty!")
+        logging.error("VESYLA_SUITE_PATH_TMP is empty!")
         exit(-1)
 
     tmp_dir = os.path.join(vesyla_suite_path_tmp, "schedule_", generate_uuid())
