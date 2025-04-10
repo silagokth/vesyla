@@ -5,7 +5,7 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-set(PREFIX /opt/llvm)
+set(PREFIX /home/paul/Develop/llvm-project/build)
 set(MLIR_DIR ${PREFIX}/lib/cmake/mlir)
 set(LLVM_DIR ${PREFIX}/lib/cmake/llvm)
 
@@ -42,32 +42,41 @@ set(CUSTOM_IR_DIR ${CMAKE_BINARY_DIR}/custom_ir)
 file(GLOB SOURCE_CIDFG "src/cidfg/*.cpp")
 file(GLOB SOURCE_IROPT "src/exec/iropt/*.cpp")
 
+file(GLOB SOURCE_ASM "src/asm/*.cpp")
+
 function(add_custom_mlir_dialect dialect dialect_namespace)
-# print out a message
         message(STATUS "Adding custom MLIR dialect: ${dialect}")
-        set(LLVM_TARGET_DEFINITIONS ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Ops.td)
-        set(dialect_tblgen_deps ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Dialect.td
-        ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Ops.td
-        ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Types.td)
-        set(dialect_tblgen_outputs ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Dialect.hpp.inc
-                ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Dialect.cpp.inc
-                ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Ops.hpp.inc
-                ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Ops.cpp.inc
-                ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Types.hpp.inc
-                ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Types.cpp.inc)
-        add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Dialect.hpp.inc 
-                   COMMAND mkdir -p ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace} &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-dialect-decls ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Dialect.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Dialect.hpp.inc &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-dialect-defs ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Dialect.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Dialect.cpp.inc &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-op-decls ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Ops.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Ops.hpp.inc &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-op-defs ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Ops.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Ops.cpp.inc &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-typedef-decls ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Types.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Types.hpp.inc &&
-                   ${PREFIX}/bin/mlir-tblgen -gen-typedef-defs ${PROJECT_SOURCE_DIR}/src/${dialect_namespace}/Types.td -I ${PREFIX}/include/ -I ${PROJECT_SOURCE_DIR}/src/ > ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace}/Types.cpp.inc
-                   DEPENDS ${dialect_tblgen_deps})
-        message(STATUS "TableGen dependencies: ${dialect_tblgen_outputs}")
-        set(TABLEGEN_OUTPUT ${TABLEGEN_OUTPUT} ${dialect_tblgen_outputs})
-        message(STATUS "TableGen output: ${TABLEGEN_OUTPUT}")
-        add_public_tablegen_target(Vesyla${dialect}IncGen)
+
+        # Define paths - making them relative to CMAKE_BINARY_DIR
+        set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
+        set(DIALECT_INCLUDE_DIR lib/src/${dialect_namespace})
+        set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/${DIALECT_INCLUDE_DIR})
+
+        # Create output directory
+        file(MAKE_DIRECTORY ${DIALECT_OUT_DIR})
+
+        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Ops.td)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.hpp.inc -gen-op-decls)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.cpp.inc -gen-op-defs)
+        add_public_tablegen_target(Vesyla${dialect}OpsIncGen)
+
+        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Dialect.td)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.hpp.inc -gen-dialect-decls)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.cpp.inc -gen-dialect-defs)
+        add_public_tablegen_target(Vesyla${dialect}DialectIncGen)
+
+        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Types.td)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.hpp.inc -gen-typedef-decls)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
+        add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
+
+        # Create a meta-target that depends on all tablegen targets
+        add_custom_target(Vesyla${dialect}IncGen DEPENDS
+                Vesyla${dialect}DialectIncGen
+                Vesyla${dialect}OpsIncGen
+                Vesyla${dialect}TypesIncGen)
+
+        # Add dependencies
         add_dependencies(mlir-headers Vesyla${dialect}IncGen)
 endfunction()
 
@@ -75,15 +84,28 @@ add_custom_mlir_dialect(Cidfg cidfg)
 
 add_mlir_dialect_library(VesylaCidfg
         ${SOURCE_CIDFG}
-        
+
         DEPENDS
         VesylaCidfgIncGen
-        
+
         LINK_LIBS PUBLIC
         MLIRIR
         MLIRInferTypeOpInterface
         MLIRFuncDialect
-        )
+)
+
+add_custom_mlir_dialect(Asm asm)
+add_mlir_dialect_library(VesylaAsm
+        ${SOURCE_ASM}
+
+        DEPENDS
+        VesylaAsmIncGen
+
+        LINK_LIBS PUBLIC
+        MLIRIR
+        MLIRInferTypeOpInterface
+        MLIRFuncDialect
+)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -93,15 +115,10 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         VesylaCidfg
-        )
+)
 add_llvm_executable(iropt ${SOURCE_IROPT})
 
 llvm_update_compile_flags(iropt)
 target_link_libraries(iropt PRIVATE ${LIBS})
 
 mlir_check_all_link_libraries(iropt)
-
-
-
-
-
