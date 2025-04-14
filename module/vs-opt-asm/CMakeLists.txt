@@ -109,19 +109,6 @@ add_mlir_dialect_library(VesylaAsm
         MLIRFuncDialect
 )
 
-add_custom_mlir_dialect(Pasm pasm)
-add_mlir_dialect_library(VesylaPasm
-        ${SOURCE_PASM}
-
-        DEPENDS
-        VesylaPasmIncGen
-
-        LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRInferTypeOpInterface
-        MLIRFuncDialect
-)
-
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 set(LIBS
@@ -130,7 +117,6 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         VesylaCidfg
-        VesylaPasm
         VesylaAsm
 )
 add_llvm_executable(iropt ${SOURCE_IROPT})
