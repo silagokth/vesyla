@@ -6,7 +6,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process;
 
-use argparse;
 use chrono::Local;
 use clap::{Parser, Subcommand};
 use glob::glob;
@@ -69,7 +68,7 @@ fn main() {
             output,
         } => {
             info!("Initializing ...");
-            init(vec![style.clone(), force.to_string(), output.clone()])
+            init(style.clone(), *force, output.clone());
         }
         Command::Run { test_dir } => {
             info!("Running testcase ...");
@@ -109,28 +108,7 @@ fn export(args: Vec<String>) {
     copy_dir_all(&vesyla_suite_path_testcase, output_dir).unwrap();
 }
 
-fn init(args: Vec<String>) {
-    // parse the "args" using argparse
-    // -s <style> -f -o <output directory>
-    let mut style = String::from("drra");
-    let mut force = false;
-    let mut output = String::from(".");
-    {
-        let mut ap = argparse::ArgumentParser::new();
-        ap.set_description("Initialize testcase directory");
-        ap.refer(&mut style)
-            .add_option(&["-s", "--style"], argparse::Store, "Template style");
-        ap.refer(&mut force).add_option(
-            &["-f", "--force"],
-            argparse::StoreTrue,
-            "Force initialization",
-        );
-        ap.refer(&mut output)
-            .add_option(&["-o", "--output"], argparse::Store, "Output directory");
-        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr())
-            .unwrap();
-    }
-
+fn init(style: String, force: bool, output: String) {
     // create the output directory
     if !Path::new(&output).exists() {
         fs::create_dir_all(&output).unwrap();
@@ -167,12 +145,7 @@ fn run(args: Vec<String>) {
     let test_dir = &args[1];
 
     // initialize the testcase directory
-    init(
-        vec!["init", "-f", "-s", "drra", "-o", "."]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    );
+    init("drra".to_string(), true, ".".to_string());
 
     // if test_dir starts with {{VESYLA_SUITE_PATH_TESTCASE}}, replace it with the actual path
     let vesyla_suite_path_testcase =
