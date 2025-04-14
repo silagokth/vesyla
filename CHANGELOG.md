@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix bug: report error when component is not found in library.
+
 ### Changed
 
 - Modify the vs-entry to read the version from the changelog to automatically determine the software version.
