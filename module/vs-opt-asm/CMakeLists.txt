@@ -5,9 +5,11 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-set(PREFIX /home/paul/Develop/llvm-project/build)
-set(MLIR_DIR ${PREFIX}/lib/cmake/mlir)
-set(LLVM_DIR ${PREFIX}/lib/cmake/llvm)
+set(LLVM_HOME $ENV{LLVM_HOME})
+# print LLVM_HOME
+message(STATUS "Setting LLVM_HOME: ${LLVM_HOME}")
+set(MLIR_DIR ${LLVM_HOME}/lib/cmake/mlir)
+set(LLVM_DIR ${LLVM_HOME}/lib/cmake/llvm)
 
 find_package(MLIR REQUIRED CONFIG)
 
@@ -43,6 +45,7 @@ file(GLOB SOURCE_CIDFG "src/cidfg/*.cpp")
 file(GLOB SOURCE_IROPT "src/exec/iropt/*.cpp")
 
 file(GLOB SOURCE_ASM "src/asm/*.cpp")
+file(GLOB SOURCE_PASM "src/pasm/*.cpp")
 
 function(add_custom_mlir_dialect dialect dialect_namespace)
         message(STATUS "Adding custom MLIR dialect: ${dialect}")
@@ -81,7 +84,6 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
 endfunction()
 
 add_custom_mlir_dialect(Cidfg cidfg)
-
 add_mlir_dialect_library(VesylaCidfg
         ${SOURCE_CIDFG}
 
@@ -107,6 +109,19 @@ add_mlir_dialect_library(VesylaAsm
         MLIRFuncDialect
 )
 
+add_custom_mlir_dialect(Pasm pasm)
+add_mlir_dialect_library(VesylaPasm
+        ${SOURCE_PASM}
+
+        DEPENDS
+        VesylaPasmIncGen
+
+        LINK_LIBS PUBLIC
+        MLIRIR
+        MLIRInferTypeOpInterface
+        MLIRFuncDialect
+)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 set(LIBS
@@ -115,6 +130,8 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         VesylaCidfg
+        VesylaPasm
+        VesylaAsm
 )
 add_llvm_executable(iropt ${SOURCE_IROPT})
 
