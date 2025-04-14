@@ -1,6 +1,4 @@
-#![allow(unused_imports)]
-
-use log::{debug, error, info, trace, warn};
+use log::{error, info, warn};
 use regex;
 use std::env;
 use std::fs;
@@ -31,19 +29,65 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     let args: Vec<String> = env::args().collect();
+
+    let help_message = format!(
+        "Usage: {} [command and options]\n\
+         Commands:\n\
+         \tcomponent   Assemble the system\n\
+         \tmanas       Validate JSON file\n\
+         \tschedule    Clean the build directory\n\
+         \ttestcase    Test the system\n\
+         Options:\n\
+         \t-h, --help     Show this help message\n\
+         \t-v, --version  Show version information",
+        args[0]
+    );
+
     if args.len() < 2 {
-        error!("Usage: {} [command and options]", args[0]);
-        process::exit(1);
+        warn!("{}", help_message);
+        process::exit(0);
     }
 
     // find the directory of the current executable
     let command = &args[1];
+    let tools_list = vec!["component", "manas", "schedule", "testcase"];
     match command.as_str() {
+        "-h" | "--help" => {
+            info!("{}", help_message);
+            process::exit(0);
+        }
         "-v" | "--version" => {
             let version = extract_version();
+            let mut tools_versions = vec![];
+            for tool in tools_list.iter() {
+                let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + tool;
+                let status = process::Command::new(prog)
+                    .arg("--version")
+                    .stdout(process::Stdio::piped())
+                    .stderr(process::Stdio::inherit())
+                    .output()
+                    .expect("failed to execute process");
+                if status.status.success() {
+                    let output = String::from_utf8_lossy(&status.stdout);
+                    let tool_version = output
+                        .trim()
+                        .split_whitespace()
+                        .last()
+                        .unwrap_or("Unknown")
+                        .to_string();
+                    tools_versions.push(format!("{}: {}", tool, tool_version));
+                } else {
+                    tools_versions.push(format!("{}: Unknown", tool));
+                    info!("{:?}", &status.stderr);
+                    info!("Failed to get version for tool: {}", tool);
+                }
+            }
             info!("vesyla-suite {}", version);
+            for tool_version in tools_versions {
+                info!(" -> {}", tool_version);
+            }
         }
-        "component" | "manas" | "schedule" | "testcase" => {
+        cmd if tools_list.contains(&cmd) => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
             let status = process::Command::new(prog)
                 .args(&args[2..])
@@ -51,7 +95,12 @@ fn main() {
                 .stderr(process::Stdio::inherit())
                 .status()
                 .expect("failed to execute process");
-            assert!(status.success());
+            if !status.success() {
+                if status.code() != Some(2) {
+                    error!("{} command failed", command);
+                    info!("Exit code: {}", status.code().unwrap_or(-1));
+                }
+            }
         }
         _ => {
             error!("Unknown command: {}", command);
@@ -138,6 +187,7 @@ fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {
 }
 
 fn pop_env(name_list: &Vec<String>, saved_env: Vec<(String, Option<String>)>) {
+    let _ = name_list;
     for (name, val) in saved_env {
         match val {
             Some(val) => {
