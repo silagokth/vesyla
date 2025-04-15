@@ -1,7 +1,3 @@
-use argparse;
-use chrono::Local;
-use glob::glob;
-use log::{debug, error, info, trace, warn};
 use std::env;
 use std::fs::{self, File};
 use std::io;
@@ -10,45 +6,81 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process;
 
+use chrono::Local;
+use clap::{Parser, Subcommand};
+use glob::glob;
+use log::{error, info};
+
+#[derive(Subcommand)]
+enum Command {
+    #[command(about = "Initialize testcase directory", name = "init")]
+    Init {
+        /// Template style
+        #[arg(short, long)]
+        style: String,
+        /// Force initialization
+        #[arg(short, long)]
+        force: bool,
+        /// Output directory
+        #[arg(short, long)]
+        output: String,
+    },
+    #[command(about = "Run testcase", name = "run")]
+    Run {
+        /// Testcase directory
+        #[arg(short, long)]
+        test_dir: String,
+    },
+    #[command(about = "Generate testcase scripts", name = "generate")]
+    Generate {
+        /// Testcase directory
+        #[arg(short, long)]
+        testcases_dir: String,
+    },
+    #[command(about = "Export testcase", name = "export")]
+    Export {
+        /// Output directory
+        #[arg(short, long)]
+        output_dir: String,
+    },
+}
+
+#[derive(Parser)]
+#[command(version, about, long_about = None, allow_missing_positional = true, after_help = "")]
+struct Args {
+    /// Command to execute
+    #[command(subcommand)]
+    command: Command,
+}
+
 fn main() {
     // set logger level to be debug
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
 
-    // parse arguments
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        error!("Usage: {} [command] [options]", args[0]);
-        process::exit(1);
-    }
+    let cli_args = Args::parse();
 
-    let command = &args[1];
-    let mut options: Vec<String> = Vec::new();
-    for i in 1..args.len() {
-        options.push(args[i].clone());
-    }
-
-    match command.as_str() {
-        "init" => {
+    match &cli_args.command {
+        Command::Init {
+            style,
+            force,
+            output,
+        } => {
             info!("Initializing ...");
-            init(options)
+            init(style.clone(), *force, output.clone());
         }
-        "run" => {
+        Command::Run { test_dir } => {
             info!("Running testcase ...");
-            run(options)
+            run(vec![test_dir.clone()])
         }
-        "generate" => {
+        Command::Generate { testcases_dir } => {
             info!("Generating testcase scripts ...");
-            generate(options)
+            generate(vec![testcases_dir.clone()])
         }
-        "export" => {
+        Command::Export { output_dir } => {
             info!("Exporting testcase ...");
-            export(options)
-        }
-        _ => {
-            error!("Unknown command: {}", command);
-            panic!();
+            export(vec![output_dir.clone()])
         }
     }
 }
@@ -71,33 +103,12 @@ fn export(args: Vec<String>) {
     }
 
     // copy everything from default test directory to the output directory
-    let VESYLA_SUITE_PATH_TESTCASE =
+    let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    copy_dir_all(&VESYLA_SUITE_PATH_TESTCASE, output_dir).unwrap();
+    copy_dir_all(&vesyla_suite_path_testcase, output_dir).unwrap();
 }
 
-fn init(args: Vec<String>) {
-    // parse the "args" using argparse
-    // -s <style> -f -o <output directory>
-    let mut style = String::from("drra");
-    let mut force = false;
-    let mut output = String::from(".");
-    {
-        let mut ap = argparse::ArgumentParser::new();
-        ap.set_description("Initialize testcase directory");
-        ap.refer(&mut style)
-            .add_option(&["-s", "--style"], argparse::Store, "Template style");
-        ap.refer(&mut force).add_option(
-            &["-f", "--force"],
-            argparse::StoreTrue,
-            "Force initialization",
-        );
-        ap.refer(&mut output)
-            .add_option(&["-o", "--output"], argparse::Store, "Output directory");
-        ap.parse(args, &mut std::io::stdout(), &mut std::io::stderr())
-            .unwrap();
-    }
-
+fn init(style: String, force: bool, output: String) {
     // create the output directory
     if !Path::new(&output).exists() {
         fs::create_dir_all(&output).unwrap();
@@ -134,19 +145,14 @@ fn run(args: Vec<String>) {
     let test_dir = &args[1];
 
     // initialize the testcase directory
-    init(
-        vec!["init", "-f", "-s", "drra", "-o", "."]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    );
+    init("drra".to_string(), true, ".".to_string());
 
     // if test_dir starts with {{VESYLA_SUITE_PATH_TESTCASE}}, replace it with the actual path
-    let VESYLA_SUITE_PATH_TESTCASE =
+    let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
     let test_dir = test_dir.replace(
         "{{VESYLA_SUITE_PATH_TESTCASE}}",
-        &VESYLA_SUITE_PATH_TESTCASE,
+        &vesyla_suite_path_testcase,
     );
 
     // copy everything from the test directory to the current directory
@@ -162,10 +168,10 @@ fn run(args: Vec<String>) {
 
 fn generate(args: Vec<String>) {
     let testcases_dir: &String;
-    let VESYLA_SUITE_PATH_TESTCASE =
+    let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
     if args.len() == 1 {
-        testcases_dir = &VESYLA_SUITE_PATH_TESTCASE;
+        testcases_dir = &vesyla_suite_path_testcase;
     } else if args.len() == 2 {
         testcases_dir = &args[1];
     } else {
@@ -226,9 +232,9 @@ fn generate(args: Vec<String>) {
 
     // if path is under VESYLA_SUITE_PATH_TESTCASE, convert it to relative path by replace it with {{VESYLA_SUITE_PATH_TESTCASE}}
     for tc in &mut testcase_entries {
-        if tc.path.starts_with(&VESYLA_SUITE_PATH_TESTCASE) {
+        if tc.path.starts_with(&vesyla_suite_path_testcase) {
             tc.path = tc.path.replace(
-                &VESYLA_SUITE_PATH_TESTCASE,
+                &vesyla_suite_path_testcase,
                 "{{VESYLA_SUITE_PATH_TESTCASE}}",
             );
         }

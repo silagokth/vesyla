@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 # Dependencies can be added here. For example:
 [dependencies]
+clap = { version = "4.5.21", features = ["derive"] }
 log = "0.4.14"
 env_logger = "0.10.0"
 argparse = "0.2.0"
