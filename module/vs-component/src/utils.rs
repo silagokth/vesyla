@@ -58,6 +58,27 @@ pub fn get_parameters(component: &serde_json::Value, param_key: Option<String>) 
     parameters
 }
 
+/// Merge parameters from params2 into params1
+pub fn merge_parameters(
+    params1: &mut ParameterList,
+    params2: &ParameterList,
+) -> Result<Vec<(String, u64, u64)>> {
+    let mut overwritten_params = Vec::new();
+    for (param_name, param_value) in params2.iter() {
+        // Check if the parameter already exists in params1
+        if !params1.contains_key(param_name) {
+            params1.insert(param_name.clone(), *param_value);
+        } else {
+            let existing_param = params1.get(param_name).unwrap();
+            if existing_param != param_value {
+                // List the parameters that exist in param1 but with a different value
+                overwritten_params.push((param_name.clone(), *existing_param, *param_value));
+            }
+        }
+    }
+    Ok(overwritten_params)
+}
+
 pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
     let library_path = get_library_path();
     debug!("Library path: {}", library_path);
