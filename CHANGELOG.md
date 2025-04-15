@@ -9,17 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add changelog
-- Add a new environment variable `VESYLA_SUITE_PATH_TMP` to store the temporary files. It is initialized in vs-entry. Note that, all temporary files are stored this directory should have some random name to avoid conflicts with other files.
 - Added version numbers for all tools
 
 ### Fixed
 
 ### Changed
 
+- `--version` subcommand now also shows the versions of vesyla tools
+
+### Removed
+
+## [4.0.8] - 2023-04-14
+
+### Added
+
+- Add changelog
+- Add a new environment variable `VESYLA_SUITE_PATH_TMP` to store the temporary files. It is initialized in vs-entry. Note that, all temporary files are stored this directory should have some random name to avoid conflicts with other files.
+
+### Fixed
+
+- Fix bug: report error when component is not found in library.
+
+### Changed
+
 - Modify the vs-entry to read the version from the changelog to automatically determine the software version.
 - Modify the vs-schedule to use VESYLA_SUITE_PATH_TMP to store the temporary files.
-- `--version` subcommand now also shows the versions of vesyla tools
 
 ### Removed
 
