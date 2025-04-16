@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added version numbers for all tools
+- Added version numbers for all tools [#32](https://github.com/silagokth/vesyla/issues/32)
 
 ### Fixed
+- Fix SST template incompatibility with multi-col fabrics [#36](https://github.com/silagokth/vesyla/issues/36)
 
 ### Changed
 
