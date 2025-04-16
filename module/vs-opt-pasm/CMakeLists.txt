@@ -72,41 +72,20 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
         mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
         add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
 
+        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
+        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
+        add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
+
         # Create a meta-target that depends on all tablegen targets
         add_custom_target(Vesyla${dialect}IncGen DEPENDS
                 Vesyla${dialect}DialectIncGen
                 Vesyla${dialect}OpsIncGen
-                Vesyla${dialect}TypesIncGen)
+                Vesyla${dialect}TypesIncGen
+                Vesyla${dialect}PassesIncGen)
 
         # Add dependencies
         add_dependencies(mlir-headers Vesyla${dialect}IncGen)
 endfunction()
-
-add_custom_mlir_dialect(Cidfg cidfg)
-add_mlir_dialect_library(VesylaCidfg
-        ${SOURCE_CIDFG}
-
-        DEPENDS
-        VesylaCidfgIncGen
-
-        LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRInferTypeOpInterface
-        MLIRFuncDialect
-)
-
-add_custom_mlir_dialect(Asm asm)
-add_mlir_dialect_library(VesylaAsm
-        ${SOURCE_ASM}
-
-        DEPENDS
-        VesylaAsmIncGen
-
-        LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRInferTypeOpInterface
-        MLIRFuncDialect
-)
 
 add_custom_mlir_dialect(Pasm pasm)
 add_mlir_dialect_library(VesylaPasm
@@ -128,9 +107,7 @@ set(LIBS
         ${conversion_libs}
         MLIRArithDialect
         MLIROptLib
-        VesylaCidfg
         VesylaPasm
-        VesylaAsm
 )
 add_llvm_executable(iropt ${SOURCE_IROPT})
 

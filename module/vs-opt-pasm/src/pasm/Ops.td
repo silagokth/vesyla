@@ -8,6 +8,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
+include "mlir/IR/RegionKindInterface.td"
 
 class Pasm_Op<string mnemonic, list<Trait> traits = []> :
     Op<Pasm_Dialect, mnemonic, traits>;
@@ -19,7 +20,7 @@ def MakeInstrOp : Pasm_Op<"make_instr"> {
   }];
 }
 
-def MakeEpochOp : Pasm_Op<"make_epoch"> {
+def EpochOp : Pasm_Op<"epoch"> {
   let summary = "Make epoch";
   let description = [{
     Make epoch
@@ -34,6 +35,33 @@ def MakeEpochOp : Pasm_Op<"make_epoch"> {
   }];
 }
 
+def LoopOp : Pasm_Op<"loop"> {
+  let summary = "Make for loop";
+  let description = [{
+    Make for loop
+  }];
+  let arguments = (ins StrAttr:$id, I32Attr:$iter);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    `<` attr-dict `>` $body 
+  }];
+}
+
+def CondOp : Pasm_Op<"cond"> {
+  let summary = "Make if condition";
+  let description = [{
+    Make if condition
+  }];
+  let arguments = (ins StrAttr:$id, StrAttr:$comparator, I32Attr:$var1, I32Attr:$var2);
+  let regions = (region SizedRegion<1>:$then, 
+                 SizedRegion<1>:$else);
+  let assemblyFormat = [{
+    `<` attr-dict `>`
+    `then` $then
+    `else` $else
+  }];
+}
+
 def MakeRopOp : Pasm_Op<"make_rop"> {
   let summary = "Make resource operation";
   let description = [{
@@ -43,9 +71,7 @@ def MakeRopOp : Pasm_Op<"make_rop"> {
   let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col,
                    I32Attr:$port, I32Attr:$slot);
   let results = (outs RopType: $result);
-
   let regions = (region SizedRegion<1>:$body);
-
   let assemblyFormat = [{
     `<` attr-dict `>` $body 
   }];
@@ -108,7 +134,7 @@ def MakeAnchorOp : Pasm_Op<"make_anchor"> {
 
 
 def YieldOp : Pasm_Op<"yield", [Terminator,
-    ParentOneOf<["MakeEpochOp", "MakeRopOp", "MakeCopOp", "MakeRawOp" ]>]> {
+    ParentOneOf<["LoopOp", "CondOp", "EpochOp", "MakeRopOp", "MakeCopOp", "MakeRawOp" ]>]> {
   let summary = "Represents the default branching behaviour of a region";
   let description = [{
     The `cir.yield` operation terminates regions on different CIR operations,
