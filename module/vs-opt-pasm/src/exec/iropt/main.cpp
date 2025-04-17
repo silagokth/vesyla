@@ -14,8 +14,21 @@
 
 #include "pasm/Dialect.hpp"
 #include "pasm/Passes.hpp"
+#include "tm/Operation.hpp"
+
+// Initialize logging system
+INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char **argv) {
+  // Set Logger
+  el::Configurations c;
+  c.setToDefault();
+  c.parseFromText(LOGGING_CONF);
+  el::Loggers::reconfigureLogger("default", c);
+  el::Loggers::addFlag(el::LoggingFlag::ColoredTerminalOutput);
+
+  vesyla::tm::TransitOperator expr("R<2, 3>(e1, e2)");
+  LOG(DEBUG) << expr.to_string();
 
   mlir::registerAllPasses();
   vesyla::pasm::registerPasses();

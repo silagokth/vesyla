@@ -102,13 +102,33 @@ add_mlir_dialect_library(VesylaPasm
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+
+
+file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp" "src/util/*/*.cc")
+file(GLOB SOURCES_TM "src/tm/*.cpp")
+set(CMAKE_CXX_FLAGS "-std=c++17 -w -pedantic -lpthread -g -O1 -DBOOST_LOG_DYN_LINK")
+set(PROJECT_LINK_LIBS "stdc++fs")
+
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+add_library(VesylaUtil SHARED ${SOURCES_UTIL})
+add_library(VesylaTm SHARED ${SOURCES_TM})
+
 set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRArithDialect
         MLIROptLib
         VesylaPasm
+        VesylaTm
+        VesylaUtil
 )
+
+
+
+
 add_llvm_executable(iropt ${SOURCE_IROPT})
 
 llvm_update_compile_flags(iropt)
