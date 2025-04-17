@@ -392,6 +392,11 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                     .expect("Failed to update resource from JSON entry"),
             );
 
+            if resource_object.slot.is_none() {
+                resource_object.slot = Some(current_slot);
+                current_slot += resource_object.size.unwrap();
+            }
+
             if !overwritten_params.is_empty() {
                 let mut warning = format!(
                     "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
@@ -406,11 +411,6 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                     ));
                 }
                 warn!("{}", warning);
-            }
-
-            if resource_object.slot.is_none() {
-                resource_object.slot = Some(current_slot);
-                current_slot += resource_object.size.unwrap();
             }
 
             // Check resource validity
