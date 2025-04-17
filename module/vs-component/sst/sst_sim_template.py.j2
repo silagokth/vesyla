@@ -190,18 +190,18 @@ for cell_index, cell_slots in enumerate(all_cells_slots):
                 print(
                     f"[SST SIM] - Connected switchbox ({cell_index}) to slot {slot_index} ({slot.getType()} ({index}))"
                 )
-            
+
             slot_index += 1
 
 # Connect cells SWB to each other
 for col in range({{parameters.COLS}}):
     for row in range({{parameters.ROWS}}):
-        current_swb = all_cells_slots[row][col]
+        current_swb = all_cells_slots[row * {{parameters.COLS}} + col][0]
         if col < {{parameters.COLS}} - 1:
-            eastern_swb = all_cells_slots[row][col+1]
+            eastern_swb = all_cells_slots[row * {{parameters.COLS}} + col + 1][0]
             link_to_east = sst.Link(f"link_swb_{row}_{col}_to_{row}_{col+1}")
             link_to_east.connect((current_swb, "cell_port5", default_access_time), (eastern_swb, "cell_port3", default_access_time))
         if row < {{parameters.ROWS}} - 1:
-            southern_swb = all_cells_slots[row+1][col]
+            southern_swb = all_cells_slots[(row + 1) * {{parameters.COLS}} + col][0]
             link_to_south = sst.Link(f"link_swb_{row}_{col}_to_{row+1}_{col}")
             link_to_south.connect((current_swb, "cell_port7", default_access_time), (southern_swb, "cell_port1", default_access_time))
