@@ -6,20 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
 ### Added
+
 ### Fixed
+
 ### Changed
+
 ### Removed
 
-## [4.0.9] -
+## [4.0.9] - 2023-04-17
 
 ### Added
+
 - Added version numbers for all tools [#32](https://github.com/silagokth/vesyla/issues/32)
 
 ### Fixed
+
 - Fix SST template incompatibility with multi-col fabrics [#36](https://github.com/silagokth/vesyla/issues/36)
 
 ### Changed
+
 - `--version` subcommand now also shows the versions of vesyla tools
 
 ## [4.0.8] - 2023-04-14
