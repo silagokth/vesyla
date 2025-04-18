@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.0.11] - 2025-04-18
+### Changed
+- [github workflow] changed ubuntu version from 24.04 to 22.04 to improve compatibility for older devices
+
 ## [4.0.10] - 2025-04-17
 ### Fixed
 - [vs-component] fixed error where the assembly would fail when overwriting custom_properties
