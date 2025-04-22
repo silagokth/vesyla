@@ -1,3 +1,7 @@
+use chrono::Local;
+use clap::{error::ErrorKind, Parser, Subcommand};
+use glob::glob;
+use log::{error, info};
 use std::env;
 use std::fs::{self, File};
 use std::io;
@@ -6,42 +10,37 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process;
 
-use chrono::Local;
-use clap::{Parser, Subcommand};
-use glob::glob;
-use log::{error, info};
-
 #[derive(Subcommand)]
 enum Command {
     #[command(about = "Initialize testcase directory", name = "init")]
     Init {
         /// Template style
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "drra")]
         style: String,
         /// Force initialization
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "false")]
         force: bool,
         /// Output directory
-        #[arg(short, long)]
+        #[arg(short, long, default_value = ".")]
         output: String,
     },
     #[command(about = "Run testcase", name = "run")]
     Run {
         /// Testcase directory
         #[arg(short, long)]
-        test_dir: String,
+        directory: String,
     },
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
         /// Testcase directory
-        #[arg(short, long)]
-        testcases_dir: String,
+        #[arg(short, long, default_value = "{{VESYLA_SUITE_PATH_TESTCASE}}")]
+        directory: String,
     },
     #[command(about = "Export testcase", name = "export")]
     Export {
         /// Output directory
-        #[arg(short, long)]
-        output_dir: String,
+        #[arg(short, long, default_value = ".")]
+        output: String,
     },
 }
 
@@ -58,8 +57,28 @@ fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
+    log_panics::init();
 
-    let cli_args = Args::parse();
+    // make sure the program return non-zero status code when arguments are invalid
+    let cli_args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            // Check if the error is for displaying help or version
+            match e.kind() {
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                    // clap already printed the info
+                    e.print().expect("Failed to print clap help/version");
+                    process::exit(0); // Exit successfully
+                }
+                // For any other parsing error
+                _ => {
+                    // Log the error message provided by clap
+                    error!("{}", e);
+                    process::exit(1); // Exit with an error code
+                }
+            }
+        }
+    };
 
     match &cli_args.command {
         Command::Init {
@@ -68,47 +87,39 @@ fn main() {
             output,
         } => {
             info!("Initializing ...");
-            init(style.clone(), *force, output.clone());
+            init(style, force, output);
         }
-        Command::Run { test_dir } => {
+        Command::Run { directory } => {
             info!("Running testcase ...");
-            run(vec![test_dir.clone()])
+            run(directory)
         }
-        Command::Generate { testcases_dir } => {
+        Command::Generate { directory } => {
             info!("Generating testcase scripts ...");
-            generate(vec![testcases_dir.clone()])
+            generate(directory)
         }
-        Command::Export { output_dir } => {
+        Command::Export { output } => {
             info!("Exporting testcase ...");
-            export(vec![output_dir.clone()])
+            export(output)
         }
     }
 }
 
-fn export(args: Vec<String>) {
-    let output_dir: &String;
-    let curr_dir: String = String::from(".");
-    if args.len() == 1 {
-        output_dir = &curr_dir;
-    } else if args.len() == 2 {
-        output_dir = &args[1];
-    } else {
-        error!("Too many arguments!");
-        process::exit(1);
-    }
+fn export(output: &String) {
+    // convert the output path to absolute path
+    let output_dir = output.clone();
 
     // check if the output directory exists, if not create it
-    if !Path::new(output_dir).exists() {
-        fs::create_dir_all(output_dir).unwrap();
+    if !Path::new(&output_dir).exists() {
+        fs::create_dir_all(&output_dir).unwrap();
     }
 
     // copy everything from default test directory to the output directory
     let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    copy_dir_all(&vesyla_suite_path_testcase, output_dir).unwrap();
+    copy_dir_all(&vesyla_suite_path_testcase, &output_dir).unwrap();
 }
 
-fn init(style: String, force: bool, output: String) {
+fn init(style: &String, force: &bool, output: &String) {
     // create the output directory
     if !Path::new(&output).exists() {
         fs::create_dir_all(&output).unwrap();
@@ -117,7 +128,7 @@ fn init(style: String, force: bool, output: String) {
     // lock the output directory
     let lock_file = format!("{}/.lock", output);
     if Path::new(&lock_file).exists() {
-        if force {
+        if *force {
             fs::remove_file(&lock_file).expect("Failed to remove lock file");
         } else {
             error!("Directory is already initialized. Use -f to force re-initialization");
@@ -136,24 +147,52 @@ fn init(style: String, force: bool, output: String) {
     // construct template path
     let template_path = format!("{}/share/vesyla-suite/template/{}", prog_path, style);
 
+    // check if template path exists
+    if !Path::new(&template_path).exists() {
+        error!("Template not found for style {}", style);
+        process::exit(1);
+    }
+
     // copy all the contents including files and subdirectories in template directory to the output directory
     copy_dir_all(&template_path, &output).expect("Failed to copy template directory");
 }
 
-fn run(args: Vec<String>) {
-    assert!(args.len() == 2);
-    let test_dir = &args[1];
-
-    // initialize the testcase directory
-    init("drra".to_string(), true, ".".to_string());
-
+fn run(directory: &String) {
     // if test_dir starts with {{VESYLA_SUITE_PATH_TESTCASE}}, replace it with the actual path
     let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    let test_dir = test_dir.replace(
+    let test_dir = directory.replace(
         "{{VESYLA_SUITE_PATH_TESTCASE}}",
         &vesyla_suite_path_testcase,
     );
+
+    // check if the directory exists
+    if !Path::new(&test_dir).exists() {
+        error!("Directory {} does not exist", &test_dir);
+        process::exit(1);
+    }
+    // check if the directory is a directory
+    if !Path::new(&test_dir).is_dir() {
+        error!("{} is not a directory", &test_dir);
+        process::exit(1);
+    }
+
+    // convert the directory path to absolute path
+    let test_dir = Path::new(&test_dir)
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // check if the directory is the current directory, if yes, exit
+    if test_dir == Path::new(".").canonicalize().unwrap().to_str().unwrap() {
+        error!("Testcase source directory cannot be the current working directory!");
+        process::exit(1);
+    }
+
+    // use init() to initialize the testcase directory
+    init(&"drra".to_string(), &true, &".".to_string());
 
     // copy everything from the test directory to the current directory
     copy_dir_all(&test_dir, ".").unwrap();
@@ -166,24 +205,39 @@ fn run(args: Vec<String>) {
     assert!(status.success());
 }
 
-fn generate(args: Vec<String>) {
-    let testcases_dir: &String;
+fn generate(directory: &String) {
+    // replace {{VESYLA_SUITE_PATH_TESTCASE}} with the actual path
     let vesyla_suite_path_testcase =
         env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    if args.len() == 1 {
-        testcases_dir = &vesyla_suite_path_testcase;
-    } else if args.len() == 2 {
-        testcases_dir = &args[1];
-    } else {
-        error!("Too many arguments!");
+    let real_dir = directory.replace(
+        "{{VESYLA_SUITE_PATH_TESTCASE}}",
+        &vesyla_suite_path_testcase,
+    );
+
+    // check if the directory exists
+    if !Path::new(&real_dir).exists() {
+        error!("Directory {} does not exist", &real_dir);
         process::exit(1);
     }
+    // check if the directory is a directory
+    if !Path::new(&real_dir).is_dir() {
+        error!("{} is not a directory", &real_dir);
+        process::exit(1);
+    }
+
+    // convert the testcases directory path to absolute path
+    let testcases_dir = Path::new(&real_dir)
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
     info!("Testcase directory: {}", testcases_dir);
 
     // Find all third-level directories under the testcases directory
     let mut leaf_path_vec: Vec<String> = Vec::new();
-    let pattern = Path::new(testcases_dir).join("*").join("*").join("*");
+    let pattern = Path::new(&testcases_dir).join("*").join("*").join("*");
     let pattern = pattern.to_str().expect("Failed to convert path to string");
     for entry in glob(pattern).expect("Failed to read glob pattern") {
         match entry {
@@ -290,7 +344,7 @@ Autotest Template
     [Arguments]  ${filename}
     ${random_string} =    Generate Random String    12    [LOWER]
     Create Directory    work/${random_string}
-    ${result} =    Run Process    vesyla-suite testcase run "${filename}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
+    ${result} =    Run Process    vesyla-suite testcase run -d "${filename}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
     Should Be Equal As Integers    ${result.rc}    0
     Remove Directory   work/${random_string}     recursive=True
 "#.as_bytes()).expect("Failed to write autotest_config.robot");
