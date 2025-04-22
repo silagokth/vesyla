@@ -17,8 +17,11 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/BuiltinAttributes.td"
+include "mlir/IR/BuiltinTypes.td"
 
 include "asm/Dialect.td"
+include "asm/Types.td"
 
 // Base class for asm dialect operations. This operation inherits from the base
 // `Op` class in OpBase.td and provides:
@@ -34,11 +37,14 @@ class ASM_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def DSUOp : ASM_Op<"dsu"> {
-    let summary = "Data Storage Unit";
+    let summary = "Data Storage Unit operation";
     let description = [{
         The DSU operation is used to define a data movement operation for the
         target resource.
     }];
+
+    let arguments = (ins I32Attr:$init_addr_sd);
+    let results = (outs InstrType:$result);
 
     let builders = [
         OpBuilder<(ins "IntegerAttr":$init_addr_sd), [{

@@ -24,11 +24,15 @@ def ASM_Dialect : Dialect {
       At this level of abstraction, the operations are scheduled and mapped, ready to generate the final assembly.
   }];
   let cppNamespace = "vesyla::asmd";  // Changed from "vesyla::asm" to "vesyla::asmd"
-//   let useDefaultTypePrinterParser = 1;
-    let extraClassDeclaration = [{
-        void registerOps();
-        void registerTypes();
-    }];
+
+  let useDefaultTypePrinterParser = 1;
+  let extraClassDeclaration = [{
+    void registerOps();
+    void registerTypes();
+    
+    // mlir::Type parseType(mlir::DialectAsmParser &parser) const;
+    // void printType(mlir::Type type, mlir::DialectAsmPrinter &printer) const;
+  }];
 }
 
 #endif // ASM_DIALECT

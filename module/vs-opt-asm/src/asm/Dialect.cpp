@@ -6,8 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/DialectImplementation.h"
+#include "llvm/ADT/TypeSwitch.h"
+
 #include "asm/Dialect.hpp"
 #include "asm/Ops.hpp"
+#include "asm/Types.hpp"
 
 using namespace mlir;
 using namespace vesyla::asmd;
@@ -24,4 +28,19 @@ using namespace vesyla::asmd;
 void ASMDialect::initialize() {
   registerOps();
   registerTypes();
+}
+
+Type ASMDialect::parseType(DialectAsmParser &parser) const {
+  // Call the default parser for the type.
+  Type type;
+  auto parseResult = generatedTypeParser(parser, nullptr, type);
+  if (parseResult.has_value())
+    return type;
+  return Type();
+}
+
+void ASMDialect::printType(Type type, DialectAsmPrinter &printer) const {
+  // Call the default printer for the type.
+  if (failed(generatedTypePrinter(type, printer)))
+    printer << "<unknown asm type>";
 }

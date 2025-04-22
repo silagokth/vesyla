@@ -11,12 +11,7 @@ class ASM_Type<string name, string typeMnemonic, list<Trait> traits = [],
   let mnemonic = typeMnemonic;
 }
 
-// def InstructionType : ASM_Type<"Instruction", "Instruction"> {
-//   let description = [{
-//     An instruction type.
-//   }];
-//   let parameters = (ins "unsigned": $width, StringRefParameter<"the custom value">: $bind);
-//   let assemblyFormat = "`<` $width `,`  $bind `>`";
-// }
-
+def InstrType : ASM_Type<"instr", "instr"> {
+  let description = "Instruction type";
+}
 #endif // ASM_TYPE

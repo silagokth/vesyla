@@ -10,13 +10,13 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
-#include "cidfg/Dialect.hpp"
+#include "asm/Dialect.hpp"
 
 int main(int argc, char **argv) {
 
   mlir::DialectRegistry registry;
-  registry.insert<vesyla::cidfg::CidfgDialect>();
+  registry.insert<vesyla::asmd::ASMDialect>();
 
   return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
+      mlir::MlirOptMain(argc, argv, "ASM optimizer driver\n", registry));
 }

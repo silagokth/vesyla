@@ -15,9 +15,6 @@
 using namespace mlir;
 using namespace vesyla::asmd;
 
-#define GET_TYPEDEF_CLASSES
-#include "asm/Types.cpp.inc"
-
 void ASMDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST
