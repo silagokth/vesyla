@@ -19,7 +19,6 @@
 #define __VESYLA_UTIL_COMMON_HPP__
 
 #include "GlobalVar.hpp"
-#include "easylogpp/easylogging++.h"
 #include "inja/inja.hpp"
 #include "json/json.hpp"
 #include <cfloat>
@@ -34,7 +33,6 @@
 #include <vector>
 
 #include "Config.hpp"
-#include "Database.hpp"
 #include "SysPath.hpp"
 
 #define BOOST_ALLOW_DEPRECATED_HEADERS
@@ -43,12 +41,15 @@
 using json = nlohmann::json;
 
 #define __NOT_IMPLEMENTED__                                                    \
-  LOG(FATAL) << "Function has not been implemented yet!";
-#define __NOT_SUPPORTED__ LOG(FATAL) << "Function is not supported!";
+  BOOST_LOG_TRIVIAL(fatal) << "Function has not been implemented yet!";        \
+  std::exit(-1);
+#define __NOT_SUPPORTED__                                                      \
+  BOOST_LOG_TRIVIAL(fatal) << "Function is not supported!";
 #define __DEPRECATED__                                                         \
   LOG(WARNING) << "Function is deprecated and will be removed soon!";
 #define __VIRTUAL_FUNCTION__                                                   \
-  LOG(FATAL) << "Virtual function cannot be directly accessed!";
+  BOOST_LOG_TRIVIAL(fatal) << "Virtual function cannot be directly accessed!"; \
+  std::exit(-1);
 
 class Common {
 public:

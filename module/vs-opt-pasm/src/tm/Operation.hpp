@@ -7,10 +7,17 @@
 
 using namespace std;
 
+namespace vesyla {
+namespace tm {
+
+struct TransitOperator;
+struct RepeatOperator;
+
 struct Expression {
   Expression(string str) {
     // Never use this constructor
-    LOG(FATAL) << "Expression constructor should never be used";
+    BOOST_LOG_TRIVIAL(fatal) << "Expression constructor should never be used";
+    std::exit(-1);
   };
   virtual ~Expression() {}
   virtual string to_string() = 0;
@@ -30,7 +37,8 @@ struct Event : public Expression {
     if (std::regex_match(str, match, regex)) {
       id = std::stoi(match[1]);
     } else {
-      LOG(FATAL) << "Invalid event string: " << str;
+      BOOST_LOG_TRIVIAL(fatal) << "Invalid event string: " << str;
+      std::exit(-1);
     }
   }
   ~Event() {
@@ -42,33 +50,7 @@ struct RepeatOperator : public Expression {
   string delay;
   int iter;
   Expression *expr;
-  RepeatOperator(string str) : Expression(str) {
-    // trim the string
-    str.erase(str.begin(),
-              std::find_if(str.begin(), str.end(),
-                           [](unsigned char ch) { return !std::isspace(ch); }));
-    // use regex to match R<iter, delay>(expr)
-    // e.g. R<2, 3>(e1)
-    // e.g. R<2, 3>(e1) -> iter = 2, delay = 3, expr = e1
-    // the delay can be either an identifier or a number
-    auto regex = std::regex("R<([0-9]+), ([0-9a-zA-Z_]+)>(.*)");
-    std::smatch match;
-    if (std::regex_match(str, match, regex)) {
-      iter = std::stoi(match[1]);
-      delay = match[2];
-      if (match[3].str().find("e") == 0) {
-        expr = new Event(match[3]);
-      } else if (match[3].str().find("R") == 0) {
-        expr = new RepeatOperator(match[3]);
-      } else if (match[3].str().find("T") == 0) {
-        expr = new TransitOperator(match[3]);
-      } else {
-        LOG(FATAL) << "Invalid repeat operator string: " << str;
-      }
-    } else {
-      LOG(FATAL) << "Invalid repeat operator string: " << str;
-    }
-  }
+  RepeatOperator(string str);
   ~RepeatOperator() { delete expr; };
   string to_string() override {
     return "R<" + std::to_string(iter) + ", " + delay + ">(" +
@@ -79,40 +61,7 @@ struct TransitOperator : public Expression {
   string delay;
   Expression *expr_0;
   Expression *expr_1;
-  TransitOperator(string str) : Expression(str) {
-    // trim the string
-    str.erase(str.begin(),
-              std::find_if(str.begin(), str.end(),
-                           [](unsigned char ch) { return !std::isspace(ch); }));
-    // use regex to match T<delay>(expr_0, expr_1)
-    // e.g. T<3>(e1, e2)
-    // e.g. T<3>(e1, e2) -> delay = 3, expr_0 = e1, expr_1 = e2
-    auto regex = std::regex("T<([0-9a-zA-Z_]+)>\\((.*), (.*)\\)");
-    std::smatch match;
-    if (std::regex_match(str, match, regex)) {
-      delay = match[1];
-      if (match[2].str().find("e") == 0) {
-        expr_0 = new Event(match[2]);
-      } else if (match[2].str().find("R") == 0) {
-        expr_0 = new RepeatOperator(match[2]);
-      } else if (match[2].str().find("T") == 0) {
-        expr_0 = new TransitOperator(match[2]);
-      } else {
-        LOG(FATAL) << "Invalid transit operator string: " << str;
-      }
-      if (match[3].str().find("e") == 0) {
-        expr_1 = new Event(match[3]);
-      } else if (match[3].str().find("R") == 0) {
-        expr_1 = new RepeatOperator(match[3]);
-      } else if (match[3].str().find("T") == 0) {
-        expr_1 = new TransitOperator(match[3]);
-      } else {
-        LOG(FATAL) << "Invalid transit operator string: " << str;
-      }
-    } else {
-      LOG(FATAL) << "Invalid transit operator string: " << str;
-    }
-  }
+  TransitOperator(string str);
   ~TransitOperator() {
     delete expr_0;
     delete expr_1;
@@ -122,5 +71,8 @@ struct TransitOperator : public Expression {
            expr_1->to_string() + ")";
   };
 };
+
+} // namespace tm
+} // namespace vesyla
 
 #endif // __VESYLA_TM_OPERATION_HPP__

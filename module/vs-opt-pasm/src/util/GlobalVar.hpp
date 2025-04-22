@@ -18,8 +18,8 @@
 #ifndef __VS_UTIL_GLOBAL_VAR_HPP__
 #define __VS_UTIL_GLOBAL_VAR_HPP__
 
-#include "easylogpp/easylogging++.h"
 #include "json/json.hpp"
+#include <boost/log/trivial.hpp>
 #include <cstring>
 #include <fstream>
 #include <map>
