@@ -27,8 +27,15 @@ fn main() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
+    log_panics::init();
 
-    let args = Args::parse();
+    // make sure the program return non-zero if command parsing fails
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            error!("{}", e);
+            std::process::exit(1);
+    };
 
     info!("Assembler started: {:?}", args.asm);
     let parser = Parser::new(&args.arch, &args.isa);

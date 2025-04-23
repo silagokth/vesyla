@@ -28,6 +28,8 @@ fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
+    log_panics::init();
+
     let args: Vec<String> = env::args().collect();
 
     let help_message = format!(
@@ -39,13 +41,13 @@ fn main() {
          \ttestcase    Test the system\n\
          Options:\n\
          \t-h, --help     Show this help message\n\
-         \t-v, --version  Show version information",
+         \t-V, --version  Show version information",
         args[0]
     );
 
     if args.len() < 2 {
-        warn!("{}", help_message);
-        process::exit(0);
+        error!("{}", help_message);
+        process::exit(1);
     }
 
     // find the directory of the current executable
@@ -56,7 +58,7 @@ fn main() {
             info!("{}", help_message);
             process::exit(0);
         }
-        "-v" | "--version" => {
+        "-V" | "--version" => {
             let version = extract_version();
             let mut tools_versions = vec![];
             for tool in tools_list.iter() {
@@ -78,8 +80,8 @@ fn main() {
                     tools_versions.push(format!("{}: {}", tool, tool_version));
                 } else {
                     tools_versions.push(format!("{}: Unknown", tool));
-                    info!("{:?}", &status.stderr);
-                    info!("Failed to get version for tool: {}", tool);
+                    warn!("{:?}", status.stderr);
+                    warn!("Failed to get version for tool: {}", tool);
                 }
             }
             info!("vesyla-suite {}", version);
@@ -99,6 +101,7 @@ fn main() {
                 if status.code() != Some(2) {
                     error!("{} command failed", command);
                     info!("Exit code: {}", status.code().unwrap_or(-1));
+                    process::exit(status.code().unwrap_or(-1));
                 }
             }
         }
