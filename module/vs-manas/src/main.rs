@@ -34,8 +34,7 @@ fn main() {
         Ok(args) => args,
         Err(e) => {
             error!("{}", e);
-            panic!();
-        }
+            std::process::exit(1);
     };
 
     info!("Assembler started: {:?}", args.asm);
