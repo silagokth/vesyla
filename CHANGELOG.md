@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.0.13] - 2025-04-23
+
+### Fixed
+
+- [#42](https://github.com/silagokth/vesyla/issues/42) Appimage does not build because of missing bracket in vs-manas
+
 ## [4.0.12] - 2025-04-23
 
 ### Added
