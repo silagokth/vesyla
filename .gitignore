@@ -1,5 +1,6 @@
 build
 env/
+.venv/
 work/
 vesyla-suite
 debug/
