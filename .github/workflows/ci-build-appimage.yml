@@ -1,0 +1,28 @@
+name: Create AppImage
+
+on:
+  pull_request: 
+    branches:
+      - master
+  workflow_call:
+
+jobs:
+  build:
+    name: Build AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build project
+        run: |
+          ./install_dependency.sh
+          ./make_appimage.sh
+
+      - name: Upload built artifact
+        id: upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vesyla-suite-${{ github.sha }}
+          path: ./vesyla-suite
+          overwrite: true
