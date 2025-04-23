@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.0.14] - 2024-04-23
+
+### Changed
+
+#### GitHub Workflow
+
+- [#44](https://github.com/silagokth/vesyla/issues/44) trigger build on pull_request and triggers release on tag "v*"
+- [#35](https://github.com/silagokth/vesyla/issues/35) releases now include corresponding changelog section
+
 ## [4.0.13] - 2025-04-23
 
 ### Fixed
