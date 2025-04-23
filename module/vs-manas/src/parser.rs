@@ -128,8 +128,8 @@ impl Parser {
         let mut pc_table: HashMap<String, HashMap<String, i32>> = HashMap::new();
         let mut cell_instr_counter: HashMap<String, i32> = HashMap::new();
         let prog = prog.unwrap();
-        let mut x = 0;
-        let mut y = 0;
+        let mut x;
+        let mut y;
         let mut label = String::new();
         for record in prog.clone().records {
             if record.name == "cell" {

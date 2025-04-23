@@ -5,7 +5,7 @@ mod parser;
 use clap::Parser as clappar;
 use core::panic;
 use gen::Generator;
-use log::{debug, error, info, trace, warn};
+use log::{error, info};
 use parser::Parser;
 use std::fs;
 use std::path::Path;
@@ -35,6 +35,7 @@ fn main() {
         Err(e) => {
             error!("{}", e);
             std::process::exit(1);
+        }
     };
 
     info!("Assembler started: {:?}", args.asm);
