@@ -1,14 +1,15 @@
-import os
 import sys
-import json
 import ds_pb2 as ds
 from google.protobuf.json_format import MessageToJson
 import logging
+
 
 def id_to_text(id: str) -> str:
     if id == "" or id.startswith("__"):
         return ""
     return f"<{id}>"
+
+
 def parameters_to_text(parameters) -> str:
     if len(parameters) == 0:
         return ""
@@ -18,13 +19,21 @@ def parameters_to_text(parameters) -> str:
     text = "(" + ", ".join(vp) + ")"
     return text
 
+
 def pasmrecord_to_text(record_id: str, prog: ds.PASMProg) -> str:
     text = ""
     record = prog.records[record_id]
     if record.kind == ds.PASMRecord.Kind.START:
         for content in record.contents:
             text += pasmrecord_to_text(content, prog)
-    elif record.kind == ds.PASMRecord.Kind.LOOP or record.kind == ds.PASMRecord.Kind.COND or record.kind == ds.PASMRecord.Kind.EPOCH or record.kind == ds.PASMRecord.Kind.CELL or record.kind == ds.PASMRecord.Kind.COP or record.kind == ds.PASMRecord.Kind.ROP:
+    elif (
+        record.kind == ds.PASMRecord.Kind.LOOP
+        or record.kind == ds.PASMRecord.Kind.COND
+        or record.kind == ds.PASMRecord.Kind.EPOCH
+        or record.kind == ds.PASMRecord.Kind.CELL
+        or record.kind == ds.PASMRecord.Kind.COP
+        or record.kind == ds.PASMRecord.Kind.ROP
+    ):
         if record.kind == ds.PASMRecord.Kind.LOOP:
             label = "loop"
         elif record.kind == ds.PASMRecord.Kind.COND:
@@ -50,6 +59,7 @@ def pasmrecord_to_text(record_id: str, prog: ds.PASMProg) -> str:
         sys.exit(1)
     return text
 
+
 def cstrrecord_to_text(record_id: str, prog: ds.CSTRProg) -> str:
     text = ""
     record = prog.records[record_id]
@@ -69,6 +79,7 @@ def cstrrecord_to_text(record_id: str, prog: ds.CSTRProg) -> str:
         sys.exit(1)
     return text
 
+
 def asmrecord_to_text(prog: ds.ASMProg) -> str:
     text = ""
     for content in prog.contents:
@@ -82,30 +93,35 @@ def asmrecord_to_text(prog: ds.ASMProg) -> str:
             sys.exit(1)
     return text
 
+
 def pasmprog_to_text(prog: ds.PASMProg) -> str:
     text = pasmrecord_to_text(prog.start, prog)
     return text
+
 
 def pasmprog_to_json(prog: ds.PASMProg) -> str:
     json_text = MessageToJson(prog)
     return json_text
 
+
 def cstrprog_to_text(prog: ds.CSTRProg) -> str:
     text = cstrrecord_to_text(prog.start, prog)
     return text
+
 
 def cstrprog_to_json(prog: ds.CSTRProg) -> str:
     json_text = MessageToJson(prog)
     return json_text
 
+
 def asmprog_to_text(prog: ds.ASMProg) -> str:
     text = asmrecord_to_text(prog)
     return text
 
+
 def asmprog_to_json(prog: ds.ASMProg) -> str:
     json_text = MessageToJson(prog)
     return json_text
-
 
 
 def parameters_to_pure_text(parameters) -> str:
@@ -116,6 +132,7 @@ def parameters_to_pure_text(parameters) -> str:
         vp.append(f"{parameter}={parameters[parameter]}")
     text = ", ".join(vp)
     return text
+
 
 def pasmrecord_to_text(id, prog):
     text = ""
@@ -146,6 +163,7 @@ def pasmrecord_to_text(id, prog):
             sys.exit(1)
 
     return text
+
 
 def cstrrecord_to_text(id, prog):
     text = ""

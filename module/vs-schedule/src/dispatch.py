@@ -8,12 +8,13 @@ import parse
 import codegen
 import ds_pb2 as ds
 
+
 def instr_count_in_contents(asmprog, contents, cells):
-    instr_count ={}
+    instr_count = {}
     for cell in cells:
         cell_label = f"{cell['x']}_{cell['y']}"
         instr_count[cell_label] = 0
-    
+
     cell_label = None
     for content in contents:
         record = asmprog.records[content]
@@ -25,8 +26,9 @@ def instr_count_in_contents(asmprog, contents, cells):
             else:
                 logging.error("Instruction outside of cell")
                 sys.exit(-1)
-    
+
     return instr_count
+
 
 def schedule_epoch(id, pasm_prog, cstr_prog, cells, file_arch, output_dir):
     pasm_path = os.path.join(output_dir, "0.pasm")
@@ -53,7 +55,18 @@ def schedule_epoch(id, pasm_prog, cstr_prog, cells, file_arch, output_dir):
         asm_epoch = parse.text_to_asm_epoch(txt)
         return asm_epoch
 
-def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, asmprog):
+
+def create_asm_for_region(
+    id,
+    pasmprog,
+    cstrprog,
+    cells,
+    scalar_reg_counters,
+    bool_reg_counters,
+    file_arch,
+    output_dir,
+    asmprog,
+):
     MAX_SCALAR_REG = 15
     MAX_BOOL_REG = 15
 
@@ -71,7 +84,17 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
         loop_body_contents = []
         for content in record.contents:
             new_asmprog = ds.ASMProg()
-            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, new_asmprog)
+            content_id_vector = create_asm_for_region(
+                content,
+                pasmprog,
+                cstrprog,
+                cells,
+                scalar_reg_counters,
+                bool_reg_counters,
+                file_arch,
+                output_dir,
+                new_asmprog,
+            )
             loop_body_contents.extend(content_id_vector)
             for record_id in content_id_vector:
                 asmprog.records[record_id].CopyFrom(new_asmprog.records[record_id])
@@ -92,12 +115,11 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
             cell_record = ds.ASMRecord()
             cell_record.id = parse.get_random_id()
             cell_record.kind = ds.ASMRecord.Kind.CELL
-            cell_record.parameters["x"] = cell['x']
-            cell_record.parameters["y"] = cell['y']
+            cell_record.parameters["x"] = cell["x"]
+            cell_record.parameters["y"] = cell["y"]
             asmprog.records[cell_record.id].CopyFrom(cell_record)
             record_id_vector.append(cell_record.id)
-            
-            
+
             # iterator initialization
             # calc (mode=add, operand1=0, operand2_sd=s, operand_2=0, return=curr_scalar_reg)
             init_record = ds.ASMRecord()
@@ -138,10 +160,10 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
             asmprog.records[branch_record.id].CopyFrom(branch_record)
             record_id_vector.append(branch_record.id)
 
-        #loop body
+        # loop body
         for content in loop_body_contents:
             record_id_vector.append(content)
-            
+
         for cell in cells:
             cell_label = f"{cell['x']}_{cell['y']}"
 
@@ -149,8 +171,8 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
             cell_record = ds.ASMRecord()
             cell_record.id = parse.get_random_id()
             cell_record.kind = ds.ASMRecord.Kind.CELL
-            cell_record.parameters["x"] = cell['x']
-            cell_record.parameters["y"] = cell['y']
+            cell_record.parameters["x"] = cell["x"]
+            cell_record.parameters["y"] = cell["y"]
             asmprog.records[cell_record.id].CopyFrom(cell_record)
             record_id_vector.append(cell_record.id)
 
@@ -192,7 +214,17 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
         cond_body_contents = []
         for content in record.contents:
             new_asmprog = ds.ASMProg()
-            content_id_vector = create_asm_for_region(content, pasmprog, cstrprog, new_cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, new_asmprog)
+            content_id_vector = create_asm_for_region(
+                content,
+                pasmprog,
+                cstrprog,
+                new_cells,
+                scalar_reg_counters,
+                bool_reg_counters,
+                file_arch,
+                output_dir,
+                new_asmprog,
+            )
             cond_body_contents.extend(content_id_vector)
             for record_id in content_id_vector:
                 asmprog.records[record_id].CopyFrom(new_asmprog.records[record_id])
@@ -221,9 +253,9 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
 
         for content in cond_body_contents:
             record_id_vector.append(content)
-        
+
         return record_id_vector
-    
+
     elif record.kind == ds.PASMRecord.Kind.EPOCH:
 
         # scan through the contents to get the count of raw regions, cop regions and rop regions
@@ -246,8 +278,8 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
                 else:
                     logging.error("Illegal record kind: %s", sub_record.kind)
                     sys.exit(-1)
-        
-        if raw_region > 0 and cop_region ==0 and rop_region == 0:
+
+        if raw_region > 0 and cop_region == 0 and rop_region == 0:
             # don't schedule this epoch region
             record_id_vector = []
             for content in record.contents:
@@ -258,7 +290,7 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
                 cell_asmrecord.parameters.update(cell_record.parameters)
                 asmprog.records[cell_asmrecord.id].CopyFrom(cell_asmrecord)
                 record_id_vector.append(cell_asmrecord.id)
-                
+
                 for sub_content in cell_record.contents:
                     sub_record = pasmprog.records[sub_content]
                     for instr_content in sub_record.contents:
@@ -271,32 +303,38 @@ def create_asm_for_region(id, pasmprog, cstrprog, cells, scalar_reg_counters, bo
                         asmprog.records[instr_asmrecord.id].CopyFrom(instr_asmrecord)
                         record_id_vector.append(instr_asmrecord.id)
             return record_id_vector
-        elif raw_region == 0 and ((cop_region > 0 and rop_region == 0) or (cop_region == 0 and rop_region > 0)):
+        elif raw_region == 0 and (
+            (cop_region > 0 and rop_region == 0) or (cop_region == 0 and rop_region > 0)
+        ):
             # schedule the epoch region
             workdir = os.path.join(output_dir, record.id)
             os.makedirs(workdir, exist_ok=True)
-            asm_epoch = schedule_epoch(record.id, pasmprog, cstrprog, cells, file_arch, workdir)
+            asm_epoch = schedule_epoch(
+                record.id, pasmprog, cstrprog, cells, file_arch, workdir
+            )
             record_id_vector = asm_epoch.contents
-            
+
             for record_id in record_id_vector:
                 asmprog.records[record_id].CopyFrom(asm_epoch.records[record_id])
 
             return record_id_vector
         else:
-            logging.error("RAW, COP or ROP regions cannot be mixed in the same epoch: ", record.id)
+            logging.error(
+                "RAW, COP or ROP regions cannot be mixed in the same epoch: ", record.id
+            )
             sys.exit(-1)
-    
+
     else:
         logging.error("Illegal record kind: %s", record.kind)
         sys.exit(-1)
-    
+
 
 def create_asm(pasmprog, cstrprog, cells, file_arch, output_dir):
     record = pasmprog.records[pasmprog.start]
     if record.kind != ds.PASMRecord.Kind.START:
         logging.error("Expected START record, got %s", record.kind)
         sys.exit(1)
-    
+
     asmprog = ds.ASMProg()
     scalar_reg_counters = {}
     bool_reg_counters = {}
@@ -306,10 +344,21 @@ def create_asm(pasmprog, cstrprog, cells, file_arch, output_dir):
         bool_reg_counters[cell_label] = 0
 
     for content in record.contents:
-        content_recoed_id_vector = create_asm_for_region(content, pasmprog, cstrprog, cells, scalar_reg_counters, bool_reg_counters, file_arch, output_dir, asmprog)
+        content_recoed_id_vector = create_asm_for_region(
+            content,
+            pasmprog,
+            cstrprog,
+            cells,
+            scalar_reg_counters,
+            bool_reg_counters,
+            file_arch,
+            output_dir,
+            asmprog,
+        )
         asmprog.contents.extend(content_recoed_id_vector)
 
     return asmprog
+
 
 def find_all_cells(pasmprog):
     cells = []
@@ -323,6 +372,7 @@ def find_all_cells(pasmprog):
                 cell_labels.add(f"{x}_{y}")
                 cells.append({"x": x, "y": y})
     return cells
+
 
 def optimize_asm(asmprog: ds.ASMProg):
     # place instruction of the same cell together
@@ -346,6 +396,7 @@ def optimize_asm(asmprog: ds.ASMProg):
     asmprog.contents.clear()
     asmprog.contents.extend(new_contents)
 
+
 def add_halt(asmprog, cells):
     for cell in cells:
         cell_record = ds.ASMRecord()
@@ -362,6 +413,7 @@ def add_halt(asmprog, cells):
         asmprog.records[halt_record.id].CopyFrom(halt_record)
         asmprog.contents.append(halt_record.id)
 
+
 def iter_add_one(pasmprog) -> ds.PASMProg:
     for record_id in pasmprog.records:
         record = pasmprog.records[record_id]
@@ -370,6 +422,7 @@ def iter_add_one(pasmprog) -> ds.PASMProg:
                 record.parameters["iter"] = str(int(record.parameters["iter"]) + 1)
     return pasmprog
 
+
 def iter_sub_one(asmprog) -> ds.ASMProg:
     for record_id in asmprog.contents:
         record = asmprog.records[record_id]
@@ -377,6 +430,7 @@ def iter_sub_one(asmprog) -> ds.ASMProg:
             if record.name == "rep":
                 record.parameters["iter"] = str(int(record.parameters["iter"]) - 1)
     return asmprog
+
 
 def dispatch(file_pasm, file_cstr, file_arch, output_dir):
     with open(file_pasm, "r") as file:
