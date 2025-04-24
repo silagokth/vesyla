@@ -16,7 +16,7 @@ jobs:
 
       - name: Build project
         run: |
-          ./install_dependency.sh
+          source ./install_dependencies.sh
           ./make_appimage.sh
 
       - name: Upload built artifact
