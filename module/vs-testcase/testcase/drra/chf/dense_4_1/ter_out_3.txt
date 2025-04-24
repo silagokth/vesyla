@@ -1,0 +1,2943 @@
+Initialization ...
+Run model 0 ...
+Run model 1 ...
+2024-10-26 23:47:49,510 - INFO - Model file is generated at compile/ep0_x/model.txt
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: route_c00_c10_e0
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: R<2,0>(read_x_from_ib_e0)
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: read_x_from_ib_e0
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: R<2,0>(write_x_to_sram_e0)
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: write_x_to_sram_e0
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: R<2,0>(read_x_from_sram_e0)
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: read_x_from_sram_e0
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: route_c10_c00_e0
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: R<2,0>(write_x_to_rf1_e0)
+2024-10-26 23:47:49,511 - DEBUG - Analyze expression: write_x_to_rf1_e0
+2024-10-26 23:47:49,522 - INFO - Schedule completed successfully!
+2024-10-26 23:47:49,522 - INFO - Solution:
+2024-10-26 23:47:49,522 - INFO - Timing table saved to compile/ep0_x/timing_table.json
+2024-10-26 23:47:49,523 - INFO - Instruction synchronization completed
+2024-10-26 23:47:49,523 - INFO - Instruction lists are written to compile/ep0_x/instr_lists.txt
+2024-10-26 23:47:49,541 - INFO - Model file is generated at compile/ep1_w/model.txt
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t1>(R<4,0>(read_w_from_ib_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<4,0>(read_w_from_ib_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: read_w_from_ib_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t1>(R<4,0>(write_w_to_sram_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<4,0>(write_w_to_sram_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: write_w_to_sram_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t1>(R<4,0>(read_w_from_sram_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<4,0>(read_w_from_sram_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: read_w_from_sram_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: route_c10_c20_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t1>(R<4,0>(write_w_to_rf2_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<4,0>(write_w_to_rf2_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: write_w_to_rf2_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: swb_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t2>(R<2,0>(R<32,0>(read_x_from_rf1_e0)))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<2,0>(R<32,0>(read_x_from_rf1_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<32,0>(read_x_from_rf1_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: read_x_from_rf1_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t2>(R<2,0>(R<32,0>(read_w_from_rf2_e0)))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<2,0>(R<32,0>(read_w_from_rf2_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<32,0>(read_w_from_rf2_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: read_w_from_rf2_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t4>(R<2,t3>(compute_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<2,t3>(compute_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: compute_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<8,t6>(R<2,t5>(write_o_to_rf3_e0))
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: R<2,t5>(write_o_to_rf3_e0)
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: write_o_to_rf3_e0
+2024-10-26 23:47:49,541 - DEBUG - Analyze expression: read_o_from_rf3_e0
+2024-10-26 23:47:49,542 - DEBUG - Analyze expression: route_c20_c10_e0
+2024-10-26 23:47:49,542 - DEBUG - Analyze expression: write_o_to_sram_e0
+2024-10-26 23:47:49,542 - DEBUG - Analyze expression: read_o_from_sram_e0
+2024-10-26 23:47:49,542 - DEBUG - Analyze expression: write_o_to_ob_e0
+2024-10-26 23:47:49,741 - INFO - Schedule completed successfully!
+2024-10-26 23:47:49,741 - INFO - Solution:
+2024-10-26 23:47:49,741 - INFO - Timing table saved to compile/ep1_w/timing_table.json
+2024-10-26 23:47:49,750 - INFO - Instruction synchronization completed
+2024-10-26 23:47:49,750 - INFO - Instruction lists are written to compile/ep1_w/instr_lists.txt
+ep0_x
+id: "ep0_x"
+kind: EPOCH
+contents: "__0d7505bf__"
+contents: "__772d3908__"
+contents: "__f6489c99__"
+contents: "__81e768d0__"
+contents: "__0dffd47d__"
+
+__0d7505bf__
+id: "__0d7505bf__"
+kind: CSTR
+name: "linear"
+constraint: " route_c00_c10 < read_x_from_sram "
+
+__772d3908__
+id: "__772d3908__"
+kind: CSTR
+name: "linear"
+constraint: " read_x_from_ib == write_x_to_sram"
+
+__f6489c99__
+id: "__f6489c99__"
+kind: CSTR
+name: "linear"
+constraint: " read_x_from_sram == write_x_to_sram + 1"
+
+__81e768d0__
+id: "__81e768d0__"
+kind: CSTR
+name: "linear"
+constraint: " route_c10_c00 < write_x_to_rf1"
+
+__0dffd47d__
+id: "__0dffd47d__"
+kind: CSTR
+name: "linear"
+constraint: " write_x_to_rf1 == read_x_from_sram + 1"
+
+
++========================================================+
+| Latency=4                                              |
++========================================================+
+| Variable                                   | Value     |
++--------------------------------------------+-----------+
+| read_x_from_ib                             | 0         |
+| read_x_from_ib_e0                          | 0         |
+| read_x_from_ib_e0_0                        | 0         |
+| read_x_from_sram                           | 1         |
+| read_x_from_sram_e0                        | 1         |
+| read_x_from_sram_e0_0                      | 1         |
+| route_c00_c10                              | 0         |
+| route_c00_c10_e0                           | 0         |
+| route_c10_c00                              | 0         |
+| route_c10_c00_e0                           | 0         |
+| write_x_to_rf1                             | 2         |
+| write_x_to_rf1_e0                          | 2         |
+| write_x_to_rf1_e0_0                        | 2         |
+| write_x_to_sram                            | 0         |
+| write_x_to_sram_e0                         | 0         |
+| write_x_to_sram_e0_0                       | 0         |
++========================================================+
+
+ep1_w
+id: "ep1_w"
+kind: EPOCH
+contents: "__0cccf1cd__"
+contents: "__240816a7__"
+contents: "__74060849__"
+contents: "__297d1d9a__"
+contents: "__7eb2011c__"
+contents: "__ec218ad7__"
+contents: "__166578c4__"
+contents: "__67b5b655__"
+contents: "__5bbbaa2d__"
+contents: "__20523746__"
+contents: "__9610d1b9__"
+contents: "__0245c5f0__"
+contents: "__dea12d2a__"
+contents: "__7b334816__"
+contents: "__668471d2__"
+contents: "__c8f0037e__"
+contents: "__184a64b0__"
+contents: "__62765b73__"
+contents: "__5bbc30a4__"
+
+__0cccf1cd__
+id: "__0cccf1cd__"
+kind: CSTR
+name: "linear"
+constraint: " read_w_from_ib == write_w_to_sram"
+
+__240816a7__
+id: "__240816a7__"
+kind: CSTR
+name: "linear"
+constraint: " read_w_from_sram == write_w_to_sram + 1"
+
+__74060849__
+id: "__74060849__"
+kind: CSTR
+name: "linear"
+constraint: " write_w_to_rf2 == read_w_from_sram + 1"
+
+__297d1d9a__
+id: "__297d1d9a__"
+kind: CSTR
+name: "linear"
+constraint: " read_w_from_rf2 == write_w_to_rf2 + 1"
+
+__7eb2011c__
+id: "__7eb2011c__"
+kind: CSTR
+name: "linear"
+constraint: " read_w_from_rf2.e0[1][0][0] == write_w_to_rf2.e0[1][0] + 1"
+
+__ec218ad7__
+id: "__ec218ad7__"
+kind: CSTR
+name: "linear"
+constraint: " route_c10_c20 < write_w_to_rf2"
+
+__166578c4__
+id: "__166578c4__"
+kind: CSTR
+name: "linear"
+constraint: " swb < read_x_from_rf1"
+
+__67b5b655__
+id: "__67b5b655__"
+kind: CSTR
+name: "linear"
+constraint: " read_x_from_rf1 == read_w_from_rf2"
+
+__5bbbaa2d__
+id: "__5bbbaa2d__"
+kind: CSTR
+name: "linear"
+constraint: " compute == read_w_from_rf2 + 1"
+
+__20523746__
+id: "__20523746__"
+kind: CSTR
+name: "linear"
+constraint: " compute.e0[0][1] == read_w_from_rf2.e0[0][1][0] + 1"
+
+__9610d1b9__
+id: "__9610d1b9__"
+kind: CSTR
+name: "linear"
+constraint: " compute.e0[1][0] == read_w_from_rf2.e0[1][0][0] + 1"
+
+__0245c5f0__
+id: "__0245c5f0__"
+kind: CSTR
+name: "linear"
+constraint: " write_o_to_rf3 == compute + 32"
+
+__dea12d2a__
+id: "__dea12d2a__"
+kind: CSTR
+name: "linear"
+constraint: " write_o_to_rf3.e0[0][1] == compute.e0[0][1] + 32"
+
+__7b334816__
+id: "__7b334816__"
+kind: CSTR
+name: "linear"
+constraint: " write_o_to_rf3.e0[7][1] == compute.e0[7][1] + 32"
+
+__668471d2__
+id: "__668471d2__"
+kind: CSTR
+name: "linear"
+constraint: " read_o_from_rf3.e0 == write_o_to_rf3.e0[7][1] + 1"
+
+__c8f0037e__
+id: "__c8f0037e__"
+kind: CSTR
+name: "linear"
+constraint: " route_c20_c10 < write_o_to_sram"
+
+__184a64b0__
+id: "__184a64b0__"
+kind: CSTR
+name: "linear"
+constraint: " write_o_to_sram == read_o_from_rf3 + 1"
+
+__62765b73__
+id: "__62765b73__"
+kind: CSTR
+name: "linear"
+constraint: " read_o_from_sram == write_o_to_sram + 1"
+
+__5bbc30a4__
+id: "__5bbc30a4__"
+kind: CSTR
+name: "linear"
+constraint: " write_o_to_ob == read_o_from_sram "
+
+
++========================================================+
+| Latency=520                                            |
++========================================================+
+| Variable                                   | Value     |
++--------------------------------------------+-----------+
+| compute                                    | 4         |
+| compute_e0                                 | 4         |
+| compute_e0_0_0                             | 4         |
+| compute_e0_0_1                             | 36        |
+| compute_e0_1_0                             | 68        |
+| compute_e0_7_1                             | 484       |
+| read_o_from_rf3                            | 517       |
+| read_o_from_rf3_e0                         | 517       |
+| read_o_from_sram                           | 519       |
+| read_o_from_sram_e0                        | 519       |
+| read_w_from_ib                             | 0         |
+| read_w_from_ib_e0                          | 0         |
+| read_w_from_ib_e0_0_0                      | 0         |
+| read_w_from_rf2                            | 3         |
+| read_w_from_rf2_e0                         | 3         |
+| read_w_from_rf2_e0_0_0_0                   | 3         |
+| read_w_from_rf2_e0_0_1_0                   | 35        |
+| read_w_from_rf2_e0_1_0_0                   | 67        |
+| read_w_from_sram                           | 1         |
+| read_w_from_sram_e0                        | 1         |
+| read_w_from_sram_e0_0_0                    | 1         |
+| read_x_from_rf1                            | 3         |
+| read_x_from_rf1_e0                         | 3         |
+| read_x_from_rf1_e0_0_0_0                   | 3         |
+| route_c10_c20                              | 1         |
+| route_c10_c20_e0                           | 1         |
+| route_c20_c10                              | 0         |
+| route_c20_c10_e0                           | 0         |
+| swb                                        | 0         |
+| swb_e0                                     | 0         |
+| t1                                         | 60        |
+| t2                                         | 0         |
+| t3                                         | 31        |
+| t4                                         | 31        |
+| t5                                         | 31        |
+| t6                                         | 31        |
+| write_o_to_ob                              | 519       |
+| write_o_to_ob_e0                           | 519       |
+| write_o_to_rf3                             | 36        |
+| write_o_to_rf3_e0                          | 36        |
+| write_o_to_rf3_e0_0_0                      | 36        |
+| write_o_to_rf3_e0_0_1                      | 68        |
+| write_o_to_rf3_e0_7_1                      | 516       |
+| write_o_to_sram                            | 518       |
+| write_o_to_sram_e0                         | 518       |
+| write_w_to_rf2                             | 2         |
+| write_w_to_rf2_e0                          | 2         |
+| write_w_to_rf2_e0_0_0                      | 2         |
+| write_w_to_rf2_e0_1_0                      | 66        |
+| write_w_to_sram                            | 0         |
+| write_w_to_sram_e0                         | 0         |
+| write_w_to_sram_e0_0_0                     | 0         |
++========================================================+
+
+Instruction successfully generated to .
+23:47:50 INFO ---- |Cycle 0  | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO WAIT instruction @ 1_0
+23:47:50 INFO WAIT instruction @ 2_0
+23:47:50 INFO ---- |Cycle 1  | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=2, step=1, delay=0
+23:47:50 INFO ---- |Cycle 2  | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 3  | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=2, step=1, delay=0
+23:47:50 INFO ---- |Cycle 4  | ----
+23:47:50 DEBUG swb
+23:47:50 INFO ROUTE instr: sr=0, source=2, target=128 in option 0
+23:47:50 INFO ---- |Cycle 5  | ----
+23:47:50 DEBUG swb
+23:47:50 INFO ROUTE instr: sr=1, source=1, target=6 in option 0
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 6  | ----
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=2, step=1, delay=0
+23:47:50 INFO ---- |Cycle 7  | ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO ACT instruction @ 0_0
+23:47:50 INFO ---- |Cycle 8  | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=0, iter=2, step=1, delay=0
+23:47:50 INFO ACT instruction @ 0_0
+23:47:50 INFO Set current ROUTE mode at 1_0_0
+23:47:50 INFO Set current ROUTE mode at 0_0_0
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read from input buffer: [6, 0, 1, 1, 2, 8, 1, 0, 5, 3, 4, 3, 7, 4, 6, 2]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [6, 0, 1, 1, 2, 8, 1, 0, 5, 3, 4, 3, 7, 4, 6, 2]
+23:47:50 INFO ---- |Cycle 9  | ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO WAIT instruction @ 0_0
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [6, 0, 1, 1, 2, 8, 1, 0, 5, 3, 4, 3, 7, 4, 6, 2] from iosram_0_0_1_data[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read from input buffer: [2, 8, 8, 9, 7, 2, 9, 3, 7, 9, 9, 4, 1, 6, 3, 7]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [2, 8, 8, 9, 7, 2, 9, 3, 7, 9, 9, 4, 1, 6, 3, 7]
+23:47:50 INFO ---- |Cycle 10 | ----
+23:47:50 INFO WAIT instruction @ 1_0
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [2, 8, 8, 9, 7, 2, 9, 3, 7, 9, 9, 4, 1, 6, 3, 7] from iosram_0_0_1_data[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 1, 2, 'rf_1_0_1_reg', 0]
+23:47:50 INFO Write bulk: [6, 0, 1, 1, 2, 8, 1, 0, 5, 3, 4, 3, 7, 4, 6, 2] to rf_1_0_1_reg[0]
+23:47:50 INFO ---- |Cycle 11 | ----
+23:47:50 INFO WAIT instruction @ 2_0
+23:47:50 INFO WAIT instruction @ 0_0
+23:47:50 DEBUG swb
+23:47:50 INFO SWB instr: source=1, target=4 in option 0
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 1, 2, 'rf_1_0_1_reg', 1]
+23:47:50 INFO Write bulk: [2, 8, 8, 9, 7, 2, 9, 3, 7, 9, 9, 4, 1, 6, 3, 7] to rf_1_0_1_reg[1]
+23:47:50 INFO ---- |Cycle 12 | ----
+23:47:50 DEBUG swb
+23:47:50 INFO SWB instr: source=2, target=5 in option 0
+23:47:50 INFO ---- |Cycle 13 | ----
+23:47:50 DEBUG swb
+23:47:50 INFO SWB instr: source=4, target=3 in option 0
+23:47:50 INFO ---- |Cycle 14 | ----
+23:47:50 DEBUG swb
+23:47:50 INFO ROUTE instr: sr=1, source=1, target=6 in option 0
+23:47:50 INFO ---- |Cycle 15 | ----
+23:47:50 DEBUG swb
+23:47:50 INFO ROUTE instr: sr=0, source=3, target=128 in option 0
+23:47:50 INFO ---- |Cycle 16 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 17 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=0, iter=4, step=1, delay=0
+23:47:50 INFO ---- |Cycle 18 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=1, iter=8, step=0, delay=60
+23:47:50 INFO ---- |Cycle 19 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 20 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=0, iter=32, step=1, delay=0
+23:47:50 INFO ---- |Cycle 21 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=1, iter=2, step=-32, delay=0
+23:47:50 INFO ---- |Cycle 22 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=4, step=1, delay=0
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=2, iter=8, step=0, delay=0
+23:47:50 INFO ---- |Cycle 23 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=1, iter=8, step=0, delay=60
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 24 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=2
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=0, iter=32, step=1, delay=0
+23:47:50 INFO ---- |Cycle 25 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=4, step=1, delay=0
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=1, iter=2, step=0, delay=0
+23:47:50 INFO ---- |Cycle 26 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=1, iter=8, step=4, delay=60
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=2, iter=8, step=0, delay=0
+23:47:50 INFO ---- |Cycle 27 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 DEBUG dpu
+23:47:50 INFO DPU instr: mode=8, immediate=0 in option 0
+23:47:50 INFO ---- |Cycle 28 | ----
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=0, iter=4, step=1, delay=0
+23:47:50 DEBUG dpu
+23:47:50 INFO REP instr: level=0, iter=2, step=0, delay=31
+23:47:50 INFO ---- |Cycle 29 | ----
+23:47:50 DEBUG swb
+23:47:50 INFO ROUTE instr: sr=1, source=1, target=4 in option 0
+23:47:50 DEBUG iosram
+23:47:50 INFO REP instr: level=1, iter=8, step=0, delay=60
+23:47:50 DEBUG dpu
+23:47:50 INFO REP instr: level=1, iter=8, step=0, delay=31
+23:47:50 INFO ---- |Cycle 30 | ----
+23:47:50 INFO ACT instruction @ 2_0
+23:47:50 INFO ACT instruction @ 0_0
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO ---- |Cycle 31 | ----
+23:47:50 INFO WAIT instruction @ 2_0
+23:47:50 INFO ACT instruction @ 0_0
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO Set current ROUTE mode at 2_0_0
+23:47:50 INFO Set current SWB mode at 1_0_0
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read from input buffer: [6, 4, 0, 0, 4, 1, 1, 0, 5, 7, 5, 4, 1, 1, 7, 3]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [6, 4, 0, 0, 4, 1, 1, 0, 5, 7, 5, 4, 1, 1, 7, 3]
+23:47:50 INFO ---- |Cycle 32 | ----
+23:47:50 INFO WAIT instruction @ 0_0
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO Set current ROUTE mode at 1_0_0
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [6, 4, 0, 0, 4, 1, 1, 0, 5, 7, 5, 4, 1, 1, 7, 3] from iosram_0_0_1_data[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read from input buffer: [0, 7, 4, 9, 0, 3, 4, 9, 5, 5, 3, 8, 1, 9, 5, 0]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [0, 7, 4, 9, 0, 3, 4, 9, 5, 5, 3, 8, 1, 9, 5, 0]
+23:47:50 INFO ---- |Cycle 33 | ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [0, 7, 4, 9, 0, 3, 4, 9, 5, 5, 3, 8, 1, 9, 5, 0] from iosram_0_0_1_data[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [6, 4, 0, 0, 4, 1, 1, 0, 5, 7, 5, 4, 1, 1, 7, 3] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 4]
+23:47:50 INFO Read from input buffer: [5, 7, 0, 0, 0, 3, 0, 5, 2, 7, 2, 3, 8, 1, 9, 0]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [5, 7, 0, 0, 0, 3, 0, 5, 2, 7, 2, 3, 8, 1, 9, 0]
+23:47:50 INFO ---- |Cycle 34 | ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [5, 7, 0, 0, 0, 3, 0, 5, 2, 7, 2, 3, 8, 1, 9, 0] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [0, 7, 4, 9, 0, 3, 4, 9, 5, 5, 3, 8, 1, 9, 5, 0] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 5]
+23:47:50 INFO Read from input buffer: [8, 3, 1, 0, 9, 5, 9, 4, 2, 5, 2, 4, 6, 9, 6, 1]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [8, 3, 1, 0, 9, 5, 9, 4, 2, 5, 2, 4, 6, 9, 6, 1]
+23:47:50 INFO ---- |Cycle 35 | ----
+23:47:50 INFO WAIT instruction @ 1_0
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [8, 3, 1, 0, 9, 5, 9, 4, 2, 5, 2, 4, 6, 9, 6, 1] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [5, 7, 0, 0, 0, 3, 0, 5, 2, 7, 2, 3, 8, 1, 9, 0] to rf_1_0_2_reg[2]
+23:47:50 INFO ---- |Cycle 36 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [8, 3, 1, 0, 9, 5, 9, 4, 2, 5, 2, 4, 6, 9, 6, 1] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 37 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 38 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 39 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 40 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 41 | ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 42 | ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 43 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 44 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 45 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 46 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 47 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 48 | ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 49 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 50 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 51 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 52 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 53 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 54 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 55 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 56 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 57 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 58 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 59 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 60 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 61 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 62 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 63 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 64 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=0, iter=2, step=1, delay=31
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 65 | ----
+23:47:50 DEBUG rf
+23:47:50 INFO REP instr: level=1, iter=8, step=2, delay=31
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 66 | ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 67 | ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO WAIT instruction @ 1_0
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 637 to rf_1_0_3_reg[0]
+23:47:50 INFO ---- |Cycle 68 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 69 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 70 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 71 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 72 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 73 | ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 74 | ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 75 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 76 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 77 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 78 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 79 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 80 | ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 81 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 82 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 83 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 84 | ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 85 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 86 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 87 | ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 88 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 89 | ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 90 | ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 91 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 92 | ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 93 | ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 94 | ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 95 | ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 6]
+23:47:50 INFO Read from input buffer: [6, 8, 1, 6, 4, 3, 4, 6, 0, 8, 0, 1, 9, 9, 3, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [6, 8, 1, 6, 4, 3, 4, 6, 0, 8, 0, 1, 9, 9, 3, 9]
+23:47:50 INFO ---- |Cycle 96 | ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [6, 8, 1, 6, 4, 3, 4, 6, 0, 8, 0, 1, 9, 9, 3, 9] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 7]
+23:47:50 INFO Read from input buffer: [4, 5, 0, 3, 2, 1, 9, 5, 8, 1, 1, 4, 2, 9, 6, 0]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [4, 5, 0, 3, 2, 1, 9, 5, 8, 1, 1, 4, 2, 9, 6, 0]
+23:47:50 INFO ---- |Cycle 97 | ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [4, 5, 0, 3, 2, 1, 9, 5, 8, 1, 1, 4, 2, 9, 6, 0] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [6, 8, 1, 6, 4, 3, 4, 6, 0, 8, 0, 1, 9, 9, 3, 9] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 8]
+23:47:50 INFO Read from input buffer: [7, 9, 9, 1, 5, 5, 8, 7, 3, 0, 0, 2, 1, 4, 1, 5]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [7, 9, 9, 1, 5, 5, 8, 7, 3, 0, 0, 2, 1, 4, 1, 5]
+23:47:50 INFO ---- |Cycle 98 | ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [7, 9, 9, 1, 5, 5, 8, 7, 3, 0, 0, 2, 1, 4, 1, 5] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [4, 5, 0, 3, 2, 1, 9, 5, 8, 1, 1, 4, 2, 9, 6, 0] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 9]
+23:47:50 INFO Read from input buffer: [9, 3, 1, 3, 7, 0, 0, 5, 4, 1, 2, 8, 0, 0, 9, 8]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [9, 3, 1, 3, 7, 0, 0, 5, 4, 1, 2, 8, 0, 0, 9, 8]
+23:47:50 INFO ---- |Cycle 99 | ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [9, 3, 1, 3, 7, 0, 0, 5, 4, 1, 2, 8, 0, 0, 9, 8] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [7, 9, 9, 1, 5, 5, 8, 7, 3, 0, 0, 2, 1, 4, 1, 5] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 608 to rf_1_0_3_reg[1]
+23:47:50 INFO ---- |Cycle 100| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [9, 3, 1, 3, 7, 0, 0, 5, 4, 1, 2, 8, 0, 0, 9, 8] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 101| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 102| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 103| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 104| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 105| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 106| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 107| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 108| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 109| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 110| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 111| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 112| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 113| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 114| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 115| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 116| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 117| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 118| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 119| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 120| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 121| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 122| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 123| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 124| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 125| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 126| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 127| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 128| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 129| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 130| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 131| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 592 to rf_1_0_3_reg[2]
+23:47:50 INFO ---- |Cycle 132| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 133| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 134| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 135| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 136| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 137| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 138| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 139| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 140| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 141| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 142| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 143| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 144| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 145| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 146| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 147| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 148| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 149| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 150| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 151| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 152| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 153| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 154| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 155| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 156| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 157| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 158| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 159| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 10]
+23:47:50 INFO Read from input buffer: [9, 8, 1, 6, 3, 9, 4, 8, 1, 4, 0, 2, 0, 3, 0, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [9, 8, 1, 6, 3, 9, 4, 8, 1, 4, 0, 2, 0, 3, 0, 9]
+23:47:50 INFO ---- |Cycle 160| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [9, 8, 1, 6, 3, 9, 4, 8, 1, 4, 0, 2, 0, 3, 0, 9] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 11]
+23:47:50 INFO Read from input buffer: [9, 1, 5, 6, 3, 5, 1, 9, 9, 3, 8, 9, 3, 9, 9, 5]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [9, 1, 5, 6, 3, 5, 1, 9, 9, 3, 8, 9, 3, 9, 9, 5]
+23:47:50 INFO ---- |Cycle 161| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [9, 1, 5, 6, 3, 5, 1, 9, 9, 3, 8, 9, 3, 9, 9, 5] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [9, 8, 1, 6, 3, 9, 4, 8, 1, 4, 0, 2, 0, 3, 0, 9] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 12]
+23:47:50 INFO Read from input buffer: [7, 3, 3, 2, 4, 7, 0, 6, 4, 2, 0, 4, 7, 0, 6, 6]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [7, 3, 3, 2, 4, 7, 0, 6, 4, 2, 0, 4, 7, 0, 6, 6]
+23:47:50 INFO ---- |Cycle 162| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [7, 3, 3, 2, 4, 7, 0, 6, 4, 2, 0, 4, 7, 0, 6, 6] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [9, 1, 5, 6, 3, 5, 1, 9, 9, 3, 8, 9, 3, 9, 9, 5] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 13]
+23:47:50 INFO Read from input buffer: [3, 3, 2, 9, 8, 6, 8, 7, 1, 8, 9, 7, 7, 0, 4, 4]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [3, 3, 2, 9, 8, 6, 8, 7, 1, 8, 9, 7, 7, 0, 4, 4]
+23:47:50 INFO ---- |Cycle 163| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [3, 3, 2, 9, 8, 6, 8, 7, 1, 8, 9, 7, 7, 0, 4, 4] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [7, 3, 3, 2, 4, 7, 0, 6, 4, 2, 0, 4, 7, 0, 6, 6] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 481 to rf_1_0_3_reg[3]
+23:47:50 INFO ---- |Cycle 164| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [3, 3, 2, 9, 8, 6, 8, 7, 1, 8, 9, 7, 7, 0, 4, 4] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 165| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 166| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 167| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 168| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 169| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 170| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 171| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 172| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 173| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 174| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 175| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 176| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 177| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 178| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 179| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 180| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 181| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 182| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 183| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 184| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 185| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 186| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 187| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 188| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 189| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 190| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 191| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 192| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 193| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 194| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 195| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 700 to rf_1_0_3_reg[4]
+23:47:50 INFO ---- |Cycle 196| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 197| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 198| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 199| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 200| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 201| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 202| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 203| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 204| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 205| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 206| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 207| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 208| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 209| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 210| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 211| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 212| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 213| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 214| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 215| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 216| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 217| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 218| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 219| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 220| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 221| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 222| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 223| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 14]
+23:47:50 INFO Read from input buffer: [3, 7, 8, 8, 7, 0, 6, 3, 4, 6, 9, 2, 7, 5, 0, 2]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [3, 7, 8, 8, 7, 0, 6, 3, 4, 6, 9, 2, 7, 5, 0, 2]
+23:47:50 INFO ---- |Cycle 224| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [3, 7, 8, 8, 7, 0, 6, 3, 4, 6, 9, 2, 7, 5, 0, 2] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 15]
+23:47:50 INFO Read from input buffer: [0, 5, 1, 1, 1, 2, 8, 4, 0, 9, 1, 8, 2, 5, 4, 5]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [0, 5, 1, 1, 1, 2, 8, 4, 0, 9, 1, 8, 2, 5, 4, 5]
+23:47:50 INFO ---- |Cycle 225| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [0, 5, 1, 1, 1, 2, 8, 4, 0, 9, 1, 8, 2, 5, 4, 5] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [3, 7, 8, 8, 7, 0, 6, 3, 4, 6, 9, 2, 7, 5, 0, 2] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 16]
+23:47:50 INFO Read from input buffer: [3, 5, 5, 2, 5, 1, 5, 2, 8, 4, 4, 7, 2, 6, 9, 2]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [3, 5, 5, 2, 5, 1, 5, 2, 8, 4, 4, 7, 2, 6, 9, 2]
+23:47:50 INFO ---- |Cycle 226| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [3, 5, 5, 2, 5, 1, 5, 2, 8, 4, 4, 7, 2, 6, 9, 2] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [0, 5, 1, 1, 1, 2, 8, 4, 0, 9, 1, 8, 2, 5, 4, 5] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 17]
+23:47:50 INFO Read from input buffer: [1, 3, 3, 4, 5, 4, 9, 7, 5, 2, 5, 7, 0, 2, 3, 3]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [1, 3, 3, 4, 5, 4, 9, 7, 5, 2, 5, 7, 0, 2, 3, 3]
+23:47:50 INFO ---- |Cycle 227| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [1, 3, 3, 4, 5, 4, 9, 7, 5, 2, 5, 7, 0, 2, 3, 3] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [3, 5, 5, 2, 5, 1, 5, 2, 8, 4, 4, 7, 2, 6, 9, 2] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 769 to rf_1_0_3_reg[5]
+23:47:50 INFO ---- |Cycle 228| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [1, 3, 3, 4, 5, 4, 9, 7, 5, 2, 5, 7, 0, 2, 3, 3] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 229| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 230| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 231| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 232| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 233| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 234| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 235| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 236| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 237| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 238| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 239| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 240| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 241| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 242| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 243| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 244| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 245| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 246| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 247| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 248| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 249| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 250| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 251| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 252| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 253| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 254| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 255| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 256| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 257| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 258| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 259| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 560 to rf_1_0_3_reg[6]
+23:47:50 INFO ---- |Cycle 260| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[34]
+{'0_0_0': 'swb', '0_0_1': 'iosram', '0_0_2': 'iosram', '1_0_0': 'swb', '1_0_1': 'rf', '1_0_2': 'rf', '1_0_3': 'rf', '1_0_4': 'dpu', '2_0_0': 'swb', '2_0_1': 'iosram', '2_0_2': 'iosram'}
+set option 0 at time 8
+set option 0 at time 8
+0 0 1
+0 0 1
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0'}}, '2_0_0': {'word': {}, 'bulk': {}}}
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0'}}, '2_0_0': {'word': {}, 'bulk': {}}}
+set option 0 at time 31
+set option 0 at time 31
+0 0 1
+set option 0 at time 32
+0 0 1
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+set option 0 at time 35
+set option 0 at time 67
+set option 0 at time 99
+set option 0 at time 131
+set option 0 at time 163
+set option 0 at time 195
+set option 0 at time 227
+set option 0 at time 259
+set option 0 at time 291
+set option 0 at time 323
+set option 0 at time 355
+set option 0 at time 387
+set option 0 at time 419
+set option 0 at time 451
+set option 0 at time 483
+set option 0 at time 515
+out= 36
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 36
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 36
+out= 36
+out= 44
+out= 52
+out= 53
+out= 53
+out= 78
+out= 99
+out= 119
+out= 131
+out= 138
+out= 142
+out= 184
+out= 190
+out= 190
+out= 246
+out= 278
+out= 359
+out= 359
+out= 365
+out= 401
+out= 428
+out= 463
+out= 508
+out= 535
+out= 567
+out= 568
+out= 622
+out= 637
+out= 637
+out= 30
+out= 30
+out= 30
+out= 30
+out= 30
+out= 54
+out= 54
+out= 54
+out= 64
+out= 85
+out= 93
+out= 102
+out= 158
+out= 162
+out= 216
+out= 216
+out= 232
+out= 256
+out= 264
+out= 264
+out= 327
+out= 337
+out= 418
+out= 430
+out= 444
+out= 489
+out= 507
+out= 523
+out= 529
+0 0 1
+out= 583
+0 0 1
+out= 601
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 608
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 36
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 36
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 37
+out= 43
+out= 51
+out= 75
+out= 79
+out= 79
+out= 79
+out= 103
+out= 103
+out= 106
+out= 169
+out= 205
+out= 223
+out= 241
+out= 249
+out= 289
+out= 289
+out= 316
+out= 330
+out= 332
+out= 413
+out= 428
+out= 484
+out= 493
+out= 502
+out= 518
+out= 520
+out= 574
+out= 592
+out= 592
+out= 42
+out= 42
+out= 51
+out= 52
+out= 62
+out= 102
+out= 110
+out= 110
+out= 125
+out= 125
+out= 125
+out= 131
+out= 138
+out= 154
+out= 160
+out= 170
+out= 188
+out= 212
+out= 220
+out= 247
+out= 296
+out= 296
+out= 296
+out= 311
+out= 339
+out= 348
+out= 366
+out= 398
+out= 398
+0 0 1
+out= 398
+0 0 1
+out= 425
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 481
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 54
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 54
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 55
+out= 61
+out= 67
+out= 139
+out= 143
+out= 143
+out= 148
+out= 160
+out= 160
+out= 166
+out= 166
+out= 178
+out= 178
+out= 196
+out= 214
+out= 222
+out= 262
+out= 316
+out= 337
+out= 347
+out= 356
+out= 383
+out= 446
+out= 473
+out= 545
+out= 581
+out= 584
+out= 638
+out= 665
+out= 700
+out= 42
+out= 42
+out= 45
+out= 47
+out= 55
+out= 111
+out= 111
+out= 111
+out= 131
+out= 137
+out= 137
+out= 149
+out= 198
+out= 198
+out= 234
+out= 246
+out= 252
+out= 276
+out= 292
+out= 373
+out= 429
+out= 441
+out= 513
+out= 534
+out= 541
+out= 613
+out= 694
+out= 722
+out= 729
+0 0 1
+out= 729
+0 0 1
+out= 741
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 769
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 26
+out= 34
+out= 48
+out= 48
+out= 54
+out= 54
+out= 74
+out= 92
+out= 128
+out= 134
+out= 183
+out= 203
+out= 203
+out= 207
+out= 207
+out= 247
+out= 255
+out= 264
+out= 271
+out= 275
+out= 347
+out= 359
+out= 359
+out= 440
+out= 449
+out= 481
+out= 483
+out= 513
+out= 525
+out= 560
+out= 18
+23:47:50 INFO ---- |Cycle 261| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 262| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 263| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 264| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 265| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 266| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 267| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 268| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 269| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 270| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 271| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 272| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 273| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 274| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 275| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 276| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 277| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 278| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 279| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 280| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 281| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 282| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 283| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 284| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 285| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 286| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 287| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 18]
+23:47:50 INFO Read from input buffer: [7, 0, 7, 4, 2, 2, 6, 0, 6, 2, 9, 0, 9, 0, 3, 2]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [7, 0, 7, 4, 2, 2, 6, 0, 6, 2, 9, 0, 9, 0, 3, 2]
+23:47:50 INFO ---- |Cycle 288| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [7, 0, 7, 4, 2, 2, 6, 0, 6, 2, 9, 0, 9, 0, 3, 2] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 19]
+23:47:50 INFO Read from input buffer: [3, 8, 9, 0, 2, 0, 8, 8, 2, 5, 7, 2, 9, 2, 7, 6]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [3, 8, 9, 0, 2, 0, 8, 8, 2, 5, 7, 2, 9, 2, 7, 6]
+23:47:50 INFO ---- |Cycle 289| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [3, 8, 9, 0, 2, 0, 8, 8, 2, 5, 7, 2, 9, 2, 7, 6] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [7, 0, 7, 4, 2, 2, 6, 0, 6, 2, 9, 0, 9, 0, 3, 2] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 20]
+23:47:50 INFO Read from input buffer: [3, 4, 1, 5, 8, 7, 7, 5, 0, 6, 5, 1, 6, 0, 3, 2]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [3, 4, 1, 5, 8, 7, 7, 5, 0, 6, 5, 1, 6, 0, 3, 2]
+23:47:50 INFO ---- |Cycle 290| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [3, 4, 1, 5, 8, 7, 7, 5, 0, 6, 5, 1, 6, 0, 3, 2] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [3, 8, 9, 0, 2, 0, 8, 8, 2, 5, 7, 2, 9, 2, 7, 6] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 21]
+23:47:50 INFO Read from input buffer: [9, 2, 2, 3, 2, 2, 3, 7, 0, 1, 9, 9, 3, 9, 8, 6]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [9, 2, 2, 3, 2, 2, 3, 7, 0, 1, 9, 9, 3, 9, 8, 6]
+23:47:50 INFO ---- |Cycle 291| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [9, 2, 2, 3, 2, 2, 3, 7, 0, 1, 9, 9, 3, 9, 8, 6] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [3, 4, 1, 5, 8, 7, 7, 5, 0, 6, 5, 1, 6, 0, 3, 2] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 632 to rf_1_0_3_reg[7]
+23:47:50 INFO ---- |Cycle 292| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [9, 2, 2, 3, 2, 2, 3, 7, 0, 1, 9, 9, 3, 9, 8, 6] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 293| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 294| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 295| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 296| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 297| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 298| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 299| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 300| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 301| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 302| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 303| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 304| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 305| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 306| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 307| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 308| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 309| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 310| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 311| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 312| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 313| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 314| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 315| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 316| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 317| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 318| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 319| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 320| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 321| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 322| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 323| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 702 to rf_1_0_3_reg[8]
+23:47:50 INFO ---- |Cycle 324| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 325| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 326| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 327| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 328| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 329| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 330| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 331| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 332| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 333| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 334| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 335| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 336| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 337| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 338| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 339| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 340| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 341| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 342| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 343| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 344| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 345| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 346| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 347| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 348| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 349| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 350| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 351| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 22]
+23:47:50 INFO Read from input buffer: [3, 1, 1, 2, 8, 0, 9, 0, 6, 6, 1, 5, 9, 7, 7, 8]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [3, 1, 1, 2, 8, 0, 9, 0, 6, 6, 1, 5, 9, 7, 7, 8]
+23:47:50 INFO ---- |Cycle 352| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [3, 1, 1, 2, 8, 0, 9, 0, 6, 6, 1, 5, 9, 7, 7, 8] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 23]
+23:47:50 INFO Read from input buffer: [1, 9, 3, 6, 4, 7, 3, 4, 8, 4, 5, 3, 3, 3, 0, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [1, 9, 3, 6, 4, 7, 3, 4, 8, 4, 5, 3, 3, 3, 0, 9]
+23:47:50 INFO ---- |Cycle 353| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [1, 9, 3, 6, 4, 7, 3, 4, 8, 4, 5, 3, 3, 3, 0, 9] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [3, 1, 1, 2, 8, 0, 9, 0, 6, 6, 1, 5, 9, 7, 7, 8] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 24]
+23:47:50 INFO Read from input buffer: [6, 3, 3, 7, 4, 4, 7, 2, 0, 1, 7, 9, 0, 4, 9, 1]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [6, 3, 3, 7, 4, 4, 7, 2, 0, 1, 7, 9, 0, 4, 9, 1]
+23:47:50 INFO ---- |Cycle 354| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [6, 3, 3, 7, 4, 4, 7, 2, 0, 1, 7, 9, 0, 4, 9, 1] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [1, 9, 3, 6, 4, 7, 3, 4, 8, 4, 5, 3, 3, 3, 0, 9] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 25]
+23:47:50 INFO Read from input buffer: [6, 3, 9, 0, 0, 2, 6, 0, 7, 1, 3, 2, 7, 5, 1, 3]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [6, 3, 9, 0, 0, 2, 6, 0, 7, 1, 3, 2, 7, 5, 1, 3]
+23:47:50 INFO ---- |Cycle 355| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [6, 3, 9, 0, 0, 2, 6, 0, 7, 1, 3, 2, 7, 5, 1, 3] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [6, 3, 3, 7, 4, 4, 7, 2, 0, 1, 7, 9, 0, 4, 9, 1] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 600 to rf_1_0_3_reg[9]
+23:47:50 INFO ---- |Cycle 356| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [6, 3, 9, 0, 0, 2, 6, 0, 7, 1, 3, 2, 7, 5, 1, 3] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 357| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 358| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 359| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 360| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 361| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 362| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 363| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 364| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 365| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 366| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 367| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 368| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 369| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 370| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 371| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 372| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 373| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 374| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 375| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 376| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 377| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 378| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 379| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 380| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 381| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 382| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 383| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 384| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 385| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 386| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 387| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 728 to rf_1_0_3_reg[10]
+23:47:50 INFO ---- |Cycle 388| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 389| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 390| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 391| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 392| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 393| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 394| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 395| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 396| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 397| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 398| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 399| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 400| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 401| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 402| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 403| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 404| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 405| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 406| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 407| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 408| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 409| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 410| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 411| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 412| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 413| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 414| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 415| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 26]
+23:47:50 INFO Read from input buffer: [1, 4, 0, 7, 8, 0, 9, 1, 3, 9, 0, 3, 3, 2, 6, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [1, 4, 0, 7, 8, 0, 9, 1, 3, 9, 0, 3, 3, 2, 6, 9]
+23:47:50 INFO ---- |Cycle 416| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [1, 4, 0, 7, 8, 0, 9, 1, 3, 9, 0, 3, 3, 2, 6, 9] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 27]
+23:47:50 INFO Read from input buffer: [5, 6, 1, 7, 0, 7, 7, 7, 9, 2, 0, 8, 8, 3, 1, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [5, 6, 1, 7, 0, 7, 7, 7, 9, 2, 0, 8, 8, 3, 1, 9]
+23:47:50 INFO ---- |Cycle 417| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [5, 6, 1, 7, 0, 7, 7, 7, 9, 2, 0, 8, 8, 3, 1, 9] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [1, 4, 0, 7, 8, 0, 9, 1, 3, 9, 0, 3, 3, 2, 6, 9] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 28]
+23:47:50 INFO Read from input buffer: [8, 4, 8, 8, 6, 7, 9, 9, 6, 2, 4, 2, 4, 2, 3, 1]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [8, 4, 8, 8, 6, 7, 9, 9, 6, 2, 4, 2, 4, 2, 3, 1]
+23:47:50 INFO ---- |Cycle 418| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [8, 4, 8, 8, 6, 7, 9, 9, 6, 2, 4, 2, 4, 2, 3, 1] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [5, 6, 1, 7, 0, 7, 7, 7, 9, 2, 0, 8, 8, 3, 1, 9] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 29]
+23:47:50 INFO Read from input buffer: [0, 7, 8, 1, 4, 7, 8, 5, 1, 0, 3, 1, 4, 7, 2, 4]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [0, 7, 8, 1, 4, 7, 8, 5, 1, 0, 3, 1, 4, 7, 2, 4]
+23:47:50 INFO ---- |Cycle 419| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [0, 7, 8, 1, 4, 7, 8, 5, 1, 0, 3, 1, 4, 7, 2, 4] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [8, 4, 8, 8, 6, 7, 9, 9, 6, 2, 4, 2, 4, 2, 3, 1] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 543 to rf_1_0_3_reg[11]
+23:47:50 INFO ---- |Cycle 420| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [0, 7, 8, 1, 4, 7, 8, 5, 1, 0, 3, 1, 4, 7, 2, 4] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 421| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 422| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 423| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 424| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 425| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 426| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 427| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 428| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 429| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 430| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 431| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 432| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 433| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 434| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 435| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 436| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 437| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 438| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 439| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 440| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 441| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 442| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 443| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 444| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 445| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 446| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 447| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 448| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 449| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 450| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 451| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 604 to rf_1_0_3_reg[12]
+23:47:50 INFO ---- |Cycle 452| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 453| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 454| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 455| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 456| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 457| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 458| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 459| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 460| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 461| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 462| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 463| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 464| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 465| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 466| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 467| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 468| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 469| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 470| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 471| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 472| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 473| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 474| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 475| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 476| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 477| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 478| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 479| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[61]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 30]
+23:47:50 INFO Read from input buffer: [3, 0, 2, 9, 8, 2, 0, 6, 6, 6, 0, 0, 8, 6, 3, 9]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Write to SRAM: [3, 0, 2, 9, 8, 2, 0, 6, 6, 6, 0, 0, 8, 6, 3, 9]
+23:47:50 INFO ---- |Cycle 480| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 0]
+23:47:50 INFO Read bulk: [3, 0, 2, 9, 8, 2, 0, 6, 6, 6, 0, 0, 8, 6, 3, 9] from iosram_0_0_1_data[0]
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[62]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 31]
+23:47:50 INFO Read from input buffer: [3, 3, 0, 7, 0, 0, 5, 3, 3, 8, 5, 7, 7, 7, 1, 0]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Write to SRAM: [3, 3, 0, 7, 0, 0, 5, 3, 3, 8, 5, 7, 7, 7, 1, 0]
+23:47:50 INFO ---- |Cycle 481| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 1]
+23:47:50 INFO Read bulk: [3, 3, 0, 7, 0, 0, 5, 3, 3, 8, 5, 7, 7, 7, 1, 0] from iosram_0_0_1_data[1]
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[63]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 0]
+23:47:50 INFO Write bulk: [3, 0, 2, 9, 8, 2, 0, 6, 6, 6, 0, 0, 8, 6, 3, 9] to rf_1_0_2_reg[0]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 32]
+23:47:50 INFO Read from input buffer: [8, 5, 9, 8, 7, 1, 4, 3, 7, 7, 5, 6, 3, 8, 7, 8]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Write to SRAM: [8, 5, 9, 8, 7, 1, 4, 3, 7, 7, 5, 6, 3, 8, 7, 8]
+23:47:50 INFO ---- |Cycle 482| ----
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 2]
+23:47:50 INFO Read bulk: [8, 5, 9, 8, 7, 1, 4, 3, 7, 7, 5, 6, 3, 8, 7, 8] from iosram_0_0_1_data[2]
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[0]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 1]
+23:47:50 INFO Write bulk: [3, 3, 0, 7, 0, 0, 5, 3, 3, 8, 5, 7, 7, 7, 1, 0] to rf_1_0_2_reg[1]
+23:47:50 DEBUG read_from_io is triggered: [0, 0, 1, 'iosram_0_0_1_data', 33]
+23:47:50 INFO Read from input buffer: [1, 7, 7, 3, 9, 2, 7, 2, 3, 2, 1, 0, 9, 2, 1, 7]
+23:47:50 DEBUG io_write_to_sram is triggered: [0, 0, 1, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Write to SRAM: [1, 7, 7, 3, 9, 2, 7, 2, 3, 2, 1, 0, 9, 2, 1, 7]
+23:47:50 INFO ---- |Cycle 483| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 DEBUG read_bulk is triggered: [0, 0, 2, 3, 'iosram_0_0_1_data', 3]
+23:47:50 INFO Read bulk: [1, 7, 7, 3, 9, 2, 7, 2, 3, 2, 1, 0, 9, 2, 1, 7] from iosram_0_0_1_data[3]
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[1]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 2]
+23:47:50 INFO Write bulk: [8, 5, 9, 8, 7, 1, 4, 3, 7, 7, 5, 6, 3, 8, 7, 8] to rf_1_0_2_reg[2]
+23:47:50 INFO Write word: 631 to rf_1_0_3_reg[13]
+23:47:50 INFO ---- |Cycle 484| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[2]
+23:47:50 DEBUG write_bulk is triggered: [1, 0, 2, 2, 'rf_1_0_2_reg', 3]
+23:47:50 INFO Write bulk: [1, 7, 7, 3, 9, 2, 7, 2, 3, 2, 1, 0, 9, 2, 1, 7] to rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 485| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[3]
+23:47:50 INFO ---- |Cycle 486| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[4]
+23:47:50 INFO ---- |Cycle 487| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[5]
+23:47:50 INFO ---- |Cycle 488| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[6]
+23:47:50 INFO ---- |Cycle 489| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[7]
+23:47:50 INFO ---- |Cycle 490| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[8]
+23:47:50 INFO ---- |Cycle 491| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[9]
+23:47:50 INFO ---- |Cycle 492| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[10]
+23:47:50 INFO ---- |Cycle 493| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[11]
+23:47:50 INFO ---- |Cycle 494| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[12]
+23:47:50 INFO ---- |Cycle 495| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[13]
+23:47:50 INFO ---- |Cycle 496| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[14]
+23:47:50 INFO ---- |Cycle 497| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[15]
+23:47:50 INFO ---- |Cycle 498| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[16]
+23:47:50 INFO ---- |Cycle 499| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[17]
+23:47:50 INFO ---- |Cycle 500| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[18]
+23:47:50 INFO ---- |Cycle 501| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[19]
+23:47:50 INFO ---- |Cycle 502| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[20]
+23:47:50 INFO ---- |Cycle 503| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[21]
+23:47:50 INFO ---- |Cycle 504| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[22]
+23:47:50 INFO ---- |Cycle 505| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[23]
+23:47:50 INFO ---- |Cycle 506| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[24]
+23:47:50 INFO ---- |Cycle 507| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[25]
+23:47:50 INFO ---- |Cycle 508| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[26]
+23:47:50 INFO ---- |Cycle 509| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[27]
+23:47:50 INFO ---- |Cycle 510| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[28]
+23:47:50 INFO ---- |Cycle 511| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[29]
+23:47:50 INFO ---- |Cycle 512| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[30]
+23:47:50 INFO ---- |Cycle 513| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[31]
+23:47:50 INFO ---- |Cycle 514| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[0]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[32]
+23:47:50 INFO ---- |Cycle 515| ----
+23:47:50 INFO Set current DPU mode: 8 to 1_0_4
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[1]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[33]
+23:47:50 INFO Write word: 590 to rf_1_0_3_reg[14]
+23:47:50 INFO ---- |Cycle 516| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[2]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[34]
+23:47:50 INFO ---- |Cycle 517| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[3]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[35]
+23:47:50 INFO ---- |Cycle 518| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[4]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[36]
+23:47:50 INFO ---- |Cycle 519| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[5]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[37]
+23:47:50 INFO ---- |Cycle 520| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[6]
+23:47:50 INFO Read word: 4 from rf_1_0_2_reg[38]
+23:47:50 INFO ---- |Cycle 521| ----
+23:47:50 INFO Read word: 0 from rf_1_0_1_reg[7]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[39]
+23:47:50 INFO ---- |Cycle 522| ----
+23:47:50 INFO Read word: 5 from rf_1_0_1_reg[8]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[40]
+23:47:50 INFO ---- |Cycle 523| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[9]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[41]
+23:47:50 INFO ---- |Cycle 524| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[10]
+23:47:50 INFO Read word: 5 from rf_1_0_2_reg[42]
+23:47:50 INFO ---- |Cycle 525| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[11]
+23:47:50 INFO Read word: 6 from rf_1_0_2_reg[43]
+23:47:50 INFO ---- |Cycle 526| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[12]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[44]
+23:47:50 INFO ---- |Cycle 527| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[13]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[45]
+23:47:50 INFO ---- |Cycle 528| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[14]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[46]
+23:47:50 INFO ---- |Cycle 529| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[15]
+23:47:50 INFO Read word: 8 from rf_1_0_2_reg[47]
+23:47:50 INFO ---- |Cycle 530| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[16]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[48]
+23:47:50 INFO ---- |Cycle 531| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[17]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[49]
+23:47:50 INFO ---- |Cycle 532| ----
+23:47:50 INFO Read word: 8 from rf_1_0_1_reg[18]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[50]
+23:47:50 INFO ---- |Cycle 533| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[19]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[51]
+23:47:50 INFO ---- |Cycle 534| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[20]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[52]
+23:47:50 INFO ---- |Cycle 535| ----
+23:47:50 INFO Read word: 2 from rf_1_0_1_reg[21]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[53]
+23:47:50 INFO ---- |Cycle 536| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[22]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[54]
+23:47:50 INFO ---- |Cycle 537| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[23]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[55]
+23:47:50 INFO ---- |Cycle 538| ----
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[24]
+23:47:50 INFO Read word: 3 from rf_1_0_2_reg[56]
+23:47:50 INFO ---- |Cycle 539| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[25]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[57]
+23:47:50 INFO ---- |Cycle 540| ----
+23:47:50 INFO Read word: 9 from rf_1_0_1_reg[26]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[58]
+23:47:50 INFO ---- |Cycle 541| ----
+23:47:50 INFO Read word: 4 from rf_1_0_1_reg[27]
+23:47:50 INFO Read word: 0 from rf_1_0_2_reg[59]
+23:47:50 INFO ---- |Cycle 542| ----
+23:47:50 INFO Read word: 1 from rf_1_0_1_reg[28]
+23:47:50 INFO Read word: 9 from rf_1_0_2_reg[60]
+23:47:50 INFO ---- |Cycle 543| ----
+23:47:50 INFO Read word: 6 from rf_1_0_1_reg[29]
+23:47:50 INFO Read word: 2 from rf_1_0_2_reg[61]
+23:47:50 INFO ---- |Cycle 544| ----
+23:47:50 INFO Read word: 3 from rf_1_0_1_reg[30]
+23:47:50 INFO Read word: 1 from rf_1_0_2_reg[62]
+23:47:50 INFO ---- |Cycle 545| ----
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO Read word: 7 from rf_1_0_1_reg[31]
+23:47:50 INFO Read word: 7 from rf_1_0_2_reg[63]
+23:47:50 INFO ---- |Cycle 546| ----
+23:47:50 DEBUG rf
+23:47:50 INFO DSU instr: start=0
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO ---- |Cycle 547| ----
+23:47:50 INFO ACT instruction @ 1_0
+23:47:50 DEBUG iosram
+23:47:50 INFO DSU instr: start=0
+23:47:50 INFO Write word: 694 to rf_1_0_3_reg[15]
+23:47:50 INFO ---- |Cycle 548| ----
+23:47:50 INFO WAIT instruction @ 1_0
+23:47:50 INFO ACT instruction @ 2_0
+23:47:50 DEBUG read_bulk is triggered: [1, 0, 3, 3, 'rf_1_0_3_reg', 0]
+23:47:50 INFO Read bulk: [637, 608, 592, 481, 700, 769, 560, 632, 702, 600, 728, 543, 604, 631, 590, 694] from rf_1_0_3_reg[0]
+23:47:50 INFO ---- |Cycle 549| ----
+23:47:50 INFO ACT instruction @ 2_0
+23:47:50 DEBUG write_bulk is triggered: [2, 0, 2, 2, 'iosram_2_0_1_data', 0]
+23:47:50 INFO Write bulk: [637, 608, 592, 481, 700, 769, 560, 632, 702, 600, 728, 543, 604, 631, 590, 694] to iosram_2_0_1_data[0]
+23:47:50 INFO ---- |Cycle 550| ----
+23:47:50 INFO HALT instruction @ 0_0
+23:47:50 INFO HALT instruction @ 1_0
+23:47:50 INFO HALT instruction @ 2_0
+23:47:50 DEBUG sram_read_to_io is triggered: [2, 0, 1, 'iosram_2_0_1_data', 0]
+23:47:50 INFO Read from SRAM: [637, 608, 592, 481, 700, 769, 560, 632, 702, 600, 728, 543, 604, 631, 590, 694]
+23:47:50 DEBUG write_to_io is triggered: [2, 0, 1, 'iosram_2_0_1_data', 0]
+23:47:50 INFO Write to output buffer: [637, 608, 592, 481, 700, 769, 560, 632, 702, 600, 728, 543, 604, 631, 590, 694]
+out= 18
+out= 23
+out= 25
+out= 35
+out= 43
+out= 48
+out= 48
+out= 88
+out= 100
+out= 116
+out= 137
+out= 151
+out= 175
+out= 229
+out= 233
+out= 235
+out= 259
+out= 283
+out= 319
+out= 354
+out= 362
+out= 443
+out= 464
+out= 499
+out= 517
+out= 562
+out= 590
+out= 590
+0 0 1
+out= 602
+0 0 1
+out= 611
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 632
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 42
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 42
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 49
+out= 53
+out= 57
+out= 73
+out= 79
+out= 79
+out= 109
+out= 115
+out= 151
+out= 151
+out= 214
+out= 214
+out= 232
+out= 236
+out= 242
+out= 306
+out= 378
+out= 378
+out= 392
+out= 392
+out= 464
+out= 488
+out= 502
+out= 547
+out= 610
+out= 618
+out= 627
+out= 639
+out= 660
+out= 702
+out= 18
+out= 18
+out= 19
+out= 24
+out= 40
+out= 96
+out= 103
+out= 103
+out= 103
+out= 121
+out= 141
+out= 144
+out= 186
+out= 186
+out= 204
+out= 208
+out= 226
+out= 242
+out= 258
+out= 285
+out= 299
+out= 303
+out= 330
+out= 351
+out= 351
+out= 360
+out= 441
+out= 477
+out= 480
+0 0 1
+out= 534
+0 0 1
+out= 558
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 600
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 19
+out= 21
+out= 37
+out= 37
+out= 46
+out= 46
+out= 76
+out= 94
+out= 98
+out= 113
+out= 176
+out= 204
+out= 246
+out= 262
+out= 264
+out= 336
+out= 360
+out= 414
+out= 442
+out= 456
+out= 483
+out= 495
+out= 551
+out= 587
+out= 632
+out= 644
+out= 647
+out= 665
+out= 665
+out= 728
+out= 36
+out= 36
+out= 39
+out= 46
+out= 54
+out= 86
+out= 93
+out= 93
+out= 93
+out= 96
+out= 124
+out= 151
+out= 151
+out= 167
+out= 221
+out= 223
+out= 235
+out= 259
+out= 331
+out= 331
+out= 331
+out= 335
+out= 389
+out= 389
+out= 438
+out= 447
+out= 474
+out= 482
+out= 489
+0 0 1
+out= 519
+0 0 1
+out= 522
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 543
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 6
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 6
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 6
+out= 13
+out= 29
+out= 29
+out= 38
+out= 38
+out= 53
+out= 80
+out= 80
+out= 89
+out= 110
+out= 118
+out= 154
+out= 172
+out= 182
+out= 230
+out= 238
+out= 301
+out= 301
+out= 315
+out= 378
+out= 399
+out= 462
+out= 480
+out= 480
+out= 512
+out= 520
+out= 538
+out= 541
+out= 604
+out= 48
+out= 48
+out= 56
+out= 64
+out= 76
+out= 132
+out= 141
+out= 141
+out= 171
+out= 177
+out= 193
+out= 199
+out= 227
+out= 235
+out= 253
+out= 255
+out= 255
+out= 311
+out= 375
+out= 384
+out= 412
+out= 426
+out= 498
+out= 513
+out= 520
+out= 520
+out= 547
+out= 551
+out= 555
+0 0 1
+out= 597
+0 0 1
+out= 603
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 631
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+0 0 1
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 18
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 20
+out= 29
+out= 45
+out= 61
+out= 61
+out= 61
+out= 91
+out= 109
+out= 109
+out= 109
+out= 165
+out= 189
+out= 207
+out= 225
+out= 231
+out= 255
+out= 255
+out= 318
+out= 318
+out= 318
+out= 363
+out= 372
+out= 393
+out= 465
+out= 510
+out= 538
+out= 545
+out= 587
+out= 590
+out= 590
+out= 48
+out= 48
+out= 57
+out= 65
+out= 79
+out= 87
+out= 91
+out= 91
+out= 126
+out= 147
+out= 167
+out= 185
+out= 206
+out= 238
+out= 280
+out= 296
+out= 298
+out= 354
+out= 410
+out= 437
+out= 500
+out= 504
+out= 567
+out= 573
+out= 594
+out= 612
+out= 621
+out= 621
+out= 630
+out= 642
+out= 645
+out= 694
+out= 694
+out= 694
+out= 694
+{'0_0_0': {'word': {}, 'bulk': {'temp_0_0_to_1_0': '0_0_2_3'}}, '1_0_0': {'word': {'1_0_4_0': '1_0_1_1', '1_0_5_0': '1_0_2_1', '1_0_3_0': '1_0_4_1'}, 'bulk': {'1_0_1_2': 'temp_0_0_to_1_0', '1_0_2_2': 'temp_0_0_to_1_0', 'temp_1_0_to_2_0': '1_0_3_3'}}, '2_0_0': {'word': {}, 'bulk': {'2_0_2_2': 'temp_1_0_to_2_0'}}}
+out= 694
+[0, [637, 608, 592, 481, 700, 769, 560, 632, 702, 600, 728, 543, 604, 631, 590, 694]]
+Verify model 1 against model 0 ...
+Success!

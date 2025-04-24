@@ -1,0 +1,43 @@
+epoch <ep0_x> {
+   #cell_0_0
+   linear route_c00_c10 < read_x_from_sram 
+   linear read_x_from_ib == write_x_to_sram
+   linear read_x_from_sram == write_x_to_sram + 1
+
+   #cell_1_0
+   linear route_c10_c00 < write_x_to_rf1
+   linear write_x_to_rf1 == read_x_from_sram + 1
+}
+
+epoch <ep1_w> {
+   #cell_0_0
+   linear read_w_from_ib == write_w_to_sram
+   linear read_w_from_sram == write_w_to_sram + 1
+
+   #cell_1_0
+   linear write_w_to_rf2 == read_w_from_sram + 1
+   linear read_w_from_rf2 == write_w_to_rf2 + 1
+ #  linear read_w_from_rf2.e0[0][1][0] == write_w_to_rf2.e0[0][1] + 1  ### we do not have it at all :)
+   linear read_w_from_rf2.e0[1][0][0] == write_w_to_rf2.e0[1][0] + 1
+   
+   linear route_c10_c20 < write_w_to_rf2
+   linear swb < read_x_from_rf1
+   linear read_x_from_rf1 == read_w_from_rf2
+
+   linear compute == read_w_from_rf2 + 1
+   linear compute.e0[0][1] == read_w_from_rf2.e0[0][1][0] + 1
+   linear compute.e0[1][0] == read_w_from_rf2.e0[1][0][0] + 1
+
+   linear write_o_to_rf3 == compute + 32
+   linear write_o_to_rf3.e0[0][1] == compute.e0[0][1] + 32
+   linear write_o_to_rf3.e0[7][1] == compute.e0[7][1] + 32
+
+   linear read_o_from_rf3.e0 == write_o_to_rf3.e0[7][1] + 1
+
+   #cell_2_0
+   linear route_c20_c10 < write_o_to_sram
+
+   linear write_o_to_sram == read_o_from_rf3 + 1
+   linear read_o_from_sram == write_o_to_sram + 1
+   linear write_o_to_ob == read_o_from_sram 
+}
