@@ -84,7 +84,7 @@ fn main() {
                     warn!("Failed to get version for tool: {}", tool);
                 }
             }
-            info!("vesyla-suite {}", version);
+            info!("vesyla {}", version);
             for tool_version in tools_versions {
                 info!(" -> {}", tool_version);
             }
@@ -145,7 +145,7 @@ fn init() {
     let vesyla_suite_path_bin = vesyla_suite_path_prog.join("bin");
     let vesyla_suite_path_lib = vesyla_suite_path_prog.join("lib");
     let vesyla_suite_path_inc = vesyla_suite_path_prog.join("include");
-    let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla-suite");
+    let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla");
     let vesyla_suite_path_template = vesyla_suite_path_share.join("template");
     let vesyla_suite_path_testcase = vesyla_suite_path_share.join("testcase");
     let random_number: u32 = rand::random();

@@ -17,7 +17,7 @@ RUN pacman -Syu --noconfirm python python-pip gcc boost-libs && \
     pip3 install --break-system-packages robotframework
 COPY --from=builder /fakeroot /usr
 WORKDIR /work
-RUN vs-testcase generate /usr/share/vesyla-suite/testcase && \
+RUN vs-testcase generate /usr/share/vesyla/testcase && \
     sh run.sh
 
 # Final Image ##################################################################

@@ -2,7 +2,7 @@ build
 env/
 .venv/
 work/
-vesyla-suite
+vesyla
 debug/
 __pycache__/
 .lock

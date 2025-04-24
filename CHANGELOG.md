@@ -11,9 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [vs-component] Fixed missing log level call resulting in usued variable e5eeaf747f5946236c882810fb54931e2ca497fe
+- [vs-component] Fixed double init of env logger 97dcae8a1eab123db81ed26867c5a1642cfb7912
+
 ### Changed
 
+- Renamed `vesyla-suite` to `vesyla`
+- [vs-schedule] Formatted python code and removed unused imports 987185bffbbac8e8870f00aee564424d7031b46f
+
 ### Removed
+
+- [vs-schedule] Debug code (`vs-schedule/test` folder) 987185bffbbac8e8870f00aee564424d7031b46f
 
 ## [4.0.14] - 2025-04-23
 

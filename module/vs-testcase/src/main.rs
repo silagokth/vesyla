@@ -145,7 +145,7 @@ fn init(style: &String, force: &bool, output: &String) {
     let prog_path = env::var("VESYLA_SUITE_PATH_PROG").expect("VESYLA_SUITE_PATH_PROG not set");
 
     // construct template path
-    let template_path = format!("{}/share/vesyla-suite/template/{}", prog_path, style);
+    let template_path = format!("{}/share/vesyla/template/{}", prog_path, style);
 
     // check if template path exists
     if !Path::new(&template_path).exists() {
@@ -344,7 +344,7 @@ Autotest Template
     [Arguments]  ${filename}
     ${random_string} =    Generate Random String    12    [LOWER]
     Create Directory    work/${random_string}
-    ${result} =    Run Process    vesyla-suite testcase run -d "${filename}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
+    ${result} =    Run Process    vesyla testcase run -d "${filename}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
     Should Be Equal As Integers    ${result.rc}    0
     Remove Directory   work/${random_string}     recursive=True
 "#.as_bytes()).expect("Failed to write autotest_config.robot");

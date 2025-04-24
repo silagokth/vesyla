@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(vesyla-suite)
+project(vesyla)
 
 # Find includes in corresponding build directories
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
 # Instruct CMake to run moc automatically when needed.
 set(CMAKE_AUTOMOC OFF)
-# Show verbose command while compiling
-#set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # The project version number.
 set(VERSION_MAJOR 4 CACHE STRING "Project major version number.")

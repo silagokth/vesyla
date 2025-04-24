@@ -8,7 +8,7 @@ BUILDDIR=$(pwd)/build
 APPDIR=$BUILDDIR/appdir
 mkdir -p ${BUILDDIR}
 if [ -d $APPDIR ]; then
-    rm -rf $APPDIR
+  rm -rf $APPDIR
 fi
 mkdir -p $APPDIR
 
@@ -22,6 +22,6 @@ make DESTDIR=$APPDIR install
 wget -c https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 chmod +x linuxdeploy-x86_64.AppImage
 
-# create the AppImage and rename it to vesyla-suite
-./linuxdeploy-x86_64.AppImage --appdir $APPDIR --output appimage
-mv vesyla-suite-x86_64.AppImage ../vesyla-suite
+# create the AppImage and rename it to vesyla
+./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir $APPDIR --output appimage
+mv vesyla-x86_64.AppImage ../vesyla
