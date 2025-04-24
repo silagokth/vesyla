@@ -5,23 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
+## [4.1.0] - 2025-04-25
 
 ### Fixed
 
-- [vs-component] Fixed missing log level call resulting in usued variable e5eeaf747f5946236c882810fb54931e2ca497fe
-- [vs-component] Fixed double init of env logger 97dcae8a1eab123db81ed26867c5a1642cfb7912
+- [[vs-component](./module/vs-component/)] Fixed missing log level call resulting in usued variable ([e5eeaf7](https://github.com/silagokth/vesyla/commit/e5eeaf747f5946236c882810fb54931e2ca497fe))
+- [[vs-component](./module/vs-component/)] Fixed double init of env logger ([97dcae8](https://github.com/silagokth/vesyla/commit/97dcae8a1eab123db81ed26867c5a1642cfb7912))
 
 ### Changed
 
-- Renamed `vesyla-suite` to `vesyla`
-- [vs-schedule] Formatted python code and removed unused imports 987185bffbbac8e8870f00aee564424d7031b46f
+- **BREAKING CHANGE** Renamed `vesyla-suite` to `vesyla` ([9a11d72](https://github.com/silagokth/vesyla/commit/9a11d72afe87d19b2a419d83e41330bed0403ed0))
+- **BREAKING CHANGE** Renamed and updated `install_dependency.sh` to `install_dependencies.sh` ([f290549](https://github.com/silagokth/vesyla/commit/f290549ef4cb3d4e08782952ca87ddec52db5dcc))
+- Updated the list of `python_requirements.txt` ([58ccf7c](https://github.com/silagokth/vesyla/commit/58ccf7c3efc725a8217a8eefb8e92a71f9b033dd))
+- Updated README.md to use new file names (`vesyla` and `install_dependencies.sh`) ([a82ffd0](https://github.com/silagokth/vesyla/commit/a82ffd0780ad7868e108686ce6b854cd62fb6c8e))
+- [[vs-schedule](./module/vs-schedule/)] Formatted python code and removed unused imports ([987185b](https://github.com/silagokth/vesyla/commit/987185bffbbac8e8870f00aee564424d7031b46f))
 
 ### Removed
 
-- [vs-schedule] Debug code (`vs-schedule/test` folder) 987185bffbbac8e8870f00aee564424d7031b46f
+- [[vs-schedule](./module/vs-schedule/)] Debug code (`vs-schedule/test` folder) ([987185b](https://github.com/silagokth/vesyla/commit/987185bffbbac8e8870f00aee564424d7031b46f))
 
 ## [4.0.14] - 2025-04-23
 
