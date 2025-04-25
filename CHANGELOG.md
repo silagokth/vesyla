@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.1.0] - 2025-04-25
 
+### Added
+
+- Log messages and log file in `build` folder when building the appimage ([173ad36](https://github.com/silagokth/vesyla/commit/173ad3692efdd740b4a4c0df09cc1bd2ce033ebf))
+
 ### Fixed
 
 - [[vs-component](./module/vs-component/)] Fixed missing log level call resulting in usued variable ([e5eeaf7](https://github.com/silagokth/vesyla/commit/e5eeaf747f5946236c882810fb54931e2ca497fe))
 - [[vs-component](./module/vs-component/)] Fixed double init of env logger ([97dcae8](https://github.com/silagokth/vesyla/commit/97dcae8a1eab123db81ed26867c5a1642cfb7912))
+- [[vs-manas](./module/vs-manas/)] Fixed `--version` arg returning error code ([173ad36](https://github.com/silagokth/vesyla/commit/173ad3692efdd740b4a4c0df09cc1bd2ce033ebf))
 
 ### Changed
 
@@ -19,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the list of `python_requirements.txt` ([58ccf7c](https://github.com/silagokth/vesyla/commit/58ccf7c3efc725a8217a8eefb8e92a71f9b033dd))
 - Updated README.md to use new file names (`vesyla` and `install_dependencies.sh`) ([a82ffd0](https://github.com/silagokth/vesyla/commit/a82ffd0780ad7868e108686ce6b854cd62fb6c8e))
 - Moved `install_dependencies.sh` and `make_appimage.sh` to [`scripts`](./scripts/) folder ([1ca3ab5](https://github.com/silagokth/vesyla/commit/1ca3ab5ddb9e0a9a025469fc24aff9163b176f16))
+- Moved the non sudo commands to [`./scripts/make_appimage.sh`](./scripts/make_appimage.sh) ([173ad36](https://github.com/silagokth/vesyla/commit/173ad3692efdd740b4a4c0df09cc1bd2ce033ebf))
+- Version number handling in `CMakeLists.txt` ([173ad36](https://github.com/silagokth/vesyla/commit/173ad3692efdd740b4a4c0df09cc1bd2ce033ebf))
 - [[vs-schedule](./module/vs-schedule/)] Formatted python code and removed unused imports ([987185b](https://github.com/silagokth/vesyla/commit/987185bffbbac8e8870f00aee564424d7031b46f))
 
 ### Removed
