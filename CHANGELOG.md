@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed `Dockerfile` and `.dockerignore` ([3ee35de](https://github.com/silagokth/vesyla/commit/3ee35dea32b1d6d29657c20f62657873116c4ae4))
 - [[vs-schedule](./module/vs-schedule/)] Debug code (`vs-schedule/test` folder) ([987185b](https://github.com/silagokth/vesyla/commit/987185bffbbac8e8870f00aee564424d7031b46f))
 
 ## [4.0.14] - 2025-04-23
