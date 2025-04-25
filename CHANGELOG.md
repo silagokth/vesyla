@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING CHANGE** Renamed and updated `install_dependency.sh` to `install_dependencies.sh` ([f290549](https://github.com/silagokth/vesyla/commit/f290549ef4cb3d4e08782952ca87ddec52db5dcc))
 - Updated the list of `python_requirements.txt` ([58ccf7c](https://github.com/silagokth/vesyla/commit/58ccf7c3efc725a8217a8eefb8e92a71f9b033dd))
 - Updated README.md to use new file names (`vesyla` and `install_dependencies.sh`) ([a82ffd0](https://github.com/silagokth/vesyla/commit/a82ffd0780ad7868e108686ce6b854cd62fb6c8e))
+- Moved `install_dependencies.sh` and `make_appimage.sh` to [`scripts`](./scripts/) folder ([1ca3ab5](https://github.com/silagokth/vesyla/commit/1ca3ab5ddb9e0a9a025469fc24aff9163b176f16))
 - [[vs-schedule](./module/vs-schedule/)] Formatted python code and removed unused imports ([987185b](https://github.com/silagokth/vesyla/commit/987185bffbbac8e8870f00aee564424d7031b46f))
 
 ### Removed
