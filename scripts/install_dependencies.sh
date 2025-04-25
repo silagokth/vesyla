@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-#set -e
+set -e
+set -x
 
 # Install dependencies for the project depending on the OS
 
@@ -23,19 +24,3 @@ else
   echo "Unsupported distribution! You need to install the dependencies manually. Check the requirements.txt."
   exit 1
 fi
-
-# Install rust
-if ! command -v rustc &>/dev/null; then
-  echo "Installing rust..."
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-  source $HOME/.cargo/env
-fi
-
-# Get directory of the script
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-
-# install python library according to python_requirements.txt
-python3 -m venv .venv
-source .venv/bin/activate
-pip3 install --upgrade pip
-pip3 install --force-reinstall -r $DIR/python_requirements.txt

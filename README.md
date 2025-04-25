@@ -16,13 +16,13 @@ Tool suite for DRRA-2 hardware accelerator platform.
 1. Install dependencies:
 
     ```bash
-    source ./install_dependencies.sh
+    sh ./scripts/install_dependencies.sh
     ```
 
 2. Generate the Vesyla appimage:
 
     ```bash
-    sh ./make_appimage.sh
+    sh ./scripts/make_appimage.sh
     ```
 
 3. Copy the appimage (`./vesyla`) to your `PATH`, for example:

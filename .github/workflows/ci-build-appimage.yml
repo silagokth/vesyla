@@ -16,8 +16,8 @@ jobs:
 
       - name: Build project
         run: |
-          source ./install_dependencies.sh
-          ./make_appimage.sh
+          ./scripts/install_dependencies.sh
+          ./scripts/make_appimage.sh
 
       - name: Upload built artifact
         id: upload-artifact
