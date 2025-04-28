@@ -4,3 +4,4 @@ sympy==1.13.3
 ortools==9.8.3296
 lark==1.2.2
 protobuf==4.25.0
+pandas==2.2.3
