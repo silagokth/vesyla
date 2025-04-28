@@ -15,7 +15,7 @@
 ## Installation
 
 - Prerequisites
-  - Having installed the [Vesyla Suite](https://github.com/silagokth/vesyla-suite-4/tree/develop?tab=readme-ov-file#compile-and-install) or compiled this Rust project with `cargo build`.
+  - Having installed the [Vesyla Suite](https://github.com/silagokth/vesyla/tree/develop?tab=readme-ov-file#compile-and-install) or compiled this Rust project with `cargo build`.
   - A library of components. Example components are provided in the [components/](components/) directory.
 - Step-by-step installation guide
 

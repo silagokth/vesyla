@@ -16,13 +16,13 @@ jobs:
 
       - name: Build project
         run: |
-          ./install_dependency.sh
-          ./make_appimage.sh
+          ./scripts/install_dependencies.sh
+          ./scripts/make_appimage.sh
 
       - name: Upload built artifact
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vesyla-suite-${{ github.sha }}
-          path: ./vesyla-suite
+          name: vesyla-${{ github.sha }}
+          path: ./vesyla
           overwrite: true

@@ -78,11 +78,12 @@ fn main() {
             output,
             debug,
         } => {
-            let debug_level = if *debug {
+            let _debug_level = if *debug {
                 log::LevelFilter::Debug
             } else {
                 log::LevelFilter::Info
             };
+            env_logger::builder().filter_level(_debug_level);
             info!("Assembling ...");
             assemble(arch, output);
             info!("Done!");

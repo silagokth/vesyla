@@ -49,7 +49,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: vesyla-suite-${{ github.sha }}
+          name: vesyla-${{ github.sha }}
           path: ./artifacts/
 
       - name: Upload Release
@@ -58,4 +58,4 @@ jobs:
         with:
           body_path: changelog_section.md
           files: |
-            ./artifacts/vesyla-suite
+            ./artifacts/vesyla

@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=vesyla-suite
-Icon=vesyla-suite
-Exec=vesyla-suite
+Name=vesyla
+Icon=vesyla
+Exec=vesyla
 Comment=brief description
 Categories=Development;IDE;
 Terminal=true

@@ -217,16 +217,16 @@ void set_state_reg(int row, int col, int addr, int value) {
 
 void simulate_code_segment(int id) {
   string cmd;
-  cmd = "vesyla-suite schedule -p ../pasm/" + to_string(id) +
-        ".pasm -c ../pasm/" + to_string(id) + ".cstr -o compile";
+  cmd = "vesyla schedule -p ../pasm/" + to_string(id) + ".pasm -c ../pasm/" +
+        to_string(id) + ".cstr -o compile";
   assert(system(cmd.c_str()) == 0);
   cmd = "mkdir asm && cp compile/0.asm asm/" + to_string(id) + ".asm";
   assert(system(cmd.c_str()) == 0);
-  cmd = "vesyla-suite manas -i asm/" + to_string(id) +
+  cmd = "vesyla manas -i asm/" + to_string(id) +
         ".asm -s ../isa.json "
         "-o .";
   assert(system(cmd.c_str()) == 0);
-  cmd = "vesyla-suite alimpsim --arch ../arch.json "
+  cmd = "vesyla alimpsim --arch ../arch.json "
         "--instr "
         "instr.bin --isa ../isa.json --input sram_image_in.bin --output "
         "sram_image_m1.bin "
