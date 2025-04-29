@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] - 2025-04-29
+
+### Fixed
+
+- Fixed protobuf version clash with ortools by installing protoc in the appimage ([b64d0ce1](https://github.com/silagokth/vesyla/commit/b64d0ce19fead9d1871a91fcb4c402c79d88bf80))
+
+### Changed
+
+- Moved protobuf and ortools to newest cross-compatible version in [requirements.txt](./scripts/requirements.txt) ([b64d0ce1](https://github.com/silagokth/vesyla/commit/b64d0ce19fead9d1871a91fcb4c402c79d88bf80))
+- Added the generated `ds_pb2.py` file to [.gitignore](./.gitignore) ([f0b9beb](https://github.com/silagokth/vesyla/commit/f0b9bebc5ed9b449b3c5a3303aceaef0da25dea9))
+
+### Removed
+
+- Removed `ds_pb2.py` file from the Git remote ([f0b9beb](https://github.com/silagokth/vesyla/commit/f0b9bebc5ed9b449b3c5a3303aceaef0da25dea9))
+
 ## [4.1.0] - 2025-04-28
 
 ### Added
