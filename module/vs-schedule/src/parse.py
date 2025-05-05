@@ -4,8 +4,10 @@ from lark import Lark, Tree, Token
 from uuid import uuid4
 import ds_pb2 as ds
 
+
 def get_random_id():
-    return "__"+str(uuid4())[:8]+"__"
+    return "__" + str(uuid4())[:8] + "__"
+
 
 # construct the AST for PASM
 def analyze_pasm(node, prog=ds.PASMProg()):
@@ -15,13 +17,21 @@ def analyze_pasm(node, prog=ds.PASMProg()):
             region = ds.PASMRecord()
             region.id = get_random_id()
             region.kind = ds.PASMRecord.START
-            prog.start=region.id
+            prog.start = region.id
             for child in node.children:
                 region.contents.append(analyze_pasm(child, prog).id)
             prog.records[region.id].CopyFrom(region)
             return prog
-        elif node.data == "loop_region" or node.data == "cond_region" or node.data == "epoch_region" or node.data == "cell_region" or node.data == "cop_region" or node.data == "rop_region" or node.data == "raw_region":
-            
+        elif (
+            node.data == "loop_region"
+            or node.data == "cond_region"
+            or node.data == "epoch_region"
+            or node.data == "cell_region"
+            or node.data == "cop_region"
+            or node.data == "rop_region"
+            or node.data == "raw_region"
+        ):
+
             if node.data == "loop_region":
                 region = ds.PASMRecord()
                 region.id = get_random_id()
@@ -57,7 +67,12 @@ def analyze_pasm(node, prog=ds.PASMProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 region.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -81,7 +96,12 @@ def analyze_pasm(node, prog=ds.PASMProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 instruction.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -100,6 +120,7 @@ def analyze_pasm(node, prog=ds.PASMProg()):
             prog.records[instruction.id].CopyFrom(instruction)
             return instruction
 
+
 # construct the AST for CSTR
 def analyze_cstr(node, prog=ds.CSTRProg()):
     if isinstance(node, Tree):
@@ -108,7 +129,7 @@ def analyze_cstr(node, prog=ds.CSTRProg()):
             region = ds.CSTRRecord()
             region.id = get_random_id()
             region.kind = ds.CSTRRecord.START
-            prog.start=region.id
+            prog.start = region.id
             for child in node.children:
                 region.contents.append(analyze_cstr(child, prog).id)
             prog.records[region.id].CopyFrom(region)
@@ -124,7 +145,12 @@ def analyze_cstr(node, prog=ds.CSTRProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 region.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -151,6 +177,7 @@ def analyze_cstr(node, prog=ds.CSTRProg()):
             prog.records[constraint.id].CopyFrom(constraint)
             return constraint
 
+
 def analyze_asm(node, prog=ds.ASMProg()):
     if isinstance(node, Tree):
         if node.data == "start":
@@ -169,7 +196,12 @@ def analyze_asm(node, prog=ds.ASMProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 cell.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -189,7 +221,12 @@ def analyze_asm(node, prog=ds.ASMProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 instruction.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -204,10 +241,10 @@ def analyze_asm(node, prog=ds.ASMProg()):
                     else:
                         logging.error("Invalid instruction: " + str(node))
                         sys.exit(-1)
-            
+
             prog.records[instruction.id].CopyFrom(instruction)
             return instruction
-        
+
 
 def parse_pasm(text_pasm):
     grammar = """
@@ -237,6 +274,7 @@ COMMENTS: /#.*/
     program = parser.parse(text_pasm)
     return analyze_pasm(program)
 
+
 def parse_cstr(text_cstr):
     grammar = """
 start: (epoch_region)*
@@ -254,6 +292,7 @@ COMMENTS: /#.*/
     parser = Lark(grammar)
     program = parser.parse(text_cstr)
     return analyze_cstr(program)
+
 
 def parse_asm(text_asm):
     asm_grammar = """
@@ -275,20 +314,24 @@ COMMENTS: /#.*/
     program = parser.parse(text_asm)
     return analyze_asm(program)
 
+
 def load_pasm_from_json(json_text):
     prog = ds.PASMProg()
     prog.ParseFromString(json_text)
     return prog
+
 
 def load_cstr_from_json(json_text):
     prog = ds.CSTRProg()
     prog.ParseFromString(json_text)
     return prog
 
+
 def load_asm_from_json(json_text):
     prog = ds.ASMProg()
     prog.ParseFromString(json_text)
     return prog
+
 
 def analyze_asm_for_epoch(node, prog=ds.ASMProg()):
     if isinstance(node, Tree):
@@ -322,7 +365,12 @@ def analyze_asm_for_epoch(node, prog=ds.ASMProg()):
                         if len(child.children) == 2:
                             ch0 = child.children[0]
                             ch1 = child.children[1]
-                            if isinstance(ch0, Token) and isinstance(ch1, Token) and ch0.type == "IDENTIFIER" and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER"):
+                            if (
+                                isinstance(ch0, Token)
+                                and isinstance(ch1, Token)
+                                and ch0.type == "IDENTIFIER"
+                                and (ch1.type == "IDENTIFIER" or ch1.type == "NUMBER")
+                            ):
                                 instruction.parameters[ch0.value] = ch1.value
                         else:
                             logging.error("Invalid parameter: " + str(child))
@@ -339,6 +387,7 @@ def analyze_asm_for_epoch(node, prog=ds.ASMProg()):
                         sys.exit(-1)
             prog.records[instruction.id].CopyFrom(instruction)
             return instruction
+
 
 def text_to_asm_epoch(text_asm):
     asm_grammar = """

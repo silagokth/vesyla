@@ -1,6 +1,5 @@
 use crate::drra;
 use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
-use crate::isa::InstructionSet;
 use crate::utils::*;
 use log::{debug, info, warn};
 use std::collections::HashMap;
@@ -12,27 +11,6 @@ pub fn get_rtl_output_dir(build_dir: &String) -> Result<PathBuf> {
     let rtl_output_dir = Path::new(&build_dir).join("rtl");
     fs::create_dir_all(&rtl_output_dir)?;
     Ok(rtl_output_dir)
-}
-
-/// Merge parameters from params2 into params1
-fn merge_parameters(
-    params1: &mut ParameterList,
-    params2: &ParameterList,
-) -> Result<Vec<(String, u64, u64)>> {
-    let mut overwritten_params = Vec::new();
-    for (param_name, param_value) in params2.iter() {
-        // Check if the parameter already exists in params1
-        if !params1.contains_key(param_name) {
-            params1.insert(param_name.clone(), *param_value);
-        } else {
-            let existing_param = params1.get(param_name).unwrap();
-            if existing_param != param_value {
-                // List the parameters that exist in param1 but with a different value
-                overwritten_params.push((param_name.clone(), *existing_param, *param_value));
-            }
-        }
-    }
-    Ok(overwritten_params)
 }
 
 fn add_parameters(
@@ -179,119 +157,36 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
             .iter()
             .find(|entry| *entry["name"].as_str().unwrap() == cell_object.name)
         {
-            if let Ok(cell_from_pool) = Cell::from_json(&cell_pool_entry.to_string()) {
-                // If cell controller was not provided in "fabric" get from cell_from_pool
-                if cell_from_pool.controller.is_some() && cell_object.controller.is_none() {
-                    cell_object.controller = cell_from_pool.controller.clone();
-                }
-                // If cell resources were not provided in "fabric" get from cell_from_pool
-                if cell_from_pool.resources.is_some() && cell_object.resources.is_none() {
-                    cell_object.resources = cell_from_pool.resources.clone();
-                }
-                // Check io input
-                if cell_from_pool.io_input.is_some() && cell_object.io_input.is_none() {
-                    cell_object.io_input = cell_from_pool.io_input;
-                }
-                // Check io output
-                if cell_from_pool.io_output.is_some() && cell_object.io_output.is_none() {
-                    cell_object.io_output = cell_from_pool.io_output;
-                }
-                // If cell kind was not provided in "fabric" get from cell_from_pool
-                if cell_from_pool.kind.is_some() && cell_object.kind.is_none() {
-                    cell_object.kind = cell_from_pool.kind.clone();
-                }
-                // append parameters from cell_from_pool to cell_parameters
-                overwritten_params.extend(merge_parameters(
-                    &mut cell_object.parameters,
-                    &cell_from_pool.parameters,
-                )?);
-                // append required parameters from cell_from_pool to cell
-                if !cell_from_pool.required_parameters.is_empty() {
-                    cell_object
-                        .required_parameters
-                        .extend(cell_from_pool.required_parameters);
-                }
-            }
+            // Update cell parameters from cell pool entry and
+            // add overwritten parameters to the list
+            overwritten_params.extend(
+                cell_object
+                    .update_from_json(&cell_pool_entry.to_string(), false)
+                    .expect("Failed to update cell from JSON entry"),
+            );
         }
 
         // Get cell from library if kind is provided
-        if let Some(cell_type) = cell_object.kind.as_ref() {
-            if let Ok(lib_cell) = get_arch_from_library(cell_type) {
-                if let Ok(cell_from_lib) = Cell::from_json(&lib_cell.to_string()) {
-                    // If cell controller was not provided in "fabric" or cell pool, get from cell_from_lib
-                    if cell_from_lib.controller.is_some() && cell_object.controller.is_none() {
-                        cell_object.controller = cell_from_lib.controller.clone();
-                    }
-                    // If cell resources were not provided in "fabric" or cell pool, get from cell_from_lib
-                    if cell_from_lib.resources.is_some() && cell_object.resources.is_none() {
-                        cell_object.resources = cell_from_lib.resources.clone();
-                    }
-                    // Get ISA from library if is None
-                    if cell_object.isa.is_none() {
-                        let isa_json = get_isa_from_library(cell_type).unwrap();
-                        let isa = InstructionSet::from_json(isa_json);
-                        if isa.is_err() {
-                            panic!(
-                                "Error with ISA for cell {} from library (kind: {}) -> {}",
-                                cell_object.name,
-                                cell_type,
-                                isa.err().unwrap()
-                            );
-                        }
-                        cell_object.isa = Some(isa.unwrap());
-                    }
-                    // Get parameters for cell_object
+        let cell_kind = cell_object.kind.clone().expect(&format!(
+            "Cell kind not found for cell {} in fabric",
+            cell_object.name,
+        ));
+        let lib_cell_arch = get_arch_from_library(&cell_kind.clone()).expect(&format!(
+            "Cell {} not found in library (kind: {})",
+            cell_object.name, cell_kind
+        ));
 
-                    // append parameters from cell_from_lib to cell_parameters
-                    overwritten_params.extend(merge_parameters(
-                        &mut cell_object.parameters,
-                        &cell_from_lib.parameters,
-                    )?);
-                    if !overwritten_params.is_empty() {
-                        let mut warning = format!(
-                            "Some parameters from cell {} were overwritten:",
-                            cell_object.name,
-                        );
-                        for param in overwritten_params.iter() {
-                            warning.push_str(&format!(
-                                "\n - {}(old value: {}, new value: {})",
-                                param.0, param.1, param.2
-                            ));
-                        }
-                        debug!("{}", warning);
-                    }
-
-                    // append parameters from cell_from_lib to required_parameters
-                    for param_key in cell_from_lib.parameters.keys() {
-                        if !cell_object.required_parameters.contains(param_key) {
-                            cell_object.required_parameters.push(param_key.clone());
-                        }
-                    }
-
-                    // append required parameters from cell_from_lib to cell
-                    if !cell_from_lib.required_parameters.is_empty() {
-                        cell_object
-                            .required_parameters
-                            .extend(cell_from_lib.required_parameters);
-                    }
-                }
-            }
-        }
+        overwritten_params.extend(
+            cell_object
+                .update_from_json(&lib_cell_arch.to_string(), false)
+                .expect("Failed to update cell from JSON entry"),
+        );
 
         // Verify cell validity
-        if cell_object.controller.is_none() {
-            panic!("Controller not found for cell {}", cell_object.name,);
-        }
-        if cell_object.isa.is_none() {
-            panic!(
-                "ISA not found for cell {} (kind: {})",
-                cell_object.name,
-                cell_object.kind.as_ref().unwrap(),
-            );
-        }
-        if cell_object.resources.is_none() {
-            panic!("Resources for cell {} not found in the library and were not provided in JSON file fabric or cell pool", cell_object.name);
-        }
+        cell_object
+            .is_valid()
+            .expect(&format!("Cell {} in fabric is not valid", cell_object.name,));
+
         let mut cell_added_parameters = ParameterList::new();
         if cell_object.parameters.is_empty() && cell_object.required_parameters.is_empty() {
             warn!(
@@ -339,150 +234,50 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                 .iter()
                 .find(|entry| entry["name"].as_str().unwrap() == controller_object.name)
             {
-                if let Ok(controller_from_pool) = Controller::from_json(&controller.to_string()) {
-                    // Check size
-                    if controller_object.size.is_none() && controller_from_pool.size.is_some() {
-                        controller_object.size = controller_from_pool.size;
-                    }
-                    // append parameters from controller_from_pool to controller_parameters
-                    overwritten_params.extend(merge_parameters(
-                        &mut controller_object.parameters,
-                        &controller_from_pool.parameters,
-                    )?);
-                    // append required parameters from controller_from_pool to controller
-                    if !controller_from_pool.required_parameters.is_empty() {
-                        controller_object
-                            .required_parameters
-                            .extend(controller_from_pool.required_parameters);
-                    }
-                    // check if the controller has kind
-                    if controller_from_pool.kind.is_some() && controller_object.kind.is_none() {
-                        controller_object.kind = controller_from_pool.kind;
-                    }
-                    // check io input
-                    if controller_from_pool.io_input.is_some()
-                        && controller_object.io_input.is_none()
-                    {
-                        controller_object.io_input = controller_from_pool.io_input;
-                    }
-                    // check io output
-                    if controller_from_pool.io_output.is_some()
-                        && controller_object.io_output.is_none()
-                    {
-                        controller_object.io_output = controller_from_pool.io_output;
-                    }
-                }
+                overwritten_params.extend(
+                    controller_object
+                        .update_from_json(&controller.to_string(), false)
+                        .expect("Failed to update controller from JSON entry"),
+                );
             }
-        }
-
-        // Check if the controller has kind
-        if controller_object.kind.is_none() {
-            panic!(
-                "Kind not found for controller {} in cell {}",
-                controller_object.name, cell_object.name,
-            );
         }
 
         // Get the controller from the library if kind is provided
-        if let Some(controller_kind) = controller_object.kind.clone() {
-            if let Ok(lib_controller) = get_arch_from_library(&controller_kind.clone()) {
-                if let Ok(controller_from_lib) = Controller::from_json(&lib_controller.to_string())
-                {
-                    // Check size
-                    if controller_object.size.is_none() && controller_from_lib.size.is_some() {
-                        controller_object.size = controller_from_lib.size;
-                    }
-                    // append parameters from controller_from_lib to controller_parameters
-                    overwritten_params.extend(merge_parameters(
-                        &mut controller_object.parameters,
-                        &controller_from_lib.parameters,
-                    )?);
-                    if !overwritten_params.is_empty() {
-                        let mut warning = format!(
-                            "Some parameters from controller {} in cell {} were overwritten:",
-                            controller_object.name, cell_object.name,
-                        );
-                        for param in overwritten_params.iter() {
-                            warning.push_str(&format!(
-                                "\n - {}(old value: {}, new value: {})",
-                                param.0, param.1, param.2
-                            ));
-                        }
-                        warn!("{}", warning);
-                    }
+        let controller_kind = controller_object.kind.clone().expect(&format!(
+            "Controller kind not found for controller {} in cell {}",
+            controller_object.name, cell_object.name,
+        ));
 
-                    // append parameters from controller_from_lib to required_parameters
-                    for param_key in controller_from_lib.parameters.keys() {
-                        if !controller_object.required_parameters.contains(param_key) {
-                            controller_object
-                                .required_parameters
-                                .push(param_key.clone());
-                        }
-                    }
+        let lib_controller_arch = get_arch_from_library(&controller_kind.clone()).expect(&format!(
+            "Controller {} not found in library (kind: {})",
+            controller_object.name, controller_kind
+        ));
 
-                    // append required parameters from controller_from_lib to controller
-                    if !controller_from_lib.required_parameters.is_empty() {
-                        controller_object
-                            .required_parameters
-                            .extend(controller_from_lib.required_parameters);
-                    }
-                    // check io input
-                    if controller_from_lib.io_input.is_some()
-                        && controller_object.io_input.is_none()
-                    {
-                        controller_object.io_input = controller_from_lib.io_input;
-                    }
-                    // check io output
-                    if controller_from_lib.io_output.is_some()
-                        && controller_object.io_output.is_none()
-                    {
-                        controller_object.io_output = controller_from_lib.io_output;
-                    }
-                    // get ISA from library if is None
-                    if controller_object.isa.is_none() {
-                        let isa_json = get_isa_from_library(&controller_kind.clone()).unwrap();
-                        let isa = InstructionSet::from_json(isa_json);
-                        if isa.is_err() {
-                            panic!(
-                                "Error with ISA for controller {} in cell {} from library (kind: {}) -> {}",
-                                controller_object.name,
-                                cell_object.name,
-                                controller_kind,
-                                isa.err().unwrap()
-                            );
-                        }
-                        controller_object.isa = Some(isa.unwrap());
-                    }
-                }
+        // Merge parameters from library to controller
+        overwritten_params.extend(
+            controller_object
+                .update_from_json(&lib_controller_arch.to_string(), false)
+                .expect("Failed to update controller from JSON entry"),
+        );
+        if !overwritten_params.is_empty() {
+            let mut warning = format!(
+                "Some parameters from controller {} in cell {} were overwritten:",
+                controller_object.name, cell_object.name,
+            );
+            for param in overwritten_params.iter() {
+                warning.push_str(&format!(
+                    "\n - {}(old value: {}, new value: {})",
+                    param.0, param.1, param.2
+                ));
             }
+            warn!("{}", warning);
         }
 
         // Check controller validity
-        if controller_object.size.is_none() {
-            panic!(
-                "Size not found for controller {} in cell {}",
-                controller_object.name, cell_object.name,
-            );
-        }
-        if controller_object.isa.is_none() {
-            panic!(
-                "ISA not found for controller {} in cell {} (kind: {})",
-                controller_object.name,
-                cell_object.name,
-                controller_object.kind.as_ref().unwrap(),
-            );
-        }
-
-        // Get the required parameters for the resource
-        if controller_object.required_parameters.is_empty() {
-            controller_object.required_parameters =
-                controller_object.parameters.keys().cloned().collect();
-            warn!(
-                    "No required parameters found for controller {} in cell {}, using all parameters as required",
-                    controller_object.name,
-                    cell_object.name,
-                );
-        }
+        controller_object.is_valid().expect(&format!(
+            "Controller {} in cell {} is not valid",
+            controller_object.name, cell_object.name,
+        ));
 
         // Add controller required parameters to the registry
         let mut controller_added_parameters = ParameterList::new();
@@ -574,170 +369,57 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                 .iter()
                 .find(|entry| entry["name"].as_str().unwrap() == resource_object.name)
             {
-                if let Ok(resource_from_pool) = Resource::from_json(&resource_entry.to_string()) {
-                    // Check slot
-                    if resource_object.slot.is_none() && resource_from_pool.slot.is_some() {
-                        resource_object.slot = resource_from_pool.slot;
-                    }
-                    // Check size
-                    if resource_object.size.is_none() && resource_from_pool.size.is_some() {
-                        resource_object.size = resource_from_pool.size;
-                    }
-                    // append parameters from resource_from_pool to resource_parameters
-                    overwritten_params.extend(merge_parameters(
-                        &mut resource_object.parameters,
-                        &resource_from_pool.parameters,
-                    )?);
-                    // append required parameters from resource_from_pool to resource
-                    if !resource_from_pool.required_parameters.is_empty() {
-                        resource_object
-                            .required_parameters
-                            .extend(resource_from_pool.required_parameters);
-                    }
-                    // check if the resource has kind
-                    if resource_from_pool.kind.is_some() && resource_object.kind.is_none() {
-                        resource_object.kind = resource_from_pool.kind;
-                    }
-                    // check io input
-                    if resource_from_pool.io_input.is_some() && resource_object.io_input.is_none() {
-                        resource_object.io_input = resource_from_pool.io_input;
-                    }
-                    // check io output
-                    if resource_from_pool.io_output.is_some() && resource_object.io_output.is_none()
-                    {
-                        resource_object.io_output = resource_from_pool.io_output;
-                    }
-                }
-            }
-
-            // Check if the resource kind is provided
-            if resource_object.kind.is_none() {
-                panic!(
-                    "Kind not found for resource {} in cell {}",
-                    resource_object.name, cell_object.name,
+                overwritten_params.extend(
+                    resource_object
+                        .update_from_json(&resource_entry.to_string(), false)
+                        .expect("Failed to update resource from JSON entry"),
                 );
             }
 
-            // Get the resource from the library
-            if let Some(resource_kind) = resource_object.kind.as_ref() {
-                if let Ok(lib_resource) = get_arch_from_library(resource_kind) {
-                    if let Ok(resource_from_lib) = Resource::from_json(&lib_resource.to_string()) {
-                        // Check slot
-                        if resource_object.slot.is_none() && resource_from_lib.slot.is_some() {
-                            resource_object.slot = resource_from_lib.slot;
-                        }
-                        // Check size
-                        if resource_object.size.is_none() && resource_from_lib.size.is_some() {
-                            resource_object.size = resource_from_lib.size;
-                        }
-                        // append parameters from resource_from_lib to resource_parameters
-                        overwritten_params.extend(merge_parameters(
-                            &mut resource_object.parameters,
-                            &resource_from_lib.parameters,
-                        )?);
-                        // if resource_object.parameters.is_empty() {
-                        //     warn!(
-                        //         "No parameters found for resource {} (slot {}) in cell {}",
-                        //         resource_object.name,
-                        //         resource_object.slot.unwrap(),
-                        //         cell_object.name,
-                        //     );
-                        // } else {
-                        //     debug!(
-                        //         "Parameters for resource {} (slot {}) in cell {}: {:?}",
-                        //         resource_object.name,
-                        //         resource_object.slot.unwrap(),
-                        //         cell_object.name,
-                        //         resource_object.parameters
-                        //     );
-                        // }
-                        if !overwritten_params.is_empty() {
-                            let mut warning = format!(
-                            "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
-                            resource_object.name,
-                            resource_object.slot.unwrap(),
-                            cell_object.name,
-                        );
-                            for param in overwritten_params.iter() {
-                                warning.push_str(&format!(
-                                    "\n - {}(old value: {}, new value: {})",
-                                    param.0, param.1, param.2
-                                ));
-                            }
-                            warn!("{}", warning);
-                        }
+            let resource_kind = resource_object.kind.clone().expect(&format!(
+                "Resource kind not found for resource {} in cell {}",
+                resource_object.name, cell_object.name,
+            ));
 
-                        // append parameters from resource_from_lib to required_parameters
-                        for param_key in resource_from_lib.parameters.keys() {
-                            if !resource_object.required_parameters.contains(param_key) {
-                                resource_object.required_parameters.push(param_key.clone());
-                            }
-                        }
+            let lib_resource_arch = get_arch_from_library(&resource_kind.clone()).expect(&format!(
+                "Resource {} not found in library (kind: {})",
+                resource_object.name, resource_kind
+            ));
 
-                        // append required parameters from resource_from_lib to resource
-                        if !resource_from_lib.required_parameters.is_empty() {
-                            resource_object
-                                .required_parameters
-                                .extend(resource_from_lib.required_parameters);
-                        }
-                        // check io input
-                        if resource_from_lib.io_input.is_some()
-                            && resource_object.io_input.is_none()
-                        {
-                            resource_object.io_input = resource_from_lib.io_input;
-                        }
-                        // check io output
-                        if resource_from_lib.io_output.is_some()
-                            && resource_object.io_output.is_none()
-                        {
-                            resource_object.io_output = resource_from_lib.io_output;
-                        }
-                        // get ISA from library if is None
-                        if resource_object.isa.is_none() {
-                            let isa_json = get_isa_from_library(resource_kind).unwrap();
-                            let isa = InstructionSet::from_json(isa_json);
-                            if isa.is_err() {
-                                panic!(
-                                    "Error with ISA for resource {} (slot {}) in cell {} from library (kind: {}) -> {}",
-                                    resource_object.name,
-                                    resource_object.slot.unwrap(),
-                                    cell_object.name,
-                                    resource_kind,
-                                    isa.err().unwrap()
-                                );
-                            }
-                            resource_object.isa = Some(isa.unwrap());
-                        }
-                    }
-                }
-            }
+            overwritten_params.extend(
+                resource_object
+                    .update_from_json(&lib_resource_arch.to_string(), false)
+                    .expect("Failed to update resource from JSON entry"),
+            );
 
-            // Check resource validity
             if resource_object.slot.is_none() {
                 resource_object.slot = Some(current_slot);
                 current_slot += resource_object.size.unwrap();
             }
-            if resource_object.isa.is_none() {
-                panic!(
-                    "ISA not found for resource {} (slot {}) in cell {} (kind: {})",
+
+            if !overwritten_params.is_empty() {
+                let mut warning = format!(
+                    "Some parameters from resource {} (slot {}) in cell {} were overwritten:",
                     resource_object.name,
                     resource_object.slot.unwrap(),
                     cell_object.name,
-                    resource_object.kind.as_ref().unwrap(),
                 );
+                for param in overwritten_params.iter() {
+                    warning.push_str(&format!(
+                        "\n - {}(old value: {}, new value: {})",
+                        param.0, param.1, param.2
+                    ));
+                }
+                warn!("{}", warning);
             }
 
-            // Get the required parameters for the resource
-            if resource_object.required_parameters.is_empty() {
-                resource_object.required_parameters =
-                    resource_object.parameters.keys().cloned().collect();
-                warn!(
-                    "No required parameters found for resource {} (slot {}) in cell {}, using all parameters as required",
-                    resource_object.name,
-                    resource_object.slot.unwrap(),
-                    cell_object.name,
-                );
-            }
+            // Check resource validity
+            resource_object.is_valid().expect(&format!(
+                "Resource {} (slot {}) in cell {} is not valid",
+                resource_object.name,
+                resource_object.slot.unwrap(),
+                cell_object.name,
+            ));
 
             // Add required parameters to the registry
             let mut resource_added_parameters = ParameterList::new();

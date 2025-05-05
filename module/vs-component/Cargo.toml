@@ -1,7 +1,8 @@
 [package]
 name = "vs-component"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+description = "Vesyla tool to generate fabrics RTL and SST simulation configurations from high-level descriptions."
 
 # targets
 [[bin]]
@@ -28,3 +29,4 @@ usvg = "0.21"
 resvg = "0.21.0"
 printpdf = "0.3"
 svg2pdf = "0.1.0"
+rand = "0.8.4"

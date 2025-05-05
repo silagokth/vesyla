@@ -1,5 +1,8 @@
 use crate::isa::*;
-use crate::utils::{generate_hash, generate_rtl_for_component, get_path_from_library};
+use crate::utils::{
+    generate_hash, generate_rtl_for_component, get_isa_from_library, get_path_from_library,
+    merge_parameters,
+};
 use core::panic;
 use log::warn;
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -17,7 +20,10 @@ pub enum Error {
     ResourceDeclaredAsController,
     ControllerDeclaredAsResource,
     ComponentWithoutNameOrKind,
+    ComponentWithoutISA,
     UnknownComponentType,
+    CellWithoutController,
+    CellWithoutResources,
 }
 
 impl std::fmt::Display for Error {
@@ -26,8 +32,11 @@ impl std::fmt::Display for Error {
             Error::ResourceDeclaredAsController => write!(f, "Resource declared as controller"),
             Error::ControllerDeclaredAsResource => write!(f, "Controller declared as resource"),
             Error::ComponentWithoutNameOrKind => write!(f, "Component without name or kind"),
+            Error::ComponentWithoutISA => write!(f, "Component without ISA"),
             Error::UnknownComponentType => write!(f, "Unknown component type"),
             Error::Io(err) => write!(f, "IO error: {}", err),
+            Error::CellWithoutController => write!(f, "Cell without controller"),
+            Error::CellWithoutResources => write!(f, "Cell without resources"),
         }
     }
 }
@@ -75,6 +84,19 @@ impl Controller {
             required_parameters: Vec::new(),
             isa: None,
         }
+    }
+
+    pub fn is_valid(&self) -> Result<(), Error> {
+        if self.name.is_empty() || self.kind.is_none() || self.size.is_none() {
+            return Err(Error::ComponentWithoutNameOrKind);
+        }
+        if self.isa.is_none() {
+            return Err(Error::ComponentWithoutISA);
+        }
+        if self.required_parameters.is_empty() {
+            warn!("Controller {} has no required parameters", self.name);
+        }
+        Ok(())
     }
 
     pub fn from_json(json_str: &str) -> Result<Self, Error> {
@@ -166,8 +188,73 @@ impl Controller {
             } else {
                 controller.isa = Some(isa_result.unwrap());
             }
+        } else if let Some(kind) = &controller.kind {
+            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let isa = InstructionSet::from_json(lib_isa_json);
+            if isa.is_err() {
+                panic!(
+                    "Error with ISA for controller {} (kind: {}) cannot be found in library -> {}",
+                    &controller.name,
+                    kind,
+                    isa.err().unwrap()
+                );
+            } else {
+                controller.isa = Some(isa.unwrap());
+            }
         }
         Ok(controller)
+    }
+
+    pub fn update_from_json(
+        &mut self,
+        json_str: &str,
+        overwrite: bool,
+    ) -> Result<Vec<(String, u64, u64)>, Error> {
+        if let Ok(incoming_controller) = Controller::from_json(json_str) {
+            // Check size
+            if (self.size.is_none() && incoming_controller.size.is_some()) || overwrite {
+                self.size = incoming_controller.size;
+            }
+            // Check io input
+            if (incoming_controller.io_input.is_some() && self.io_input.is_none()) || overwrite {
+                self.io_input = incoming_controller.io_input;
+            }
+            // Check io output
+            if (incoming_controller.io_output.is_some() && self.io_output.is_none()) || overwrite {
+                self.io_output = incoming_controller.io_output;
+            }
+
+            // append parameters from incoming_controller to controller required parameters
+            for param_key in incoming_controller.parameters.keys() {
+                if !self.required_parameters.contains(param_key) {
+                    self.required_parameters.push(param_key.clone());
+                }
+            }
+
+            // append required parameters from incoming_controller to controller required parameters
+            if !incoming_controller.required_parameters.is_empty() || overwrite {
+                self.required_parameters
+                    .extend(incoming_controller.required_parameters);
+            }
+
+            // check if the controller has kind
+            if (incoming_controller.kind.is_some() && self.kind.is_none()) || overwrite {
+                self.kind = incoming_controller.kind;
+            }
+            // get isa from incoming_controller if is not already defined
+            if (incoming_controller.isa.is_some() && self.isa.is_none()) || overwrite {
+                self.isa = incoming_controller.isa;
+            }
+
+            // append parameters from incoming_controller to controller_parameters
+            let overwritten_params =
+                merge_parameters(&mut self.parameters, &incoming_controller.parameters)?;
+            return Ok(overwritten_params);
+        }
+        Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Not implemented",
+        )))
     }
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
@@ -302,6 +389,21 @@ impl Resource {
             isa: None,
         }
     }
+
+    pub fn is_valid(&self) -> Result<(), Error> {
+        if self.name.is_empty() || self.kind.is_none() || self.size.is_none() || self.slot.is_none()
+        {
+            return Err(Error::ComponentWithoutNameOrKind);
+        }
+        if self.isa.is_none() {
+            return Err(Error::ComponentWithoutISA);
+        }
+        if self.required_parameters.is_empty() {
+            warn!("Resource {} has no required parameters", self.name);
+        }
+        return Ok(());
+    }
+
     pub fn from_json(json_str: &str) -> Result<Self, Error> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
@@ -394,9 +496,79 @@ impl Resource {
             } else {
                 panic!("Error parsing ISA: {:?}", isa.to_string());
             }
+        } else if let Some(kind) = &resource.kind {
+            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let isa = InstructionSet::from_json(lib_isa_json);
+            if isa.is_err() {
+                panic!(
+                    "Error with ISA for resource {} (kind: {}) cannot be found in library -> {}",
+                    &resource.name,
+                    kind,
+                    isa.err().unwrap()
+                );
+            } else {
+                resource.isa = Some(isa.unwrap());
+            }
         }
         Ok(resource)
     }
+
+    pub fn update_from_json(
+        &mut self,
+        json_str: &str,
+        overwrite: bool,
+    ) -> Result<Vec<(String, u64, u64)>, Error> {
+        if let Ok(resource_from_pool) = Resource::from_json(json_str) {
+            // Check slot
+            if (self.slot.is_none() && resource_from_pool.slot.is_some()) || overwrite {
+                self.slot = resource_from_pool.slot;
+            }
+            // Check size
+            if (self.size.is_none() && resource_from_pool.size.is_some()) || overwrite {
+                self.size = resource_from_pool.size;
+            }
+
+            // append parameters from resource_from_pool to resource required parameters
+            for param_key in resource_from_pool.parameters.keys() {
+                if !self.required_parameters.contains(param_key) {
+                    self.required_parameters.push(param_key.clone());
+                }
+            }
+
+            // append required parameters from resource_from_pool to resource
+            if !resource_from_pool.required_parameters.is_empty() || overwrite {
+                self.required_parameters
+                    .extend(resource_from_pool.required_parameters);
+            }
+            // check if the resource has kind
+            if (resource_from_pool.kind.is_some() && self.kind.is_none()) || overwrite {
+                self.kind = resource_from_pool.kind;
+            }
+            // check io input
+            if (resource_from_pool.io_input.is_some() && self.io_input.is_none()) || overwrite {
+                self.io_input = resource_from_pool.io_input;
+            }
+            // check io output
+            if (resource_from_pool.io_output.is_some() && self.io_output.is_none()) || overwrite {
+                self.io_output = resource_from_pool.io_output;
+            }
+
+            // get isa from resource_from_pool if is not already defined
+            if (resource_from_pool.isa.is_some() && self.isa.is_none()) || overwrite {
+                self.isa = resource_from_pool.isa;
+            }
+
+            // append parameters from resource_from_pool to resource_parameters
+            let overwritten_params =
+                merge_parameters(&mut self.parameters, &resource_from_pool.parameters)?;
+            return Ok(overwritten_params);
+        }
+        Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Not implemented",
+        )))
+    }
+
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
     }
@@ -535,6 +707,24 @@ impl Cell {
         }
     }
 
+    pub fn is_valid(&self) -> Result<(), Error> {
+        if self.name.is_empty() || self.kind.is_none() {
+            return Err(Error::ComponentWithoutNameOrKind);
+        }
+        if self.controller.is_none() {
+            return Err(Error::CellWithoutController);
+        }
+        if self.isa.is_none() {
+            return Err(Error::ComponentWithoutISA);
+        }
+        if self.resources.is_none() {
+            return Err(Error::CellWithoutResources);
+        } else if self.resources.as_ref().unwrap().is_empty() {
+            return Err(Error::CellWithoutResources);
+        }
+        Ok(())
+    }
+
     pub fn from_json(json_str: &str) -> Result<Self, Error> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
@@ -640,12 +830,79 @@ impl Cell {
             } else {
                 panic!("Error parsing ISA: {:?}", isa.to_string());
             }
+        } else if let Some(kind) = &cell.kind {
+            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let isa = InstructionSet::from_json(lib_isa_json);
+            if isa.is_err() {
+                panic!(
+                    "Error with ISA for cell {} (kind: {}) cannot be found in library -> {}",
+                    &cell.name,
+                    kind,
+                    isa.err().unwrap()
+                );
+            } else {
+                cell.isa = Some(isa.unwrap());
+            }
         }
         Ok(cell)
     }
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
+    }
+
+    pub fn update_from_json(
+        &mut self,
+        json_str: &str,
+        overwrite: bool,
+    ) -> Result<Vec<(String, u64, u64)>, Error> {
+        if let Ok(cell_from_pool) = Cell::from_json(json_str) {
+            // If cell controller was not provided in "fabric" get from cell_from_pool
+            if (cell_from_pool.controller.is_some() && self.controller.is_none()) || overwrite {
+                self.controller = cell_from_pool.controller.clone();
+            }
+            // If cell resources were not provided in "fabric" get from cell_from_pool
+            if (cell_from_pool.resources.is_some() && self.resources.is_none()) || overwrite {
+                self.resources = cell_from_pool.resources.clone();
+            }
+            // Check io input
+            if (cell_from_pool.io_input.is_some() && self.io_input.is_none()) || overwrite {
+                self.io_input = cell_from_pool.io_input;
+            }
+            // Check io output
+            if (cell_from_pool.io_output.is_some() && self.io_output.is_none()) || overwrite {
+                self.io_output = cell_from_pool.io_output;
+            }
+            // If cell kind was not provided in "fabric" get from cell_from_pool
+            if (cell_from_pool.kind.is_some() && self.kind.is_none()) || overwrite {
+                self.kind = cell_from_pool.kind.clone();
+            }
+
+            // append parameters from cell_from_pool to cell required parameters
+            for param_key in cell_from_pool.parameters.keys() {
+                if !self.required_parameters.contains(param_key) {
+                    self.required_parameters.push(param_key.clone());
+                }
+            }
+
+            // append required parameters from cell_from_pool to cell
+            if (!cell_from_pool.required_parameters.is_empty()) || overwrite {
+                self.required_parameters
+                    .extend(cell_from_pool.required_parameters);
+            }
+            // get isa from cell_from_pool if is not already defined
+            if (cell_from_pool.isa.is_some() && self.isa.is_none()) || overwrite {
+                self.isa = cell_from_pool.isa;
+            }
+            // append parameters from cell_from_pool to cell_parameters
+            let overwritten_params =
+                merge_parameters(&mut self.parameters, &cell_from_pool.parameters)?;
+            return Ok(overwritten_params);
+        }
+        Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Not implemented",
+        )))
     }
 
     fn get_fingerprint_table(&self) -> HashMap<String, String> {

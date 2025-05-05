@@ -2,13 +2,15 @@ mod asm;
 mod gen;
 mod instr;
 mod parser;
+use clap::error::ErrorKind;
 use clap::Parser as clappar;
 use core::panic;
 use gen::Generator;
-use log::{debug, error, info, trace, warn};
+use log::{error, info};
 use parser::Parser;
 use std::fs;
 use std::path::Path;
+use std::process;
 
 #[derive(clappar)]
 #[command(version, about, long_about=None)]
@@ -27,8 +29,28 @@ fn main() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
+    log_panics::init();
 
-    let args = Args::parse();
+    // make sure the program return non-zero status code when arguments are invalid
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            // Check if the error is for displaying help or version
+            match e.kind() {
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                    // clap already printed the info
+                    e.print().expect("Failed to print clap help/version");
+                    process::exit(0); // Exit successfully
+                }
+                // For any other parsing error
+                _ => {
+                    // Log the error message provided by clap
+                    error!("{}", e);
+                    process::exit(1); // Exit with an error code
+                }
+            }
+        }
+    };
 
     info!("Assembler started: {:?}", args.asm);
     let parser = Parser::new(&args.arch, &args.isa);

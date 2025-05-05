@@ -128,8 +128,8 @@ impl Parser {
         let mut pc_table: HashMap<String, HashMap<String, i32>> = HashMap::new();
         let mut cell_instr_counter: HashMap<String, i32> = HashMap::new();
         let prog = prog.unwrap();
-        let mut x = 0;
-        let mut y = 0;
+        let mut x;
+        let mut y;
         let mut label = String::new();
         for record in prog.clone().records {
             if record.name == "cell" {
@@ -170,8 +170,6 @@ impl Parser {
                 let mut slot = -1;
                 let mut value_map: HashMap<String, i64> = HashMap::new();
                 for (key, value) in record.parameters {
-                    // try to evaluate the value as a number, if it fails, it is a label
-                    println!("key: {}, value: {}", key, value);
                     let ret = Parser::eval_num(value.clone());
                     if ret.is_ok() {
                         let num = ret.unwrap();

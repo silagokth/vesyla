@@ -1,6 +1,7 @@
 use crate::drra::ParameterList;
 use bs58::encode;
 use log::{debug, warn};
+use rand::Rng;
 use serde::Serialize;
 use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
@@ -55,6 +56,27 @@ pub fn get_parameters(component: &serde_json::Value, param_key: Option<String>) 
         }
     }
     parameters
+}
+
+/// Merge parameters from params2 into params1
+pub fn merge_parameters(
+    params1: &mut ParameterList,
+    params2: &ParameterList,
+) -> Result<Vec<(String, u64, u64)>> {
+    let mut overwritten_params = Vec::new();
+    for (param_name, param_value) in params2.iter() {
+        // Check if the parameter already exists in params1
+        if !params1.contains_key(param_name) {
+            params1.insert(param_name.clone(), *param_value);
+        } else {
+            let existing_param = params1.get(param_name).unwrap();
+            if existing_param != param_value {
+                // List the parameters that exist in param1 but with a different value
+                overwritten_params.push((param_name.clone(), *existing_param, *param_value));
+            }
+        }
+    }
+    Ok(overwritten_params)
 }
 
 pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
@@ -180,11 +202,21 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
         ));
     }
 
+    // Copy the component_path to a temporary directory in /tmp with random name
+    let mut rng = rand::thread_rng();
+    let random_folder_name = format!("{}_{}", component_name, rng.gen::<u32>());
+    let tmp_path_str = env::var("VESYLA_SUITE_PATH_TMP")
+        .expect("Environment variable VESYLA_SUITE_PATH_TMP not set!");
+    let tmp_dir = Path::new(&tmp_path_str).join(random_folder_name);
+    copy_dir(&component_path, &tmp_dir).expect("Failed to copy directory");
+
+    let tmp_component_path = tmp_dir;
+
     // Run the bender command to get the list of files
     let mut bender_cmd = std::process::Command::new("bender");
     let cmd = bender_cmd
         .arg("-d")
-        .arg(component_path.to_str().unwrap())
+        .arg(tmp_component_path.to_str().unwrap())
         .arg("script")
         .arg("flist");
 
@@ -194,7 +226,7 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
             warn!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
-                component_path.to_str().unwrap(),
+                tmp_component_path.to_str().unwrap(),
                 e
             );
             return Err(Error::new(
@@ -212,7 +244,7 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
         warn!(
             "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
             component_name,
-            component_path.to_str().unwrap(),
+            tmp_component_path.to_str().unwrap(),
             String::from_utf8_lossy(&output.stderr)
         );
         return Err(Error::new(
@@ -229,12 +261,6 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
     let mut rtl_files = Vec::new();
     for line in output_str.lines() {
         rtl_files.push(line.to_string());
-    }
-
-    // Remove Bender.lock file from directory
-    let lock_file = component_path.join("Bender.lock");
-    if lock_file.exists() {
-        fs::remove_file(lock_file).expect("Failed to remove Bender.lock file");
     }
 
     Ok(rtl_files)

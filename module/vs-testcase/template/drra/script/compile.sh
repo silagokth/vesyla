@@ -47,12 +47,12 @@ for id in ${ids}; do
   mkdir -p temp
 
   # schedule, assemble, and simulate the code segment
-  vesyla-suite schedule \
+  vesyla schedule \
       -a system/arch/arch.json \
       -p ../pasm/${id}.pasm \
       -c ../pasm/${id}.cstr \
       -o temp
-  vesyla-suite manas \
+  vesyla manas \
       -a system/arch/arch.json \
       -i system/isa/isa.json \
       -s temp/0.asm \

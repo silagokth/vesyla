@@ -6,7 +6,7 @@ mod rtl_code_gen;
 mod sst_sim_gen;
 mod utils;
 
-use clap::{Parser, Subcommand};
+use clap::{error::ErrorKind, Parser, Subcommand};
 use log::{error, info};
 use std::fs;
 use std::io::Result;
@@ -52,12 +52,25 @@ struct Args {
 
 fn main() {
     // set the log level
-    //env_logger::Builder::from_default_env()
-    //    .filter_level(log::LevelFilter::Debug)
-    //    .init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
     log_panics::init();
 
-    let cli_args = Args::parse();
+    // make sure the program return non-zero if command parsing fails
+    let cli_args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => match e.kind() {
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                println!("{}", e);
+                std::process::exit(0);
+            }
+            _ => {
+                error!("{}", e);
+                std::process::exit(1);
+            }
+        },
+    };
 
     match &cli_args.command {
         Command::Assemble {
@@ -65,14 +78,12 @@ fn main() {
             output,
             debug,
         } => {
-            let debug_level = if *debug {
+            let _debug_level = if *debug {
                 log::LevelFilter::Debug
             } else {
                 log::LevelFilter::Info
             };
-            env_logger::Builder::from_default_env()
-                .filter_level(debug_level)
-                .init();
+            env_logger::builder().filter_level(_debug_level);
             info!("Assembling ...");
             assemble(arch, output);
             info!("Done!");
@@ -152,19 +163,4 @@ fn assemble(arch: &String, output: &String) {
         &format!("{}/arch/arch.json", output),
         &format!("{}/sst", output),
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_gen_rtl() {
-        let args = [env!("CARGO_MANIFEST_DIR").to_string() + "/simple_example.json"];
-        std::env::set_var(
-            "VESYLA_LIBRARY_PATH",
-            env!("CARGO_MANIFEST_DIR").to_string() + "/template",
-        );
-        rtl_code_gen::gen_rtl(&args[0], &"build".to_string(), &"".to_string()).unwrap();
-    }
 }

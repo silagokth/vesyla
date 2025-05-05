@@ -1,0 +1,61 @@
+name: Create release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  ci-build-appimage:
+    uses: ./.github/workflows/ci-build-appimage.yml
+
+  create_release:
+    needs: ci-build-appimage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Extract release notes
+        id: extract_release_notes
+        run: |
+          SECTION=$(awk -v ver="${{ steps.get_version.outputs.VERSION }}" '
+            BEGIN { found=0; capture=0; first_line=1; }
+            /^## \[[0-9]+\.[0-9]+\.[0-9]+\] - / {
+              if (found == 1 && $0 !~ "\\[" ver "\\]") { 
+                exit; 
+              }
+              if ($0 ~ "\\[" ver "\\]") { 
+                found=1; 
+                first_line=1;
+                next;  # Skip the version header line
+              }
+            }
+            { 
+              if (found == 1) { 
+                print $0;
+              } 
+            }
+          ' CHANGELOG.md)
+
+          # Save the section to a file
+          echo "$SECTION" > changelog_section.md
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vesyla-${{ github.sha }}
+          path: ./artifacts/
+
+      - name: Upload Release
+        id: upload-release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: changelog_section.md
+          files: |
+            ./artifacts/vesyla

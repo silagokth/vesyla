@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Instruction {
     pub name: String,
-    pub kind: String,
+    pub _kind: String,
     pub component_type: String,
     pub format: serde_json::Value,
     pub template: serde_json::Value,
@@ -43,7 +43,7 @@ impl Instruction {
 
         Instruction {
             name: name.clone(),
-            kind: kind.clone(),
+            _kind: kind.clone(),
             component_type: component_type,
             format: format,
             template: template,
@@ -51,7 +51,7 @@ impl Instruction {
         }
     }
 
-    pub fn new_from_bin(
+    pub fn _new_from_bin(
         name: &String,
         kind: &String,
         isa: &serde_json::Value,
@@ -154,7 +154,7 @@ impl Instruction {
 
         Instruction {
             name: name.clone(),
-            kind: kind.clone(),
+            _kind: kind.clone(),
             component_type: component_type,
             format: format,
             template: template,
