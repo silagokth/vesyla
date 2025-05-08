@@ -103,10 +103,9 @@ add_mlir_dialect_library(VesylaPasm
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
-find_package(Boost COMPONENTS log log_setup REQUIRED)
 file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp" "src/util/*/*.cc")
 file(GLOB SOURCES_TM "src/tm/*.cpp")
-set(CMAKE_CXX_FLAGS "-std=c++17 -w -pedantic -lpthread -g -O1 -DBOOST_LOG_DYN_LINK")
+set(CMAKE_CXX_FLAGS "-std=c++17 -w -pedantic -lpthread -g -O1")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -123,11 +122,7 @@ set(LIBS
         VesylaPasm
         VesylaTm
         VesylaUtil
-        ${Boost_LOG_LIBRARY}
-        ${Boost_LOG_SETUP_LIBRARY}
 )
-
-
 
 
 add_llvm_executable(iropt ${SOURCE_IROPT})

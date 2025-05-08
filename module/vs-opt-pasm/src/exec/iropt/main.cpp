@@ -14,20 +14,35 @@
 
 #include "pasm/Dialect.hpp"
 #include "pasm/Passes.hpp"
-#include "tm/Operation.hpp"
+#include "tm/Solver.hpp"
+#include "tm/TimingModel.hpp"
 #include "util/Common.hpp"
+
+INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char **argv) {
 
-  vesyla::tm::TransitOperator expr("R<2, 3>(e1, e2)");
-  BOOST_LOG_TRIVIAL(debug) << expr.to_string();
+  vesyla::tm::TimingModel tm;
+  tm.add_operation(vesyla::tm::Operation("op0", "T<2>(e0, e1)"));
+  tm.add_operation(vesyla::tm::Operation("op1", "R<2, t3>(e0)"));
+  tm.add_constraint(vesyla::tm::Constraint("linear", "op0.e0 > op1.e0"));
+  tm.add_constraint(vesyla::tm::Constraint("linear", "op0.e0 > op1.e0"));
+  tm.add_constraint(
+      vesyla::tm::Constraint("linear", "op0.e0 > op1.e0[1]+t3-1"));
+  tm.compile();
+  LOG(INFO) << tm.to_mzn();
+  vesyla::tm::Solver solver;
+  unordered_map<string, string> result = solver.solve(tm);
+  for (auto it = result.begin(); it != result.end(); ++it) {
+    LOG(INFO) << it->first << " = " << it->second;
+  }
 
-  mlir::registerAllPasses();
-  vesyla::pasm::registerPasses();
+  // mlir::registerAllPasses();
+  // vesyla::pasm::registerPasses();
 
-  mlir::DialectRegistry registry;
-  registry.insert<vesyla::pasm::PasmDialect>();
+  // mlir::DialectRegistry registry;
+  // registry.insert<vesyla::pasm::PasmDialect>();
 
-  return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
+  // return mlir::asMainReturnCode(
+  //     mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
 }

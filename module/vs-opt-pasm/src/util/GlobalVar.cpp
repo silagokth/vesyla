@@ -38,8 +38,8 @@ bool GlobalVar::getb(const string key, bool &val) {
   it = _pool.find(key);
   if (it != _pool.end()) {
     if (it->second.type != "boolean") {
-      BOOST_LOG_TRIVIAL(fatal) << "Type wrong: global variable \"" << key
-                               << "\" is " << it->second.type;
+      LOG(FATAL) << "Type wrong: global variable \"" << key << "\" is "
+                 << it->second.type;
       exit(-1);
     }
     val = it->second.b;
@@ -54,8 +54,8 @@ bool GlobalVar::geti(const string key, int &val) {
   it = _pool.find(key);
   if (it != _pool.end()) {
     if (it->second.type != "integer") {
-      BOOST_LOG_TRIVIAL(fatal) << "Type wrong: global variable \"" << key
-                               << "\" is " << it->second.type;
+      LOG(FATAL) << "Type wrong: global variable \"" << key << "\" is "
+                 << it->second.type;
       exit(-1);
     }
     val = it->second.i;
@@ -70,8 +70,8 @@ bool GlobalVar::getf(const string key, float &val) {
   it = _pool.find(key);
   if (it != _pool.end()) {
     if (it->second.type != "float") {
-      BOOST_LOG_TRIVIAL(fatal) << "Type wrong: global variable \"" << key
-                               << "\" is " << it->second.type;
+      LOG(FATAL) << "Type wrong: global variable \"" << key << "\" is "
+                 << it->second.type;
       exit(-1);
     }
     val = it->second.f;
@@ -86,8 +86,8 @@ bool GlobalVar::gets(const string key, string &val) {
   it = _pool.find(key);
   if (it != _pool.end()) {
     if (it->second.type != "string") {
-      BOOST_LOG_TRIVIAL(fatal) << "Type wrong: global variable \"" << key
-                               << "\" is " << it->second.type;
+      LOG(FATAL) << "Type wrong: global variable \"" << key << "\" is "
+                 << it->second.type;
       exit(-1);
     }
     val = it->second.s;
@@ -169,7 +169,7 @@ bool GlobalVar::load_vars(const string filename_) {
                      fs::path(i["name"].get<string>())),
                     i["value"].get<bool>());
       } else {
-        BOOST_LOG_TRIVIAL(fatal) << "Type error: " << i["type"];
+        LOG(FATAL) << "Type error: " << i["type"];
         exit(-1);
       };
     }
@@ -219,7 +219,7 @@ bool GlobalVar::store_vars(const string filename_) {
         flag = getb(y, value);
         l["value"] = value;
       } else {
-        BOOST_LOG_TRIVIAL(fatal) << "Wrong type: " << _pool[y].type;
+        LOG(FATAL) << "Wrong type: " << _pool[y].type;
         exit(-1);
       }
       if (flag)
@@ -280,7 +280,7 @@ bool GlobalVar::select_and_store_vars_white(const string filename_,
         flag = getb(y, value);
         l["value"] = value;
       } else {
-        BOOST_LOG_TRIVIAL(fatal) << "Wrong type: " << _pool[y].type;
+        LOG(FATAL) << "Wrong type: " << _pool[y].type;
         exit(-1);
       }
       if (flag)
@@ -341,7 +341,7 @@ bool GlobalVar::select_and_store_vars_black(const string filename_,
         flag = getb(y, value);
         l["value"] = value;
       } else {
-        BOOST_LOG_TRIVIAL(fatal) << "Wrong type: " << _pool[y].type;
+        LOG(FATAL) << "Wrong type: " << _pool[y].type;
         exit(-1);
       }
       if (flag)

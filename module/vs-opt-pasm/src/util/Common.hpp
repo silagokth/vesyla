@@ -32,23 +32,19 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Config.hpp"
-#include "SysPath.hpp"
-
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 
 using json = nlohmann::json;
 
 #define __NOT_IMPLEMENTED__                                                    \
-  BOOST_LOG_TRIVIAL(fatal) << "Function has not been implemented yet!";        \
+  LOG(FATAL) << "Function has not been implemented yet!";                      \
   std::exit(-1);
-#define __NOT_SUPPORTED__                                                      \
-  BOOST_LOG_TRIVIAL(fatal) << "Function is not supported!";
+#define __NOT_SUPPORTED__ LOG(FATAL) << "Function is not supported!";
 #define __DEPRECATED__                                                         \
   LOG(WARNING) << "Function is deprecated and will be removed soon!";
 #define __VIRTUAL_FUNCTION__                                                   \
-  BOOST_LOG_TRIVIAL(fatal) << "Virtual function cannot be directly accessed!"; \
+  LOG(FATAL) << "Virtual function cannot be directly accessed!";               \
   std::exit(-1);
 
 class Common {
