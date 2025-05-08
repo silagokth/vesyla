@@ -321,6 +321,8 @@ pub fn generate_rtl_for_component(
         let rtl_template_path = Path::new(&rtl_template_str);
         if rtl_template_path.exists() {
             let mut mj_env = minijinja::Environment::new();
+            let template_dir = std::path::PathBuf::from(get_library_path()).join("common/jinja");
+            mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
             let rtl_template_content =
@@ -328,10 +330,12 @@ pub fn generate_rtl_for_component(
             mj_env
                 .add_template("rtl_template", &rtl_template_content.as_str())
                 .expect("Failed to add template");
+
+            // Render the template with the component data
             let result = mj_env
                 .get_template("rtl_template")
                 .expect("Failed to get template")
-                .render(&component);
+                .render(component);
             let output_str = result.expect("Failed to render template");
             fs::write(&output_file, file_comment + &output_str).expect("Failed to write file");
         } else {
