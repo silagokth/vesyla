@@ -1,0 +1,71 @@
+name: 🐞 Report a bug with Vesyla
+description: Open a new issue to report a bug
+title: "[bug]:"
+labels: ["bug"]
+body:
+  - type: checkboxes
+    attributes:
+      label: I have searched the existing issues, both open and closed, to make sure this is not a duplicate report.
+      options:
+        - label: 'Yes'
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        This issue for is for reporting bugs only!
+
+        If you have features or enhancements to request, please go back and select ["Request a feature or enhancement for Vesyla"](https://github.com/silagokth/vesyla/issues/new/choose).
+
+  - type: textarea
+    attributes:
+      label: Current Behavior
+      description: A concise description of what you're experiencing.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected Behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps To Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. In this environment...
+        1. With this config...
+        1. Run '...'
+        1. See error...
+    validations:
+      required: true
+  - type: input
+    validations:
+      required: true
+    attributes:
+      label: What OS are you using?
+      placeholder: Ubuntu 22.10, Debian, Arch...etc
+  - type: checkboxes
+    id: using-components
+    attributes:
+      label: Are you using [drra-components](https://github.com/silagokth/drra-components)?
+      options:
+        - label: 'Yes'
+          required: false
+  - type: input
+    id: version
+    validations:
+      required: false
+    attributes:
+      label: Version of DRRA-components
+      description: If you checked 'Yes' above, please provide the version number
+      placeholder: vX.X.X
+  - type: textarea
+    attributes:
+      label: Additional information
+      description: >
+        If you have any additional information for us, use the field below.
+  - type: markdown
+    attributes:
+      value: Thank you for submitting the form
