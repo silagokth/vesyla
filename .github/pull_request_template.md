@@ -21,8 +21,8 @@ _Please describe the tests that you ran to verify your changes._
 _Provide instructions so we can reproduce._
 _Please also list any relevant details for your test configuration._
 
-- [ ] Test A
-- [ ] Test B
+- Test A
+- Test B
 
 **Test Configuration**:
 
