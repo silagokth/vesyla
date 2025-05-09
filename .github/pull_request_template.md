@@ -35,8 +35,7 @@ _Please also list any relevant details for your test configuration._
 
 ## Checklist
 
-- [ ] My code follows the [style guidelines](https://silago.eecs.kth.se/docs/Guideline/Software/)
-      of this project
+- [ ] My code follows the [style guidelines](https://silago.eecs.kth.se/docs/Guideline/Software/) of this project
 - [ ] I have performed a self-review of my code
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the [documentation](https://github.com/silagokth/SiLagoDoc)
