@@ -8,6 +8,8 @@ _List any dependencies that are required for this change._
 
 Fixes #[issue number]
 
+Documentation PR: _link to the documentation PR, if documentation update is needed_
+
 ### Type of change
 
 _Please delete options that are not relevant._
