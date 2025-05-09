@@ -13,7 +13,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This issue for is for reporting bugs only!
+        This issue is for reporting bugs only!
 
         If you have features or enhancements to request, please go back and select ["Request a feature or enhancement for Vesyla"](https://github.com/silagokth/vesyla/issues/new/choose).
 
