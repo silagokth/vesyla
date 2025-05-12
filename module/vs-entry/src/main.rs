@@ -1,4 +1,4 @@
-use log::{error, info, warn};
+use log::{error, info};
 use std::env;
 use std::fs;
 use std::process;
@@ -59,34 +59,7 @@ fn main() {
         }
         "-V" | "--version" => {
             let version = env!("CARGO_PKG_VERSION");
-            let mut tools_versions = vec![];
-            for tool in tools_list.iter() {
-                let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + tool;
-                let status = process::Command::new(prog)
-                    .arg("--version")
-                    .stdout(process::Stdio::piped())
-                    .stderr(process::Stdio::inherit())
-                    .output()
-                    .expect("failed to execute process");
-                if status.status.success() {
-                    let output = String::from_utf8_lossy(&status.stdout);
-                    let tool_version = output
-                        .trim()
-                        .split_whitespace()
-                        .last()
-                        .unwrap_or("Unknown")
-                        .to_string();
-                    tools_versions.push(format!("{}: {}", tool, tool_version));
-                } else {
-                    tools_versions.push(format!("{}: Unknown", tool));
-                    warn!("{:?}", status.stderr);
-                    warn!("Failed to get version for tool: {}", tool);
-                }
-            }
             info!("vesyla {}", version);
-            for tool_version in tools_versions {
-                info!(" -> {}", tool_version);
-            }
         }
         cmd if tools_list.contains(&cmd) => {
             let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
