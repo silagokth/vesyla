@@ -1,5 +1,4 @@
 use log::{error, info, warn};
-use regex;
 use std::env;
 use std::fs;
 use std::process;
@@ -59,7 +58,7 @@ fn main() {
             process::exit(0);
         }
         "-V" | "--version" => {
-            let version = extract_version();
+            let version = env!("CARGO_PKG_VERSION");
             let mut tools_versions = vec![];
             for tool in tools_list.iter() {
                 let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + tool;
@@ -116,25 +115,6 @@ fn main() {
 
     // restore the environment variables
     pop_env(&name_list, saved_env);
-}
-
-fn extract_version() -> String {
-    let changelog = include_str!("../../../CHANGELOG.md");
-    let mut version = "Unknown".to_string();
-    for line in changelog.lines() {
-        if line.starts_with("## ") || line.starts_with("##\t") {
-            let title = line[3..].to_string().trim().to_string();
-            // if it matches the pattern "## [x.y.z]..."
-            if let Some(captures) = regex::Regex::new(r"^\[([0-9]+\.[0-9]+\.[0-9]+)\].*$")
-                .unwrap()
-                .captures(&title)
-            {
-                version = captures[1].to_string();
-                break;
-            }
-        }
-    }
-    version
 }
 
 fn init() {
