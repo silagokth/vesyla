@@ -59,3 +59,40 @@ jobs:
           body_path: changelog_section.md
           files: |
             ./artifacts/vesyla
+
+  update_docs:
+    needs: create_release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout SilagoDoc repo
+        uses: actions/checkout@v4
+        with:
+          repository: "silagokth/SilagoDoc"
+          ref: "master"
+          token: ${{ secrets.SILAGO_DOC_PAT_VESYLA }}
+          path: "SilagoDoc"
+
+      - name: Setup Git config
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "<>"
+
+      - name: Copy ISA documentation
+        run: cp ./CONTRIBUTING.md ./SilagoDoc/docs/Guideline/Software/Vesyla/CONTRIBUTING.md
+
+      - name: Commit and push changes
+        run: |
+          cd SilagoDoc
+          git add .
+          git diff --quiet && git diff --staged --quiet || (git commit -m "[github-bot] Update Vesyla CONTRIBUTING.md guide for version ${{ steps.get_version.outputs.VERSION }}" && git push origin master)
+        env:
+          GITHUB_TOKEN: ${{ secrets.SILAGO_DOC_PAT_VESYLA }}
