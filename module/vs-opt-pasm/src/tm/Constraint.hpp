@@ -20,6 +20,7 @@ struct Constraint {
     // remove all white spaces
     expr.erase(remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
   }
+  Constraint(string expr_);
   ~Constraint() {}
   string to_string();
 };

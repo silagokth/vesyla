@@ -19,8 +19,10 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   string mzn_model = tm.to_mzn();
 
   // create a temporary file with random name
-  string filename = get_random_string(10) + ".mzn";
-  ofstream file(filename);
+  string filename = tmp_path + "/" + get_random_string(10) + ".mzn";
+  string input_filename = filename + ".mzn";
+  string output_filename = filename + ".json";
+  ofstream file(input_filename);
 
   if (!file.is_open()) {
     LOG(FATAL) << "Failed to create temporary file.";
@@ -30,16 +32,15 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   file << mzn_model;
   file.close();
   // run minizinc command and collect the json output
-  string command = "minizinc --json-stream --solver cp-sat " + filename +
-                   " > " + filename + ".json";
+  string command = "minizinc --json-stream --solver cp-sat " + input_filename +
+                   " > " + output_filename;
   int result = system(command.c_str());
   if (result != 0) {
-    LOG(FATAL) << "Minizinc command failed with error code: " << result;
-    exit(-1);
+    LOG(ERROR) << "Minizinc command failed with error code: " << result;
   }
 
   // read the json output
-  ifstream json_file(filename + ".json");
+  ifstream json_file(output_filename);
   if (!json_file.is_open()) {
     LOG(FATAL) << "Failed to open json file.";
     exit(-1);
@@ -48,16 +49,19 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   nlohmann::json json_output;
   json_file >> json_output;
   json_file.close();
-  // delete the temporary files
-  remove(filename.c_str());
-  remove((filename + ".json").c_str());
 
   // check if the output type is solution
   if (json_output.find("type") == json_output.end() ||
       json_output["type"] != "solution") {
-    LOG(FATAL) << "Minizinc output is not a solution.";
+    LOG(ERROR) << "Minizinc output is not a solution.";
+    LOG(ERROR) << "Output: " << json_output.dump(4);
+    LOG(FATAL) << "Minizinc command failed.";
     exit(-1);
   }
+
+  // delete the temporary files
+  remove(input_filename.c_str());
+  remove(output_filename.c_str());
 
   // get output
   string output_str = json_output["output"]["dzn"].get<string>();

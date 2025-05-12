@@ -13,7 +13,7 @@ include "mlir/IR/RegionKindInterface.td"
 class Pasm_Op<string mnemonic, list<Trait> traits = []> :
     Op<Pasm_Dialect, mnemonic, traits>;
 
-def MakeInstrOp : Pasm_Op<"make_instr"> {
+def InstrOp : Pasm_Op<"instr"> {
   let arguments = (ins StrAttr:$id, StrAttr:$type, DictionaryAttr:$param);
   let assemblyFormat = [{
     `<` attr-dict `>`
@@ -27,9 +27,7 @@ def EpochOp : Pasm_Op<"epoch"> {
   }];
 
   let arguments = (ins StrAttr:$id);
-
   let regions = (region SizedRegion<1>:$body);
-
   let assemblyFormat = [{
     `<` attr-dict `>` $body 
   }];
@@ -62,7 +60,7 @@ def CondOp : Pasm_Op<"cond"> {
   }];
 }
 
-def MakeRopOp : Pasm_Op<"make_rop"> {
+def RopOp : Pasm_Op<"rop"> {
   let summary = "Make resource operation";
   let description = [{
     Make resource operation.
@@ -70,71 +68,54 @@ def MakeRopOp : Pasm_Op<"make_rop"> {
 
   let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col,
                    I32Attr:$port, I32Attr:$slot);
-  let results = (outs RopType: $result);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     `<` attr-dict `>` $body 
   }];
 }
 
-def MakeCopOp : Pasm_Op<"make_cop"> {
+def CopOp : Pasm_Op<"cop"> {
   let summary = "Make control operation";
   let description = [{
     Make control operation.
   }];
   let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col);
-  let results = (outs CopType: $result);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     `<` attr-dict `>` $body 
   }];
 }
 
-def MakeRawOp : Pasm_Op<"make_raw"> {
+def RawOp : Pasm_Op<"raw"> {
   let summary = "Make raw operation";
   let description = [{
     Make raw operation.
   }];
   let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col);
-  let results = (outs RawType: $result);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     `<` attr-dict `>` $body 
   }];
 }
 
-def MakeBinaryConstraintOp : Pasm_Op<"make_binary_constraint"> {
+def ConstraintOp : Pasm_Op<"constraint"> {
   let summary = "Make constraint";
   let description = [{
     Make constraint.
   }];
 
   let arguments = (ins StrAttr:$type,
-                   DictionaryAttr:$param, AnchorType:$anchor1, AnchorType:$anchor2);
+                   StrAttr:$expr);
 
   let assemblyFormat = [{
-    `<` attr-dict `>` `:` `(` $anchor1 `,` $anchor2 `)`
+    `<` attr-dict `>`
   }];
 }
 
-
-def MakeAnchorOp : Pasm_Op<"make_anchor"> {
-  let summary = "Make constraint";
-  let description = [{
-    Make constraint.
-  }];
-
-  let arguments = (ins OprType:$op, I32Attr:$event, ArrayAttr:$slice);
-  let results = (outs AnchorType:$result);
-
-  let assemblyFormat = [{
-    `<` attr-dict `>` `(` $op `:` type($op) `)`
-  }];
-}
 
 
 def YieldOp : Pasm_Op<"yield", [Terminator,
-    ParentOneOf<["LoopOp", "CondOp", "EpochOp", "MakeRopOp", "MakeCopOp", "MakeRawOp" ]>]> {
+    ParentOneOf<["LoopOp", "CondOp", "EpochOp", "RopOp", "CopOp", "RawOp" ]>]> {
   let summary = "Represents the default branching behaviour of a region";
   let description = [{
     The `cir.yield` operation terminates regions on different CIR operations,

@@ -6,10 +6,14 @@
 namespace vesyla {
 namespace tm {
 class Solver {
+private:
+  std::string tmp_path;
+
 public:
-  Solver() {}
+  Solver() { tmp_path = "."; }
+  Solver(std::string tmp_path_) : tmp_path(tmp_path_) {}
   ~Solver() {}
-  unordered_map<string, string> solve(TimingModel &tm);
+  std::unordered_map<std::string, std::string> solve(TimingModel &tm);
 };
 } // namespace tm
 } // namespace vesyla

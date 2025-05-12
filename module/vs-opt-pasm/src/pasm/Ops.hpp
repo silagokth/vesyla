@@ -30,14 +30,7 @@ namespace pasm {} // namespace pasm
 #include "pasm/Ops.hpp.inc"
 
 namespace vesyla {
-namespace pasm {
-// void MakeInstrOp::build(OpBuilder &builder, OperationState &state, StringRef
-// id,
-//                         StringRef type, DictionaryAttr param, Type
-//                         resultType);
-// ParseResult MakeInstrOp::parse(OpAsmParser &parser, OperationState &result);
-// void MakeInstrOp::print(OpAsmPrinter &p);
-} // namespace pasm
+namespace pasm {} // namespace pasm
 } // namespace vesyla
 
 #endif // __VESYLA_IROPT_PASM_OPS_HPP__

@@ -131,3 +131,34 @@ llvm_update_compile_flags(iropt)
 target_link_libraries(iropt PRIVATE ${LIBS})
 
 mlir_check_all_link_libraries(iropt)
+
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+# Set the unit test directory
+set(UNIT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/unit_test)
+# Automatically add all .cpp .c and .cc files in the unit test directory, including subdirectories
+# This will include all files in the unit test directory and its subdirectories
+# into the UNIT_TEST_SOURCES variable
+# and add them to the hello_test executable
+file(GLOB_RECURSE UNIT_TEST_SOURCES "${UNIT_TEST_DIR}/*.cpp" "${UNIT_TEST_DIR}/*.c" "${UNIT_TEST_DIR}/*.cc")
+include(GoogleTest)
+# for each file in the UNIT_TEST_SOURCES variable
+foreach(test_file ${UNIT_TEST_SOURCES})
+  # Get the filename without the directory
+  get_filename_component(test_name ${test_file} NAME_WE)
+  # Create a test executable for each test file
+  add_executable(${test_name} ${test_file})
+  # Link the test executable with the gtest and gtest_main libraries
+  target_link_libraries(${test_name} GTest::gtest GTest::gtest_main ${LIBS})
+  # Add the test executable to the list of tests
+  gtest_discover_tests(${test_name})
+endforeach()

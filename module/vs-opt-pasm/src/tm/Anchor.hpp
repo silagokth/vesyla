@@ -24,6 +24,7 @@ struct AnchorExpr {
 struct Anchor {
   string name;
   AnchorExpr expr;
+  string timing_expr;
 
   Anchor() {}
   Anchor(string expr_str_);

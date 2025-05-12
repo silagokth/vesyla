@@ -43,6 +43,7 @@ public:
   void add_constraint(Constraint constraint) {
     constraints.push_back(constraint);
   }
+  void from_string(string str);
 
 private:
   BinaryTree *build_binary_tree(OperationExpr &expr);

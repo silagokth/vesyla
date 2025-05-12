@@ -62,6 +62,8 @@ string TimingModel::to_mzn() {
     str += "constraint op_start_vec[" +
            std::to_string(op2idx[it->second.name]) + "] == " + it->second.name +
            ";\n";
+    str += "constraint op_end_vec[" + std::to_string(op2idx[it->second.name]) +
+           "] == " + it->second.name + " + " + it->second.duration_expr + ";\n";
   }
 
   // add variables
@@ -72,6 +74,8 @@ string TimingModel::to_mzn() {
   // add anchors
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
     str += "var 0..MAX_LATENCY: " + it->second.name + ";\n";
+    str += "constraint " + it->second.name + " == " + it->second.timing_expr +
+           ";\n";
   }
 
   // add constraints
@@ -112,22 +116,31 @@ void TimingModel::compile() {
   anchors.clear();
   variables.clear();
 
-  // Extract all variables from operation delay
+  // Recursively extract all variables from operation delay
+  std::function<void(OperationExpr &)> extract_variables =
+      [&](OperationExpr &expr) {
+        if (expr.kind == OperationExpr::TRANSIT ||
+            expr.kind == OperationExpr::REPEAT) {
+          // Extract all variables from transit
+          string delay_expr = expr.parameters["delay"];
+          LOG(DEBUG) << "Delay expression: " << delay_expr;
+          // Is it a number or a variable?
+          if (is_number(delay_expr)) {
+            // Is it a number, do nothing
+          } else if (is_identifier(delay_expr)) {
+            // Is it a variable
+            variables.insert(delay_expr);
+          } else {
+            LOG(ERROR) << "Invalid delay expression: " << delay_expr;
+          }
+        }
+        for (auto &child : expr.children) {
+          extract_variables(child);
+        }
+      };
   for (auto it = operations.begin(); it != operations.end(); ++it) {
-    if (it->second.expr.kind == OperationExpr::TRANSIT ||
-        it->second.expr.kind == OperationExpr::REPEAT) {
-      // Extract all variables from transit
-      string delay_expr = it->second.expr.parameters["delay"];
-      // Is it a number or a variable?
-      if (is_number(delay_expr)) {
-        // Is it a number, do nothing
-      } else if (is_identifier(delay_expr)) {
-        // Is it a variable
-        variables.insert(delay_expr);
-      } else {
-        LOG(ERROR) << "Invalid delay expression: " << delay_expr;
-      }
-    }
+    OperationExpr expr = it->second.expr;
+    extract_variables(expr);
   }
 
   // Extract all anchors from constraints:
@@ -143,17 +156,15 @@ void TimingModel::compile() {
     // e.g. op_name.e<event_id>[<index_0>]
     // e.g. op_name.e<event_id>[<index_0>][<index_1>]...
 
-    string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\[([0-9]+)\\])*";
+    string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
     while (std::regex_search(it->expr, match, regex)) {
-      string anchor_str = match[1];
-      anchor_str += match[2];
-      Anchor anchor(anchor_str);
+      Anchor anchor(match[0]);
       anchors[anchor.name] = anchor;
 
       // replace the event identifier in the expression with the anchor name
-      string anchor_string_pattern = anchor_str;
+      string anchor_string_pattern = match[0];
       anchor_string_pattern =
           std::regex_replace(anchor_string_pattern, std::regex("\\."), "\\.");
       anchor_string_pattern =
@@ -173,15 +184,10 @@ void TimingModel::compile() {
         anchors_in_op.push_back(it2->first);
       }
     }
-    LOG(INFO) << "Operation: " << it->first;
-    LOG(INFO) << "  Expression: " << expr.to_string();
-    LOG(INFO) << "  Anchors: ";
-    for (auto it3 = anchors_in_op.begin(); it3 != anchors_in_op.end(); ++it3) {
-      LOG(INFO) << "    " << *it3;
-    }
 
     // Build binary tree for the operation expression
     BinaryTree *tree = build_binary_tree(expr);
+
     // calculate the duration of the operation
     tree->traverse_LRC([](BinaryTree *node) {
       BinaryTreeData *tree_data = (BinaryTreeData *)node->data;
@@ -222,14 +228,6 @@ void TimingModel::compile() {
       }
     });
 
-    // print the tree
-    LOG(INFO) << "  Tree: ";
-    tree->traverse_LCR([](BinaryTree *node) {
-      BinaryTreeData *tree_data = (BinaryTreeData *)node->data;
-      LOG(INFO) << "    " << tree_data->expr.to_string() << " "
-                << tree_data->start << " " << tree_data->duration;
-    });
-
     unordered_map<BinaryTree *, BinaryTree *> node_parent_map;
     tree->traverse_CLR([&node_parent_map](BinaryTree *node) {
       BinaryTree *left = node->left;
@@ -242,23 +240,10 @@ void TimingModel::compile() {
       }
     });
 
-    // print the parent map
-    LOG(INFO) << "  Parent map: ";
-    for (auto it2 = node_parent_map.begin(); it2 != node_parent_map.end();
-         ++it2) {
-      BinaryTree *node = it2->first;
-      BinaryTree *parent = it2->second;
-      LOG(INFO)
-          << "    "
-          << static_cast<BinaryTreeData *>(node->data)->expr.to_string()
-          << " -> "
-          << static_cast<BinaryTreeData *>(parent->data)->expr.to_string();
-    }
-
     for (auto it2 = anchors_in_op.begin(); it2 != anchors_in_op.end(); ++it2) {
       string anchor_name = *it2;
       string op_name = it->first;
-      Anchor anchor = anchors[anchor_name];
+      Anchor &anchor = anchors[anchor_name];
       string event_id = std::to_string(anchor.expr.event_id);
       std::vector<BinaryTree *> r_op_stack;
       for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
@@ -268,40 +253,54 @@ void TimingModel::compile() {
           string event_id_1 = static_cast<BinaryTreeData *>(it3->first->data)
                                   ->expr.parameters["id"];
           if (event_id_1 == event_id) {
-            LOG(DEBUG) << "Found event1: " << event_id_1;
-            LOG(DEBUG) << "Found event: " << event_id;
             // go through all its parents and find the repeat operation
             BinaryTree *parent = it3->second;
-            while (parent != nullptr) {
+
+            while (parent) {
               if (static_cast<BinaryTreeData *>(parent->data)->expr.kind ==
                   OperationExpr::REPEAT) {
                 r_op_stack.push_back(parent);
-                break;
               }
-              parent = nullptr;
+
               if (node_parent_map.find(parent) != node_parent_map.end()) {
                 parent = node_parent_map[parent];
+              } else {
+                parent = nullptr;
               }
             }
             // reverse the stack
             std::reverse(r_op_stack.begin(), r_op_stack.end());
-            // print the stack
-            LOG(INFO) << "  Stack: ";
-            for (auto it4 = r_op_stack.begin(); it4 != r_op_stack.end();
-                 ++it4) {
-              LOG(INFO) << "    "
-                        << static_cast<BinaryTreeData *>((*it4)->data)
-                               ->expr.to_string();
-            }
             vector<int> indices = anchor.expr.indices;
+
+            if (r_op_stack.size() < indices.size()) {
+              LOG(ERROR) << "r_op_stack size: " << r_op_stack.size();
+              for (auto i = 0; i < r_op_stack.size(); ++i) {
+                LOG(ERROR) << "r_op_stack[" << i << "]: "
+                           << static_cast<BinaryTreeData *>(r_op_stack[i]->data)
+                                  ->expr.to_string();
+              }
+              LOG(ERROR) << "indices size: " << indices.size();
+              for (auto i = 0; i < indices.size(); ++i) {
+                LOG(ERROR) << "indices[" << i << "]: " << indices[i];
+              }
+              LOG(FATAL) << "Too many indices!";
+              std::exit(-1);
+            }
+
             string expr_str =
-                op_name + "+" +
+                "(" + op_name + "+" +
                 static_cast<BinaryTreeData *>(it3->first->data)->start;
             for (auto i = 0; i < indices.size(); ++i) {
               int index = indices[i];
-              LOG(INFO) << "Index: " << index;
-              LOG(INFO) << "i" << i << ": " << indices[i];
-              string expr_str =
+              int iter =
+                  std::stoi(static_cast<BinaryTreeData *>(r_op_stack[i]->data)
+                                ->expr.parameters["iter"]);
+              if (index >= iter) {
+                LOG(FATAL) << "Index out of range: index(" << index
+                           << ") >= iter(" << iter << ")";
+                std::exit(-1);
+              }
+              expr_str =
                   expr_str + "+(" +
                   static_cast<BinaryTreeData *>(r_op_stack[i]->left->data)
                       ->duration +
@@ -310,15 +309,15 @@ void TimingModel::compile() {
                       ->expr.parameters["delay"] +
                   "))*" + std::to_string(index);
             }
-
-            LOG(INFO) << "Final expression string: " << expr_str;
+            expr_str += ")";
+            anchor.timing_expr = expr_str;
           }
         }
       }
-      {
-        /* code */
-      }
     }
+
+    it->second.duration_expr =
+        static_cast<BinaryTreeData *>(tree->data)->duration;
 
     // delete the tree
     delete tree;
@@ -350,5 +349,50 @@ BinaryTree *TimingModel::build_binary_tree(OperationExpr &expr) {
   BinaryTree *tree = new BinaryTree(data, left, right);
   return tree;
 }
+
+void TimingModel::from_string(string str) {
+  operations.clear();
+  constraints.clear();
+
+  // split the string into lines
+  std::istringstream iss(str);
+  std::string line;
+  std::vector<string> lines;
+  while (std::getline(iss, line)) {
+    lines.push_back(line);
+  }
+  // parse the lines
+  for (size_t i = 0; i < lines.size(); i++) {
+    string line = lines[i];
+    // remove all contents after the # symbol, since it is a comment
+    size_t pos = line.find("#");
+    if (pos != string::npos) {
+      line = line.substr(0, pos);
+    }
+    // remove leading and trailing spaces
+    const char *WhiteSpace = " \t\v\r\n";
+    std::size_t start = line.find_first_not_of(WhiteSpace);
+    std::size_t end = line.find_last_not_of(WhiteSpace);
+    line = start == end ? std::string() : line.substr(start, end - start + 1);
+    // check if the line is empty
+    if (line.empty() || line == "" || line == "\n") {
+      continue;
+    }
+
+    if (line.find("operation") != string::npos) {
+      // parse the operation
+      Operation op(line);
+      operations[op.name] = op;
+    } else if (line.find("constraint") != string::npos) {
+      // parse the constraint
+      Constraint constraint(line);
+      constraints.push_back(constraint);
+    } else {
+      LOG(FATAL) << "Invalid line: " << line;
+      std::exit(-1);
+    }
+  }
+}
+
 } // namespace tm
 } // namespace vesyla

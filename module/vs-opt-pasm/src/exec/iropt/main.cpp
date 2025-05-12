@@ -23,26 +23,60 @@ INITIALIZE_EASYLOGGINGPP
 int main(int argc, char **argv) {
 
   vesyla::tm::TimingModel tm;
-  tm.add_operation(vesyla::tm::Operation("op0", "T<2>(e0, e1)"));
-  tm.add_operation(vesyla::tm::Operation("op1", "R<2, t3>(e0)"));
-  tm.add_constraint(vesyla::tm::Constraint("linear", "op0.e0 > op1.e0"));
-  tm.add_constraint(vesyla::tm::Constraint("linear", "op0.e0 > op1.e0"));
-  tm.add_constraint(
-      vesyla::tm::Constraint("linear", "op0.e0 > op1.e0[1]+t3-1"));
-  tm.compile();
-  LOG(INFO) << tm.to_mzn();
+  tm.from_string(
+      R"(
+operation read_b R<5, t3>(R<3, t2>(e0))
+operation read_a R<5, t1>(R<3, t0>(e0))
+constraint linear read_a==read_b
+constraint linear read_a.e0[0]==read_b.e0[0]
+constraint linear read_a.e0[1]==read_b.e0[1]
+constraint linear read_a.e0[1][2]==read_b.e0[1][2]
+)");
   vesyla::tm::Solver solver;
   unordered_map<string, string> result = solver.solve(tm);
-  for (auto it = result.begin(); it != result.end(); ++it) {
-    LOG(INFO) << it->first << " = " << it->second;
+
+  // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
+  std::string VESYLA_SUITE_PATH_COMPONENTS =
+      std::getenv("VESYLA_SUITE_PATH_COMPONENTS")
+          ? std::getenv("VESYLA_SUITE_PATH_COMPONENTS")
+          : "";
+  if (VESYLA_SUITE_PATH_COMPONENTS == "") {
+    llvm::outs() << "Error: VESYLA_SUITE_PATH_COMPONENTS is not set.\n";
+    std::exit(-1);
   }
 
-  // mlir::registerAllPasses();
-  // vesyla::pasm::registerPasses();
+  // get the environment variable: VESYLA_SUITE_PATH_TMP
+  std::string VESYLA_SUITE_PATH_TMP = std::getenv("VESYLA_SUITE_PATH_TMP")
+                                          ? std::getenv("VESYLA_SUITE_PATH_TMP")
+                                          : "";
+  if (VESYLA_SUITE_PATH_TMP == "") {
+    llvm::outs() << "Error: VESYLA_SUITE_PATH_TMP is not set.\n";
+    std::exit(-1);
+  }
+  // create the directory if it does not exist
+  if (mkdir(VESYLA_SUITE_PATH_TMP.c_str(), 0777) == -1) {
+    if (errno != EEXIST) {
+      llvm::outs() << "Error: Failed to create directory: "
+                   << VESYLA_SUITE_PATH_TMP << "\n";
+      std::exit(-1);
+    }
+  }
 
-  // mlir::DialectRegistry registry;
-  // registry.insert<vesyla::pasm::PasmDialect>();
+  vesyla::pasm::ReplaceEpochOpOptions replace_epoch_op_options = {
+      .component_map = R"({"0_0_1_1":"rf", "0_0_1_0":"rf"})",
+      .component_path = VESYLA_SUITE_PATH_COMPONENTS,
+      .tmp_path = VESYLA_SUITE_PATH_TMP};
+  ::mlir::registerPass(
+      [&replace_epoch_op_options]() -> std::unique_ptr<::mlir::Pass> {
+        return vesyla::pasm::createReplaceEpochOp(replace_epoch_op_options);
+      });
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return vesyla::pasm::createReplaceLoopOp();
+  });
 
-  // return mlir::asMainReturnCode(
-  //     mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
+  mlir::DialectRegistry registry;
+  registry.insert<vesyla::pasm::PasmDialect>();
+
+  return mlir::asMainReturnCode(
+      mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
 }

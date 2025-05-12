@@ -25,10 +25,12 @@ struct OperationExpr {
 struct Operation {
   string name;
   OperationExpr expr;
+  string duration_expr;
 
   Operation() {}
   Operation(string name_, string expr_) : name(name_), expr(expr_) {}
   Operation(string name_, OperationExpr expr_) : name(name_), expr(expr_) {}
+  Operation(string expr_);
   ~Operation() {}
   string to_string();
 };
