@@ -9,7 +9,6 @@ if [ -f /etc/lsb-release ]; then
   # Ubuntu
   sudo apt-get update
   sudo apt-get install -y cmake curl python3 python3-pip python3-venv protobuf-compiler libprotobuf-dev wget libfuse2 file
-  #sudo apt-get install -y make gcc g++ cmake libboost-all-dev protobuf-compiler libprotobuf-dev python3 python3-pip libfuse2
 elif [ -f /etc/debian_version ]; then
   # Debian
   sudo apt-get update
