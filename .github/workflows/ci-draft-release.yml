@@ -56,7 +56,8 @@ jobs:
         id: upload-release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: changelog_section.md
+          draft: true
+          generate_release_notes: true
           files: |
             ./artifacts/vesyla
 
