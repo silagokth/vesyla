@@ -43,6 +43,258 @@ private:
     return result;
   }
 
+  void synchronize(mlir::Block *block,
+                   unordered_map<string, int> &schedule_table,
+                   PatternRewriter &rewriter) const {
+    std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
+        time_table;
+    std::unordered_map<mlir::Operation *, int> time_table_rop;
+    std::unordered_map<mlir::Operation *, int> time_table_cop;
+
+    for (mlir::Operation &child_op : *block) {
+      if (auto rop_op = llvm::dyn_cast<RopOp>(&child_op)) {
+        time_table_rop[&child_op] = schedule_table[rop_op.getId().str()];
+      } else if (auto cop_op = llvm::dyn_cast<CopOp>(&child_op)) {
+        time_table_cop[&child_op] = schedule_table[cop_op.getId().str()];
+      } else if (auto raw_op = llvm::dyn_cast<RawOp>(&child_op)) {
+        // DO NOTHING
+      } else if (auto instr_op = llvm::dyn_cast<InstrOp>(&child_op)) {
+        // DO NOTHING
+      } else if (auto constraint_op = llvm::dyn_cast<ConstraintOp>(&child_op)) {
+        // DO NOTHING
+      } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&child_op)) {
+        // DO NOTHING
+      } else {
+        llvm::outs()
+            << "Illegal operation type in EpochOp for synchronization: "
+            << child_op.getName() << "\n";
+        std::exit(-1);
+      }
+    }
+
+    // place all COPs
+    for (auto it = time_table_cop.begin(); it != time_table_cop.end(); ++it) {
+      auto cop_op = llvm::dyn_cast<CopOp>(it->first);
+      int row = cop_op.getRow();
+      int col = cop_op.getCol();
+      std::string label = std::to_string(row) + "_" + std::to_string(col);
+      if (time_table.find(label) == time_table.end()) {
+        time_table[label] = unordered_map<int, mlir::Operation *>();
+      }
+
+      // get internal instructions
+      mlir::Region &copBodyRegion = cop_op.getBody();
+      mlir::Block *copEntryBlock;
+      if (copBodyRegion.empty()) {
+        copEntryBlock = rewriter.createBlock(&copBodyRegion);
+      } else {
+        copEntryBlock = &copBodyRegion.front();
+      }
+      int instr_count = 0;
+      for (mlir::Operation &cop_child_op : *copEntryBlock) {
+        if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
+          if (schedule_table.find(instr_op.getId().str() + "_e" +
+                                  std::to_string(instr_count)) ==
+              schedule_table.end()) {
+            llvm::outs() << "Error: Cannot find the instruction anchor: "
+                         << instr_op.getId().str() + "_e" +
+                                std::to_string(instr_count)
+                         << "\n";
+            std::exit(-1);
+          }
+          int t = schedule_table[instr_op.getId().str() + "_e" +
+                                 std::to_string(instr_count)];
+          if (time_table[label].find(t) == time_table[label].end()) {
+            time_table[label][t] = &cop_child_op;
+          } else {
+            llvm::outs() << "Error: time table already has the entry: " << t
+                         << "(" << time_table[label][t]->getName() << ")"
+                         << "\n";
+            std::exit(-1);
+          }
+          instr_count++;
+        } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
+          // DO NOTHING
+        } else {
+          llvm::outs() << "Illegal operation type in CopOp: "
+                       << cop_child_op.getName() << "\n";
+          std::exit(-1);
+        }
+      }
+    }
+
+    // place the ACT instruction of all ROPs
+    int total_latency = schedule_table["total_latency"];
+
+    for (int t = 0; t < total_latency; t++) {
+      std::unordered_map<std::string, std::vector<mlir::Operation *>>
+          rop_ops_at_t;
+      for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
+        if (it->second == t) {
+          llvm::outs() << "ROP: " << it->first->getName() << " at time " << t
+                       << "\n";
+          auto rop_op = llvm::dyn_cast<RopOp>(it->first);
+          llvm::outs() << "ROP: " << rop_op.getId() << " at time " << t << "\n";
+          int row = rop_op.getRow();
+          int col = rop_op.getCol();
+          std::string label = std::to_string(row) + "_" + std::to_string(col);
+          if (rop_ops_at_t.find(label) == rop_ops_at_t.end()) {
+            rop_ops_at_t[label] = std::vector<mlir::Operation *>();
+          }
+          rop_ops_at_t[label].push_back(it->first);
+        }
+      }
+      for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
+        std::string label = it->first;
+        auto rop_ops = it->second;
+        std::vector<int> slot_port_index_list;
+        for (auto op : rop_ops) {
+          auto rop_op = llvm::dyn_cast<RopOp>(op);
+          int slot = rop_op.getSlot();
+          int port = rop_op.getPort();
+          slot_port_index_list.push_back(slot * 4 + port);
+        }
+
+        llvm::outs() << "ROP2: " << "\n";
+
+        // create an ACT instruction
+
+        mlir::StringAttr id = rewriter.getStringAttr(get_random_string(8));
+        mlir::StringAttr type = rewriter.getStringAttr("act");
+        mlir::DictionaryAttr param = rewriter.getDictionaryAttr({});
+        auto act_instr = rewriter.create<vesyla::pasm::InstrOp>(
+            rop_ops[0]->getLoc(), id, type, param);
+        if (time_table.find(label) == time_table.end()) {
+          time_table[label] = unordered_map<int, mlir::Operation *>();
+        }
+        if (time_table[label].find(t) == time_table[label].end()) {
+          time_table[label][t] = act_instr.getOperation();
+        } else {
+          llvm::outs() << "Error: time table already has the entry: " << t
+                       << "(" << time_table[label][t]->getName() << ")"
+                       << "\n";
+          std::exit(-1);
+        }
+
+        llvm::outs() << "ACT: " << act_instr.getId() << " at time " << t
+                     << "\n";
+
+        // start from t-1, insert the instructions in the rop_ops
+        for (auto op : rop_ops) {
+          auto rop_op = llvm::dyn_cast<RopOp>(op);
+          int curr_t = t - 1;
+          mlir::Region &ropBodyRegion = rop_op.getBody();
+          mlir::Block *ropEntryBlock;
+          if (ropBodyRegion.empty()) {
+            ropEntryBlock = rewriter.createBlock(&ropBodyRegion);
+          } else {
+            ropEntryBlock = &ropBodyRegion.front();
+          }
+          for (mlir::Operation &rop_child_op : *ropEntryBlock) {
+            if (auto instr_op = llvm::dyn_cast<InstrOp>(&rop_child_op)) {
+              while (time_table[label].find(curr_t) !=
+                     time_table[label].end()) {
+                curr_t--;
+              }
+              time_table[label][curr_t] = &rop_child_op;
+              curr_t--;
+            }
+          }
+        }
+      }
+    }
+    // print the time table
+    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
+      llvm::outs() << "Time table: " << it->first << "\n";
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        llvm::outs() << "  " << it2->first << ": " << it2->second->getName()
+                     << "\n";
+      }
+    }
+
+    // find out the time shift amount, so that the first operation is at
+    // time 0
+    int min_shift_time = 0;
+    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
+      int min_time = std::numeric_limits<int>::max();
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        if (it2->first < min_time) {
+          min_time = it2->first;
+        }
+      }
+      if (min_time < min_shift_time) {
+        min_shift_time = min_time;
+      }
+    }
+    min_shift_time = -min_shift_time;
+    llvm::outs() << "Min shift time: " << min_shift_time << "\n";
+
+    // shift the time table
+    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
+      std::unordered_map<int, mlir::Operation *> new_time_table;
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        new_time_table[it2->first + min_shift_time] = it2->second;
+      }
+      time_table[it->first] = std::move(new_time_table);
+    }
+
+    // order the operations by time
+    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
+      std::vector<std::pair<int, mlir::Operation *>> time_op_vec;
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        time_op_vec.push_back(*it2);
+      }
+      std::sort(time_op_vec.begin(), time_op_vec.end(),
+                [](const std::pair<int, mlir::Operation *> &a,
+                   const std::pair<int, mlir::Operation *> &b) {
+                  return a.first < b.first;
+                });
+
+      int prev_t = 0;
+      std::vector<std::pair<int, mlir::Operation *>> new_time_op_vec;
+      if (time_op_vec.size() > 0) {
+        // start from the smallest time, insert the WAIT instructions if there
+        // is a gap between consecutive operations
+        for (int i = 0; i < time_op_vec.size(); i++) {
+          int curr_t = time_op_vec[i].first;
+          if (curr_t - prev_t > 1) {
+            // create a WAIT instruction
+            mlir::StringAttr id = rewriter.getStringAttr(get_random_string(8));
+            mlir::StringAttr type = rewriter.getStringAttr("wait");
+            mlir::DictionaryAttr param = rewriter.getDictionaryAttr({});
+            auto wait_instr = rewriter.create<InstrOp>(
+                time_op_vec[i].second->getLoc(), id, type, param);
+            new_time_op_vec.push_back(
+                std::make_pair(prev_t + 1, wait_instr.getOperation()));
+          } else {
+            new_time_op_vec.push_back(time_op_vec[i]);
+          }
+          prev_t = curr_t;
+        }
+      }
+
+      // insert a wait instruction at the end if the last operation is not the
+      // total_latency-1
+      if (prev_t != total_latency - 1) {
+        mlir::StringAttr id = rewriter.getStringAttr(get_random_string(8));
+        mlir::StringAttr type = rewriter.getStringAttr("wait");
+        mlir::DictionaryAttr param = rewriter.getDictionaryAttr({});
+        auto wait_instr = rewriter.create<vesyla::pasm::InstrOp>(
+            new_time_op_vec.back().second->getLoc(), id, type, param);
+        new_time_op_vec.push_back(
+            std::make_pair(prev_t + 1, wait_instr.getOperation()));
+      }
+
+      // print the new time op vec
+      llvm::outs() << "New time op vec: " << it->first << "\n";
+      for (auto it2 = new_time_op_vec.begin(); it2 != new_time_op_vec.end();
+           ++it2) {
+        llvm::outs() << "  " << it2->first << ": " << it2->second->getName()
+                     << "\n";
+      }
+    }
+  }
+
 public:
   using OpRewritePattern<EpochOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(EpochOp op,
@@ -135,8 +387,8 @@ public:
         // output the json to stdout
         llvm::outs() << "Rop JSON: " << rop_json.dump(4) << "\n";
 
-        // create a temporary file in the tmp directory with random name and
-        // call the timing model builder to generate the timing model
+        // create a temporary file in the tmp directory with random name
+        // and call the timing model builder to generate the timing model
         // expression.
         std::string random_str = get_random_string(10);
         std::string input_filename = tmp_path + "/" + random_str + ".json";
@@ -222,6 +474,18 @@ public:
       llvm::outs() << it->first << ": " << it->second << "\n";
     }
 
+    std::unordered_map<std::string, int> schedule_table;
+    for (auto it = result.begin(); it != result.end(); ++it) {
+      std::string key = it->first;
+      std::string value = it->second;
+      // if value is not starting with "[", then it is a number
+      if (value[0] != '[') {
+        schedule_table[key] = std::stoi(value);
+      }
+    }
+
+    synchronize(entryBlock, schedule_table, rewriter);
+
     return failure();
   }
 };
@@ -278,11 +542,11 @@ public:
           // Clone the operation at the current insertion point
           rewriter.clone(child_op);
         }
-        // Note: This simple loop assumes a single block in the LoopOp body
-        // and doesn't handle block arguments or complex control flow
-        // transfer. If LoopOp body can have multiple blocks or branches, a
-        // more sophisticated merging/cloning logic (like inlineRegionBefore)
-        // is needed.
+        // Note: This simple loop assumes a single block in the LoopOp
+        // body and doesn't handle block arguments or complex control flow
+        // transfer. If LoopOp body can have multiple blocks or branches,
+        // a more sophisticated merging/cloning logic (like
+        // inlineRegionBefore) is needed.
       }
       rewriter.replaceOp(op, epoch_op);
 
