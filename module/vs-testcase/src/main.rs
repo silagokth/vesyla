@@ -1,7 +1,6 @@
-use chrono::Local;
 use clap::{error::ErrorKind, Parser, Subcommand};
-use glob::glob;
-use log::{error, info};
+use log::{error, info, LevelFilter};
+use serde::Serialize;
 use std::env;
 use std::fs::{self, File};
 use std::io;
@@ -33,7 +32,7 @@ enum Command {
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
         /// Testcase directory
-        #[arg(short, long, default_value = "{{VESYLA_SUITE_PATH_TESTCASE}}")]
+        #[arg(short, long, default_value = "")]
         directory: String,
     },
     #[command(about = "Export testcase", name = "export")]
@@ -55,9 +54,8 @@ struct Args {
 fn main() {
     // set logger level to be debug
     env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(LevelFilter::Debug)
         .init();
-    log_panics::init();
 
     // make sure the program return non-zero status code when arguments are invalid
     let cli_args = match Args::try_parse() {
@@ -67,7 +65,7 @@ fn main() {
             match e.kind() {
                 ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
                     // clap already printed the info
-                    e.print().expect("Failed to print clap help/version");
+                    error!("{}: {}", e.kind(), e);
                     process::exit(0); // Exit successfully
                 }
                 // For any other parsing error
@@ -114,9 +112,8 @@ fn export(output: &String) {
     }
 
     // copy everything from default test directory to the output directory
-    let vesyla_suite_path_testcase =
-        env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    copy_dir_all(&vesyla_suite_path_testcase, &output_dir).unwrap();
+    let testcase_dir = get_testcase_dir(None);
+    copy_dir_all(&testcase_dir, &output_dir).unwrap();
 }
 
 fn init(style: &String, force: &bool, output: &String) {
@@ -138,14 +135,16 @@ fn init(style: &String, force: &bool, output: &String) {
 
     // create the lock file and write the current timestamp
     let mut file = File::create(&lock_file).expect("Failed to create lock file");
-    file.write_all(format!("{}", Local::now()).as_bytes())
+    file.write_all(format!("{:?}", std::time::SystemTime::now()).as_bytes())
         .expect("Failed to write lock file");
 
-    // get VESYLA_SUITE_PATH_PROG environment variable
-    let prog_path = env::var("VESYLA_SUITE_PATH_PROG").expect("VESYLA_SUITE_PATH_PROG not set");
+    // get the current executable path
+    let current_exe = env::current_exe().unwrap();
+    let current_exe_dir = current_exe.parent().unwrap();
+    let usr_dir = current_exe_dir.parent().unwrap();
 
     // construct template path
-    let template_path = format!("{}/share/vesyla/template/{}", prog_path, style);
+    let template_path = Path::new(usr_dir).join("share/vesyla/testcase").join(style);
 
     // check if template path exists
     if !Path::new(&template_path).exists() {
@@ -158,35 +157,10 @@ fn init(style: &String, force: &bool, output: &String) {
 }
 
 fn run(directory: &String) {
-    // if test_dir starts with {{VESYLA_SUITE_PATH_TESTCASE}}, replace it with the actual path
-    let vesyla_suite_path_testcase =
-        env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    let test_dir = directory.replace(
-        "{{VESYLA_SUITE_PATH_TESTCASE}}",
-        &vesyla_suite_path_testcase,
-    );
-
-    // check if the directory exists
-    if !Path::new(&test_dir).exists() {
-        error!("Directory {} does not exist", &test_dir);
-        process::exit(1);
-    }
-    // check if the directory is a directory
-    if !Path::new(&test_dir).is_dir() {
-        error!("{} is not a directory", &test_dir);
-        process::exit(1);
-    }
-
-    // convert the directory path to absolute path
-    let test_dir = Path::new(&test_dir)
-        .canonicalize()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+    let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()));
 
     // check if the directory is the current directory, if yes, exit
-    if test_dir == Path::new(".").canonicalize().unwrap().to_str().unwrap() {
+    if test_dir == Path::new(".").canonicalize().unwrap() {
         error!("Testcase source directory cannot be the current working directory!");
         process::exit(1);
     }
@@ -206,54 +180,34 @@ fn run(directory: &String) {
 }
 
 fn generate(directory: &String) {
-    // replace {{VESYLA_SUITE_PATH_TESTCASE}} with the actual path
-    let vesyla_suite_path_testcase =
-        env::var("VESYLA_SUITE_PATH_TESTCASE").expect("VESYLA_SUITE_PATH_TESTCASE not set");
-    let real_dir = directory.replace(
-        "{{VESYLA_SUITE_PATH_TESTCASE}}",
-        &vesyla_suite_path_testcase,
-    );
+    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()));
 
-    // check if the directory exists
-    if !Path::new(&real_dir).exists() {
-        error!("Directory {} does not exist", &real_dir);
-        process::exit(1);
-    }
-    // check if the directory is a directory
-    if !Path::new(&real_dir).is_dir() {
-        error!("{} is not a directory", &real_dir);
-        process::exit(1);
-    }
+    info!("Testcase directory: {:?}", testcases_dir);
 
-    // convert the testcases directory path to absolute path
-    let testcases_dir = Path::new(&real_dir)
-        .canonicalize()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+    // Find all nth-level directories under the testcases directory
+    fn collect_dirs_at_depth(root: &Path, depth: u8) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut stack = vec![(root.to_path_buf(), 0)];
 
-    info!("Testcase directory: {}", testcases_dir);
-
-    // Find all third-level directories under the testcases directory
-    let mut leaf_path_vec: Vec<String> = Vec::new();
-    let pattern = Path::new(&testcases_dir).join("*").join("*").join("*");
-    let pattern = pattern.to_str().expect("Failed to convert path to string");
-    for entry in glob(pattern).expect("Failed to read glob pattern") {
-        match entry {
-            Ok(path) => {
-                if path.is_dir() {
-                    // convert the path to string
-                    let leaf_path_str = path.to_str().expect("Path is not valid UTF-8").to_owned();
-                    leaf_path_vec.push(leaf_path_str);
+        while let Some((path, cur_depth)) = stack.pop() {
+            if cur_depth == depth && path.is_dir() {
+                result.push(path.to_str().unwrap().to_owned());
+            } else if cur_depth < depth {
+                if let Ok(entries) = fs::read_dir(&path) {
+                    for entry in entries.flatten() {
+                        let entry_path = entry.path();
+                        if entry_path.is_dir() {
+                            stack.push((entry_path, cur_depth + 1));
+                        }
+                    }
                 }
             }
-            Err(e) => {
-                error!("Error: {:?}", e);
-            }
         }
+        result
     }
+    let leaf_path_vec: Vec<String> = collect_dirs_at_depth(Path::new(&testcases_dir), 3);
 
+    #[derive(Serialize)]
     struct TestcaseEntry {
         name: String,
         tags: String,
@@ -285,12 +239,10 @@ fn generate(directory: &String) {
     }
 
     // if path is under VESYLA_SUITE_PATH_TESTCASE, convert it to relative path by replace it with {{VESYLA_SUITE_PATH_TESTCASE}}
+    let testcase_path_str = get_testcase_dir(None).to_str().unwrap().to_string();
     for tc in &mut testcase_entries {
-        if tc.path.starts_with(&vesyla_suite_path_testcase) {
-            tc.path = tc.path.replace(
-                &vesyla_suite_path_testcase,
-                "{{VESYLA_SUITE_PATH_TESTCASE}}",
-            );
+        if tc.path.starts_with(&testcase_path_str) {
+            tc.path = tc.path.replace(&testcase_path_str, "");
         }
     }
 
@@ -298,7 +250,7 @@ fn generate(directory: &String) {
 
     // generate the testcase scripts: run.sh
     let mut run_sh = File::create("run.sh").expect("Failed to create run.sh");
-let run_sh_content = include_str!("../assets/run.sh");
+    let run_sh_content = include_str!("../assets/run.sh");
     run_sh
         .write_all(run_sh_content.as_bytes())
         .expect("Failed to write run.sh");
@@ -309,7 +261,7 @@ let run_sh_content = include_str!("../assets/run.sh");
     fs::set_permissions("run.sh", perms).expect("Failed to set permissions");
 
     // generate the testcase scripts: autotest_config.robot
-let template = include_str!("../assets/autotest_template.robot.j2");
+    let template = include_str!("../assets/autotest_template.robot.j2");
     let mut context = minijinja::Environment::new();
     context.add_template("autotest_template", template).unwrap();
     let result = context
@@ -325,7 +277,7 @@ let template = include_str!("../assets/autotest_template.robot.j2");
     autotest_config_robot
         .write_all(output.as_bytes())
         .expect("Failed to write autotest_config.robot");
-    
+
     // create the work directory
     fs::create_dir_all("work").unwrap();
 }
@@ -342,4 +294,29 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
         }
     }
     Ok(())
+}
+
+fn get_testcase_dir(overwrite: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    let testcase_dir;
+    if let Some(overwrite) = overwrite {
+        testcase_dir = overwrite;
+    } else {
+        let current_exe = env::current_exe().unwrap();
+        let current_exe_dir = current_exe.parent().unwrap();
+        let usr_dir = current_exe_dir.parent().unwrap();
+        testcase_dir = Path::new(usr_dir).join("share/vesyla/testcase");
+    }
+
+    // check if the directory exists
+    if !Path::new(&testcase_dir).exists() {
+        error!("Directory {:?} does not exist", &testcase_dir);
+        process::exit(1);
+    }
+    // check if the directory is a directory
+    if !Path::new(&testcase_dir).is_dir() {
+        error!("{:?} is not a directory", &testcase_dir);
+        process::exit(1);
+    }
+
+    return testcase_dir;
 }
