@@ -1,21 +1,11 @@
 use log::{error, info};
 use std::env;
-use std::fs;
+// use std::fs;
 use std::process;
 
 fn main() {
     // define the used environment variables
-    let name_list = vec![
-        "VESYLA_SUITE_PATH_PROG".to_string(),
-        "VESYLA_SUITE_PATH_BIN".to_string(),
-        "VESYLA_SUITE_PATH_LIB".to_string(),
-        "VESYLA_SUITE_PATH_INC".to_string(),
-        "VESYLA_SUITE_PATH_SHARE".to_string(),
-        "VESYLA_SUITE_PATH_TEMPLATE".to_string(),
-        "VESYLA_SUITE_PATH_TESTCASE".to_string(),
-        "VESYLA_SUITE_PATH_TMP".to_string(),
-        "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION".to_string(),
-    ];
+    let name_list = vec!["VESYLA_SUITE_PATH_TESTCASE".to_string()];
 
     // save the environment variables
     let saved_env = push_env(&name_list);
@@ -62,13 +52,17 @@ fn main() {
             info!("vesyla {}", version);
         }
         cmd if tools_list.contains(&cmd) => {
-            let prog = env::var("VESYLA_SUITE_PATH_BIN").unwrap().to_string() + "/vs-" + command;
-            let status = process::Command::new(prog)
+            let current_exe = env::current_exe().unwrap();
+            let current_exe_dir = current_exe.parent().unwrap();
+            let prog_path = current_exe_dir.join(format!("vs-{}", command));
+            let prog = prog_path.to_str().unwrap();
+
+            let status = process::Command::new(&prog)
                 .args(&args[2..])
                 .stdout(process::Stdio::inherit())
                 .stderr(process::Stdio::inherit())
                 .status()
-                .expect("failed to execute process");
+                .expect(format!("Failed to execute command: vs-{}", command).as_str());
             if !status.success() {
                 if status.code() != Some(2) {
                     error!("{} command failed", command);
@@ -83,9 +77,6 @@ fn main() {
         }
     }
 
-    // finalize the environment variables
-    finish();
-
     // restore the environment variables
     pop_env(&name_list, saved_env);
 }
@@ -94,37 +85,14 @@ fn init() {
     // set environment variable
     let current_exe = env::current_exe().unwrap();
     let current_exe_dir = current_exe.parent().unwrap();
-    let vesyla_suite_path_prog = current_exe_dir.parent().unwrap();
-    let vesyla_suite_path_bin = vesyla_suite_path_prog.join("bin");
-    let vesyla_suite_path_lib = vesyla_suite_path_prog.join("lib");
-    let vesyla_suite_path_inc = vesyla_suite_path_prog.join("include");
-    let vesyla_suite_path_share = vesyla_suite_path_prog.join("share/vesyla");
-    let vesyla_suite_path_template = vesyla_suite_path_share.join("template");
-    let vesyla_suite_path_testcase = vesyla_suite_path_share.join("testcase");
-    let random_number: u32 = rand::random();
-    let vesyla_suite_path_tmp = format!("/tmp/vesyla_suite_{}", random_number);
+    let vesyla_suite_path_testcase = current_exe_dir
+        .parent()
+        .unwrap()
+        .join("share/vesyla/testcase");
 
-    env::set_var("VESYLA_SUITE_PATH_PROG", vesyla_suite_path_prog);
-    env::set_var("VESYLA_SUITE_PATH_BIN", vesyla_suite_path_bin);
-    env::set_var("VESYLA_SUITE_PATH_LIB", vesyla_suite_path_lib);
-    env::set_var("VESYLA_SUITE_PATH_INC", vesyla_suite_path_inc);
-    env::set_var("VESYLA_SUITE_PATH_SHARE", vesyla_suite_path_share);
-    env::set_var("VESYLA_SUITE_PATH_TEMPLATE", vesyla_suite_path_template);
-    env::set_var("VESYLA_SUITE_PATH_TESTCASE", vesyla_suite_path_testcase);
-    env::set_var("VESYLA_SUITE_PATH_TMP", vesyla_suite_path_tmp);
-
-    // set protobuf for python
-    env::set_var("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python");
-
-    // create the temporary directory
-    let path = env::var("VESYLA_SUITE_PATH_TMP").unwrap();
-    fs::create_dir_all(path).unwrap();
-}
-
-fn finish() {
-    // remove the temporary directory
-    let path = env::var("VESYLA_SUITE_PATH_TMP").unwrap();
-    fs::remove_dir_all(path).unwrap();
+    unsafe {
+        env::set_var("VESYLA_SUITE_PATH_TESTCASE", vesyla_suite_path_testcase);
+    }
 }
 
 fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {
@@ -146,12 +114,12 @@ fn pop_env(name_list: &Vec<String>, saved_env: Vec<(String, Option<String>)>) {
     let _ = name_list;
     for (name, val) in saved_env {
         match val {
-            Some(val) => {
+            Some(val) => unsafe {
                 env::set_var(name.to_string(), val);
-            }
-            None => {
+            },
+            None => unsafe {
                 env::remove_var(name.to_string());
-            }
+            },
         }
     }
 }
