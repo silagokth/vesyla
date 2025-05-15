@@ -6,34 +6,47 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/ToolUtilities.h"
+#include "mlir/Transforms/Passes.h"
 
+#include <iostream>
+
+#include "pasm/CodeGen.hpp"
 #include "pasm/Dialect.hpp"
 #include "pasm/Passes.hpp"
-#include "tm/Solver.hpp"
-#include "tm/TimingModel.hpp"
 #include "util/Common.hpp"
 
 INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char **argv) {
 
-  vesyla::tm::TimingModel tm;
-  tm.from_string(
-      R"(
-operation read_b R<5, t3>(R<3, t2>(e0))
-operation read_a R<5, t1>(R<3, t0>(e0))
-constraint linear read_a==read_b
-constraint linear read_a.e0[0]==read_b.e0[0]
-constraint linear read_a.e0[1]==read_b.e0[1]
-constraint linear read_a.e0[1][2]==read_b.e0[1][2]
-)");
-  vesyla::tm::Solver solver;
-  unordered_map<string, string> result = solver.solve(tm);
+  if (argc < 2) {
+    llvm::errs() << "Usage: " << argv[0] << " <input.mlir>\n";
+    return 1;
+  }
+
+  // Initialize MLIR context and register dialects
+  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  registry.insert<vesyla::pasm::PasmDialect>();
+  context.appendDialectRegistry(registry);
+
+  // Parse the input file into a ModuleOp
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(argv[1], &context);
+  if (!module) {
+    llvm::errs() << "Error parsing input file.\n";
+    return 1;
+  }
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
@@ -62,21 +75,37 @@ constraint linear read_a.e0[1][2]==read_b.e0[1][2]
     }
   }
 
-  vesyla::pasm::ReplaceEpochOpOptions replace_epoch_op_options = {
-      .component_map = R"({"0_0_1_1":"rf", "0_0_1_0":"rf"})",
-      .component_path = VESYLA_SUITE_PATH_COMPONENTS,
-      .tmp_path = VESYLA_SUITE_PATH_TMP};
-  ::mlir::registerPass(
-      [&replace_epoch_op_options]() -> std::unique_ptr<::mlir::Pass> {
-        return vesyla::pasm::createReplaceEpochOp(replace_epoch_op_options);
-      });
-  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return vesyla::pasm::createReplaceLoopOp();
-  });
+  // Create a PassManager
+  mlir::PassManager pm(&context);
 
-  mlir::DialectRegistry registry;
-  registry.insert<vesyla::pasm::PasmDialect>();
+  // Add passes to the pipeline
+  pm.addPass(vesyla::pasm::createReplaceEpochOp(
+      {.component_map =
+           R"({"0_0_1_1":"rf", "0_0_1_0":"rf", "1_0_1_1":"rf", "1_0_1_0":"rf"})",
+       .component_path = VESYLA_SUITE_PATH_COMPONENTS,
+       .tmp_path = VESYLA_SUITE_PATH_TMP,
+       .row = 2,
+       .col = 2}));
+  pm.addPass(vesyla::pasm::createReplaceLoopOp());
+  pm.addPass(vesyla::pasm::createMergeRawOp());
+  pm.addPass(vesyla::pasm::createAddHaltPass());
 
-  return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "CIDFG optimizer driver\n", registry));
+  // Run the pass pipeline
+  if (mlir::failed(pm.run(*module))) {
+    llvm::errs() << "Pass pipeline failed.\n";
+    return 1;
+  }
+
+  // Print the transformed module to stdout
+  module->print(llvm::outs());
+
+  // Save the transformed module to a file
+  std::string output_filename = "output";
+  std::string output_dir = ".";
+  vesyla::pasm::CodeGen cg;
+  cg.generate(module.get(), output_dir, output_filename);
+  llvm::outs() << "Generated code in " << output_dir << "/" << output_filename
+               << "\n";
+
+  return 0;
 }

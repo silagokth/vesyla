@@ -20,6 +20,9 @@ namespace pasm {
 
 #define GEN_PASS_REGISTRATION
 #include "pasm/Passes.hpp.inc"
+
+std::string gen_random_string(size_t length);
+
 } // namespace pasm
 } // namespace vesyla
 
