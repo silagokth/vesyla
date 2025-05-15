@@ -1,12 +1,12 @@
 use crate::drra::ParameterList;
 use bs58::encode;
 use log::{debug, warn};
-use rand::Rng;
 use serde::Serialize;
 use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
+use tempfile::tempdir;
 
 pub fn get_library_path() -> String {
     let lib_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").expect("Environment variable VESYLA_SUITE_PATH_COMPONENTS not set! Did you forget to source the setup script env.sh?");
@@ -203,11 +203,10 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let mut rng = rand::thread_rng();
-    let random_folder_name = format!("{}_{}", component_name, rng.gen::<u32>());
-    let tmp_path_str = env::var("VESYLA_SUITE_PATH_TMP")
-        .expect("Environment variable VESYLA_SUITE_PATH_TMP not set!");
-    let tmp_dir = Path::new(&tmp_path_str).join(random_folder_name);
+    let tmp_dir = tempdir()
+        .expect("Failed to create temporary directory")
+        .path()
+        .to_owned();
     copy_dir(&component_path, &tmp_dir).expect("Failed to copy directory");
 
     let tmp_component_path = tmp_dir;
@@ -219,6 +218,7 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
         .arg(tmp_component_path.to_str().unwrap())
         .arg("script")
         .arg("flist");
+    debug!("Running bender command: {:?}", cmd);
 
     let output = match cmd.output() {
         Ok(output) => output,
