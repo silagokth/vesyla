@@ -11,9 +11,12 @@ jobs:
         run: |
           curl -sS https://webi.sh/gh | sh
           source ~/.config/envman/PATH.env
+          gh --version
 
       - name: Login to GitHub CLI
-        run: gh auth login --with-token ${{ secrets.GITHUB_TOKEN }}
+        run: | 
+          source ~/.config/envman/PATH.env
+          gh auth login --with-token ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download DRRA components library
         run: |
