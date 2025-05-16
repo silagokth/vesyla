@@ -1,0 +1,92 @@
+name: Install SST
+
+on:
+  workflow_call:
+
+env:
+  SST_CORE_HOME: ${{ github.workspace }}/sstcore
+  SST_ELEMENTS_HOME: ${{ github.workspace }}/sstelements
+  SST_DIR: ${{ github.workspace }}/sstcore/lib/cmake/SST
+
+jobs:
+  sst-install:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v2
+
+    - name: Restore SST Cache if available
+      id: cache-sst
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-sst
+      with: 
+        path: |
+          ${{ github.workspace }}/build
+          ${{ github.workspace }}/sstcore
+          ${{ github.workspace }}/sstelements
+        key: ${{ runner.os }}-build-sst-14.1.0
+        restore-keys: |
+          ${{ runner.os }}-build-sst-14.1.0
+          ${{ runner.os }}-build-
+          ${{ runner.os }}-
+
+    - name: Debug cache hit
+      run: echo "Cache hit value is '${{ steps.cache-sst.outputs.cache-hit }}'"
+    
+    - name: Check if SST is already installed
+      id: check-sst
+      uses: ./.github/actions/check-sst-install
+      with:
+        sst-core-home: ${{ env.SST_CORE_HOME }}
+        sst-elements-home: ${{ env.SST_ELEMENTS_HOME }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libltdl-dev  libtool libtool-bin autoconf automake libgtest-dev
+
+    - name: Install SST Core
+      if: steps.check-sst.outputs.sst_installed == 'false'
+      run: |
+        wget https://github.com/sstsimulator/sst-core/releases/download/v14.1.0_Final/sstcore-14.1.0.tar.gz -O sstcore-14.1.0.tar.gz
+        tar -xzf sstcore-14.1.0.tar.gz
+        cd sst-core
+        ./configure --prefix=$SST_CORE_HOME --disable-mpi && make -j4 && make install
+        cd ..
+
+    - name: Add SST Core to PATH
+      if: steps.check-sst.outputs.sst_installed == 'false'
+      run: |
+        export PATH=$SST_CORE_HOME/bin:$PATH
+        echo ${SST_CORE_HOME}/bin >> $GITHUB_PATH
+        export SST_DIR=$SST_CORE_HOME/lib/cmake/SST
+        echo "SST_DIR=${SST_DIR}" >> $GITHUB_ENV
+
+    - name: Install SST Elements
+      if: steps.check-sst.outputs.sst_installed == 'false'
+      run: |
+        wget https://github.com/sstsimulator/sst-elements/releases/download/v14.1.0_Final/sstelements-14.1.0.tar.gz -O sstelements-14.1.0.tar.gz
+        tar -xzf sstelements-14.1.0.tar.gz
+        cd sst-elements
+        for folder in $(ls -d ./src/sst/elements/*/); do touch $folder/.ignore; done && rm -rf src/sst/elements/memHierarchy/.ignore
+        ./autogen.sh
+        ./configure --prefix=$SST_ELEMENTS_HOME && make -j4 && make install
+        cd ..
+
+    - name: Add SST Elements to PATH
+      if: steps.check-sst.outputs.sst_installed == 'false'
+      run: |
+        export PATH=$SST_ELEMENTS_HOME/bin:$PATH
+        echo ${SST_ELEMENTS_HOME}/bin >> $GITHUB_PATH
+
+    - name: Clean temp files
+      if: steps.check-sst.outputs.sst_installed == 'false'
+      run: |
+        rm -rf sstcore-14.1.0.tar.gz sst-core sstelements-14.1.0.tar.gz sst-elements
+

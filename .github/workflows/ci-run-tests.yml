@@ -1,0 +1,67 @@
+name: Run DRRA tests
+
+on:
+  workflow_call:
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download DRRA components library
+        run: |
+          gh release download --repo silagokth/drra-components --pattern "library.tar.gz"
+          if [ ! -f library.tar.gz ]; then
+            echo "Error: library.tar.gz not found"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
+
+      - name: Extract library
+        run: |
+          tar -xzf library.tar.gz
+          rm library.tar.gz
+
+      - name: Checkout DRRA tests
+        uses: actions/checkout@v4
+        with:
+          repository: silagokth/drra-tests
+          path: tests
+          ref: master
+          token: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
+
+      - name: Get built vesyla artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vesyla
+
+      - name: Add vesyla to PATH
+        run: |
+          echo "Adding vesyla to PATH"
+          echo "${{ github.workspace }}/vesyla" >> $GITHUB_PATH
+          vesyla --version
+
+      - name: Run DRRA tests
+        run: |
+          cd tests
+          . /usr/share/modules/init/sh
+          module use /opt/modules
+          module add questasim 
+          module add vesyla
+          module add bender
+          module add sst
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
+          export VESYLA_SUITE_PATH_COMPONENTS=$(readlink -e ../library)
+          vesyla testcase generate -d ./testcases
+          ./run.sh
+
+      - name: Compress test outputs
+        run: tar czf output.tar.gz tests/output
+
+      - name: Upload test outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-outputs
+          path: output.tar.gz
