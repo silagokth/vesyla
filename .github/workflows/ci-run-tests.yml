@@ -34,13 +34,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: vesyla-${{ github.sha }}
-          path: ./vesyla
+          path: ${{ github.workspace }}/vesyla
 
       - name: Add vesyla to PATH
         run: |
           echo "Adding vesyla to PATH"
           echo "${{ github.workspace }}/vesyla" >> $GITHUB_PATH
-          vesyla --version
+
+      - name: Check if vesyla is correctly installed
+        run: vesyla --version
 
       - name: Run DRRA tests
         run: |
