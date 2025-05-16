@@ -5,7 +5,7 @@ on:
 
 jobs:
   run-tests:
-    runs-on: ubuntu-22.04
+    runs-on: [modelsim, vesyla, bender, sst]
     steps:
       - name: Download DRRA components library
         run: |
@@ -41,12 +41,6 @@ jobs:
           mkdir -p $HOME/.local/bin
           mv vesyla $HOME/.local/bin
           echo "$HOME/.local/bin" > $GITHUB_PATH
-
-      - name: Debug vesyla location
-        run: |
-          ls -l $HOME/.local/bin
-          which vesyla || true
-          echo $PATH
 
       - name: Check if vesyla is correctly installed
         run: |
