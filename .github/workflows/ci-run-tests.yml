@@ -13,20 +13,18 @@ jobs:
           source ~/.config/envman/PATH.env
           gh --version
 
-      - name: Login to GitHub CLI
-        run: | 
-          source ~/.config/envman/PATH.env
-          gh auth login --with-token < ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download DRRA components library
         run: |
+          source ~/.config/envman/PATH.env
           gh release download --repo silagokth/drra-components --pattern "library.tar.gz"
           if [ ! -f library.tar.gz ]; then
             echo "Error: library.tar.gz not found"
             exit 1
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # env:
+        #   GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
 
       - name: Extract library
         run: |
