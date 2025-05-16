@@ -39,7 +39,7 @@ pub fn set_git_version_env(var_name: &str) {
                     .to_string()
             }
         } else {
-            "unknown".to_string()
+            "version unknown".to_string()
         };
 
         println!("cargo:rustc-env={}={}", var_name, version);
@@ -59,5 +59,5 @@ pub fn set_git_version_env(var_name: &str) {
     }
 
     // Fallback if not in a git repository
-    println!("cargo:rustc-env={}={}", var_name, "unknown");
+    println!("cargo:rustc-env={}={}", var_name, "version unknown");
 }
