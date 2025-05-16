@@ -37,7 +37,6 @@ jobs:
 
       - name: Add vesyla to PATH
         run: |
-          mv vesyla-${{ github.sha }} vesyla
           chmod a+x vesyla
           mv vesyla $HOME/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
