@@ -33,7 +33,8 @@ jobs:
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
         with:
-          name: vesyla
+          name: vesyla-${{ github.sha }}
+          path: ./vesyla
 
       - name: Add vesyla to PATH
         run: |
