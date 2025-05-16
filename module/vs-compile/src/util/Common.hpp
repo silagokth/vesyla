@@ -35,8 +35,6 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 
-using json = nlohmann::json;
-
 #define __NOT_IMPLEMENTED__                                                    \
   LOG(FATAL) << "Function has not been implemented yet!";                      \
   std::exit(-1);
@@ -47,9 +45,40 @@ using json = nlohmann::json;
   LOG(FATAL) << "Virtual function cannot be directly accessed!";               \
   std::exit(-1);
 
+namespace vesyla {
+namespace util {
+
 class Common {
 public:
-  // __BLANK__;
+  static std::string gen_random_string(size_t length) {
+    if (length == 0) {
+      return "";
+    }
+
+    // generate a random string starting with a alphabetic character
+    const std::string letters =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    const std::string numbers = "0123456789";
+    const std::string characters = letters + numbers;
+    std::string result;
+    result.reserve(length);
+    result += letters[rand() % letters.size()];
+    for (size_t i = 1; i < length; ++i) {
+      result += characters[rand() % characters.size()];
+    }
+    return result;
+  }
+
+  static std::string remove_leading_and_trailing_white_space(std::string line) {
+    // remove the leading and trailing spaces
+    const char *WhiteSpace = " \t\v\r\n";
+    std::size_t start = line.find_first_not_of(WhiteSpace);
+    std::size_t end = line.find_last_not_of(WhiteSpace);
+    line = start == end ? std::string() : line.substr(start, end - start + 1);
+    return line;
+  }
 };
+} // namespace util
+} // namespace vesyla
 
 #endif // __VESYLA_UTIL_COMMON_HPP__

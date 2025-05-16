@@ -6,10 +6,9 @@ namespace pasm {
 void CodeGen::generate(mlir::ModuleOp module, const std::string &output_dir,
                        const std::string &filename) {
   gen_asm(module, output_dir, filename + ".asm");
-  gen_bin(module, output_dir, filename + ".bin");
 }
 
-void CodeGen::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
+void CodeGen::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                       const std::string &filename) {
   // open the file for writing
   std::ofstream output_file(output_dir + "/" + filename);
@@ -105,7 +104,7 @@ void CodeGen::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
   // close the file
   output_file.close();
 }
-void CodeGen::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
+void CodeGen::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       const std::string &filename) {}
 } // namespace pasm
 } // namespace vesyla

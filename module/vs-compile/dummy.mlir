@@ -1,4 +1,4 @@
-module attributes {pasm.row=3:i32, pasm.col=5:i32} {
+module {
   "pasm.epoch" () <{id="epoch0"}> ({
     "pasm.rop"() <{id = "read_a", row=1:i32, col=0:i32, slot=1:i32, port=1:i32}> ({
       "pasm.instr"() <{id = "instr0", type="dsu", param={col=1:i32, row=2:i32, port=2:i32, slot=3:i32}}> : () -> ()

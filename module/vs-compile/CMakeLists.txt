@@ -5,6 +5,10 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
+include(FetchContent)
+FetchContent_Declare(lexy URL https://github.com/foonathan/lexy/releases/download/v2022.12.1/lexy-src.zip)
+FetchContent_MakeAvailable(lexy)
+
 set(LLVM_HOME $ENV{LLVM_HOME})
 # print LLVM_HOME
 message(STATUS "Setting LLVM_HOME: ${LLVM_HOME}")
@@ -122,6 +126,7 @@ set(LIBS
         VesylaPasm
         VesylaTm
         VesylaUtil
+        foonathan::lexy
 )
 
 

@@ -25,6 +25,8 @@
 #include "pasm/Passes.hpp"
 #include "util/Common.hpp"
 
+#include "pasm/Parser.hpp"
+
 INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char **argv) {
@@ -34,19 +36,35 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Initialize MLIR context and register dialects
-  mlir::MLIRContext context;
-  mlir::DialectRegistry registry;
-  registry.insert<vesyla::pasm::PasmDialect>();
-  context.appendDialectRegistry(registry);
-
-  // Parse the input file into a ModuleOp
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceFile<mlir::ModuleOp>(argv[1], &context);
-  if (!module) {
-    llvm::errs() << "Error parsing input file.\n";
+  ifstream input_file(argv[1]);
+  if (!input_file.is_open()) {
+    llvm::errs() << "Error opening input file: " << argv[1] << "\n";
     return 1;
   }
+  std::string input_str((std::istreambuf_iterator<char>(input_file)),
+                        std::istreambuf_iterator<char>());
+  input_file.close();
+
+  vesyla::pasm::Parser parser;
+  mlir::ModuleOp *module = parser.parse(input_str);
+  if (module == nullptr) {
+    llvm::errs() << "Error parsing input file: " << argv[1] << "\n";
+    return 1;
+  }
+
+  // // Initialize MLIR context and register dialects
+  // mlir::MLIRContext context;
+  // mlir::DialectRegistry registry;
+  // registry.insert<vesyla::pasm::PasmDialect>();
+  // context.appendDialectRegistry(registry);
+
+  // // Parse the input file into a ModuleOp
+  // mlir::OwningOpRef<mlir::ModuleOp> module =
+  //     mlir::parseSourceFile<mlir::ModuleOp>(argv[1], &context);
+  // if (!module) {
+  //   llvm::errs() << "Error parsing input file.\n";
+  //   return 1;
+  // }
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
