@@ -9,8 +9,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC OFF)
 
 # The project version number.
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/module/Cargo.toml" MODULE_TOML_CONTENT)
-string(REGEX MATCH "version = \"([0-9]+)\\.([0-9]+)\\.([0-9]+)\"" _ "${MODULE_TOML_CONTENT}")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/modules/Cargo.toml" MODULES_TOML_CONTENT)
+string(REGEX MATCH "version = \"([0-9]+)\\.([0-9]+)\\.([0-9]+)\"" _ "${MODULES_TOML_CONTENT}")
 set(VERSION_MAJOR ${CMAKE_MATCH_1} CACHE STRING "Project major version number.")
 set(VERSION_MINOR ${CMAKE_MATCH_2} CACHE STRING "Project minor version number.")
 set(VERSION_PATCH ${CMAKE_MATCH_3} CACHE STRING "Project patch version number.")
@@ -41,12 +41,12 @@ get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 message(STATUS "Target name: ${CORROSION_TARGET_NAME}")
 
 corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/module/Cargo.toml"
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules/Cargo.toml"
     PROFILE release
 )
 
-add_subdirectory("module/vs-testcase")
-add_subdirectory("module/vs-schedule")
+add_subdirectory("modules/vs-testcase")
+add_subdirectory("modules/vs-schedule")
 
 install(PROGRAMS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vesyla DESTINATION bin)
 install(
