@@ -1,0 +1,18 @@
+[package]
+name = "vs-testcase"
+version = "4.2.0"
+edition = "2021"
+
+# targets
+[[bin]]
+name = "vs-testcase"
+path = "src/main.rs"
+
+
+# Dependencies can be added here. For example:
+[dependencies]
+clap = { version = "4.5.21", features = ["derive"] }
+env_logger = "0.10.0"
+log = "0.4.14"
+minijinja = { version = "2.0.2", features = ["loader"] }
+serde = { version = "1.0.215", features = ["derive"] }
