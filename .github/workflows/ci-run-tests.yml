@@ -11,9 +11,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gh
-          gh auth login --with-token < ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to GitHub CLI
+        run: gh auth login --with-token ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download DRRA components library
         run: |
