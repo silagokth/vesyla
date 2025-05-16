@@ -1,12 +1,14 @@
 [package]
 name = "vs-component"
-version = "4.2.0"
 edition = "2021"
 description = "Vesyla tool to generate fabrics RTL and SST simulation configurations from high-level descriptions."
 
 [[bin]]
 name = "vs-component"
 path = "src/main.rs"
+
+[build-dependencies]
+build-utils = { path = "../build-utils" }
 
 [dependencies]
 bs58 = "0.5.1"

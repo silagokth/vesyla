@@ -175,6 +175,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "build-utils"
+version = "0.0.0"
+
+[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,9 +1673,10 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vesyla"
-version = "4.2.0"
+version = "4.3.0"
 dependencies = [
  "argparse",
+ "build-utils",
  "env_logger",
  "log",
  "log-panics",
@@ -1691,9 +1696,10 @@ dependencies = [
 
 [[package]]
 name = "vs-component"
-version = "4.2.0"
+version = "0.0.0"
 dependencies = [
  "bs58",
+ "build-utils",
  "clap",
  "env_logger",
  "jsonschema",
@@ -1710,8 +1716,9 @@ dependencies = [
 
 [[package]]
 name = "vs-manas"
-version = "4.2.0"
+version = "0.0.0"
 dependencies = [
+ "build-utils",
  "cfgrammar",
  "clap",
  "env_logger",
@@ -1726,8 +1733,9 @@ dependencies = [
 
 [[package]]
 name = "vs-testcase"
-version = "4.2.0"
+version = "0.0.0"
 dependencies = [
+ "build-utils",
  "clap",
  "env_logger",
  "log",
