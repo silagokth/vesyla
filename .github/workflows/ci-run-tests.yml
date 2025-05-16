@@ -8,9 +8,7 @@ jobs:
     runs-on: [modelsim, vesyla, bender, sst]
     steps:
       - name: Install gh CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gh
+        run: curl -sS https://webi.sh/gh | sh
 
       - name: Login to GitHub CLI
         run: gh auth login --with-token ${{ secrets.GITHUB_TOKEN }}
