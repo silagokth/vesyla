@@ -21,8 +21,6 @@ jobs:
             echo "Error: library.tar.gz not found"
             exit 1
           fi
-        # env:
-        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
 
