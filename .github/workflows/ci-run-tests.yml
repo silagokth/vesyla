@@ -38,8 +38,15 @@ jobs:
       - name: Add vesyla to PATH
         run: |
           chmod a+x vesyla
+          mkdir -p $HOME/.local/bin
           mv vesyla $HOME/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" > $GITHUB_PATH
+
+      - name: Debug vesyla location
+        run: |
+          ls -l $HOME/.local/bin
+          which vesyla || true
+          echo $PATH
 
       - name: Check if vesyla is correctly installed
         run: |
