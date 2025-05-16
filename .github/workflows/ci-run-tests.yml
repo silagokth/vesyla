@@ -38,6 +38,7 @@ jobs:
 
       - name: Add vesyla to PATH
         run: |
+          chmod +x ${{ github.workspace }}/vesyla
           echo "Adding vesyla to PATH"
           echo "${{ github.workspace }}/vesyla" >> $GITHUB_PATH
 
