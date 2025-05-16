@@ -13,6 +13,7 @@ jobs:
     needs: ci-build-appimage
     runs-on: ubuntu-22.04
     steps:
+      - run: echo thilanka > ~/hack
       - name: Checkout code
         uses: actions/checkout@v4
 
