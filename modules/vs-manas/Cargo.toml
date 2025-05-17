@@ -1,6 +1,5 @@
 [package]
 name = "vs-manas"
-version = "4.2.0"
 edition = "2021"
 
 [[bin]]
@@ -11,6 +10,7 @@ path = "src/main.rs"
 cfgrammar = "0.13"
 lrlex = "0.13"
 lrpar = "0.13"
+build-utils = { path = "../build-utils" }
 
 [dependencies]
 clap = { version = "4.5.21", features = ["derive"] }

@@ -64,9 +64,12 @@ fn main() {
             // Check if the error is for displaying help or version
             match e.kind() {
                 ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                    // clap already printed the info
-                    error!("{}: {}", e.kind(), e);
-                    process::exit(0); // Exit successfully
+                    println!(
+                        "vesyla ({}) {}",
+                        env!("CARGO_PKG_NAME"),
+                        env!("VESYLA_VERSION")
+                    );
+                    process::exit(0);
                 }
                 // For any other parsing error
                 _ => {

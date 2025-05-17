@@ -1,0 +1,3 @@
+[package]
+name = "build-utils"
+edition = "2021"

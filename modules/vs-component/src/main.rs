@@ -8,9 +8,9 @@ mod utils;
 
 use clap::{error::ErrorKind, Parser, Subcommand};
 use log::{error, info};
-use std::fs;
 use std::io::Result;
 use std::path::Path;
+use std::{env, fs};
 
 #[derive(Subcommand)]
 enum Command {
@@ -62,7 +62,11 @@ fn main() {
         Ok(args) => args,
         Err(e) => match e.kind() {
             ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                println!("{}", e);
+                println!(
+                    "vesyla ({}) {}",
+                    env!("CARGO_PKG_NAME"),
+                    env!("VESYLA_VERSION")
+                );
                 std::process::exit(0);
             }
             _ => {
