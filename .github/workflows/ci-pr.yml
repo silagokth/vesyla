@@ -1,0 +1,16 @@
+name: PR workflow
+
+on:
+  pull_request:
+
+jobs:
+  ci-build-vesyla:
+    name: Build Vesyla
+    uses: ./.github/workflows/ci-build-appimage.yml
+    secrets: inherit
+
+  ci-run-tests:
+    name: Run DRRA Tests
+    uses: ./.github/workflows/ci-run-tests.yml
+    needs: ci-build-vesyla
+    secrets: inherit
