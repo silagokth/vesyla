@@ -7,6 +7,20 @@ if(NOT DEFINED PROTOC_PATH)
    set(PROTOC_PATH "protoc")
 endif()
 
+execute_process(
+   COMMAND bash -c "git describe --tags --exact-match 2>/dev/null || git describe --always --tags"
+   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+   OUTPUT_VARIABLE VESYLA_VERSION
+   OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# If the VESYLA_VERSION value is set, write it to a file
+if(NOT VESYLA_VERSION)
+   set(VESYLA_VERSION "version unknown")
+endif()
+
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/src/__version__.py" "VESYLA_VERSION = \"${VESYLA_VERSION}\"\n")
+
 add_custom_command(
    OUTPUT ${CMAKE_BINARY_DIR}/pyinstaller/${CURRENT_SUBPROJECT_NAME}/dist/${CURRENT_SUBPROJECT_NAME}
    DEPENDS ${SRC}
