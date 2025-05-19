@@ -5,7 +5,7 @@ edition = "2021"
 
 [workspace]
 resolver = "2"
-members = ["vs-component", "vs-testcase", "vs-manas", "build-utils"]
+members = ["vs-component", "vs-testcase", "vs-manas"]
 
 [build-dependencies]
 build-utils = { path = "build-utils" }
