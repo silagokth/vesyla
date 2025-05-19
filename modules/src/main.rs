@@ -1,6 +1,5 @@
 use log::{error, info};
 use std::env;
-// use std::fs;
 use std::process;
 
 fn main() {
@@ -48,8 +47,7 @@ fn main() {
             process::exit(0);
         }
         "-V" | "--version" => {
-            let version = env!("CARGO_PKG_VERSION");
-            info!("vesyla {}", version);
+            println!("vesyla {}", env!("VESYLA_VERSION"));
         }
         cmd if tools_list.contains(&cmd) => {
             let current_exe = env::current_exe().unwrap();
