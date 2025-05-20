@@ -40,7 +40,10 @@ cp system/instr/${id}/instr.bin temp
 cp mem/sram_image_in.bin temp
 cd temp
 bender -d ../system/rtl/tb script vsim -t sim > read_src.do
-vsim -c -voptargs=+acc -debugDB -do read_src.do -do "log * -r;run -all" work.fabric_tb
+echo "vsim -voptargs=+acc -debugDB work.fabric_tb" >> read_src.do
+echo "log * -r" >> read_src.do
+echo "run -all" >> read_src.do
+vsim -c -do read_src.do
 cd ..
 cp temp/sram_image_out.bin mem/sram_image_m3.bin
 
