@@ -1,0 +1,22 @@
+*** Settings ***
+Library           Process
+Library           OperatingSystem
+Library           String
+Suite Teardown    Terminate All Processes    kill=True
+Test Template     Autotest Template
+
+*** Test Cases ***  filename
+{% for testcase in testcases -%}
+Test Case {{ testcase.name }} {{ testcase.path }}
+    [Documentation]  Run test case {{ testcase.name }} with parameters {{ testcase.parameters }}
+    [Tags]  {{ testcase.tags }}
+{% endfor %}
+
+*** Keywords ***
+Autotest Template
+    [Arguments]  ${filename}
+    ${random_string} =    Generate Random String    12    [LOWER]
+    Create Directory    work/${random_string}
+    ${result} =    Run Process    vesyla testcase run -d "${filename}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
+    Should Be Equal As Integers    ${result.rc}    0
+    Remove Directory   work/${random_string}     recursive=True

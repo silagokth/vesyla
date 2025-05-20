@@ -1,0 +1,25 @@
+[package]
+name = "vs-manas"
+edition = "2021"
+
+[[bin]]
+name = "vs-manas"
+path = "src/main.rs"
+
+[build-dependencies]
+cfgrammar = "0.13"
+lrlex = "0.13"
+lrpar = "0.13"
+build-utils = { path = "../build-utils" }
+
+[dependencies]
+clap = { version = "4.5.21", features = ["derive"] }
+log = "0.4.14"
+log-panics = { version = "2.1.0", features = ["with-backtrace"] }
+env_logger = "0.10.0"
+serde = "1.0.215"
+serde_json = "1.0.70"
+uuid = { version = "1.1", features = ["v4"] }
+cfgrammar = "0.13"
+lrlex = "0.13"
+lrpar = "0.13"
