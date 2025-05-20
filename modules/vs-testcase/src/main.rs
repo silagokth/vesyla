@@ -147,7 +147,7 @@ fn init(style: &String, force: &bool, output: &String) {
     let usr_dir = current_exe_dir.parent().unwrap();
 
     // construct template path
-    let template_path = Path::new(usr_dir).join("share/vesyla/testcase").join(style);
+    let template_path = Path::new(usr_dir).join("share/vesyla/template").join(style);
 
     // check if template path exists
     if !Path::new(&template_path).exists() {
