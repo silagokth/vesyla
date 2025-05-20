@@ -18,29 +18,18 @@
 #ifndef __STREAM_HPP__
 #define __STREAM_HPP__
 
-#include <bitset>
 #include <vector>
 
-template<class T>
-class Stream{
+template <class T> class Stream {
 public:
-    std::vector<T> data;
+  std::vector<T> data;
 
 public:
-    Stream(){}
-    Stream(size_t size){
-        data.resize(size);
-    }
-    size_t size(){
-        return data.size();
-    }
-    T& operator[](size_t index)
-    {
-        return data[index];
-    }
-    void push_back(T e){
-        data.push_back(e);
-    }
+  Stream() {}
+  Stream(size_t size) { data.resize(size); }
+  size_t size() { return data.size(); }
+  T &operator[](size_t index) { return data[index]; }
+  void push_back(T e) { data.push_back(e); }
 };
 
 #endif // __STREAM_HPP__

@@ -2,8 +2,16 @@
  * This file contains the utility functions for debugging.
  */
 
-#include "Array.hpp"
+#ifndef __UTIL_HPP__
+#define __UTIL_HPP__
+
+// #include "Drra.hpp"
+#include "IO.hpp"
 #include "Stream.hpp"
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <regex>
 
 /**
  * Print the contents of a vector.
@@ -76,3 +84,62 @@ void print_bitset_stream(Stream<bitset<chunk_size>> stream) {
     print_vector<T>(vec);
   }
 }
+
+template <typename T> void bin_to_num_file(string bin_file_, string num_file_) {
+  ifstream ifs(bin_file_);
+  if (!ifs.is_open()) {
+    cout << "Error: Can't open file: " << bin_file_ << endl;
+    abort();
+  }
+  ofstream ofs(num_file_);
+  if (!ofs.is_open()) {
+    cout << "Error: Can't open file: " << num_file_ << endl;
+    abort();
+  }
+  std::string line;
+  while (std::getline(ifs, line)) {
+    std::smatch sm;
+    std::regex e1("\\s*(\\d+)\\s+([01]+)\\s*");
+    if (std::regex_match(line.cbegin(), line.cend(), sm, e1)) {
+      int addr = stoi(sm[1]);
+      string raw_data = sm[2];
+      // check raw_data size must be multiple of the size of T
+      if (raw_data.size() % (sizeof(T) * 8) != 0) {
+        cout << "Error: raw_data size is not multiple of " << sizeof(T) * 8
+             << endl;
+        abort();
+      }
+      // chop raw_data into chunks
+      ofs << addr << " [";
+      vector<std::bitset<sizeof(T) * 8>> vec;
+      for (size_t i = 0; i < raw_data.size(); i += sizeof(T) * 8) {
+        vec.push_back(
+            std::bitset<sizeof(T) * 8>(raw_data.substr(i, sizeof(T) * 8)));
+      }
+      for (size_t i = 0; i < vec.size(); i++) {
+        unsigned long num = vec[i].to_ulong();
+        T value;
+        // use memcpy to fill the value
+        memcpy(&value, &num, sizeof(T));
+        ofs << value;
+        if (i < vec.size() - 1) {
+          ofs << ", ";
+        }
+      }
+      ofs << "]" << endl;
+    }
+  }
+  ofs.close();
+}
+
+void bin_to_hex_file(string bin_file_, string hex_file_);
+
+IO file_to_io(string file_);
+void io_to_file(IO io_, string file_);
+
+void assemble(void);
+void compile(void);
+void simulate_code_segment(int id);
+int run_simulation(void);
+
+#endif // __UTIL_HPP__
