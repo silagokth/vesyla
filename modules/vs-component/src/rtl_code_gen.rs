@@ -77,15 +77,16 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
     let mut implemented_controllers: HashMap<String, Controller> = HashMap::new();
 
     // parse the arguments to find the fabric.json input file
-    let fabric_file = match fs::File::open(Path::new(&fabric_filepath)) {
+    let fabric_filepath = Path::new(fabric_filepath);
+    let fabric_file = match fs::File::open(&fabric_filepath) {
         Ok(file) => file,
         Err(err) => {
             println!("Error: {}", err);
-            panic!("Failed to open file: {}", fabric_filepath);
+            panic!("Failed to open file: {:?}", fabric_filepath);
         }
     };
     let fabric_json: serde_json::Value = serde_json::from_reader(fabric_file).unwrap_or_else(|e| {
-        panic!("Failed to parse fabric.json: {}", e);
+        panic!("Failed to parse file {:?}: {}", fabric_filepath, e);
     });
 
     // create a registry to store the parameters
