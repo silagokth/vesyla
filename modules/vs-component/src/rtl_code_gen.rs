@@ -117,7 +117,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
 
     // add fabric parameters to the registry
     if fabric_object.parameters.is_empty() {
-        warn!("No fabric parameters found in {}", fabric_filepath);
+        warn!("No fabric parameters found in {:?}", fabric_filepath);
     } else {
         match add_parameters(&fabric_object.parameters, &mut parameter_list) {
             Ok(_) => (),
