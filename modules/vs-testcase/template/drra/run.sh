@@ -93,12 +93,12 @@ echo " ${GREEN}-> OK${NC}"
 echo "${BOLD}Model 0:${NC} C++ implementation"
 ## Compile
 echo -n "\t${BLUE}Compiling${NC}"
-run_and_check "Compilation" g++ -g -I../include -o model_0 ../main.cpp ../src/Drra.cpp ../src/Util.cpp
+run_and_check "Compilation" g++ -g -I../model_0/include -o run_model_0 ../model_0/main.cpp ../model_0/src/Drra.cpp ../model_0/src/Util.cpp
 echo " ${GREEN}-> OK${NC}"
 
 ## Run
 echo -n "\t${BLUE}Running${NC}"
-./model_0
+./run_model_0
 echo " ${GREEN}-> OK${NC}"
 
 ## Check that the output exists
