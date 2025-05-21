@@ -1,6 +1,15 @@
 find_package(VesylaUtils REQUIRED)
 set(CURRENT_SUBPROJECT_NAME "vs-testcase")
 
+# Remove the destination directory if it exists
+if(EXISTS ${CMAKE_SHARED_OUTPUT_DIRECTORY})
+    file(REMOVE_RECURSE ${CMAKE_SHARED_OUTPUT_DIRECTORY})
+endif()
+
+# Create the destination directory
+file(MAKE_DIRECTORY ${CMAKE_SHARED_OUTPUT_DIRECTORY})
+
+# Copy the files from the source directory to the destination directory
 install(DIRECTORY template DESTINATION share/${PROJECT_NAME} PATTERN "*.sh" EXCLUDE)
 file(COPY template DESTINATION ${CMAKE_SHARED_OUTPUT_DIRECTORY} PATTERN "*.sh" EXCLUDE)
 install(DIRECTORY template DESTINATION share/${PROJECT_NAME} PATTERN "*.sh" PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ)
