@@ -9,7 +9,6 @@
  */
 #define DATA_TYPE int16_t
 
-#include "Array.hpp"
 #include "Drra.hpp"
 #include "IO.hpp"
 #include "Util.hpp"
