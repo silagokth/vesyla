@@ -137,6 +137,4 @@ void bin_to_hex_file(string bin_file_, string hex_file_);
 IO file_to_io(string file_);
 void io_to_file(IO io_, string file_);
 
-// Removed unused function declarations: assemble, compile, simulate_code_segment, and run_simulation.
-
 #endif // __UTIL_HPP__
