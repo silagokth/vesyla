@@ -59,15 +59,15 @@ for id in ${ids}; do
 
   # schedule, assemble, and simulate the code segment
   vesyla schedule \
-      -a ${workspace_path}/system/arch/arch.json \
-      -p ${template_path}/pasm/${id}.pasm \
-      -c ${template_path}/pasm/${id}.cstr \
-      -o ${workspace_path}/temp
+    -a ${workspace_path}/system/arch/arch.json \
+    -p ${template_path}/pasm/${id}.pasm \
+    -c ${template_path}/pasm/${id}.cstr \
+    -o ${workspace_path}/temp
   vesyla manas \
-      -a ${workspace_path}/system/arch/arch.json \
-      -i ${workspace_path}/system/isa/isa.json \
-      -s ${workspace_path}/temp/0.asm \
-      -o ${workspace_path}/temp
+    -a ${workspace_path}/system/arch/arch.json \
+    -i ${workspace_path}/system/isa/isa.json \
+    -s ${workspace_path}/temp/0.asm \
+    -o ${workspace_path}/temp
 
   # preserve the instructions
   mkdir -p ${workspace_path}/system/instr/${id}

@@ -53,9 +53,9 @@ touch ${workspace_path}/mem/sram_image_m2.bin
 
 # simulate the code segment
 sst ${workspace_path}/system/sst/sst_sim_conf.py -- \
-    --io_input_buffer_filepath ${workspace_path}/mem/sram_image_in.bin \
-    --io_output_buffer_filepath ${workspace_path}/mem/sram_image_m2.bin \
-    --assembly_program_path ${workspace_path}/system/instr/${id}/instr.bin
+  --io_input_buffer_filepath ${workspace_path}/mem/sram_image_in.bin \
+  --io_output_buffer_filepath ${workspace_path}/mem/sram_image_m2.bin \
+  --assembly_program_path ${workspace_path}/system/instr/${id}/instr.bin
 
 # archive everything
 mv ${workspace_path}/temp ${workspace_path}/archive/instr_sim_${id}

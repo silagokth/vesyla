@@ -22,17 +22,16 @@ fi
 id=$1
 vsim_cli_mode="-c"
 
-for arg in "$@"
-do
+for arg in "$@"; do
   case "$arg" in
-    -h|--help)
-      echo "Usage: $0 <id>"
-      exit 0
-      ;;
-    -it|-interactive|-it=all|--interactive=all|-it=rtl|--interactive=rtl)
-      # set the interactive mode
-      vsim_cli_mode="-voptargs=+acc -debugDB"
-      ;;
+  -h | --help)
+    echo "Usage: $0 <id>"
+    exit 0
+    ;;
+  -it | -interactive | -it=all | --interactive=all | -it=rtl | --interactive=rtl)
+    # set the interactive mode
+    vsim_cli_mode="-voptargs=+acc -debugDB"
+    ;;
   esac
 done
 
@@ -67,8 +66,8 @@ cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
 # gather the dependencies using bender
-bender -d ${workspace_path}/system/rtl/tb script vsim -t sim > read_src.do
-echo "exit" >> read_src.do
+bender -d ${workspace_path}/system/rtl/tb script vsim -t sim >read_src.do
+echo "exit" >>read_src.do
 
 # compile the library
 vsim -c -do read_src.do
