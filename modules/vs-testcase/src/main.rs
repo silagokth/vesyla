@@ -58,7 +58,7 @@ struct Args {
     command: Command,
 }
 
-fn main() {
+fn main() -> Result<(), io::Error> {
     // set logger level to be debug
     env_logger::builder()
         .filter_level(LevelFilter::Debug)
@@ -76,17 +76,20 @@ fn main() {
                         env!("CARGO_PKG_NAME"),
                         env!("VESYLA_VERSION")
                     );
-                    process::exit(0);
+                    return Ok(());
                 }
                 ErrorKind::DisplayHelp => {
                     println!("{}", e);
-                    process::exit(0);
+                    return Ok(());
                 }
                 // For any other parsing error
                 _ => {
                     // Log the error message provided by clap
                     error!("{}", e);
-                    process::exit(1); // Exit with an error code
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("Invalid arguments: {}", e),
+                    ));
                 }
             }
         }
@@ -106,11 +109,11 @@ fn main() {
                 let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
-            let result = init(template_dir, style, force, output);
-            if result.is_err() {
-                error!("Failed to initialize: {:?}", result);
-                process::exit(1);
+            if let Err(err) = init(template_dir, style, force, output) {
+                error!("Failed to initialize: {:?}", err);
+                return Err(err);
             }
+            Ok(())
         }
         Command::Run {
             template_dir,
@@ -135,18 +138,20 @@ fn main() {
     }
 }
 
-fn export(output: &String) {
+fn export(output: &String) -> Result<(), io::Error> {
     // convert the output path to absolute path
     let output_dir = output.clone();
 
     // check if the output directory exists, if not create it
     if !Path::new(&output_dir).exists() {
-        fs::create_dir_all(&output_dir).unwrap();
+        fs::create_dir_all(&output_dir).expect("Failed to create output directory");
     }
 
     // copy everything from default test directory to the output directory
-    let testcase_dir = get_testcase_dir(None);
-    copy_dir_all(&testcase_dir, &output_dir).unwrap();
+    let testcase_dir = get_testcase_dir(None).expect("Failed to get testcase directory");
+    copy_dir_all(&testcase_dir, &output_dir).expect("Failed to copy testcase directory");
+
+    Ok(())
 }
 
 fn init(
@@ -221,13 +226,18 @@ fn init(
     Ok(())
 }
 
-fn run(template_dir: Option<PathBuf>, directory: &String) {
-    let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()));
+fn run(template_dir: Option<PathBuf>, directory: &String) -> Result<(), io::Error> {
+    let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()))
+        .expect("Failed to get testcase directory");
 
     // check if the directory is the current directory, if yes, exit
     if test_dir == Path::new(".").canonicalize().unwrap() {
         error!("Testcase source directory cannot be the current working directory!");
-        process::exit(1);
+        let error = Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Testcase source directory cannot be the current working directory!",
+        ));
+        return error;
     }
 
     // Create a temporary directory in "."
@@ -250,11 +260,17 @@ fn run(template_dir: Option<PathBuf>, directory: &String) {
         .arg(testcase_script_path)
         .status()
         .expect("Failed to run the testcase");
-    assert!(status.success());
+    if !status.success() {
+        let error = Err(io::Error::new(io::ErrorKind::Other, "Testcase failed"));
+        error!("Testcase failed");
+        return error;
+    }
+    Ok(())
 }
 
-fn generate(directory: &String) {
-    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()));
+fn generate(directory: &String) -> Result<(), io::Error> {
+    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()))
+        .expect("Failed to get testcase directory");
 
     info!("Testcase directory: {:?}", testcases_dir);
 
@@ -313,7 +329,11 @@ fn generate(directory: &String) {
     }
 
     // if path is under VESYLA_SUITE_PATH_TESTCASE, convert it to relative path by replace it with {{VESYLA_SUITE_PATH_TESTCASE}}
-    let testcase_path_str = get_testcase_dir(None).to_str().unwrap().to_string();
+    let testcase_path_str = get_testcase_dir(None)
+        .expect("Failed to get testcase directory")
+        .to_str()
+        .unwrap()
+        .to_string();
     for tc in &mut testcase_entries {
         if tc.path.starts_with(&testcase_path_str) {
             tc.path = tc.path.replace(&testcase_path_str, "");
@@ -354,6 +374,8 @@ fn generate(directory: &String) {
 
     // create the work directory
     fs::create_dir_all("work").unwrap();
+
+    Ok(())
 }
 
 fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
@@ -374,7 +396,9 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     Ok(())
 }
 
-fn get_testcase_dir(overwrite: Option<std::path::PathBuf>) -> std::path::PathBuf {
+fn get_testcase_dir(
+    overwrite: Option<std::path::PathBuf>,
+) -> Result<std::path::PathBuf, io::Error> {
     let testcase_dir;
     if let Some(overwrite) = overwrite {
         testcase_dir = overwrite;
@@ -388,15 +412,21 @@ fn get_testcase_dir(overwrite: Option<std::path::PathBuf>) -> std::path::PathBuf
     // check if the directory exists
     if !Path::new(&testcase_dir).exists() {
         error!("Directory {:?} does not exist", &testcase_dir);
-        process::exit(1);
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Directory {:?} does not exist", &testcase_dir),
+        ));
     }
     // check if the directory is a directory
     if !Path::new(&testcase_dir).is_dir() {
         error!("{:?} is not a directory", &testcase_dir);
-        process::exit(1);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{:?} is not a directory", &testcase_dir),
+        ));
     }
 
-    return testcase_dir;
+    Ok(testcase_dir)
 }
 
 #[cfg(test)]
