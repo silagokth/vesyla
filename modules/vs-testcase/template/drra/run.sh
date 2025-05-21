@@ -15,6 +15,9 @@ NC='\033[0m' # No Color
 interactive_mode=false
 debug_mode=false
 
+# Get the script full path
+template_path=$(dirname $(realpath "$0"))
+
 # Argument parsing
 for arg in "$@"
 do
@@ -75,17 +78,17 @@ run_and_check() {
 }
 
 # Prepare environment
-rm -rf work
-mkdir -p work
-cd work
+rm -rf ${template_path}/work
+mkdir -p ${template_path}/work
+cd ${template_path}/work
 mkdir -p mem
 
 # Assemble the fabric
 echo -n "${BOLD}Assembling the fabric${NC}"
 if [ "$debug_mode" = true ]; then
-	bash ../scripts/assemble.sh
+	bash ${template_path}/scripts/assemble.sh
 else
-	run_and_check "Assembly" bash ../scripts/assemble.sh
+	run_and_check "Assembly" bash ${template_path}/scripts/assemble.sh
 fi
 echo " ${GREEN}-> OK${NC}"
 
@@ -93,7 +96,7 @@ echo " ${GREEN}-> OK${NC}"
 echo "${BOLD}Model 0:${NC} C++ implementation"
 ## Compile
 echo -n "\t${BLUE}Compiling${NC}"
-run_and_check "Compilation" g++ -g -I../model_0/include -o run_model_0 ../model_0/main.cpp ../model_0/src/Drra.cpp ../model_0/src/Util.cpp
+run_and_check "Compilation" g++ -g -I${template_path}/model_0/include -o run_model_0 ${template_path}/model_0/main.cpp ${template_path}/model_0/src/Drra.cpp ${template_path}/model_0/src/Util.cpp
 echo " ${GREEN}-> OK${NC}"
 
 ## Run
@@ -125,9 +128,9 @@ echo "${BOLD}Model 2:${NC} instruction-level simulation"
 echo -n "\t${BLUE}Compiling${NC}"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 if [ "$debug_mode" = true ]; then
-	bash ../scripts/compile.sh ../pasm
+	bash ${template_path}/scripts/compile.sh ${template_path}/pasm
 else
-	run_and_check "Compilation" bash ../scripts/compile.sh ../pasm
+	run_and_check "Compilation" bash ${template_path}/scripts/compile.sh ${template_path}/pasm
 fi
 echo " ${GREEN}-> OK${NC}"
 
@@ -137,9 +140,9 @@ if [ "$interactive_mode" = "all" ] || [ "$interactive_mode" = "sst" ]; then
 fi
 echo -n "\t${BLUE}Running${NC}"
 if [ "$debug_mode" = true ]; then
-	bash ../scripts/instr_sim.sh 0
+	bash ${template_path}/scripts/instr_sim.sh 0
 else
-	run_and_check "Instruction-level simulation" bash ../scripts/instr_sim.sh 0
+	run_and_check "Instruction-level simulation" bash ${template_path}/scripts/instr_sim.sh 0
 fi
 echo " ${GREEN}-> OK${NC}"
 
@@ -166,9 +169,9 @@ else
 	echo -n "\t${BLUE}Running${NC}"
 fi
 if [ "$debug_mode" = true ]; then
-	bash ../scripts/rtl_sim.sh 0 -it="$interactive_mode"
+	bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
 else
-	run_and_check "RTL simulation" bash ../scripts/rtl_sim.sh 0 -it="$interactive_mode"
+	run_and_check "RTL simulation" bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
 fi
 echo " ${GREEN}-> OK${NC}"
 
