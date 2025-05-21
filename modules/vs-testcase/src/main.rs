@@ -14,8 +14,8 @@ enum Command {
     #[command(about = "Initialize testcase directory", name = "init")]
     Init {
         /// Template directory
-        #[arg(short, long)]
-        template_dir: String,
+        #[arg(short, long)] // Default to empty string
+        template_dir: Option<String>,
         /// Template style
         #[arg(short, long, default_value = "drra")]
         style: String,
@@ -30,7 +30,7 @@ enum Command {
     Run {
         /// Template directory
         #[arg(short, long)]
-        template_dir: String,
+        template_dir: Option<String>,
         /// Testcase directory
         #[arg(short, long)]
         directory: String,
@@ -99,9 +99,10 @@ fn main() {
             output,
         } => {
             info!("Initializing ...");
-            let template_dir = if template_dir.is_empty() {
+            let template_dir = if template_dir.is_none() {
                 None
             } else {
+                let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
             let result = init(template_dir, style, force, output);
@@ -114,10 +115,10 @@ fn main() {
             template_dir,
             directory,
         } => {
-            info!("Running testcase ...");
-            let template_dir = if template_dir.is_empty() {
+            let template_dir = if template_dir.is_none() {
                 None
             } else {
+                let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
             run(template_dir, directory)
