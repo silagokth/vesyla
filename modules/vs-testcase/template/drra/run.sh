@@ -16,7 +16,7 @@ interactive_mode=false
 debug_mode=false
 
 # Get the script full path
-template_path=$(dirname $(realpath "$0"))
+template_path=$(dirname "$(realpath "$0")")
 
 # Argument parsing
 for arg in "$@"; do
