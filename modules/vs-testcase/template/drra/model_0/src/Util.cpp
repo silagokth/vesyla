@@ -12,9 +12,9 @@ void bin_to_hex_file(string bin_file_, string hex_file_) {
     abort();
   }
   std::string line;
+  static const std::regex e1("\\s*(\\d+)\\s+([01]+)\\s*");
   while (std::getline(ifs, line)) {
     std::smatch sm;
-    std::regex e1("\\s*(\\d+)\\s+([01]+)\\s*");
     if (std::regex_match(line.cbegin(), line.cend(), sm, e1)) {
       int addr = stoi(sm[1]);
       string raw_data = sm[2];

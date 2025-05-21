@@ -21,18 +21,17 @@
 #include "IO.hpp"
 #include "Util.hpp"
 
-using namespace std;
 
 void init(IO &input_buffer);
 void model_l0(IO &input_buffer, IO &output_buffer);
 void model_l1();
 
-void store_data(string file_, IO buffer);
-void load_data(string file_, IO &buffer);
+void store_data(std::string file_, IO buffer);
+void load_data(std::string file_, IO &buffer);
 
 void reset(IO &buffer);
 
 void reset_all();
-bool verify(string file0_, string file1_);
+bool verify(std::string file0_, std::string file1_);
 
 #endif // __DRRA_HPP__

@@ -7,7 +7,7 @@ if [ "$#" -lt 1 ]; then
   exit 1
 fi
 
-# check if $0 is a number
+# check if $1 is a number
 if ! [[ "$1" =~ ^[0-9]+$ ]]; then
   echo "Error: $1 is not a number"
   exit 1
