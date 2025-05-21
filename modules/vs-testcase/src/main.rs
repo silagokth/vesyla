@@ -8,6 +8,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process;
+use tempfile::tempdir;
 
 #[derive(Subcommand)]
 enum Command {
@@ -229,16 +230,24 @@ fn run(template_dir: Option<PathBuf>, directory: &String) {
         process::exit(1);
     }
 
-    // use init() to initialize the testcase directory
-    init(template_dir, &"drra".to_string(), &true, &".".to_string())
-        .expect("Failed to initialize testcase directory");
+    // Create a temporary directory in "."
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
 
-    // copy everything from the test directory to the current directory
-    copy_dir_all(&test_dir, ".").unwrap();
+    // use init() to initialize the testcase directory
+    init(
+        template_dir,
+        &"drra".to_string(),
+        &true,
+        &temp_dir_path.display().to_string(),
+    )
+    .expect("Failed to initialize testcase directory");
 
     // run the testcase, if the testcase fails, the process will exit with non-zero status
+    info!("Copying and running testcase in {:?}", temp_dir_path);
+    let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
     let status = process::Command::new("sh")
-        .arg("run.sh")
+        .arg(testcase_script_path)
         .status()
         .expect("Failed to run the testcase");
     assert!(status.success());
@@ -355,7 +364,11 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
         if ty.is_dir() {
             copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
         } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            let copy_result = fs::copy(entry.path(), dst.as_ref().join(entry.file_name()));
+            if let Err(e) = copy_result {
+                error!("Failed to copy file: {:?}", e);
+                return Err(e);
+            }
         }
     }
     Ok(())
