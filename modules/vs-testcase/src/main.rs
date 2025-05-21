@@ -1,18 +1,21 @@
 use clap::{error::ErrorKind, Parser, Subcommand};
-use log::{error, info, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use serde::Serialize;
 use std::env;
 use std::fs::{self, File};
 use std::io;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 #[derive(Subcommand)]
 enum Command {
     #[command(about = "Initialize testcase directory", name = "init")]
     Init {
+        /// Template directory
+        #[arg(short, long)]
+        template_dir: String,
         /// Template style
         #[arg(short, long, default_value = "drra")]
         style: String,
@@ -25,6 +28,9 @@ enum Command {
     },
     #[command(about = "Run testcase", name = "run")]
     Run {
+        /// Template directory
+        #[arg(short, long)]
+        template_dir: String,
         /// Testcase directory
         #[arg(short, long)]
         directory: String,
@@ -83,16 +89,34 @@ fn main() {
 
     match &cli_args.command {
         Command::Init {
+            template_dir,
             style,
             force,
             output,
         } => {
             info!("Initializing ...");
-            init(style, force, output);
+            let template_dir = if template_dir.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(template_dir))
+            };
+            let result = init(template_dir, style, force, output);
+            if result.is_err() {
+                error!("Failed to initialize: {:?}", result);
+                process::exit(1);
+            }
         }
-        Command::Run { directory } => {
+        Command::Run {
+            template_dir,
+            directory,
+        } => {
             info!("Running testcase ...");
-            run(directory)
+            let template_dir = if template_dir.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(template_dir))
+            };
+            run(template_dir, directory)
         }
         Command::Generate { directory } => {
             info!("Generating testcase scripts ...");
@@ -119,7 +143,12 @@ fn export(output: &String) {
     copy_dir_all(&testcase_dir, &output_dir).unwrap();
 }
 
-fn init(style: &String, force: &bool, output: &String) {
+fn init(
+    template_dir: Option<PathBuf>,
+    style: &String,
+    force: &bool,
+    output: &String,
+) -> Result<(), io::Error> {
     // create the output directory
     if !Path::new(&output).exists() {
         fs::create_dir_all(&output).unwrap();
@@ -132,7 +161,10 @@ fn init(style: &String, force: &bool, output: &String) {
             fs::remove_file(&lock_file).expect("Failed to remove lock file");
         } else {
             error!("Directory is already initialized. Use -f to force re-initialization");
-            process::exit(1);
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "Directory is already initialized. Use -f to force re-initialization",
+            ));
         }
     }
 
@@ -141,25 +173,49 @@ fn init(style: &String, force: &bool, output: &String) {
     file.write_all(format!("{:?}", std::time::SystemTime::now()).as_bytes())
         .expect("Failed to write lock file");
 
-    // get the current executable path
-    let current_exe = env::current_exe().unwrap();
-    let current_exe_dir = current_exe.parent().unwrap();
-    let usr_dir = current_exe_dir.parent().unwrap();
-
-    // construct template path
-    let template_path = Path::new(usr_dir).join("share/vesyla/template").join(style);
+    let template_path = match template_dir {
+        Some(path) => {
+            warn!("Using custom template directory: {:?}", path);
+            Path::new(&path).join(style)
+        }
+        None => {
+            // get the current executable path
+            let current_exe = env::current_exe().unwrap();
+            let current_exe_dir = current_exe.parent().unwrap();
+            let usr_dir = current_exe_dir.parent().unwrap();
+            let template_path = Path::new(usr_dir).join("share/vesyla/template").join(style);
+            template_path
+        }
+    };
 
     // check if template path exists
     if !Path::new(&template_path).exists() {
         error!("Template not found for style {}", style);
-        process::exit(1);
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "Template not found for style {} at path {:?}",
+                style, template_path
+            ),
+        ));
+    }
+
+    // check if the template path is a directory
+    if !Path::new(&template_path).is_dir() {
+        error!("Template path is not a directory");
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Template path is not a directory",
+        ));
     }
 
     // copy all the contents including files and subdirectories in template directory to the output directory
     copy_dir_all(&template_path, &output).expect("Failed to copy template directory");
+
+    Ok(())
 }
 
-fn run(directory: &String) {
+fn run(template_dir: Option<PathBuf>, directory: &String) {
     let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()));
 
     // check if the directory is the current directory, if yes, exit
@@ -169,7 +225,8 @@ fn run(directory: &String) {
     }
 
     // use init() to initialize the testcase directory
-    init(&"drra".to_string(), &true, &".".to_string());
+    init(template_dir, &"drra".to_string(), &true, &".".to_string())
+        .expect("Failed to initialize testcase directory");
 
     // copy everything from the test directory to the current directory
     copy_dir_all(&test_dir, ".").unwrap();
@@ -322,4 +379,87 @@ fn get_testcase_dir(overwrite: Option<std::path::PathBuf>) -> std::path::PathBuf
     }
 
     return testcase_dir;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    // Helper to create a fake template directory with a file
+    fn setup_template_dir(base: &Path, style: &str) -> std::path::PathBuf {
+        // Create a fake template directory
+        let template_dir = base.join("share/vesyla/template").join(style);
+        fs::create_dir_all(&template_dir).unwrap();
+        // Copy the real template files
+        let binding = env!("CARGO_MANIFEST_DIR");
+        let src_dir = Path::new(binding);
+        let real_template_dir = src_dir.join("template").join(style);
+        // Copy the real template folder to the fake template directory
+        copy_dir_all(&real_template_dir, &template_dir).unwrap();
+
+        template_dir
+    }
+
+    #[test]
+    fn test_init_creates_output_and_copies_template() {
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+
+        // Setup fake template
+        let style = "drra";
+        let _template_dir = setup_template_dir(base, style);
+        let _template_dir = _template_dir.parent().unwrap().to_path_buf();
+
+        // Output directory
+        let output = base.join("output");
+        let output_str = output.to_str().unwrap().to_string();
+
+        // Call init
+        let result = init(Some(_template_dir), &style.to_string(), &false, &output_str);
+
+        assert!(result.is_ok());
+        assert!(output.exists());
+        assert!(output.is_dir());
+        assert!(output.join("run.sh").exists());
+        assert!(output.join("arch.json").exists());
+    }
+
+    #[test]
+    fn test_init_force_removes_lock() {
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+
+        // Setup fake template
+        let style = "drra";
+        let _template_dir = setup_template_dir(base, style);
+        let _template_dir = _template_dir.parent().unwrap().to_path_buf();
+
+        // Output directory
+        let output = base.join("output");
+        fs::create_dir_all(&output).unwrap();
+        let lock_file = output.join(".lock");
+        File::create(&lock_file).unwrap();
+
+        // Should not panic with force=true
+        let result_force = init(
+            Some(_template_dir.clone()),
+            &style.to_string(),
+            &true,
+            &output.to_str().unwrap().to_string(),
+        );
+
+        let result_no_force = init(
+            Some(_template_dir.clone()),
+            &style.to_string(),
+            &false,
+            &output.to_str().unwrap().to_string(),
+        );
+
+        assert!(result_force.is_ok());
+        assert!(result_no_force.is_err());
+        assert!(lock_file.exists());
+    }
 }
