@@ -8,7 +8,6 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process;
-use tempfile::tempdir;
 
 #[derive(Subcommand)]
 enum Command {
@@ -35,12 +34,18 @@ enum Command {
         /// Testcase directory
         #[arg(short, long)]
         directory: String,
+        /// Output directory
+        #[arg(short, long, default_value = ".")]
+        output_dir: String,
     },
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
         /// Testcase directory
         #[arg(short, long, default_value = "")]
         directory: String,
+        /// Output directory
+        #[arg(short, long, default_value = ".")]
+        output_dir: String,
     },
     #[command(about = "Export testcase", name = "export")]
     Export {
@@ -118,6 +123,7 @@ fn main() -> Result<(), io::Error> {
         Command::Run {
             template_dir,
             directory,
+            output_dir,
         } => {
             let template_dir = if template_dir.is_none() {
                 None
@@ -125,11 +131,14 @@ fn main() -> Result<(), io::Error> {
                 let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
-            run(template_dir, directory)
+            run(template_dir, directory, output_dir)
         }
-        Command::Generate { directory } => {
+        Command::Generate {
+            directory,
+            output_dir,
+        } => {
             info!("Generating testcase scripts ...");
-            generate(directory)
+            generate(directory, output_dir)
         }
         Command::Export { output } => {
             info!("Exporting testcase ...");
@@ -226,7 +235,11 @@ fn init(
     Ok(())
 }
 
-fn run(template_dir: Option<PathBuf>, directory: &String) -> Result<(), io::Error> {
+fn run(
+    template_dir: Option<PathBuf>,
+    directory: &String,
+    output_dir: &String,
+) -> Result<(), io::Error> {
     let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()))
         .expect("Failed to get testcase directory");
 
@@ -241,8 +254,8 @@ fn run(template_dir: Option<PathBuf>, directory: &String) -> Result<(), io::Erro
     }
 
     // Create a temporary directory in "."
-    let temp_dir = tempdir().unwrap();
-    let temp_dir_path = temp_dir.path();
+    let temp_dir = output_dir;
+    let temp_dir_path = Path::new(temp_dir);
 
     // use init() to initialize the testcase directory
     init(
@@ -268,43 +281,18 @@ fn run(template_dir: Option<PathBuf>, directory: &String) -> Result<(), io::Erro
     Ok(())
 }
 
-fn generate(directory: &String) -> Result<(), io::Error> {
-    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()))
-        .expect("Failed to get testcase directory");
+#[derive(Serialize)]
+struct TestcaseEntry {
+    name: String,
+    tags: String,
+    path: String,
+}
 
-    info!("Testcase directory: {:?}", testcases_dir);
-
-    // Find all nth-level directories under the testcases directory
-    fn collect_dirs_at_depth(root: &Path, depth: u8) -> Vec<String> {
-        let mut result = Vec::new();
-        let mut stack = vec![(root.to_path_buf(), 0)];
-
-        while let Some((path, cur_depth)) = stack.pop() {
-            if cur_depth == depth && path.is_dir() {
-                result.push(path.to_str().unwrap().to_owned());
-            } else if cur_depth < depth {
-                if let Ok(entries) = fs::read_dir(&path) {
-                    for entry in entries.flatten() {
-                        let entry_path = entry.path();
-                        if entry_path.is_dir() {
-                            stack.push((entry_path, cur_depth + 1));
-                        }
-                    }
-                }
-            }
-        }
-        result
-    }
-    let leaf_path_vec: Vec<String> = collect_dirs_at_depth(Path::new(&testcases_dir), 3);
-
-    #[derive(Serialize)]
-    struct TestcaseEntry {
-        name: String,
-        tags: String,
-        path: String,
-    }
-
+fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
+    // Create a vector of TestcaseEntry
     let mut testcase_entries = Vec::new();
+
+    // Iterate over the leaf_path_vec and create TestcaseEntry for each path
     for leaf_path in leaf_path_vec {
         let leaf_path_str = leaf_path;
         let leaf_path_str_split: Vec<&str> = leaf_path_str.split("/").collect();
@@ -321,6 +309,7 @@ fn generate(directory: &String) -> Result<(), io::Error> {
             .unwrap()
             .to_string();
 
+        // Add the TestcaseEntry to the vector
         testcase_entries.push(TestcaseEntry {
             name: name,
             tags: tags,
@@ -328,7 +317,67 @@ fn generate(directory: &String) -> Result<(), io::Error> {
         });
     }
 
-    // if path is under VESYLA_SUITE_PATH_TESTCASE, convert it to relative path by replace it with {{VESYLA_SUITE_PATH_TESTCASE}}
+    // Return the vector of TestcaseEntry
+    testcase_entries
+}
+
+fn generate_autotest_config_robot(
+    testcase_entries: &[TestcaseEntry],
+    output_dir: &String,
+) -> Result<(), io::Error> {
+    let template = include_str!("../assets/autotest_template.robot.j2");
+    let mut context = minijinja::Environment::new();
+    context.add_template("autotest_template", template).unwrap();
+    let result = context
+        .get_template("autotest_template")
+        .unwrap()
+        .render(minijinja::context!(testcases => testcase_entries));
+
+    let comment =
+        "*** Comments ***\nThis file was automatically generated by Vesyla. DO NOT EDIT.\n\n"
+            .to_string();
+    let output = comment + &result.expect("Failed to render template");
+    let output_path = format!("{}/autotest_config.robot", output_dir);
+    let mut autotest_config_robot =
+        File::create(&output_path).expect("Failed to create autotest_config.robot");
+    autotest_config_robot
+        .write_all(output.as_bytes())
+        .expect("Failed to write autotest_config.robot");
+    Ok(())
+}
+
+// Find all nth-level directories under the testcases directory
+fn collect_dirs_at_depth(root: &Path, depth: u8) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), 0)];
+
+    while let Some((path, cur_depth)) = stack.pop() {
+        if cur_depth == depth && path.is_dir() {
+            result.push(path.to_str().unwrap().to_owned());
+        } else if cur_depth < depth {
+            if let Ok(entries) = fs::read_dir(&path) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.is_dir() {
+                        stack.push((entry_path, cur_depth + 1));
+                    }
+                }
+            }
+        }
+    }
+    result
+}
+
+fn generate(directory: &String, output_dir: &String) -> Result<(), io::Error> {
+    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()))
+        .expect("Failed to get testcase directory");
+
+    info!("Testcase directory: {:?}", testcases_dir);
+
+    let leaf_path_vec: Vec<String> = collect_dirs_at_depth(Path::new(&testcases_dir), 3);
+
+    let mut testcase_entries = build_testcase_entries(leaf_path_vec);
+
     let testcase_path_str = get_testcase_dir(None)
         .expect("Failed to get testcase directory")
         .to_str()
@@ -340,40 +389,35 @@ fn generate(directory: &String) -> Result<(), io::Error> {
         }
     }
 
+    // check if the testcase entries are empty
+    if testcase_entries.is_empty() {
+        error!("No testcases found in the directory");
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No testcases found in the directory",
+        ));
+    }
     info!("Found {} testcases", testcase_entries.len());
 
     // generate the testcase scripts: run.sh
-    let mut run_sh = File::create("run.sh").expect("Failed to create run.sh");
+    let output_path = format!("{}/run.sh", output_dir);
+    let mut run_sh = File::create(&output_path).expect("Failed to create run.sh");
     let run_sh_content = include_str!("../assets/run.sh");
     run_sh
         .write_all(run_sh_content.as_bytes())
         .expect("Failed to write run.sh");
 
     // make the run.sh executable
-    let mut perms = fs::metadata("run.sh").unwrap().permissions();
+    let mut perms = fs::metadata(&output_path).unwrap().permissions();
     perms.set_mode(0o755);
-    fs::set_permissions("run.sh", perms).expect("Failed to set permissions");
+    fs::set_permissions(&output_path, perms).expect("Failed to set permissions");
 
     // generate the testcase scripts: autotest_config.robot
-    let template = include_str!("../assets/autotest_template.robot.j2");
-    let mut context = minijinja::Environment::new();
-    context.add_template("autotest_template", template).unwrap();
-    let result = context
-        .get_template("autotest_template")
-        .unwrap()
-        .render(&testcase_entries);
-    let comment =
-        "*** Comments ***\nThis file was automatically generated by Vesyla. DO NOT EDIT.\n\n"
-            .to_string();
-    let output = comment + &result.expect("Failed to render template");
-    let mut autotest_config_robot =
-        File::create("autotest_config.robot").expect("Failed to create autotest_config.robot");
-    autotest_config_robot
-        .write_all(output.as_bytes())
-        .expect("Failed to write autotest_config.robot");
+    generate_autotest_config_robot(&testcase_entries, &output_dir)?;
 
     // create the work directory
-    fs::create_dir_all("work").unwrap();
+    let output_work_path = format!("{}/work", output_dir);
+    fs::create_dir_all(&output_work_path).unwrap();
 
     Ok(())
 }
@@ -509,5 +553,42 @@ mod tests {
         assert!(result_force.is_ok());
         assert!(result_no_force.is_err());
         assert!(lock_file.exists());
+    }
+
+    fn create_fake_testcases(base: &PathBuf) {
+        let testcases_dir = base.join("testcases/style0/");
+        fs::create_dir_all(&testcases_dir).unwrap();
+        let testcase1 = testcases_dir.join("type1/foo");
+        fs::create_dir_all(&testcase1).unwrap();
+        let testcase2 = testcases_dir.join("type1/bar");
+        fs::create_dir_all(&testcase2).unwrap();
+        let testcase2 = testcases_dir.join("type2/foo");
+        fs::create_dir_all(&testcase2).unwrap();
+        let testcase2 = testcases_dir.join("type2/bar");
+        fs::create_dir_all(&testcase2).unwrap();
+    }
+
+    #[test]
+    fn test_generate_autotest_config_robot_creates_file() {
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        create_fake_testcases(&base.to_path_buf());
+
+        let leaf_path_vec = collect_dirs_at_depth(&base.join("testcases/"), 3);
+        let testcase_entries = build_testcase_entries(leaf_path_vec);
+
+        let result = generate_autotest_config_robot(&testcase_entries, &base.display().to_string());
+        assert!(result.is_ok());
+
+        let robot_path = temp_dir.path().join("autotest_config.robot");
+        assert!(robot_path.exists());
+
+        let content = fs::read_to_string(robot_path).unwrap();
+        assert!(content.contains("*** Comments ***"));
+
+        assert!(content.contains("tc   style0::type1::bar"));
+        assert!(content.contains("tc   style0::type1::foo"));
+        assert!(content.contains("tc   style0::type2::bar"));
+        assert!(content.contains("tc   style0::type2::foo"));
     }
 }
