@@ -147,18 +147,18 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
-fn export(output: &String) -> Result<(), io::Error> {
+fn export(output: &str) -> Result<(), io::Error> {
     // convert the output path to absolute path
-    let output_dir = output.clone();
+    let output_dir = output;
 
     // check if the output directory exists, if not create it
     if !Path::new(&output_dir).exists() {
-        fs::create_dir_all(&output_dir).expect("Failed to create output directory");
+        fs::create_dir_all(output_dir).expect("Failed to create output directory");
     }
 
     // copy everything from default test directory to the output directory
     let testcase_dir = get_testcase_dir(None).expect("Failed to get testcase directory");
-    copy_dir_all(&testcase_dir, &output_dir).expect("Failed to copy testcase directory");
+    copy_dir_all(&testcase_dir, output_dir).expect("Failed to copy testcase directory");
 
     Ok(())
 }
@@ -171,7 +171,7 @@ fn init(
 ) -> Result<(), io::Error> {
     // create the output directory
     if !Path::new(&output).exists() {
-        fs::create_dir_all(&output).unwrap();
+        fs::create_dir_all(output).unwrap();
     }
 
     // lock the output directory
@@ -230,7 +230,7 @@ fn init(
     }
 
     // copy all the contents including files and subdirectories in template directory to the output directory
-    copy_dir_all(&template_path, &output).expect("Failed to copy template directory");
+    copy_dir_all(&template_path, output).expect("Failed to copy template directory");
 
     Ok(())
 }
@@ -310,11 +310,7 @@ fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
             .to_string();
 
         // Add the TestcaseEntry to the vector
-        testcase_entries.push(TestcaseEntry {
-            name: name,
-            tags: tags,
-            path: path,
-        });
+        testcase_entries.push(TestcaseEntry { name, tags, path });
     }
 
     // Return the vector of TestcaseEntry
@@ -413,7 +409,7 @@ fn generate(directory: &String, output_dir: &String) -> Result<(), io::Error> {
     fs::set_permissions(&output_path, perms).expect("Failed to set permissions");
 
     // generate the testcase scripts: autotest_config.robot
-    generate_autotest_config_robot(&testcase_entries, &output_dir)?;
+    generate_autotest_config_robot(&testcase_entries, output_dir)?;
 
     // create the work directory
     let output_work_path = format!("{}/work", output_dir);
@@ -555,7 +551,7 @@ mod tests {
         assert!(lock_file.exists());
     }
 
-    fn create_fake_testcases(base: &PathBuf) {
+    fn create_fake_testcases(base: &Path) {
         let testcases_dir = base.join("testcases/style0/");
         fs::create_dir_all(&testcases_dir).unwrap();
         let testcase1 = testcases_dir.join("type1/foo");
@@ -572,7 +568,7 @@ mod tests {
     fn test_generate_autotest_config_robot_creates_file() {
         let temp_dir = tempdir().unwrap();
         let base = temp_dir.path();
-        create_fake_testcases(&base.to_path_buf());
+        create_fake_testcases(base);
 
         let leaf_path_vec = collect_dirs_at_depth(&base.join("testcases/"), 3);
         let testcase_entries = build_testcase_entries(leaf_path_vec);
