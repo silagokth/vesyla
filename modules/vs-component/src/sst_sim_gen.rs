@@ -1,6 +1,4 @@
 use log::{info, warn};
-use minijinja;
-use serde_json;
 use std::fs;
 use std::io::Error;
 

@@ -1,6 +1,5 @@
 use crate::drra::Fabric;
 use crate::utils;
-use serde_json;
 use std::collections::HashMap;
 use std::fs;
 use svg::node::element::{Group, Rectangle, Text};

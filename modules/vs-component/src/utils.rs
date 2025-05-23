@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use tempfile::tempdir;
 
-pub fn get_library_path() -> Result<String> {
+pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
-        Ok(path) => path,
+        Ok(path) => PathBuf::from(path),
         Err(e) => {
             return Err(Error::new(
                 std::io::ErrorKind::NotFound,
@@ -31,7 +31,8 @@ pub fn get_library_path() -> Result<String> {
             ));
         }
     };
-    Ok(abosulte.to_str().unwrap().to_string())
+
+    Ok(abosulte)
 }
 
 pub fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
@@ -98,20 +99,31 @@ pub fn merge_parameters(
     Ok(overwritten_params)
 }
 
-pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
-    let library_path = match get_library_path() {
-        Ok(path) => path,
-        Err(e) => {
-            return Err(Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Failed to get library path: {}", e),
-            ));
-        }
+pub fn get_path_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<PathBuf> {
+    // Get library path from arg or environment variable
+    let library_path = match library_path {
+        Some(path) => path,
+        None => match get_library_path() {
+            Ok(path) => {
+                let binding = path.as_path();
+                return Ok(binding.to_path_buf());
+            }
+            Err(e) => {
+                return Err(Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Failed to get library path: {}", e),
+                ));
+            }
+        },
     };
-    debug!("Library path: {}", library_path);
+    debug!("Library path: {:?}", library_path);
     debug!("Looking for component: {}", component_name);
+
     // Check if a folder in the library is named the same as the cell
-    for entry in walkdir::WalkDir::new(&library_path)
+    for entry in walkdir::WalkDir::new(library_path)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -136,9 +148,23 @@ pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
     ))
 }
 
-pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Value> {
+pub fn get_arch_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<serde_json::Value> {
     // Check if a folder in the library is named the same as the cell
-    let component_path = get_path_from_library(component_name)?;
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Component {} not found in the library: {}",
+                    component_name, e
+                ),
+            ));
+        }
+    };
 
     // Get the arch.json file for the cell
     let arch_path = component_path.join("arch.json");
@@ -176,8 +202,22 @@ pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Valu
     }
 }
 
-pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value> {
-    let component_path = get_path_from_library(component_name)?;
+pub fn get_isa_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<serde_json::Value> {
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Component {} not found in the library: {}",
+                    component_name, e
+                ),
+            ));
+        }
+    };
 
     // Get the isa.json file for the cell
     let isa_path = component_path.join("isa.json");
@@ -211,8 +251,22 @@ pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value
     }
 }
 
-pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>> {
-    let component_path = get_path_from_library(component_name)?;
+pub fn get_rtl_files_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<Vec<String>> {
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Component {} not found in the library: {}",
+                    component_name, e
+                ),
+            ));
+        }
+    };
     let rtl_path = component_path.join("rtl");
     if !rtl_path.exists() {
         warn!(
@@ -268,17 +322,13 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
 
     // Check if the command was successful
     if !output.status.success() {
-        warn!(
-            "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
-            component_name,
-            tmp_component_path.to_str().unwrap(),
-            String::from_utf8_lossy(&output.stderr)
-        );
         return Err(Error::new(
             std::io::ErrorKind::Other,
             format!(
-                "Failed to run bender command to get the list of RTL files for component {}",
-                component_name
+                "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
+                component_name,
+                tmp_component_path.to_str().unwrap(),
+                String::from_utf8_lossy(&output.stderr)
             ),
         ));
     }
@@ -310,8 +360,16 @@ pub fn generate_rtl_for_component(
         );
     }
 
-    let rtl_files_list = get_rtl_files_from_library(&kind.to_string())
-        .unwrap_or_else(|_| panic!("Failed to get RTL files from library for {}", kind));
+    let rtl_files_list = match get_rtl_files_from_library(&kind.to_string(), None) {
+        Ok(rtl_files) => rtl_files,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to get RTL files for component {}: {}", kind, e),
+            ));
+        }
+    };
+
     debug!("RTL files: {:?}", rtl_files_list);
 
     for rtl_file in rtl_files_list {
@@ -346,7 +404,7 @@ pub fn generate_rtl_for_component(
         let rtl_template_path = Path::new(&rtl_template_str);
         if rtl_template_path.exists() {
             let mut mj_env = minijinja::Environment::new();
-            let template_dir = std::path::PathBuf::from(get_library_path()?).join("common/jinja");
+            let template_dir = get_library_path()?.join("common/jinja");
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
@@ -448,25 +506,25 @@ mod tests {
 
     #[test]
     fn test_get_path_from_library_not_found() {
-        let result = get_path_from_library(&"nonexistent_component".to_string());
+        let result = get_path_from_library(&"nonexistent_component".to_string(), None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_get_arch_from_library_not_found() {
-        let result = get_arch_from_library(&"nonexistent_component".to_string());
+        let result = get_arch_from_library(&"nonexistent_component".to_string(), None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_get_isa_from_library_not_found() {
-        let result = get_isa_from_library(&"nonexistent_component".to_string());
+        let result = get_isa_from_library(&"nonexistent_component".to_string(), None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_get_rtl_files_from_library_not_found() {
-        let result = get_rtl_files_from_library(&"nonexistent_component".to_string());
+        let result = get_rtl_files_from_library(&"nonexistent_component".to_string(), None);
         assert!(result.is_err());
     }
 

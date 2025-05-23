@@ -1,5 +1,3 @@
-use minijinja;
-use serde_json;
 use std::collections::HashSet;
 use std::fs;
 
@@ -105,7 +103,7 @@ fn gen_isa_json(arch_file: &String, isa_file: &String) {
         let controller = cell["controller"].as_object().unwrap();
         // check if the controller kind is in the set
         if !kind_set.contains(controller["kind"].as_str().unwrap()) {
-            if kind_set.len() == 0 {
+            if kind_set.is_empty() {
                 isa_json["format"]["instr_bitwidth"] =
                     controller["isa"]["format"]["instr_bitwidth"].clone();
                 isa_json["format"]["instr_type_bitwidth"] =
@@ -161,7 +159,7 @@ fn gen_isa_json(arch_file: &String, isa_file: &String) {
 
         for resource in cell["resources_list"].as_array().unwrap() {
             if !kind_set.contains(resource["kind"].as_str().unwrap()) {
-                if kind_set.len() == 0 {
+                if kind_set.is_empty() {
                     isa_json["format"]["instr_bitwidth"] =
                         resource["isa"]["format"]["instr_bitwidth"].clone();
                     isa_json["format"]["instr_type_bitwidth"] =
