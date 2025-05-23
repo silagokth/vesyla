@@ -1741,6 +1741,7 @@ dependencies = [
  "log",
  "minijinja",
  "serde",
+ "tempfile",
 ]
 
 [[package]]

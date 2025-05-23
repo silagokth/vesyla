@@ -15,32 +15,23 @@
 // You should have received a copy of the GNU General Public License
 // along with Vesyla.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __STREAM_HPP__
-#define __STREAM_HPP__
+#ifndef __DRRA_HPP__
+#define __DRRA_HPP__
 
-#include <bitset>
-#include <vector>
+#include "IO.hpp"
+#include "Util.hpp"
 
-template<class T>
-class Stream{
-public:
-    std::vector<T> data;
 
-public:
-    Stream(){}
-    Stream(size_t size){
-        data.resize(size);
-    }
-    size_t size(){
-        return data.size();
-    }
-    T& operator[](size_t index)
-    {
-        return data[index];
-    }
-    void push_back(T e){
-        data.push_back(e);
-    }
-};
+void init(IO &input_buffer);
+void model_l0(IO &input_buffer, IO &output_buffer);
+void model_l1();
 
-#endif // __STREAM_HPP__
+void store_data(std::string file_, IO buffer);
+void load_data(std::string file_, IO &buffer);
+
+void reset(IO &buffer);
+
+void reset_all();
+bool verify(std::string file0_, std::string file1_);
+
+#endif // __DRRA_HPP__
