@@ -99,9 +99,15 @@ pub fn merge_parameters(
 }
 
 pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
-    let library_path = get_library_path().unwrap_or_else(|_| {
-        panic!("Failed to get library path. Make sure VESYLA_SUITE_PATH_COMPONENTS is set.")
-    });
+    let library_path = match get_library_path() {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to get library path: {}", e),
+            ));
+        }
+    };
     debug!("Library path: {}", library_path);
     debug!("Looking for component: {}", component_name);
     // Check if a folder in the library is named the same as the cell
