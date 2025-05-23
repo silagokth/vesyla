@@ -151,7 +151,7 @@ fn assemble(arch: &String, output: &String) {
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
     fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
     fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
-    match rtl_code_gen::gen_rtl(&arch, &output, &format!("{}/arch/arch.json", output)) {
+    match rtl_code_gen::gen_rtl(arch, output, &format!("{}/arch/arch.json", output)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }

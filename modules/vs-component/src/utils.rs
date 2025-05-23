@@ -8,11 +8,30 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use tempfile::tempdir;
 
-pub fn get_library_path() -> String {
-    let lib_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").expect("Environment variable VESYLA_SUITE_PATH_COMPONENTS not set! Did you forget to source the setup script env.sh?");
+pub fn get_library_path() -> Result<String> {
+    let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Environment variable VESYLA_SUITE_PATH_COMPONENTS not set: {}",
+                    e
+                ),
+            ));
+        }
+    };
     // get abosulte path
-    let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
-    abosulte.to_str().unwrap().to_string()
+    let abosulte = match std::path::absolute(lib_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to get absolute path: {}", e),
+            ));
+        }
+    };
+    Ok(abosulte.to_str().unwrap().to_string())
 }
 
 pub fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
@@ -80,7 +99,9 @@ pub fn merge_parameters(
 }
 
 pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
-    let library_path = get_library_path();
+    let library_path = get_library_path().unwrap_or_else(|_| {
+        panic!("Failed to get library path. Make sure VESYLA_SUITE_PATH_COMPONENTS is set.")
+    });
     debug!("Library path: {}", library_path);
     debug!("Looking for component: {}", component_name);
     // Check if a folder in the library is named the same as the cell
@@ -92,7 +113,7 @@ pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
         if path.is_dir()
             && path
                 .file_name()
-                .map_or(false, |name| name == component_name.as_str())
+                .is_some_and(|name| name == component_name.as_str())
         {
             debug!(
                 "Component {} found in the library at path {}",
@@ -283,10 +304,8 @@ pub fn generate_rtl_for_component(
         );
     }
 
-    let rtl_files_list = get_rtl_files_from_library(&kind.to_string()).expect(&format!(
-        "Failed to get RTL files from library for {}",
-        kind
-    ));
+    let rtl_files_list = get_rtl_files_from_library(&kind.to_string())
+        .unwrap_or_else(|_| panic!("Failed to get RTL files from library for {}", kind));
     debug!("RTL files: {:?}", rtl_files_list);
 
     for rtl_file in rtl_files_list {
@@ -296,7 +315,7 @@ pub fn generate_rtl_for_component(
         // Get the name of the file from the path
         let rtl_filename = Path::new(&rtl_file).file_name().unwrap();
         // Create output file
-        let output_file = output_folder.join(&rtl_filename);
+        let output_file = output_folder.join(rtl_filename);
         debug!("Generating RTL file: {}", output_file.to_str().unwrap());
 
         // Get the appropriate comment prefix based on file extension
@@ -321,14 +340,14 @@ pub fn generate_rtl_for_component(
         let rtl_template_path = Path::new(&rtl_template_str);
         if rtl_template_path.exists() {
             let mut mj_env = minijinja::Environment::new();
-            let template_dir = std::path::PathBuf::from(get_library_path()).join("common/jinja");
+            let template_dir = std::path::PathBuf::from(get_library_path()?).join("common/jinja");
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
             let rtl_template_content =
-                fs::read_to_string(&rtl_template_path).expect("Failed to read template file");
+                fs::read_to_string(rtl_template_path).expect("Failed to read template file");
             mj_env
-                .add_template("rtl_template", &rtl_template_content.as_str())
+                .add_template("rtl_template", rtl_template_content.as_str())
                 .expect("Failed to add template");
 
             // Render the template with the component data
@@ -373,12 +392,12 @@ pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
 pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     // Create the output directory if it does not exist
     if !dst.exists() {
-        fs::create_dir_all(&dst).expect("Failed to create output directory");
+        fs::create_dir_all(dst).expect("Failed to create output directory");
     }
     debug!("Copying directory: {:?} to {:?}", src, dst);
 
     // Copy files, adding comments to Verilog/SystemVerilog files
-    for entry in fs::read_dir(&src).unwrap() {
+    for entry in fs::read_dir(src).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         let target_path = dst.join(path.file_name().unwrap());
@@ -388,17 +407,17 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
                 "This file was automatically generated by Vesyla. DO NOT EDIT.\n\n";
             if path
                 .extension()
-                .map_or(false, |ext| ext == "sv" || ext == "v")
+                .is_some_and(|ext| ext == "sv" || ext == "v")
             {
-                let comment = "// ".to_string() + &comment_content;
+                let comment = "// ".to_string() + comment_content;
                 let content = fs::read_to_string(&path).expect("Failed to read file");
                 let new_content = comment + &content;
                 fs::write(&target_path, new_content).expect("Failed to write file");
             } else if path
                 .extension()
-                .map_or(false, |ext| ext == "vhdl" || ext == "vhd")
+                .is_some_and(|ext| ext == "vhdl" || ext == "vhd")
             {
-                let comment = "-- ".to_string() + &comment_content;
+                let comment = "-- ".to_string() + comment_content;
                 let content = fs::read_to_string(&path).expect("Failed to read file");
                 let new_content = comment + &content;
                 fs::write(&target_path, new_content).expect("Failed to write file");
@@ -414,4 +433,151 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_get_path_from_library_not_found() {
+        let result = get_path_from_library(&"nonexistent_component".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_arch_from_library_not_found() {
+        let result = get_arch_from_library(&"nonexistent_component".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_isa_from_library_not_found() {
+        let result = get_isa_from_library(&"nonexistent_component".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_rtl_files_from_library_not_found() {
+        let result = get_rtl_files_from_library(&"nonexistent_component".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_merge_parameters_no_overlap() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("b".to_string(), 2u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(params1.get("b"), Some(&2));
+        assert!(overwritten.is_empty());
+    }
+
+    #[test]
+    fn test_merge_parameters_with_overlap_same_value() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert!(overwritten.is_empty());
+    }
+
+    #[test]
+    fn test_merge_parameters_with_overlap_different_value() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("a".to_string(), 2u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(overwritten, vec![("a".to_string(), 1u64, 2u64)]);
+    }
+
+    #[test]
+    fn test_merge_parameters_multiple() {
+        let mut params1 = [("a".to_string(), 1u64), ("b".to_string(), 2u64)]
+            .iter()
+            .cloned()
+            .collect();
+        let params2 = [("b".to_string(), 3u64), ("c".to_string(), 4u64)]
+            .iter()
+            .cloned()
+            .collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(params1.get("b"), Some(&2));
+        assert_eq!(params1.get("c"), Some(&4));
+        assert_eq!(overwritten, vec![("b".to_string(), 2u64, 3u64)]);
+    }
+
+    #[test]
+    fn test_get_parameters_array() {
+        let json = serde_json::json!({
+            "parameters": [
+                { "name": "foo", "value": 42 },
+                { "name": "bar", "value": 7 }
+            ]
+        });
+        let params = get_parameters(&json, None);
+        assert_eq!(params.get("foo"), Some(&42));
+        assert_eq!(params.get("bar"), Some(&7));
+    }
+
+    #[test]
+    fn test_get_parameters_object() {
+        let json = serde_json::json!({
+            "parameters": {
+                "foo": 123,
+                "bar": 456
+            }
+        });
+        let params = get_parameters(&json, None);
+        assert_eq!(params.get("foo"), Some(&123));
+        assert_eq!(params.get("bar"), Some(&456));
+    }
+
+    #[test]
+    fn test_get_parameters_custom_key() {
+        let json = serde_json::json!({
+            "custom": {
+                "baz": 99
+            }
+        });
+        let params = get_parameters(&json, Some("custom".to_string()));
+        assert_eq!(params.get("baz"), Some(&99));
+    }
+
+    #[test]
+    fn test_get_parameters_missing() {
+        let json = serde_json::json!({});
+        let params = get_parameters(&json, None);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_generate_hash_different_names() {
+        let params = BTreeMap::new();
+        let hash1 = generate_hash(vec!["foo".to_string()], &params);
+        let hash2 = generate_hash(vec!["bar".to_string()], &params);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_generate_hash_different_params() {
+        let mut params1 = BTreeMap::new();
+        params1.insert("a".to_string(), 1u64);
+        let mut params2 = BTreeMap::new();
+        params2.insert("a".to_string(), 2u64);
+        let hash1 = generate_hash(vec!["foo".to_string()], &params1);
+        let hash2 = generate_hash(vec!["foo".to_string()], &params2);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_generate_hash_same_input_same_output() {
+        let mut params = BTreeMap::new();
+        params.insert("x".to_string(), 42u64);
+        let hash1 = generate_hash(vec!["baz".to_string()], &params);
+        let hash2 = generate_hash(vec!["baz".to_string()], &params);
+        assert_eq!(hash1, hash2);
+    }
 }
