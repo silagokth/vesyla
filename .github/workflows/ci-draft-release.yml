@@ -4,11 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  ci-build-appimage:
-    uses: ./.github/workflows/ci-build-appimage.yml
-
   create_release:
-    needs: ci-build-appimage
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
