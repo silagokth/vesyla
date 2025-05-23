@@ -258,13 +258,7 @@ pub fn get_rtl_files_from_library(
     let component_path = match get_path_from_library(component_name, library_path) {
         Ok(path) => path,
         Err(e) => {
-            return Err(Error::new(
-                std::io::ErrorKind::NotFound,
-                format!(
-                    "Component {} not found in the library: {}",
-                    component_name, e
-                ),
-            ));
+            return Err(e);
         }
     };
     let rtl_path = component_path.join("rtl");
@@ -504,6 +498,38 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
+    fn create_fake_library(base: PathBuf) -> Result<PathBuf> {
+        let temp_dir = base;
+        let library_path = temp_dir;
+        let component_path = library_path.join("dummy");
+        let component_rtl_path = component_path.join("rtl");
+        let component_rtl_file_path = component_rtl_path.join("dummy.sv");
+        fs::create_dir_all(&component_path)?;
+        fs::create_dir_all(&component_rtl_path)?;
+        fs::write(
+            component_path.join("arch.json"),
+            r#"{"parameters": {"a": 1}}"#,
+        )?;
+        fs::write(
+            component_path.join("isa.json"),
+            r#"{"parameters": {"b": 2}}"#,
+        )?;
+        fs::write(
+            component_path.join("Bender.yml"),
+            r#"
+package:
+  name: dummy
+
+dependencies:
+
+sources:
+  - ./rtl/dummy.sv"#,
+        )?;
+        fs::write(component_rtl_file_path, r#"// This is a dummy RTL file"#)?;
+
+        Ok(library_path)
+    }
+
     #[test]
     fn test_get_path_from_library_not_found() {
         let result = get_path_from_library(&"nonexistent_component".to_string(), None);
@@ -526,6 +552,39 @@ mod tests {
     fn test_get_rtl_files_from_library_not_found() {
         let result = get_rtl_files_from_library(&"nonexistent_component".to_string(), None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_arch_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let result = get_arch_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_isa_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let result = get_isa_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_rtl_files_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let result = get_rtl_files_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(result.is_ok());
     }
 
     #[test]
