@@ -20,10 +20,9 @@
 
 #include <bitset>
 #include <cassert>
-#include <iostream>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
-#include <cstdint>
 
 // Use (void) to silence unused warnings.
 #define assertm(exp, msg) assert(((void)msg, exp))
@@ -47,11 +46,13 @@ public:
     }
     return std::bitset<chunk_size>(0);
   }
+
   void set_slice(size_t addr_, std::bitset<chunk_size> slice_) {
     assert(addr_ < chunk_num);
     assert(slice_.size() == chunk_size);
     _data[addr_] = slice_;
   }
+
   vector<std::bitset<chunk_size>> chop(std::bitset<chunk_size> raw_data_,
                                        size_t size_) {
     assert(size_ <= chunk_size);
@@ -66,6 +67,7 @@ public:
     }
     return vec;
   }
+
   std::bitset<chunk_size> assemble(vector<std::bitset<chunk_size>> vec_,
                                    size_t size_) {
     assert(size_ <= chunk_size);
@@ -108,6 +110,7 @@ public:
     }
     return dec_vec;
   }
+
   string decode(std::bitset<chunk_size> raw_data_) {
     return raw_data_.to_string();
   }
@@ -129,6 +132,7 @@ public:
     raw_data = n;
     return raw_data;
   }
+
   template <typename T> std::bitset<chunk_size> encode(vector<T> enc_vec_) {
     vector<std::bitset<chunk_size>> vec(enc_vec_.size(), 0);
     for (size_t i = 0; i < vec.size(); i++) {
@@ -136,6 +140,7 @@ public:
     }
     return assemble(vec, sizeof(T) * 8);
   }
+
   std::bitset<chunk_size> encode(string enc_str_) {
     std::bitset<chunk_size> raw_data(enc_str_);
     return raw_data;
@@ -152,6 +157,7 @@ public:
       set_slice(addr_ + i, encode<T>(v));
     }
   }
+
   void write(size_t addr_, size_t size_, string enc_str_) {
     assert(enc_str_.size() == size_ * chunk_size);
     assert(addr_ + size_ <= chunk_num);
@@ -172,6 +178,7 @@ public:
     }
     return vec;
   }
+
   string read(size_t addr_, size_t size_) {
     assert(addr_ + size_ <= chunk_num);
     string str;
@@ -186,22 +193,27 @@ public:
   size_t get_chunk_size() { return chunk_size; }
   size_t get_size() { return chunk_num * chunk_size; }
   size_t get_size_in_byte() { return chunk_num * chunk_size / 8; }
+
   std::unordered_map<size_t, std::bitset<chunk_size>> get_data() {
     return _data;
   }
+
   void reset() { _data.clear(); }
+
   bool is_active() {
     if (_data.size() > 0) {
       return true;
     }
     return false;
   }
+
   bool is_row_active(size_t addr_) {
     if (_data.find(addr_) != _data.end()) {
       return true;
     }
     return false;
   }
+
   vector<size_t> get_active_rows() {
     vector<size_t> active_rows;
     for (auto r : _data) {
