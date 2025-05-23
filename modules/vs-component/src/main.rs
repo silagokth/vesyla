@@ -61,12 +61,16 @@ fn main() {
     let cli_args = match Args::try_parse() {
         Ok(args) => args,
         Err(e) => match e.kind() {
-            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+            ErrorKind::DisplayVersion => {
                 println!(
                     "vesyla ({}) {}",
                     env!("CARGO_PKG_NAME"),
                     env!("VESYLA_VERSION")
                 );
+                std::process::exit(0);
+            }
+            ErrorKind::DisplayHelp => {
+                println!("{}", e);
                 std::process::exit(0);
             }
             _ => {
