@@ -58,8 +58,7 @@ jobs:
           cd tests
           . /usr/share/modules/init/sh
           module use /opt/modules
-          module add questasim 
-          module add vesyla
+          module add questasim
           module add bender
           module add sst
           python3 -m venv .venv
