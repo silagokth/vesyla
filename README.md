@@ -1,4 +1,11 @@
-# vesyla
+# vesyla &emsp; [![Build Status]][actions] [![Rustc Version 1.82+]][rustc] [![Python Version 3.6+]][python]
+
+[Build Status]: https://img.shields.io/github/actions/workflow/status/silagokth/vesyla/ci-draft-release.yml
+[actions]: https://github.com/serde-rs/json/actions?query=branch%3Amaster
+[Rustc Version 1.82+]: https://img.shields.io/badge/rustc-1.82+-lightgray.svg?e&logo=rust&logoColor=white
+[rustc]: https://blog.rust-lang.org/2024/10/17/Rust-1.82.0/
+[Python Version 3.6+]: https://img.shields.io/badge/python-3.6+-lightgray.svg?e&logo=python&logoColor=white
+[python]: https://www.python.org/downloads/release/python-360/
 
 Tool suite for DRRA-2 hardware accelerator platform.
 
@@ -12,21 +19,20 @@ Tool suite for DRRA-2 hardware accelerator platform.
 
 ## Compile and Install
 
-1. Install dependencies:
+1. Install dependencies
 
-    ```bash
-    sh ./scripts/install_dependencies.sh
-    ```
+   ```bash
+   sh ./scripts/install_dependencies.sh
+   ```
 
-2. Generate the Vesyla appimage:
+2. Build Vesyla
 
-    ```bash
-    sh ./scripts/make_appimage.sh
-    ```
+   ```bash
+   make
+   ```
 
-3. Copy the appimage (`./vesyla`) to your `PATH`, for example:
+3. Install Vesyla
 
-    ```bash
-    chmod +x ./vesyla
-    sudo mv ./vesyla /usr/local/bin/vesyla
-    ```
+   ```bash
+   sudo make install
+   ```
