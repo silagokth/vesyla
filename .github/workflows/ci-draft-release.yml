@@ -1,0 +1,68 @@
+name: Create release
+
+on:
+  workflow_call:
+
+jobs:
+  create_release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vesyla-${{ github.sha }}
+          path: ./artifacts/
+
+      - name: Upload Release
+        id: upload-release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ./artifacts/vesyla
+
+  update_docs:
+    needs: create_release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout SilagoDoc repo
+        uses: actions/checkout@v4
+        with:
+          repository: "silagokth/SilagoDoc"
+          ref: "master"
+          token: ${{ secrets.SILAGO_DOC_PAT_VESYLA }}
+          path: "SilagoDoc"
+
+      - name: Setup Git config
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Copy CONTRIBUTING.md guide
+        run: cp ./CONTRIBUTING.md ./SilagoDoc/docs/Guideline/Software/Vesyla/CONTRIBUTING.md
+
+      - name: Commit and push changes
+        run: |
+          cd SilagoDoc
+          git add .
+          git diff --quiet && git diff --staged --quiet || (git commit -m "[github-bot] Update Vesyla CONTRIBUTING.md guide for version ${{ steps.get_version.outputs.VERSION }}" && git push origin master)
+        env:
+          GITHUB_TOKEN: ${{ secrets.SILAGO_DOC_PAT_VESYLA }}
