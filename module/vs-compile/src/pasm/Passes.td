@@ -38,4 +38,11 @@ def AddHaltPass: Pass<"add-halt-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def AddSlotPortPass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
+  let summary = "Add slot and port operations.";
+  let description = [{
+    Add slot and port operations to the module.
+  }];
+}
+
 #endif // VESYLA_IROPT_PASM_PASSES

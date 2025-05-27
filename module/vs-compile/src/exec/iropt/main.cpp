@@ -25,105 +25,32 @@
 #include "pasm/Passes.hpp"
 #include "util/Common.hpp"
 
-#include "pasm/Parser.hpp"
+#include "pasmpar/Parser.hpp"
+
+#include "schedule/Scheduler.hpp"
 
 INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char **argv) {
 
-  if (argc < 2) {
-    llvm::errs() << "Usage: " << argv[0] << " <input.mlir>\n";
+  if (argc < 4) {
+    llvm::errs() << "Usage: " << argv[0] << " <input.mlir> <arch> <isa>\n";
     return 1;
   }
 
-  ifstream input_file(argv[1]);
-  if (!input_file.is_open()) {
-    llvm::errs() << "Error opening input file: " << argv[1] << "\n";
-    return 1;
-  }
-  std::string input_str((std::istreambuf_iterator<char>(input_file)),
-                        std::istreambuf_iterator<char>());
-  input_file.close();
+  vesyla::pasmpar::Parser parser;
+  std::string filename(argv[1]);
+  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  registry.insert<vesyla::pasm::PasmDialect>();
+  context.appendDialectRegistry(registry);
+  context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
+  mlir::ModuleOp module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  parser.parse(filename, &module);
 
-  vesyla::pasm::Parser parser;
-  mlir::ModuleOp *module = parser.parse(input_str);
-  if (module == nullptr) {
-    llvm::errs() << "Error parsing input file: " << argv[1] << "\n";
-    return 1;
-  }
-
-  // // Initialize MLIR context and register dialects
-  // mlir::MLIRContext context;
-  // mlir::DialectRegistry registry;
-  // registry.insert<vesyla::pasm::PasmDialect>();
-  // context.appendDialectRegistry(registry);
-
-  // // Parse the input file into a ModuleOp
-  // mlir::OwningOpRef<mlir::ModuleOp> module =
-  //     mlir::parseSourceFile<mlir::ModuleOp>(argv[1], &context);
-  // if (!module) {
-  //   llvm::errs() << "Error parsing input file.\n";
-  //   return 1;
-  // }
-
-  // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
-  std::string VESYLA_SUITE_PATH_COMPONENTS =
-      std::getenv("VESYLA_SUITE_PATH_COMPONENTS")
-          ? std::getenv("VESYLA_SUITE_PATH_COMPONENTS")
-          : "";
-  if (VESYLA_SUITE_PATH_COMPONENTS == "") {
-    llvm::outs() << "Error: VESYLA_SUITE_PATH_COMPONENTS is not set.\n";
-    std::exit(-1);
-  }
-
-  // get the environment variable: VESYLA_SUITE_PATH_TMP
-  std::string VESYLA_SUITE_PATH_TMP = std::getenv("VESYLA_SUITE_PATH_TMP")
-                                          ? std::getenv("VESYLA_SUITE_PATH_TMP")
-                                          : "";
-  if (VESYLA_SUITE_PATH_TMP == "") {
-    llvm::outs() << "Error: VESYLA_SUITE_PATH_TMP is not set.\n";
-    std::exit(-1);
-  }
-  // create the directory if it does not exist
-  if (mkdir(VESYLA_SUITE_PATH_TMP.c_str(), 0777) == -1) {
-    if (errno != EEXIST) {
-      llvm::outs() << "Error: Failed to create directory: "
-                   << VESYLA_SUITE_PATH_TMP << "\n";
-      std::exit(-1);
-    }
-  }
-
-  // Create a PassManager
-  mlir::PassManager pm(&context);
-
-  // Add passes to the pipeline
-  pm.addPass(vesyla::pasm::createReplaceEpochOp(
-      {.component_map =
-           R"({"0_0_1_1":"rf", "0_0_1_0":"rf", "1_0_1_1":"rf", "1_0_1_0":"rf"})",
-       .component_path = VESYLA_SUITE_PATH_COMPONENTS,
-       .tmp_path = VESYLA_SUITE_PATH_TMP,
-       .row = 2,
-       .col = 2}));
-  pm.addPass(vesyla::pasm::createReplaceLoopOp());
-  pm.addPass(vesyla::pasm::createMergeRawOp());
-  pm.addPass(vesyla::pasm::createAddHaltPass());
-
-  // Run the pass pipeline
-  if (mlir::failed(pm.run(*module))) {
-    llvm::errs() << "Pass pipeline failed.\n";
-    return 1;
-  }
-
-  // Print the transformed module to stdout
-  module->print(llvm::outs());
-
-  // Save the transformed module to a file
-  std::string output_filename = "output";
-  std::string output_dir = ".";
-  vesyla::pasm::CodeGen cg;
-  cg.generate(module.get(), output_dir, output_filename);
-  llvm::outs() << "Generated code in " << output_dir << "/" << output_filename
-               << "\n";
+  vesyla::schedule::Scheduler scheduler(argv[2], argv[3]);
+  scheduler.run(module);
 
   return 0;
 }

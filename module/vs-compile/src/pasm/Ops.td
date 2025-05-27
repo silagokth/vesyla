@@ -67,7 +67,7 @@ def RopOp : Pasm_Op<"rop"> {
   }];
 
   let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col,
-                   I32Attr:$port, I32Attr:$slot);
+                   I32Attr:$slot, I32Attr:$port);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     `<` attr-dict `>` $body 

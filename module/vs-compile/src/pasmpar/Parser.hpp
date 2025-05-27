@@ -18,26 +18,19 @@
 #include "pasm/Types.hpp"
 #include <cctype>
 
-#include <regex>
+#include "PasmParser.hpp"
+#include "global_util.hpp"
+#include "util/Common.hpp"
 
 namespace vesyla {
-namespace pasm {
+namespace pasmpar {
 
 class Parser {
 public:
-  mlir::ModuleOp *parse(std::string &input);
-
-private:
-  void parse_instr(std::string &line);
-  void parse_epoch(std::string &line);
-  void parse_rop(std::string &line);
-  void parse_cop(std::string &line);
-  void parse_raw(std::string &line);
-  void parse_for(std::string &line);
-  void parse_if(std::string &line);
+  void parse(std::string &input, mlir::ModuleOp *module_);
 };
 
-} // namespace pasm
+} // namespace pasmpar
 } // namespace vesyla
 
 #endif // __VESYLA_PASM_PARSER_HPP__

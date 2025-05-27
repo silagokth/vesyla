@@ -5,9 +5,19 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-include(FetchContent)
-FetchContent_Declare(lexy URL https://github.com/foonathan/lexy/releases/download/v2022.12.1/lexy-src.zip)
-FetchContent_MakeAvailable(lexy)
+
+# Find Flex and Bison
+find_package(FLEX REQUIRED)
+find_package(BISON REQUIRED)
+
+# Specify Flex and Bison input files
+set(FLEX_INPUT ${CMAKE_SOURCE_DIR}/src/pasmpar/pasm.l)
+set(BISON_INPUT ${CMAKE_SOURCE_DIR}/src/pasmpar/pasm.y)
+
+# Generate lexer and parser
+FLEX_TARGET(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
+BISON_TARGET(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
+ADD_FLEX_BISON_DEPENDENCY(PasmLexer PasmParser)
 
 set(LLVM_HOME $ENV{LLVM_HOME})
 # print LLVM_HOME
@@ -40,6 +50,7 @@ message(STATUS "MLIR_INCLUDE_DIRS: ${MLIR_INCLUDE_DIRS}")
 include_directories(${STANDALONE_SOURCE_DIR}/src)
 include_directories(${STANDALONE_BINARY_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/lib/src)
+include_directories(${CMAKE_BINARY_DIR})
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
@@ -47,8 +58,9 @@ set(CUSTOM_IR_DIR ${CMAKE_BINARY_DIR}/custom_ir)
 
 file(GLOB SOURCE_CIDFG "src/cidfg/*.cpp")
 file(GLOB SOURCE_IROPT "src/exec/iropt/*.cpp")
-file(GLOB SOURCE_ASM "src/asm/*.cpp")
 file(GLOB SOURCE_PASM "src/pasm/*.cpp")
+file(GLOB SOURCE_PASMPAR "src/pasmpar/*.cpp")
+file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")
 
 function(add_custom_mlir_dialect dialect dialect_namespace)
         message(STATUS "Adding custom MLIR dialect: ${dialect}")
@@ -94,7 +106,6 @@ endfunction()
 add_custom_mlir_dialect(Pasm pasm)
 add_mlir_dialect_library(VesylaPasm
         ${SOURCE_PASM}
-
         DEPENDS
         VesylaPasmIncGen
 
@@ -117,16 +128,22 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
+# print flex and bison output files
+message(STATUS "FLEX_PasmLexer_OUTPUTS: ${FLEX_PasmLexer_OUTPUTS}")
+message(STATUS "BISON_PasmParser_OUTPUTS: ${BISON_PasmParser_OUTPUTS}")
+add_library(VesylaPasmPar ${SOURCE_PASMPAR} ${FLEX_PasmLexer_OUTPUTS} ${BISON_PasmParser_OUTPUTS})
+add_library(VesylaSchedule ${SOURCE_SCHEDULE})
 
 set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRArithDialect
         MLIROptLib
+        VesylaSchedule
+        VesylaPasmPar
         VesylaPasm
         VesylaTm
         VesylaUtil
-        foonathan::lexy
 )
 
 
