@@ -18,6 +18,7 @@ jsonschema = "0.30.0"
 log = "0.4.14"
 log-panics = { version = "2.1.0", features = ["with-backtrace"] }
 minijinja = { version = "2.0.2", features = ["loader"] }
+rand = "0.9.1"
 serde = "1.0.215"
 serde_json = "1.0.70"
 serde_yml = "0.0.12"
