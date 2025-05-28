@@ -269,10 +269,8 @@ pub fn get_rtl_files_from_library(
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let tmp_dir = tempdir()?.path().to_owned();
-    copy_dir(&component_path, &tmp_dir)?;
-
-    let tmp_component_path = tmp_dir;
+    let tmp_component_path = tempdir()?.path().to_owned();
+    copy_dir(&component_path, &tmp_component_path)?;
 
     // Run the bender command to get the list of files
     let mut bender_cmd = std::process::Command::new("bender");
