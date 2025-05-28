@@ -1,88 +1,56 @@
 use std::collections::HashSet;
 use std::fs;
+use std::path::Path;
 
-pub fn generate(arch_file: &String, output_dir: &String) {
-    let isa_file = format!("{}/isa.json", output_dir);
-    gen_isa_json(arch_file, &isa_file);
-    let doc_file = format!("{}/isa.md", output_dir);
-    gen_isa_doc(&isa_file, &doc_file);
+pub fn generate(arch_file_path: &Path, output_dir_path: &Path) {
+    let isa_file = Path::new(&output_dir_path).join("isa.json");
+    gen_isa_json(arch_file_path, &isa_file).expect("Failed to generate ISA JSON");
+    let doc_file = Path::new(&output_dir_path).join("isa.md");
+    gen_isa_doc(&isa_file, &doc_file).expect("Failed to generate ISA documentation");
 }
 
-fn gen_isa_doc(isa_file: &String, doc_file: &String) {
+fn gen_isa_doc(isa_file_path: &Path, output_doc_path: &Path) -> Result<(), std::io::Error> {
     // if the output directory does not exist, create it
-    let output_dir = std::path::Path::new(doc_file).parent().unwrap();
+    let output_dir = std::path::Path::new(output_doc_path).parent().unwrap();
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).expect("Failed to create output directory");
     }
 
     // read the json file
-    let json_str = std::fs::read_to_string(isa_file).expect("Failed to read file");
+    let json_str = std::fs::read_to_string(isa_file_path).expect("Failed to read file");
     let isa: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
 
-    // using minijinja to generate the system verilog api
-    let template = r#"
-
-# ISA Specification
-
-Instructions are {{isa.format.instr_bitwidth}}-bit wide. The MSB indicates whether it's a control instruction or a resource instruction. [0]: control; [1]: resource; The next {{isa.format.instr_opcode_bitwidth}} bits represent the instruction opcode. The rest of the bits are used to encode the instruction content. For resource instructions, another {{isa.format.instr_slot_bitwidth}} bits in the instruction content are used to indicate the slot number. The rest of the bits are used to encode the instruction content.
-
-Note that, specifically for resource instructions, if instruction opcode start with "11", the instruction contains a field that need to be replaced by scalar registers if the filed is marked "dynamic".
-
-## ISA Format
-Parameter | Width | Description
-----------|-------|-------------------------
-instr_bitwidth | {{isa.format.instr_bitwidth}} | Instruction bitwidth
-instr_type_bitwidth | {{isa.format.instr_type_bitwidth}} | Instruction type bitwidth
-instr_opcode_bitwidth | {{isa.format.instr_opcode_bitwidth}} | Instruction opcode bitwidth
-instr_slot_bitwidth | {{isa.format.instr_slot_bitwidth}} | Instruction slot bitwidth, only used for resource components
-
-## Instructions For Each Component
-{%- for c in isa.components %}
-
-### {{c.kind}} ( {{c.component_type}} )
-
-{% if c.component_type=="controller" %}
-{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - 1 -%}
-{% else %}
-{%- set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth - 1 -%}
-{% endif %}
-
-{%- for i in c.instructions %}
-
-#### {{i.name}} [opcode={{i.opcode}}]
-
-Field | Position | Width | Default Value | Description
-------|----------|-------|---------------|-------------------------
-{%- set start =useful_bitwidth-1 %}
-{%- for j in i.segments %}
-{%- set end = start - j.bitwidth + 1 %}
-{{j.name}} | [{{start }}, {{end}}] | {{j.bitwidth}} | {%- if j.default_val is defined -%}{{j.default_val}}{%- else -%}0{%- endif -%} | {{j.comment}} {%- if j.verbo_map -%}{% for k in j.verbo_map %} [{{k.key}}]:{{k.val}};{% endfor %}{%- endif -%}
-{%- set start = end - 1 -%}
-{%- endfor -%}
-{%- endfor -%}
-
-{%- endfor -%}
-
-"#;
-
+    // using minijinja to generate the ISA documentation
+    let template = include_str!("../assets/isa_doc_template.md.jinja");
     let mut env = minijinja::Environment::new();
+    env.set_trim_blocks(true);
+    env.set_lstrip_blocks(true);
     env.add_template("doc", template).unwrap();
     let tmpl = env.get_template("doc").unwrap();
     let result = tmpl.render(minijinja::context!(isa)).unwrap();
 
     // write the result to the output file
-    std::fs::write(doc_file, result).expect("Failed to write file");
+    match std::fs::write(output_doc_path, result) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Failed to write documentation to file: {}", e);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to write documentation",
+            ))
+        }
+    }
 }
 
-fn gen_isa_json(arch_file: &String, isa_file: &String) {
+fn gen_isa_json(arch_file_path: &Path, output_file_path: &Path) -> Result<(), std::io::Error> {
     // if output directory does not exist, create it
-    let output_dir = std::path::Path::new(isa_file).parent().unwrap();
+    let output_dir = std::path::Path::new(output_file_path).parent().unwrap();
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).expect("Failed to create output directory");
     }
 
     // read the json file
-    let json_str = std::fs::read_to_string(arch_file).expect("Failed to read file");
+    let json_str = std::fs::read_to_string(arch_file_path).expect("Failed to read file");
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
 
     let mut kind_set = HashSet::new();
@@ -216,9 +184,106 @@ fn gen_isa_json(arch_file: &String, isa_file: &String) {
     }
 
     // write the result to the output file
-    serde_json::to_writer_pretty(
-        std::fs::File::create(isa_file).expect("Failed to create file"),
+    match serde_json::to_writer_pretty(
+        std::fs::File::create(output_file_path).expect("Failed to create file"),
         &isa_json,
-    )
-    .expect("Failed to write file");
+    ) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Failed to write JSON to file: {}", e);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to write JSON",
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    #[test]
+    fn test_isa_doc_template_included() {
+        let template = include_str!("../assets/isa_doc_template.md.jinja");
+        assert!(!template.is_empty(), "Template should not be empty");
+        assert!(template.contains("{{")); // Check that the file contains Jinja2 syntax
+    }
+
+    #[test]
+    fn test_generate_isa_doc_runs() {
+        let mut tmp_isa_json = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        let isa_json = include_str!("../assets/isa_example.json");
+        tmp_isa_json
+            .write_all(isa_json.as_bytes())
+            .expect("Failed to write to temp file");
+        let tmp_isa_json_path = tmp_isa_json.path();
+        let dummy_isa = "ISA Example";
+        let mut doc_tmp_isa_json =
+            tempfile::NamedTempFile::new().expect("Failed to create temp file for doc");
+        doc_tmp_isa_json
+            .write_all(dummy_isa.as_bytes())
+            .expect("Failed to write to temp file");
+
+        gen_isa_doc(tmp_isa_json_path, doc_tmp_isa_json.path())
+            .expect("Failed to generate ISA documentation");
+
+        let output_content =
+            std::fs::read_to_string(doc_tmp_isa_json.path()).expect("Failed to read doc file");
+
+        assert!(
+            doc_tmp_isa_json.path().exists(),
+            "Documentation file should be created"
+        );
+        assert!(
+            output_content.contains("# ISA Specification"),
+            "Template header not found"
+        );
+        assert!(
+            output_content.contains("## Instructions For Each Component"),
+            "Template instructions section not found"
+        );
+        assert!(
+            output_content.contains("### sequencer (controller)"),
+            "Sequencer section not found"
+        );
+    }
+
+    #[test]
+    fn test_generate_isa_json_runs() {
+        let tmp_arch_json = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        let arch_json = include_str!("../assets/arch_example.json");
+        tmp_arch_json
+            .as_file()
+            .write_all(arch_json.as_bytes())
+            .expect("Failed to write to temp file");
+        let tmp_arch_json_path = tmp_arch_json.path();
+
+        let tmp_output_isa_json =
+            tempfile::NamedTempFile::new().expect("Failed to create temp file for output");
+        let tmp_output_isa_json_path = tmp_output_isa_json.path();
+
+        gen_isa_json(tmp_arch_json_path, tmp_output_isa_json_path)
+            .expect("Failed to generate ISA JSON");
+
+        let output_content =
+            std::fs::read_to_string(tmp_output_isa_json_path).expect("Failed to read output file");
+
+        assert!(
+            tmp_output_isa_json_path.exists(),
+            "Output ISA JSON file should be created"
+        );
+        assert!(
+            output_content.contains(
+                "\"__comment\": \"This file was automatically generated by Vesyla. DO NOT EDIT.\""
+            ),
+            "Comment not found in output"
+        );
+        assert!(
+            output_content.contains("\"format\": {"),
+            "Format section not found in output"
+        );
+    }
 }

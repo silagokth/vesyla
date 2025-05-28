@@ -159,10 +159,12 @@ fn assemble(arch: &String, output: &String) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }
-    isa_gen::generate(
-        &format!("{}/arch/arch.json", output),
-        &format!("{}/isa", output),
-    );
+
+    // Generate ISA (doc and json) from architecture JSON file
+    let arch_json_path = Path::new(output).join("arch/arch.json");
+    let doc_path = Path::new(output).join("isa/");
+    isa_gen::generate(&arch_json_path, &doc_path);
+
     arch_visual_gen::generate(
         &format!("{}/arch/arch.json", output),
         &format!("{}/arch", output),
