@@ -4,6 +4,28 @@ on:
   workflow_call:
 
 jobs:
+  run-cargo-tests:
+    name: Run Cargo tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install bender
+        run: |
+          curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh
+          mkdir -p $HOME/.local/bin
+          mv bender $HOME/.local/bin/.
+          echo "$HOME/.local/bin" > $GITHUB_PATH
+
+      - name: Check bender installation
+        run: bender --version
+
+      - name: Run Cargo tests
+        run: |
+          cd modules
+          RUST_BACKTRACE=1 cargo test --all
+
   build:
     name: Build AppImage
     runs-on: ubuntu-22.04
@@ -13,8 +35,8 @@ jobs:
 
       - name: Build project
         run: |
-          ./scripts/install_dependencies.sh
-          ./scripts/make_appimage.sh
+          make all
+          make install
 
       - name: Upload built artifact
         id: upload-artifact

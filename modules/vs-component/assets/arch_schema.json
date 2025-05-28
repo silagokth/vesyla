@@ -1,0 +1,220 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "platform": {
+      "type": "string",
+      "enum": [
+        "drra"
+      ]
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/resource"
+      }
+    },
+    "controllers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/controller"
+      }
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cell"
+      }
+    },
+    "fabric": {
+      "$ref": "#/definitions/fabric"
+    },
+    "interface": {
+      "$ref": "#/definitions/interface"
+    }
+  },
+  "required": [
+    "platform",
+    "resources",
+    "controllers",
+    "cells",
+    "fabric",
+    "interface"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "resource": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "word_input_port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "word_output_port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bulk_input_port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bulk_output_port": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "custom_properties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "val": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "key",
+              "val"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "name",
+        "size"
+      ]
+    },
+    "controller": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "iram_size": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "name",
+        "size"
+      ]
+    },
+    "cell": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "controller": {
+          "type": "string"
+        },
+        "resource_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "controller",
+        "resource_list"
+      ]
+    },
+    "fabric": {
+      "type": "object",
+      "properties": {
+        "cell_lists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "row": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "col": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "row",
+                    "col"
+                  ]
+                }
+              },
+              "cell_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinates",
+              "cell_name"
+            ]
+          }
+        },
+        "custom_properties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "val": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "key",
+              "val"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "cell_lists"
+      ]
+    },
+    "interface": {
+      "type": "object",
+      "properties": {
+        "input_buffer_depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output_buffer_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "input_buffer_depth",
+        "output_buffer_depth"
+      ]
+    }
+  }
+}

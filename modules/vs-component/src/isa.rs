@@ -179,11 +179,8 @@ impl InstructionSet {
                         }
 
                         let default_val = segment.get("default_val");
-                        let default_val = match default_val {
-                            Some(default_val) => Some(default_val.as_u64().unwrap()),
-                            None => None,
-                        };
-
+                        let default_val =
+                            default_val.map(|default_val| default_val.as_u64().unwrap());
                         let is_signed = segment.get("is_signed");
                         let is_signed = match is_signed {
                             Some(is_signed) => is_signed.as_bool().unwrap(),

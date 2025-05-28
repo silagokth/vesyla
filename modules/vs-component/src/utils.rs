@@ -8,11 +8,31 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use tempfile::tempdir;
 
-pub fn get_library_path() -> String {
-    let lib_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").expect("Environment variable VESYLA_SUITE_PATH_COMPONENTS not set! Did you forget to source the setup script env.sh?");
+pub fn get_library_path() -> Result<PathBuf> {
+    let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
+        Ok(path) => PathBuf::from(path),
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Environment variable VESYLA_SUITE_PATH_COMPONENTS not set: {}",
+                    e
+                ),
+            ));
+        }
+    };
     // get abosulte path
-    let abosulte = std::path::absolute(lib_path).expect("Cannot get absolute path for library");
-    abosulte.to_str().unwrap().to_string()
+    let abosulte = match std::path::absolute(lib_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to get absolute path: {}", e),
+            ));
+        }
+    };
+
+    Ok(abosulte)
 }
 
 pub fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
@@ -79,12 +99,26 @@ pub fn merge_parameters(
     Ok(overwritten_params)
 }
 
-pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
-    let library_path = get_library_path();
-    debug!("Library path: {}", library_path);
-    debug!("Looking for component: {}", component_name);
+pub fn get_path_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<PathBuf> {
+    // Get library path from arg or environment variable
+    let library_path = match library_path {
+        Some(path) => path.to_path_buf(),
+        None => match get_library_path() {
+            Ok(path) => path.to_path_buf(),
+            Err(e) => {
+                return Err(Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Failed to get library path: {}", e),
+                ));
+            }
+        },
+    };
+
     // Check if a folder in the library is named the same as the cell
-    for entry in walkdir::WalkDir::new(&library_path)
+    for entry in walkdir::WalkDir::new(library_path)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -92,7 +126,7 @@ pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
         if path.is_dir()
             && path
                 .file_name()
-                .map_or(false, |name| name == component_name.as_str())
+                .is_some_and(|name| name == component_name.as_str())
         {
             debug!(
                 "Component {} found in the library at path {}",
@@ -109,9 +143,23 @@ pub fn get_path_from_library(component_name: &String) -> Result<PathBuf> {
     ))
 }
 
-pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Value> {
+pub fn get_arch_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<serde_json::Value> {
     // Check if a folder in the library is named the same as the cell
-    let component_path = get_path_from_library(component_name)?;
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Component {} not found in the library: {}",
+                    component_name, e
+                ),
+            ));
+        }
+    };
 
     // Get the arch.json file for the cell
     let arch_path = component_path.join("arch.json");
@@ -149,8 +197,22 @@ pub fn get_arch_from_library(component_name: &String) -> Result<serde_json::Valu
     }
 }
 
-pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value> {
-    let component_path = get_path_from_library(component_name)?;
+pub fn get_isa_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<serde_json::Value> {
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Component {} not found in the library: {}",
+                    component_name, e
+                ),
+            ));
+        }
+    };
 
     // Get the isa.json file for the cell
     let isa_path = component_path.join("isa.json");
@@ -184,32 +246,31 @@ pub fn get_isa_from_library(component_name: &String) -> Result<serde_json::Value
     }
 }
 
-pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>> {
-    let component_path = get_path_from_library(component_name)?;
+pub fn get_rtl_files_from_library(
+    component_name: &String,
+    library_path: Option<&Path>,
+) -> Result<Vec<String>> {
+    let component_path = match get_path_from_library(component_name, library_path) {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(e);
+        }
+    };
     let rtl_path = component_path.join("rtl");
     if !rtl_path.exists() {
-        warn!(
-            "RTL files for component \"{}\" not found in library (component path: {})",
-            component_name,
-            component_path.to_str().unwrap()
-        );
         return Err(Error::new(
             std::io::ErrorKind::NotFound,
             format!(
-                "Component {} does not contain an rtl folder",
-                component_name
+                "RTL files for component \"{}\" not found in library (component path: {})",
+                component_name,
+                component_path.to_str().unwrap()
             ),
         ));
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let tmp_dir = tempdir()
-        .expect("Failed to create temporary directory")
-        .path()
-        .to_owned();
-    copy_dir(&component_path, &tmp_dir).expect("Failed to copy directory");
-
-    let tmp_component_path = tmp_dir;
+    let tmp_component_path = tempdir()?.path().to_owned();
+    copy_dir(&component_path, &tmp_component_path)?;
 
     // Run the bender command to get the list of files
     let mut bender_cmd = std::process::Command::new("bender");
@@ -223,17 +284,13 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
     let output = match cmd.output() {
         Ok(output) => output,
         Err(e) => {
-            warn!(
+            return Err(Error::new(
+                std::io::ErrorKind::Other,
+                format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
                 tmp_component_path.to_str().unwrap(),
                 e
-            );
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "Failed to run bender command to get the list of RTL files for component {}",
-                    component_name
                 ),
             ));
         }
@@ -241,17 +298,13 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
 
     // Check if the command was successful
     if !output.status.success() {
-        warn!(
-            "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
-            component_name,
-            tmp_component_path.to_str().unwrap(),
-            String::from_utf8_lossy(&output.stderr)
-        );
         return Err(Error::new(
             std::io::ErrorKind::Other,
             format!(
-                "Failed to run bender command to get the list of RTL files for component {}",
-                component_name
+                "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
+                component_name,
+                tmp_component_path.to_str().unwrap(),
+                String::from_utf8_lossy(&output.stderr)
             ),
         ));
     }
@@ -261,6 +314,17 @@ pub fn get_rtl_files_from_library(component_name: &String) -> Result<Vec<String>
     let mut rtl_files = Vec::new();
     for line in output_str.lines() {
         rtl_files.push(line.to_string());
+    }
+
+    if rtl_files.is_empty() {
+        return Err(Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "Bender command did not find RTL files for component \"{}\" (component path: {})",
+                component_name,
+                tmp_component_path.to_str().unwrap()
+            ),
+        ));
     }
 
     Ok(rtl_files)
@@ -283,10 +347,16 @@ pub fn generate_rtl_for_component(
         );
     }
 
-    let rtl_files_list = get_rtl_files_from_library(&kind.to_string()).expect(&format!(
-        "Failed to get RTL files from library for {}",
-        kind
-    ));
+    let rtl_files_list = match get_rtl_files_from_library(&kind.to_string(), None) {
+        Ok(rtl_files) => rtl_files,
+        Err(e) => {
+            return Err(Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to get RTL files for component {}: {}", kind, e),
+            ));
+        }
+    };
+
     debug!("RTL files: {:?}", rtl_files_list);
 
     for rtl_file in rtl_files_list {
@@ -296,7 +366,7 @@ pub fn generate_rtl_for_component(
         // Get the name of the file from the path
         let rtl_filename = Path::new(&rtl_file).file_name().unwrap();
         // Create output file
-        let output_file = output_folder.join(&rtl_filename);
+        let output_file = output_folder.join(rtl_filename);
         debug!("Generating RTL file: {}", output_file.to_str().unwrap());
 
         // Get the appropriate comment prefix based on file extension
@@ -321,14 +391,14 @@ pub fn generate_rtl_for_component(
         let rtl_template_path = Path::new(&rtl_template_str);
         if rtl_template_path.exists() {
             let mut mj_env = minijinja::Environment::new();
-            let template_dir = std::path::PathBuf::from(get_library_path()).join("common/jinja");
+            let template_dir = get_library_path()?.join("common/jinja");
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
             let rtl_template_content =
-                fs::read_to_string(&rtl_template_path).expect("Failed to read template file");
+                fs::read_to_string(rtl_template_path).expect("Failed to read template file");
             mj_env
-                .add_template("rtl_template", &rtl_template_content.as_str())
+                .add_template("rtl_template", rtl_template_content.as_str())
                 .expect("Failed to add template");
 
             // Render the template with the component data
@@ -373,12 +443,12 @@ pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
 pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     // Create the output directory if it does not exist
     if !dst.exists() {
-        fs::create_dir_all(&dst).expect("Failed to create output directory");
+        fs::create_dir_all(dst).expect("Failed to create output directory");
     }
     debug!("Copying directory: {:?} to {:?}", src, dst);
 
     // Copy files, adding comments to Verilog/SystemVerilog files
-    for entry in fs::read_dir(&src).unwrap() {
+    for entry in fs::read_dir(src).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         let target_path = dst.join(path.file_name().unwrap());
@@ -388,17 +458,17 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
                 "This file was automatically generated by Vesyla. DO NOT EDIT.\n\n";
             if path
                 .extension()
-                .map_or(false, |ext| ext == "sv" || ext == "v")
+                .is_some_and(|ext| ext == "sv" || ext == "v")
             {
-                let comment = "// ".to_string() + &comment_content;
+                let comment = "// ".to_string() + comment_content;
                 let content = fs::read_to_string(&path).expect("Failed to read file");
                 let new_content = comment + &content;
                 fs::write(&target_path, new_content).expect("Failed to write file");
             } else if path
                 .extension()
-                .map_or(false, |ext| ext == "vhdl" || ext == "vhd")
+                .is_some_and(|ext| ext == "vhdl" || ext == "vhd")
             {
-                let comment = "-- ".to_string() + &comment_content;
+                let comment = "-- ".to_string() + comment_content;
                 let content = fs::read_to_string(&path).expect("Failed to read file");
                 let new_content = comment + &content;
                 fs::write(&target_path, new_content).expect("Failed to write file");
@@ -414,4 +484,252 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn create_fake_library(base: PathBuf) -> Result<PathBuf> {
+        let temp_dir = base;
+        let library_path = temp_dir;
+        let component_path = library_path.join("dummy");
+        let component_rtl_path = component_path.join("rtl");
+        let component_rtl_file_path = component_rtl_path.join("dummy.sv");
+        fs::create_dir_all(&component_path)?;
+        fs::create_dir_all(&component_rtl_path)?;
+        fs::write(
+            component_path.join("arch.json"),
+            r#"{"parameters": {"a": 1}}"#,
+        )?;
+        fs::write(
+            component_path.join("isa.json"),
+            r#"{"parameters": {"b": 2}}"#,
+        )?;
+        fs::write(
+            component_path.join("Bender.yml"),
+            r#"
+package:
+  name: dummy
+
+dependencies:
+
+sources:
+  - ./rtl/dummy.sv"#,
+        )?;
+        fs::write(component_rtl_file_path, r#"// This is a dummy RTL file"#)?;
+
+        Ok(library_path)
+    }
+
+    #[test]
+    fn test_get_path_from_library_not_found() {
+        let result = get_path_from_library(&"nonexistent_component".to_string(), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_arch_from_library_not_found() {
+        let result = get_arch_from_library(&"nonexistent_component".to_string(), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_isa_from_library_not_found() {
+        let result = get_isa_from_library(&"nonexistent_component".to_string(), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_rtl_files_from_library_not_found() {
+        let result = get_rtl_files_from_library(&"nonexistent_component".to_string(), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_arch_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let result = get_arch_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_isa_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let result = get_isa_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_rtl_files_from_library() {
+        let temp_dir = tempdir()
+            .expect("Failed to create temporary directory")
+            .path()
+            .to_owned();
+        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        assert!(
+            fake_library_path.exists(),
+            "Temporary library path does not exist"
+        );
+        assert!(
+            fake_library_path.is_dir(),
+            "Temporary library path is not a directory"
+        );
+        assert!(
+            fake_library_path.join("dummy").exists(),
+            "Dummy component path does not exist"
+        );
+        assert!(
+            fake_library_path.join("dummy").is_dir(),
+            "Dummy component path is not a directory"
+        );
+        assert!(
+            fake_library_path.join("dummy").join("rtl").exists(),
+            "RTL directory for dummy component does not exist"
+        );
+        assert!(
+            fake_library_path.join("dummy").join("rtl").is_dir(),
+            "RTL directory for dummy component is not a directory"
+        );
+        assert!(
+            fake_library_path
+                .join("dummy")
+                .join("rtl")
+                .join("dummy.sv")
+                .exists(),
+            "RTL file for dummy component does not exist"
+        );
+        let result = get_rtl_files_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        assert!(
+            result.is_ok(),
+            "RTL files retrieval failed: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_merge_parameters_no_overlap() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("b".to_string(), 2u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(params1.get("b"), Some(&2));
+        assert!(overwritten.is_empty());
+    }
+
+    #[test]
+    fn test_merge_parameters_with_overlap_same_value() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert!(overwritten.is_empty());
+    }
+
+    #[test]
+    fn test_merge_parameters_with_overlap_different_value() {
+        let mut params1 = [("a".to_string(), 1u64)].iter().cloned().collect();
+        let params2 = [("a".to_string(), 2u64)].iter().cloned().collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(overwritten, vec![("a".to_string(), 1u64, 2u64)]);
+    }
+
+    #[test]
+    fn test_merge_parameters_multiple() {
+        let mut params1 = [("a".to_string(), 1u64), ("b".to_string(), 2u64)]
+            .iter()
+            .cloned()
+            .collect();
+        let params2 = [("b".to_string(), 3u64), ("c".to_string(), 4u64)]
+            .iter()
+            .cloned()
+            .collect();
+        let overwritten = merge_parameters(&mut params1, &params2).unwrap();
+        assert_eq!(params1.get("a"), Some(&1));
+        assert_eq!(params1.get("b"), Some(&2));
+        assert_eq!(params1.get("c"), Some(&4));
+        assert_eq!(overwritten, vec![("b".to_string(), 2u64, 3u64)]);
+    }
+
+    #[test]
+    fn test_get_parameters_array() {
+        let json = serde_json::json!({
+            "parameters": [
+                { "name": "foo", "value": 42 },
+                { "name": "bar", "value": 7 }
+            ]
+        });
+        let params = get_parameters(&json, None);
+        assert_eq!(params.get("foo"), Some(&42));
+        assert_eq!(params.get("bar"), Some(&7));
+    }
+
+    #[test]
+    fn test_get_parameters_object() {
+        let json = serde_json::json!({
+            "parameters": {
+                "foo": 123,
+                "bar": 456
+            }
+        });
+        let params = get_parameters(&json, None);
+        assert_eq!(params.get("foo"), Some(&123));
+        assert_eq!(params.get("bar"), Some(&456));
+    }
+
+    #[test]
+    fn test_get_parameters_custom_key() {
+        let json = serde_json::json!({
+            "custom": {
+                "baz": 99
+            }
+        });
+        let params = get_parameters(&json, Some("custom".to_string()));
+        assert_eq!(params.get("baz"), Some(&99));
+    }
+
+    #[test]
+    fn test_get_parameters_missing() {
+        let json = serde_json::json!({});
+        let params = get_parameters(&json, None);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_generate_hash_different_names() {
+        let params = BTreeMap::new();
+        let hash1 = generate_hash(vec!["foo".to_string()], &params);
+        let hash2 = generate_hash(vec!["bar".to_string()], &params);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_generate_hash_different_params() {
+        let mut params1 = BTreeMap::new();
+        params1.insert("a".to_string(), 1u64);
+        let mut params2 = BTreeMap::new();
+        params2.insert("a".to_string(), 2u64);
+        let hash1 = generate_hash(vec!["foo".to_string()], &params1);
+        let hash2 = generate_hash(vec!["foo".to_string()], &params2);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_generate_hash_same_input_same_output() {
+        let mut params = BTreeMap::new();
+        params.insert("x".to_string(), 42u64);
+        let hash1 = generate_hash(vec!["baz".to_string()], &params);
+        let hash2 = generate_hash(vec!["baz".to_string()], &params);
+        assert_eq!(hash1, hash2);
+    }
 }
