@@ -45,7 +45,7 @@ fn gen_sst_config(arch_file: &String, output_dir: &String) {
     let arch: serde_json::Value = serde_json::from_str(&json_str).expect("Failed to parse json");
 
     // Apply the template
-    let template = include_str!("../sst/sst_sim_template.py.j2");
+    let template = include_str!("../sst/sst_sim_template.py.jinja");
     let mut context = minijinja::Environment::new();
     context.add_template("sst_sim_template", template).unwrap();
     let result = context
