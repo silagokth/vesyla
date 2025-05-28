@@ -4,6 +4,17 @@ on:
   workflow_call:
 
 jobs:
+  run-cargo-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Carho tests
+        run: |
+          cd modules
+          cargo test --all
+
   run-tests:
     runs-on: [modelsim, vesyla, bender, sst]
     steps:
