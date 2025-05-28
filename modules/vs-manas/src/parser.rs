@@ -121,8 +121,10 @@ impl Parser {
         let asm_contents = std::fs::read_to_string(asm_file).unwrap();
         let lexer = lexerdef.lexer(&asm_contents);
         let (prog, errs) = asm_y::parse(&lexer);
-        for e in errs {
-            error!("{}", e.pp(&lexer, &asm_y::token_epp));
+        if !errs.is_empty() {
+            for e in errs {
+                error!("{}", e.pp(&lexer, &asm_y::token_epp));
+            }
             panic!();
         }
         let mut pc_table: HashMap<String, HashMap<String, i32>> = HashMap::new();
