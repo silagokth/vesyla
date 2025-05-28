@@ -13,7 +13,7 @@ jobs:
       - name: Run Cargo tests
         run: |
           cd modules
-          cargo test --all
+          RUST_BACKTRACE=1 cargo test --all
 
   run-tests:
     runs-on: [modelsim, vesyla, bender, sst]
