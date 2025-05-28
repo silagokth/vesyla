@@ -6,8 +6,7 @@ use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
-//use tempfile::tempdir;
-use rand::Rng;
+use tempfile::tempdir;
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -270,13 +269,7 @@ pub fn get_rtl_files_from_library(
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let mut rng = rand::rng();
-    let random_folder_name = format!("{}_{}", component_name, rng.random::<u32>());
-    let tmp_component_path =
-        PathBuf::from(format!("/tmp/vesyla_component_tmp_{}", random_folder_name));
-    if !tmp_component_path.exists() {
-        fs::create_dir_all(&tmp_component_path)?;
-    }
+    let tmp_component_path = tempdir()?.path().to_owned();
     copy_dir(&component_path, &tmp_component_path)?;
 
     // Run the bender command to get the list of files
@@ -497,7 +490,6 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-    use tempfile::tempdir;
 
     fn create_fake_library(base: PathBuf) -> Result<PathBuf> {
         let temp_dir = base;
