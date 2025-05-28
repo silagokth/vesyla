@@ -578,8 +578,40 @@ sources:
             .path()
             .to_owned();
         let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        assert!(
+            fake_library_path.exists(),
+            "Temporary library path does not exist"
+        );
+        assert!(
+            fake_library_path.is_dir(),
+            "Temporary library path is not a directory"
+        );
+        assert!(
+            fake_library_path.join("dummy").exists(),
+            "Dummy component path does not exist"
+        );
+        assert!(
+            fake_library_path.join("dummy").is_dir(),
+            "Dummy component path is not a directory"
+        );
+        assert!(
+            fake_library_path.join("dummy").join("rtl").exists(),
+            "RTL directory for dummy component does not exist"
+        );
+        assert!(
+            fake_library_path.join("dummy").join("rtl").is_dir(),
+            "RTL directory for dummy component is not a directory"
+        );
+        assert!(
+            fake_library_path
+                .join("dummy")
+                .join("rtl")
+                .join("dummy.sv")
+                .exists(),
+            "RTL file for dummy component does not exist"
+        );
         let result = get_rtl_files_from_library(&"dummy".to_string(), Some(&fake_library_path));
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "RTL files retrieval failed");
     }
 
     #[test]
