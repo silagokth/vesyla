@@ -5,6 +5,7 @@ on:
 
 jobs:
   run-cargo-tests:
+    name: Run Cargo tests
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
