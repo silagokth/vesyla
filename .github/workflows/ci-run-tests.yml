@@ -10,7 +10,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Carho tests
+      - name: Run Cargo tests
         run: |
           cd modules
           cargo test --all
