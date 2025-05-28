@@ -258,26 +258,19 @@ pub fn get_rtl_files_from_library(
     };
     let rtl_path = component_path.join("rtl");
     if !rtl_path.exists() {
-        warn!(
-            "RTL files for component \"{}\" not found in library (component path: {})",
-            component_name,
-            component_path.to_str().unwrap()
-        );
         return Err(Error::new(
             std::io::ErrorKind::NotFound,
             format!(
-                "Component {} does not contain an rtl folder",
-                component_name
+                "RTL files for component \"{}\" not found in library (component path: {})",
+                component_name,
+                component_path.to_str().unwrap()
             ),
         ));
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let tmp_dir = tempdir()
-        .expect("Failed to create temporary directory")
-        .path()
-        .to_owned();
-    copy_dir(&component_path, &tmp_dir).expect("Failed to copy directory");
+    let tmp_dir = tempdir()?.path().to_owned();
+    copy_dir(&component_path, &tmp_dir)?;
 
     let tmp_component_path = tmp_dir;
 
@@ -293,17 +286,13 @@ pub fn get_rtl_files_from_library(
     let output = match cmd.output() {
         Ok(output) => output,
         Err(e) => {
-            warn!(
+            return Err(Error::new(
+                std::io::ErrorKind::Other,
+                format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
                 tmp_component_path.to_str().unwrap(),
                 e
-            );
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "Failed to run bender command to get the list of RTL files for component {}",
-                    component_name
                 ),
             ));
         }
@@ -327,6 +316,17 @@ pub fn get_rtl_files_from_library(
     let mut rtl_files = Vec::new();
     for line in output_str.lines() {
         rtl_files.push(line.to_string());
+    }
+
+    if rtl_files.is_empty() {
+        return Err(Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "Bender command did not find RTL files for component \"{}\" (component path: {})",
+                component_name,
+                tmp_component_path.to_str().unwrap()
+            ),
+        ));
     }
 
     Ok(rtl_files)
@@ -611,7 +611,11 @@ sources:
             "RTL file for dummy component does not exist"
         );
         let result = get_rtl_files_from_library(&"dummy".to_string(), Some(&fake_library_path));
-        assert!(result.is_ok(), "RTL files retrieval failed");
+        assert!(
+            result.is_ok(),
+            "RTL files retrieval failed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
