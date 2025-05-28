@@ -105,12 +105,9 @@ pub fn get_path_from_library(
 ) -> Result<PathBuf> {
     // Get library path from arg or environment variable
     let library_path = match library_path {
-        Some(path) => path,
+        Some(path) => path.to_path_buf(),
         None => match get_library_path() {
-            Ok(path) => {
-                let binding = path.as_path();
-                return Ok(binding.to_path_buf());
-            }
+            Ok(path) => path.to_path_buf(),
             Err(e) => {
                 return Err(Error::new(
                     std::io::ErrorKind::NotFound,
@@ -119,8 +116,6 @@ pub fn get_path_from_library(
             }
         },
     };
-    debug!("Library path: {:?}", library_path);
-    debug!("Looking for component: {}", component_name);
 
     // Check if a folder in the library is named the same as the cell
     for entry in walkdir::WalkDir::new(library_path)
