@@ -33,13 +33,13 @@ spin_animation() {
 }
 
 start_spinner() {
-  if [ $debug_mode = false ]; then
+  if [ "$debug_mode" = false ]; then
     spin_animation
   fi
 }
 
 stop_spinner() {
-  if [ $debug_mode = true ]; then
+  if [ "$debug_mode" = true ]; then
     printf "\n"
     return 0 # If debug mode is enabled, do not stop the spinner
   fi
