@@ -270,7 +270,7 @@ fn run(
     info!("Copying and running testcase in {:?}", temp_dir_path);
     copy_dir_all(test_dir, temp_dir_path).expect("Failed to copy testcase directory");
     let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
-    let status = process::Command::new("sh")
+    let status = process::Command::new("bash")
         .arg(testcase_script_path)
         .status()
         .expect("Failed to run the testcase");
