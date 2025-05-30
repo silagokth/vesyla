@@ -62,7 +62,7 @@ cleanup() {
   exit $exit_code
 }
 
-trap 'cleanup $1' INT TERM
+trap 'cleanup $?' INT TERM
 
 # Variables
 interactive_mode=false
