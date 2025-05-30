@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ -z "$BASH_VERSION" ]; then
+  echo "This script requires bash to run. Please use bash to execute it."
+  exit 1
+fi
+
 set -e
 
 # Colors
