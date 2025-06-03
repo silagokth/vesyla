@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20.0)
-project(iropt LANGUAGES CXX C)
+project(vs-compile LANGUAGES CXX C)
 
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
@@ -11,8 +11,8 @@ find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 
 # Specify Flex and Bison input files
-set(FLEX_INPUT ${CMAKE_SOURCE_DIR}/src/pasmpar/pasm.l)
-set(BISON_INPUT ${CMAKE_SOURCE_DIR}/src/pasmpar/pasm.y)
+set(FLEX_INPUT src/schedule/pasm.l)
+set(BISON_INPUT src/schedule/pasm.y)
 
 # Generate lexer and parser
 FLEX_TARGET(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
@@ -41,25 +41,21 @@ include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
 
-set(STANDALONE_SOURCE_DIR ${PROJECT_SOURCE_DIR})
-set(STANDALONE_BINARY_DIR ${PROJECT_BINARY_DIR})
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 message(STATUS "LLVM_INCLUDE_DIRS: ${LLVM_INCLUDE_DIRS}")
 message(STATUS "MLIR_INCLUDE_DIRS: ${MLIR_INCLUDE_DIRS}")
-include_directories(${STANDALONE_SOURCE_DIR}/src)
-include_directories(${STANDALONE_BINARY_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/src)
+include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/lib/src)
 include_directories(${CMAKE_BINARY_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/src/util/plog)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
-set(CUSTOM_IR_DIR ${CMAKE_BINARY_DIR}/custom_ir)
-
 file(GLOB SOURCE_CIDFG "src/cidfg/*.cpp")
-file(GLOB SOURCE_IROPT "src/exec/iropt/*.cpp")
+file(GLOB SOURCE_EXEC "src/exec/*.cpp")
 file(GLOB SOURCE_PASM "src/pasm/*.cpp")
-file(GLOB SOURCE_PASMPAR "src/pasmpar/*.cpp")
 file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")
 
 function(add_custom_mlir_dialect dialect dialect_namespace)
@@ -67,7 +63,7 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
 
         # Define paths - making them relative to CMAKE_BINARY_DIR
         set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
-        set(DIALECT_INCLUDE_DIR lib/src/${dialect_namespace})
+        set(DIALECT_INCLUDE_DIR ../../../build/lib/src/${dialect_namespace})
         set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/${DIALECT_INCLUDE_DIR})
 
         # Create output directory
@@ -106,6 +102,7 @@ endfunction()
 add_custom_mlir_dialect(Pasm pasm)
 add_mlir_dialect_library(VesylaPasm
         ${SOURCE_PASM}
+        
         DEPENDS
         VesylaPasmIncGen
 
@@ -118,41 +115,32 @@ add_mlir_dialect_library(VesylaPasm
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
-file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp" "src/util/*/*.cc")
+file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp")
 file(GLOB SOURCES_TM "src/tm/*.cpp")
-set(CMAKE_CXX_FLAGS "-std=c++17 -w -pedantic -lpthread -g -O1")
+set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# Create object libraries
 add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
-# print flex and bison output files
-message(STATUS "FLEX_PasmLexer_OUTPUTS: ${FLEX_PasmLexer_OUTPUTS}")
-message(STATUS "BISON_PasmParser_OUTPUTS: ${BISON_PasmParser_OUTPUTS}")
-add_library(VesylaPasmPar ${SOURCE_PASMPAR} ${FLEX_PasmLexer_OUTPUTS} ${BISON_PasmParser_OUTPUTS})
-add_library(VesylaSchedule ${SOURCE_SCHEDULE})
+add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS} ${BISON_PasmParser_OUTPUTS})
 
 set(LIBS
-        ${dialect_libs}
-        ${conversion_libs}
-        MLIRArithDialect
-        MLIROptLib
-        VesylaSchedule
-        VesylaPasmPar
-        VesylaPasm
-        VesylaTm
-        VesylaUtil
+    VesylaSchedule
+    VesylaPasm
+    VesylaTm
+    VesylaUtil
+    ${dialect_libs}
+    ${conversion_libs}
 )
 
-
-add_llvm_executable(iropt ${SOURCE_IROPT})
-
-llvm_update_compile_flags(iropt)
-target_link_libraries(iropt PRIVATE ${LIBS})
-
-mlir_check_all_link_libraries(iropt)
+add_llvm_executable(vs-compile ${SOURCE_EXEC})
+llvm_update_compile_flags(vs-compile)
+target_link_libraries(vs-compile PRIVATE ${LIBS})
+mlir_check_all_link_libraries(vs-compile)
 
 
 include(FetchContent)

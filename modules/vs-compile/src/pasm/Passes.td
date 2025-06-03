@@ -3,17 +3,14 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ReplaceEpochOp: Pass<"replace-epoch-op", "::mlir::ModuleOp"> {
-  let summary = "Replace the epoch structure with normal epoch regions.";
+def ScheduleEpochPass: Pass<"schedule-epoch-pass", "::mlir::ModuleOp"> {
+  let summary = "Schedule the epoch structure with normal epoch regions.";
   let description = [{
-    Replace the epoch structure with normal epoch regions.
+    Schedule the epoch structure with normal epoch regions.
   }];
   let options = [
-    Option<"component_map", "component-map", "std::string", "\"\"", "">,
     Option<"component_path", "component-path", "std::string", "\"\"", "">,
-    Option<"tmp_path", "tmp-path", "std::string", "\"\"", "">,
-    Option<"row", "row", "int", "0", "">,
-    Option<"col", "col", "int", "0", "">
+    Option<"tmp_path", "tmp-path", "std::string", "\"\"", "">
   ];
 }
 
@@ -44,5 +41,10 @@ def AddSlotPortPass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
     Add slot and port operations to the module.
   }];
 }
-
+def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
+  let summary = "Add slot and port operations.";
+  let description = [{
+    Add slot and port operations to the module.
+  }];
+}
 #endif // VESYLA_IROPT_PASM_PASSES

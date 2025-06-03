@@ -4,7 +4,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
-#include "MergeRawOp.hpp"
+#include "AddHaltPass.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_ADDHALTPASS

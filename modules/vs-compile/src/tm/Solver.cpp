@@ -3,6 +3,8 @@
 namespace vesyla {
 namespace tm {
 
+using namespace std;
+
 string get_random_string(size_t length) {
   const string characters =
       "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -22,10 +24,10 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   string filename = tmp_path + "/" + get_random_string(10) + ".mzn";
   string input_filename = filename + ".mzn";
   string output_filename = filename + ".json";
-  ofstream file(input_filename);
+  std::ofstream file(input_filename);
 
   if (!file.is_open()) {
-    LOG(FATAL) << "Failed to create temporary file.";
+    LOG_FATAL << "Failed to create temporary file.";
     exit(-1);
   }
 
@@ -36,13 +38,13 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
                    " > " + output_filename;
   int result = system(command.c_str());
   if (result != 0) {
-    LOG(ERROR) << "Minizinc command failed with error code: " << result;
+    LOG_ERROR << "Minizinc command failed with error code: " << result;
   }
 
   // read the json output
   ifstream json_file(output_filename);
   if (!json_file.is_open()) {
-    LOG(FATAL) << "Failed to open json file.";
+    LOG_FATAL << "Failed to open json file.";
     exit(-1);
   }
 
@@ -53,9 +55,9 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   // check if the output type is solution
   if (json_output.find("type") == json_output.end() ||
       json_output["type"] != "solution") {
-    LOG(ERROR) << "Minizinc output is not a solution.";
-    LOG(ERROR) << "Output: " << json_output.dump(4);
-    LOG(FATAL) << "Minizinc command failed.";
+    LOG_ERROR << "Minizinc output is not a solution.";
+    LOG_ERROR << "Output: " << json_output.dump(4);
+    LOG_FATAL << "Minizinc command failed.";
     exit(-1);
   }
 

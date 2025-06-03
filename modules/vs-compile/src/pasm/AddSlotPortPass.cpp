@@ -4,7 +4,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
-#include "MergeRawOp.hpp"
+#include "AddSlotPortPass.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_ADDSLOTPORTPASS
@@ -26,7 +26,6 @@ public:
     } else {
       op_block = &op_region.front();
     }
-    llvm::outs() << "33333333\n";
     bool flag = false;
     for (auto &inst : op_block->getOperations()) {
       if (auto instr_op = mlir::dyn_cast<InstrOp>(inst)) {
@@ -35,14 +34,6 @@ public:
         bool found_slot = false;
         bool found_port = false;
         bool param_changed = false;
-        llvm::outs() << "222222222\n";
-        // print out the updated attributes
-        llvm::outs() << "Updated attributes for InstrOp: ";
-        for (const auto &attr : updated_attrs) {
-          llvm::outs() << attr.getName().str() << " = " << attr.getValue()
-                       << ", ";
-        }
-        llvm::outs() << "\n";
         for (const mlir::NamedAttribute &named_attr_entry :
              current_instr_params) {
           auto attr_name = named_attr_entry.getName();
@@ -78,15 +69,6 @@ public:
               updated_attrs.push_back(named_attr_entry);
             }
 
-            // print out the updated attributes
-            llvm::outs() << "xxxxxxxxxxxx\n";
-            llvm::outs() << "Updated attributes for InstrOp: ";
-            for (const auto &attr : updated_attrs) {
-              llvm::outs() << attr.getName().str() << " = " << attr.getValue()
-                           << ", ";
-            }
-            llvm::outs() << "\n";
-
           } else {
             // If the attribute is not an IntegerAttr, keep it as is
             updated_attrs.push_back(named_attr_entry);
@@ -105,15 +87,6 @@ public:
               rewriter.getNamedAttr("port", rewriter.getI32IntegerAttr(port)));
           param_changed = true;
         }
-        llvm::outs() << "111111\n";
-
-        // print out the updated attributes
-        llvm::outs() << "Updated attributes for InstrOp: ";
-        for (const auto &attr : updated_attrs) {
-          llvm::outs() << attr.getName().str() << " = " << attr.getValue()
-                       << ", ";
-        }
-        llvm::outs() << "\n";
 
         // If any attributes were changed, create a new DictionaryAttr and
         // update the operation

@@ -1,8 +1,34 @@
 #include "Scheduler.hpp"
+#include "Generator.hpp"
 
 namespace vesyla {
 namespace schedule {
-void Scheduler::run(mlir::ModuleOp &module) {
+void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
+  std::error_code error_code;
+  llvm::raw_fd_ostream ofs(filename, error_code);
+  if (error_code) {
+    LOG_FATAL << "Error: Failed to open file for writing: " << filename << "\n";
+    std::exit(-1);
+  }
+  module.print(ofs);
+  ofs.close();
+}
+
+void Scheduler::run(std::string pasm_file, std::string output_dir) {
+  Parser parser;
+  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  registry.insert<vesyla::pasm::PasmDialect>();
+  context.appendDialectRegistry(registry);
+  context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
+  mlir::ModuleOp module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  parser.parse(pasm_file, &module);
+
+  run(module, output_dir);
+}
+
+void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
@@ -10,95 +36,78 @@ void Scheduler::run(mlir::ModuleOp &module) {
           ? std::getenv("VESYLA_SUITE_PATH_COMPONENTS")
           : "";
   if (VESYLA_SUITE_PATH_COMPONENTS == "") {
-    LOG(FATAL) << "Error: VESYLA_SUITE_PATH_COMPONENTS is not set.\n";
+    LOG_FATAL << "Error: VESYLA_SUITE_PATH_COMPONENTS is not set.\n";
     std::exit(-1);
   }
 
-  // get the environment variable: VESYLA_SUITE_PATH_TMP
-  std::string VESYLA_SUITE_PATH_TMP = std::getenv("VESYLA_SUITE_PATH_TMP")
-                                          ? std::getenv("VESYLA_SUITE_PATH_TMP")
-                                          : "";
-  if (VESYLA_SUITE_PATH_TMP == "") {
-    LOG(FATAL) << "Error: VESYLA_SUITE_PATH_TMP is not set.\n";
-    std::exit(-1);
+  // create temp directory for scheduler
+  std::string module_debug_path = output_dir + "/debug/schedule";
+  if (!std::filesystem::exists(module_debug_path)) {
+    std::filesystem::create_directories(module_debug_path);
   }
-  // create the directory if it does not exist
-  if (mkdir(VESYLA_SUITE_PATH_TMP.c_str(), 0777) == -1) {
-    if (errno != EEXIST) {
-      LOG(FATAL) << "Error: Failed to create directory: "
-                 << VESYLA_SUITE_PATH_TMP << "\n";
-      std::exit(-1);
-    }
-  }
-
-  // Read the architecture json file and create the json object
-  std::ifstream ifs(arch_file.c_str());
-  if (!ifs.is_open()) {
-    LOG(FATAL) << "Error: Failed to open architecture file: " << arch_file;
-    std::exit(-1);
-  }
-  nlohmann::json arch_json = nlohmann::json::parse(ifs);
-  ifs.close();
-
-  nlohmann::json component_map_json;
-  for (const auto &cell : arch_json["cells"].items()) {
-    int row = cell.value()["coordinates"]["row"];
-    int col = cell.value()["coordinates"]["col"];
-    std::string controller_kind = cell.value()["cell"]["controller"]["kind"];
-    std::string key = std::to_string(row) + "_" + std::to_string(col);
-    component_map_json[key] = controller_kind;
-
-    for (const auto &resource :
-         cell.value()["cell"]["resources_list"].items()) {
-      std::string resource_kind = resource.value()["kind"];
-      int slot_start = resource.value()["slot"];
-      for (auto i = 0; i < resource.value()["size"]; i++) {
-        int slot = slot_start + i;
-        for (auto j = 0; j < 4; j++) {
-          int port = j;
-          std::string key = std::to_string(row) + "_" + std::to_string(col) +
-                            "_" + std::to_string(slot) + "_" +
-                            std::to_string(port);
-          component_map_json[key] = resource_kind;
-        }
-      }
-    }
-  }
-
-  int row = arch_json["parameters"]["ROWS"];
-  int col = arch_json["parameters"]["COLS"];
 
   // Create a PassManager
   mlir::PassManager pm(module.getContext());
 
-  // Add passes to the pipeline
+  save_mlir(module, module_debug_path + "/0.mlir");
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
-  pm.addPass(vesyla::pasm::createReplaceEpochOp(
-      {.component_map = component_map_json.dump(),
-       .component_path = VESYLA_SUITE_PATH_COMPONENTS,
-       .tmp_path = VESYLA_SUITE_PATH_TMP,
-       .row = row,
-       .col = col}));
-  pm.addPass(vesyla::pasm::createReplaceLoopOp());
-  pm.addPass(vesyla::pasm::createMergeRawOp());
-  pm.addPass(vesyla::pasm::createAddHaltPass());
-
-  // Run the pass pipeline
   if (mlir::failed(pm.run(module))) {
-    LOG(FATAL) << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
     std::exit(-1);
   }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/1.mlir");
+  pm.addPass(vesyla::pasm::createAddDefaultValuePass());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    std::exit(-1);
+  }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/2.mlir");
 
-  // Print the transformed module to stdout
-  module->print(llvm::outs());
+  pm.addPass(vesyla::pasm::createScheduleEpochPass(
+      {VESYLA_SUITE_PATH_COMPONENTS, "/tmp/vesyla"}));
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    std::exit(-1);
+  }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/3.mlir");
 
-  // Save the transformed module to a file
-  std::string output_filename = "output";
-  std::string output_dir = ".";
-  vesyla::pasm::CodeGen cg;
-  cg.generate(module, output_dir, output_filename);
-  llvm::outs() << "Generated code in " << output_dir << "/" << output_filename
-               << "\n";
+  pm.addPass(vesyla::pasm::createReplaceLoopOp());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    std::exit(-1);
+  }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/4.mlir");
+
+  pm.addPass(vesyla::pasm::createMergeRawOp());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    std::exit(-1);
+  }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/5.mlir");
+
+  pm.addPass(vesyla::pasm::createAddHaltPass());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    std::exit(-1);
+  }
+  pm.clear();
+  save_mlir(module, module_debug_path + "/6.mlir");
+
+  // Save the transformed module to ASM and BIN files
+  std::string codegen_path = output_dir;
+  if (!std::filesystem::exists(codegen_path)) {
+    std::filesystem::create_directories(codegen_path);
+  }
+  std::string output_filename = "instr";
+  Generator g;
+  g.generate(module, codegen_path, output_filename);
+  LOG_INFO << "Successfully generated ASM and BIN files in directory: "
+           << codegen_path;
 }
 } // namespace schedule
 } // namespace vesyla

@@ -18,13 +18,18 @@
 #ifndef __VESYLA_UTIL_COMMON_HPP__
 #define __VESYLA_UTIL_COMMON_HPP__
 
-#include "GlobalVar.hpp"
-#include "inja/inja.hpp"
+#include "MiniArgs.hpp"
+#include "plog/Appenders/ColorConsoleAppender.h"
+#include "plog/Initializers/RollingFileInitializer.h"
+#include "plog/Log.h"
 #include "json/json.hpp"
 #include <cfloat>
+#include <fstream>
+#include <iostream>
 #include <limits.h>
 #include <map>
 #include <math.h>
+#include <set>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>

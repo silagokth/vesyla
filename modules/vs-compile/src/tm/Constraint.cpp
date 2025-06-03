@@ -21,7 +21,7 @@ Constraint::Constraint(string expr_str) {
     kind = match[1];
     expr = match[2];
   } else {
-    LOG(FATAL) << "Invalid constraint string: " << expr_str;
+    LOG_FATAL << "Invalid constraint string: " << expr_str;
     std::exit(-1);
   }
 }

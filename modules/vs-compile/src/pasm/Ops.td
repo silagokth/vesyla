@@ -98,7 +98,7 @@ def RawOp : Pasm_Op<"raw"> {
   }];
 }
 
-def ConstraintOp : Pasm_Op<"constraint"> {
+def CstrOp : Pasm_Op<"cstr"> {
   let summary = "Make constraint";
   let description = [{
     Make constraint.

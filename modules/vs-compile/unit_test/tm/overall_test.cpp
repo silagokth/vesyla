@@ -2,8 +2,6 @@
 #include "tm/TimingModel.hpp"
 #include <gtest/gtest.h>
 
-INITIALIZE_EASYLOGGINGPP
-
 TEST(tm, overall_test_1) {
 
   vesyla::tm::TimingModel tm;

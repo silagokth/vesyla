@@ -15,24 +15,24 @@
 
 #include <iostream>
 
-#include "pasm/CodeGen.hpp"
+#include "Generator.hpp"
 #include "pasm/Dialect.hpp"
 #include "pasm/Passes.hpp"
 #include "util/Common.hpp"
 
-#include "pasmpar/Parser.hpp"
+#include "Parser.hpp"
+#include "pasm/Config.hpp"
 
 namespace vesyla {
 namespace schedule {
 class Scheduler {
-private:
-  std::string arch_file;
-  std::string isa_file;
 
 public:
-  Scheduler(const std::string &arch_file_, const std::string &isa_file_)
-      : arch_file(arch_file_), isa_file(isa_file_) {}
-  void run(mlir::ModuleOp &module);
+  void run(mlir::ModuleOp &module, std::string output_dir);
+  void run(std::string pasm_file, std::string output_dir);
+
+private:
+  void save_mlir(mlir::ModuleOp &module, const std::string &filename);
 };
 } // namespace schedule
 } // namespace vesyla

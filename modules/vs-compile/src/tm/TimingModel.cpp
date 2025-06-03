@@ -27,7 +27,7 @@ string TimingModel::to_string() {
 
 string TimingModel::to_mzn() {
   if (state != COMPILED) {
-    LOG(WARNING) << "Timing model is not compiled. Compiling...";
+    LOG_WARNING << "Timing model is not compiled. Compiling...";
     compile();
   }
 
@@ -123,7 +123,7 @@ void TimingModel::compile() {
             expr.kind == OperationExpr::REPEAT) {
           // Extract all variables from transit
           string delay_expr = expr.parameters["delay"];
-          LOG(DEBUG) << "Delay expression: " << delay_expr;
+          LOG_DEBUG << "Delay expression: " << delay_expr;
           // Is it a number or a variable?
           if (is_number(delay_expr)) {
             // Is it a number, do nothing
@@ -131,7 +131,7 @@ void TimingModel::compile() {
             // Is it a variable
             variables.insert(delay_expr);
           } else {
-            LOG(ERROR) << "Invalid delay expression: " << delay_expr;
+            LOG_ERROR << "Invalid delay expression: " << delay_expr;
           }
         }
         for (auto &child : expr.children) {
@@ -147,7 +147,7 @@ void TimingModel::compile() {
   // op_name.e<event_id>[<index_0>][<index_1>]...
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     if (it->kind != "linear") {
-      LOG(FATAL) << "Invalid constraint kind: " << it->kind;
+      LOG_FATAL << "Invalid constraint kind: " << it->kind;
       exit(-1);
     }
 
@@ -273,17 +273,17 @@ void TimingModel::compile() {
             vector<int> indices = anchor.expr.indices;
 
             if (r_op_stack.size() < indices.size()) {
-              LOG(ERROR) << "r_op_stack size: " << r_op_stack.size();
+              LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
               for (auto i = 0; i < r_op_stack.size(); ++i) {
-                LOG(ERROR) << "r_op_stack[" << i << "]: "
-                           << static_cast<BinaryTreeData *>(r_op_stack[i]->data)
-                                  ->expr.to_string();
+                LOG_ERROR << "r_op_stack[" << i << "]: "
+                          << static_cast<BinaryTreeData *>(r_op_stack[i]->data)
+                                 ->expr.to_string();
               }
-              LOG(ERROR) << "indices size: " << indices.size();
+              LOG_ERROR << "indices size: " << indices.size();
               for (auto i = 0; i < indices.size(); ++i) {
-                LOG(ERROR) << "indices[" << i << "]: " << indices[i];
+                LOG_ERROR << "indices[" << i << "]: " << indices[i];
               }
-              LOG(FATAL) << "Too many indices!";
+              LOG_FATAL << "Too many indices!";
               std::exit(-1);
             }
 
@@ -296,8 +296,8 @@ void TimingModel::compile() {
                   std::stoi(static_cast<BinaryTreeData *>(r_op_stack[i]->data)
                                 ->expr.parameters["iter"]);
               if (index >= iter) {
-                LOG(FATAL) << "Index out of range: index(" << index
-                           << ") >= iter(" << iter << ")";
+                LOG_FATAL << "Index out of range: index(" << index
+                          << ") >= iter(" << iter << ")";
                 std::exit(-1);
               }
               expr_str =
@@ -343,7 +343,7 @@ BinaryTree *TimingModel::build_binary_tree(OperationExpr &expr) {
   } else if (expr.kind == OperationExpr::EVENT) {
     // do nothing
   } else {
-    LOG(FATAL) << "Invalid operation expression kind: " << expr.kind;
+    LOG_FATAL << "Invalid operation expression kind: " << expr.kind;
     std::exit(-1);
   }
   BinaryTree *tree = new BinaryTree(data, left, right);
@@ -388,7 +388,7 @@ void TimingModel::from_string(string str) {
       Constraint constraint(line);
       constraints.push_back(constraint);
     } else {
-      LOG(FATAL) << "Invalid line: " << line;
+      LOG_FATAL << "Invalid line: " << line;
       std::exit(-1);
     }
   }

@@ -14,7 +14,7 @@ AnchorExpr::AnchorExpr(string str) {
 
   // check if the str is empty
   if (str.empty()) {
-    LOG(FATAL) << "Anchor string is empty!" << str;
+    LOG_FATAL << "Anchor string is empty!" << str;
     std::exit(-1);
   }
 
@@ -36,7 +36,7 @@ AnchorExpr::AnchorExpr(string str) {
       indices.push_back(std::stoi(match2[1]));
     }
   } else {
-    LOG(FATAL) << "Invalid anchor string: " << str;
+    LOG_FATAL << "Invalid anchor string: " << str;
     std::exit(-1);
   }
 }

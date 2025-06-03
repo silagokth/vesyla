@@ -22,7 +22,7 @@ Operation::Operation(string expr_str) {
     name = match[1];
     expr = OperationExpr(match[2]);
   } else {
-    LOG(FATAL) << "Invalid operation string: " << expr_str;
+    LOG_FATAL << "Invalid operation string: " << expr_str;
     std::exit(-1);
   }
 }
@@ -38,7 +38,7 @@ OperationExpr::OperationExpr(string str) {
 
   // check if the str is empty
   if (str.empty()) {
-    LOG(FATAL) << "Operator string is empty!" << str;
+    LOG_FATAL << "Operator string is empty!" << str;
     std::exit(-1);
   }
 
@@ -50,7 +50,7 @@ OperationExpr::OperationExpr(string str) {
   } else if (str[0] == 'T') {
     kind = TRANSIT;
   } else {
-    LOG(FATAL) << "Invalid operator string: " << str;
+    LOG_FATAL << "Invalid operator string: " << str;
     std::exit(-1);
   }
 
@@ -63,7 +63,7 @@ OperationExpr::OperationExpr(string str) {
     if (std::regex_match(str, match, regex)) {
       parameters["id"] = match[1];
     } else {
-      LOG(FATAL) << "Invalid event string: " << str;
+      LOG_FATAL << "Invalid event string: " << str;
       std::exit(-1);
     }
   } else if (kind == REPEAT) {
@@ -77,7 +77,7 @@ OperationExpr::OperationExpr(string str) {
       parameters["delay"] = match[2];
       children.push_back(OperationExpr(match[3]));
     } else {
-      LOG(FATAL) << "Invalid repeat operator string: " << str;
+      LOG_FATAL << "Invalid repeat operator string: " << str;
       std::exit(-1);
     }
   } else if (kind == TRANSIT) {
@@ -119,15 +119,15 @@ OperationExpr::OperationExpr(string str) {
         children.push_back(OperationExpr(inner_str_temp));
       }
       if (bracket_curly != 0 || bracket_square != 0 || bracket_round != 0) {
-        LOG(FATAL) << "Invalid transit operator string: " << str;
+        LOG_FATAL << "Invalid transit operator string: " << str;
         std::exit(-1);
       }
       if (children.size() != 2) {
-        LOG(FATAL) << "Invalid transit operator string: " << str;
+        LOG_FATAL << "Invalid transit operator string: " << str;
         std::exit(-1);
       }
     } else {
-      LOG(FATAL) << "Invalid transit operator string: " << str;
+      LOG_FATAL << "Invalid transit operator string: " << str;
       std::exit(-1);
     }
   }
