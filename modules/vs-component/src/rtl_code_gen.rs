@@ -78,7 +78,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
 
     // parse the arguments to find the fabric.json input file
     let fabric_filepath = Path::new(fabric_filepath);
-    let fabric_file = match fs::File::open(&fabric_filepath) {
+    let fabric_file = match fs::File::open(fabric_filepath) {
         Ok(file) => file,
         Err(err) => {
             println!("Error: {}", err);
@@ -168,14 +168,18 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         }
 
         // Get cell from library if kind is provided
-        let cell_kind = cell_object.kind.clone().expect(&format!(
-            "Cell kind not found for cell {} in fabric",
-            cell_object.name,
-        ));
-        let lib_cell_arch = get_arch_from_library(&cell_kind.clone()).expect(&format!(
-            "Cell {} not found in library (kind: {})",
-            cell_object.name, cell_kind
-        ));
+        let cell_kind = cell_object.kind.clone().unwrap_or_else(|| {
+            panic!(
+                "Cell kind not found for cell {} in fabric",
+                cell_object.name,
+            )
+        });
+        let lib_cell_arch = get_arch_from_library(&cell_kind.clone(), None).unwrap_or_else(|_| {
+            panic!(
+                "Cell {} not found in library (kind: {})",
+                cell_object.name, cell_kind
+            )
+        });
 
         overwritten_params.extend(
             cell_object
@@ -186,7 +190,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         // Verify cell validity
         cell_object
             .is_valid()
-            .expect(&format!("Cell {} in fabric is not valid", cell_object.name,));
+            .unwrap_or_else(|_| panic!("Cell {} in fabric is not valid", cell_object.name,));
 
         let mut cell_added_parameters = ParameterList::new();
         if cell_object.parameters.is_empty() && cell_object.required_parameters.is_empty() {
@@ -244,15 +248,20 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         }
 
         // Get the controller from the library if kind is provided
-        let controller_kind = controller_object.kind.clone().expect(&format!(
-            "Controller kind not found for controller {} in cell {}",
-            controller_object.name, cell_object.name,
-        ));
+        let controller_kind = controller_object.kind.clone().unwrap_or_else(|| {
+            panic!(
+                "Controller kind not found for controller {} in cell {}",
+                controller_object.name, cell_object.name,
+            )
+        });
 
-        let lib_controller_arch = get_arch_from_library(&controller_kind.clone()).expect(&format!(
-            "Controller {} not found in library (kind: {})",
-            controller_object.name, controller_kind
-        ));
+        let lib_controller_arch = get_arch_from_library(&controller_kind.clone(), None)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Controller {} not found in library (kind: {})",
+                    controller_object.name, controller_kind
+                )
+            });
 
         // Merge parameters from library to controller
         overwritten_params.extend(
@@ -275,10 +284,12 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         }
 
         // Check controller validity
-        controller_object.is_valid().expect(&format!(
-            "Controller {} in cell {} is not valid",
-            controller_object.name, cell_object.name,
-        ));
+        controller_object.is_valid().unwrap_or_else(|_| {
+            panic!(
+                "Controller {} in cell {} is not valid",
+                controller_object.name, cell_object.name,
+            )
+        });
 
         // Add controller required parameters to the registry
         let mut controller_added_parameters = ParameterList::new();
@@ -323,12 +334,14 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         let controller_hash = controller_object.get_fingerprint();
 
         // Check if two controllers with same parameters have the same hash
-        if !implemented_controllers.contains_key(&controller_hash.clone()) {
-            implemented_controllers
-                .insert(controller_hash.clone(), controller_object.clone().clone());
+        if let std::collections::hash_map::Entry::Vacant(e) =
+            implemented_controllers.entry(controller_hash.clone())
+        {
+            e.insert(controller_object.clone());
         } else {
             controller_object.already_defined = true;
         }
+
         debug!(
             "Controller: {} in cell: {} (hash: {})",
             controller_object.name, cell_object.name, controller_hash,
@@ -377,15 +390,20 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
                 );
             }
 
-            let resource_kind = resource_object.kind.clone().expect(&format!(
-                "Resource kind not found for resource {} in cell {}",
-                resource_object.name, cell_object.name,
-            ));
+            let resource_kind = resource_object.kind.clone().unwrap_or_else(|| {
+                panic!(
+                    "Resource kind not found for resource {} in cell {}",
+                    resource_object.name, cell_object.name,
+                )
+            });
 
-            let lib_resource_arch = get_arch_from_library(&resource_kind.clone()).expect(&format!(
-                "Resource {} not found in library (kind: {})",
-                resource_object.name, resource_kind
-            ));
+            let lib_resource_arch = get_arch_from_library(&resource_kind.clone(), None)
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Resource {} not found in library (kind: {})",
+                        resource_object.name, resource_kind
+                    )
+                });
 
             overwritten_params.extend(
                 resource_object
@@ -415,12 +433,14 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
             }
 
             // Check resource validity
-            resource_object.is_valid().expect(&format!(
-                "Resource {} (slot {}) in cell {} is not valid",
-                resource_object.name,
-                resource_object.slot.unwrap(),
-                cell_object.name,
-            ));
+            resource_object.is_valid().unwrap_or_else(|_| {
+                panic!(
+                    "Resource {} (slot {}) in cell {} is not valid",
+                    resource_object.name,
+                    resource_object.slot.unwrap(),
+                    cell_object.name,
+                )
+            });
 
             // Add required parameters to the registry
             let mut resource_added_parameters = ParameterList::new();
@@ -576,7 +596,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         .unwrap();
 
     // copy .sv files in utils directory to the output directory
-    let common_dir = get_path_from_library(&"common".to_string()).unwrap();
+    let common_dir = get_path_from_library(&"common".to_string(), None).unwrap();
     for entry in fs::read_dir(common_dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
@@ -613,7 +633,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
     }
 
     // Copy the testbench directory to the output directory
-    let testbench_dir = get_path_from_library(&"tb".to_string()).unwrap();
+    let testbench_dir = get_path_from_library(&"tb".to_string(), None).unwrap();
     let output_dir = Path::new(&rtl_output_dir).join("tb");
     if !output_dir.exists() {
         fs::create_dir_all(&output_dir).expect("Failed to create output directory");

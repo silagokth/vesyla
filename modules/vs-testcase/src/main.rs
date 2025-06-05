@@ -322,7 +322,7 @@ fn generate_autotest_config_robot(
     testcase_entries: &[TestcaseEntry],
     output_dir: &String,
 ) -> Result<(), io::Error> {
-    let template = include_str!("../assets/autotest_template.robot.j2");
+    let template = include_str!("../assets/autotest_template.robot.jinja");
     let mut context = minijinja::Environment::new();
     context.add_template("autotest_template", template).unwrap();
     let result = context

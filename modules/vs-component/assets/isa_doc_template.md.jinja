@@ -1,0 +1,46 @@
+# ISA Specification
+
+Instructions are {{ isa.format.instr_bitwidth }}-bit wide.
+The MSB indicates whether it's a control instruction or a resource instruction ([0]: control, [1]: resource).
+The next {{ isa.format.instr_opcode_bitwidth }} bits represent the instruction opcode.
+The rest of the bits are used to encode the instruction content.
+For resource instructions, another {{isa.format.instr_slot_bitwidth}} bits in the instruction content are used to indicate the slot number.
+The rest of the bits are used to encode the instruction content.
+
+Note that, specifically for resource instructions, if instruction opcode start with "11",
+the instruction contains a field that need to be replaced by scalar registers if the filed is marked "dynamic".
+
+## ISA Format
+
+Parameter | Width | Description
+----------|-------|-------------------------
+instr_bitwidth | {{isa.format.instr_bitwidth}} | Instruction bitwidth
+instr_type_bitwidth | {{isa.format.instr_type_bitwidth}} | Instruction type bitwidth
+instr_opcode_bitwidth | {{isa.format.instr_opcode_bitwidth}} | Instruction opcode bitwidth
+instr_slot_bitwidth | {{isa.format.instr_slot_bitwidth}} | Instruction slot bitwidth, only used for resource components
+
+## Instructions For Each Component
+
+{% for c in isa.components %}
+### {{c.kind}} ({{c.component_type}})
+{% if c.component_type=="controller" %}
+{% set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - 1 %}
+{% else %}
+{% set useful_bitwidth=isa.format.instr_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth - 1 %}
+{% endif %}
+{% for i in c.instructions %}
+
+#### {{i.name}} [opcode={{i.opcode}}]
+
+Field | Position | Width | Default Value | Description
+------|----------|-------|---------------|-------------------------
+{% set start =useful_bitwidth-1 %}
+{% for j in i.segments %}
+{% set end = start - j.bitwidth + 1 %}
+{{j.name}} | [{{start }}, {{end}}] | {{j.bitwidth}} | {% if j.default_val is defined %}{{j.default_val}}{% else %}0{% endif %} | {{j.comment}} {% if j.verbo_map %}{% for k in j.verbo_map %} [{{k.key}}]:{{k.val}};{% endfor %}{% endif %}
+{% set start = end - 1 %}
+
+{% endfor %}
+{% endfor %}
+
+{% endfor %}
