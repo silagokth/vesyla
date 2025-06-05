@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.20.0)
 project(vs-compile LANGUAGES CXX C)
 
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
-
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
+
 
 
 # Find Flex and Bison
@@ -64,7 +64,12 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
         # Define paths - making them relative to CMAKE_BINARY_DIR
         set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
         set(DIALECT_INCLUDE_DIR ../../../build/lib/src/${dialect_namespace})
-        set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/${DIALECT_INCLUDE_DIR})
+        set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace})
+
+        # print paths
+        message(STATUS "Dialect source directory: ${DIALECT_SRC_DIR}")
+        message(STATUS "Dialect include directory: ${DIALECT_INCLUDE_DIR}")
+        message(STATUS "Dialect output directory: ${DIALECT_OUT_DIR}")
 
         # Create output directory
         file(MAKE_DIRECTORY ${DIALECT_OUT_DIR})
@@ -102,6 +107,8 @@ endfunction()
 add_custom_mlir_dialect(Pasm pasm)
 add_mlir_dialect_library(VesylaPasm
         ${SOURCE_PASM}
+
+        DISABLE_INSTALL
         
         DEPENDS
         VesylaPasmIncGen
@@ -149,6 +156,7 @@ FetchContent_Declare(
   URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
 )
 # For Windows: Prevent overriding the parent project's compiler/linker settings
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 

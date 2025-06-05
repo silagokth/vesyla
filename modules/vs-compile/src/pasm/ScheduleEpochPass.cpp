@@ -1,6 +1,7 @@
 
 
 #include "ScheduleEpochPass.hpp"
+#include <string>
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_SCHEDULEEPOCHPASS
@@ -88,6 +89,236 @@ private:
     return {{"mode", 0}, {"cycle", cycle}};
   }
 
+  nlohmann::json op2json(mlir::Operation *op) const {
+    nlohmann::json op_json;
+    if (auto rop_op = llvm::dyn_cast<RopOp>(op)) {
+      op_json["kind"] = "rop";
+      op_json["id"] = rop_op.getId().str();
+      op_json["row"] = rop_op.getRow();
+      op_json["col"] = rop_op.getCol();
+      op_json["slot"] = rop_op.getSlot();
+      op_json["port"] = rop_op.getPort();
+
+      // get its internal block
+      mlir::Region &ropBodyRegion = rop_op.getBody();
+      mlir::Block *ropEntryBlock;
+      if (!ropBodyRegion.empty()) {
+        ropEntryBlock = &ropBodyRegion.front();
+
+        op_json["body"] = nlohmann::json::array();
+        for (mlir::Operation &rop_child_op : *ropEntryBlock) {
+          if (auto instr_op = llvm::dyn_cast<InstrOp>(&rop_child_op)) {
+            std::string id = instr_op.getId().str();
+            std::string type = instr_op.getType().str();
+            std::unordered_map<std::string, std::string> param_map;
+            for (auto &param : instr_op.getParam()) {
+              std::string param_name = param.getName().str();
+              mlir::Attribute param_value = param.getValue();
+              if (auto str_attr =
+                      llvm::dyn_cast<mlir::StringAttr>(param_value)) {
+                param_map[param_name] = str_attr.getValue().str();
+              } else if (auto int_attr =
+                             llvm::dyn_cast<mlir::IntegerAttr>(param_value)) {
+                param_map[param_name] = std::to_string(int_attr.getInt());
+              } else {
+                llvm::outs()
+                    << "Unsupported parameter type in InstrOp: " << param_value
+                    << "\n";
+                std::exit(-1);
+              }
+            }
+
+            nlohmann::json instr_json;
+            instr_json["id"] = id;
+            instr_json["kind"] = type;
+            instr_json["params"] = nlohmann::json::array();
+            for (auto &param : param_map) {
+              nlohmann::json param_json;
+              param_json["name"] = param.first;
+              param_json["value"] = param.second;
+              instr_json["params"].push_back(param_json);
+            }
+            op_json["body"].push_back(instr_json);
+          } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&rop_child_op)) {
+            // DO NOTHING
+          } else {
+            llvm::outs() << "Illegal operation type in RopOp: "
+                         << rop_child_op.getName() << "\n";
+            std::exit(-1);
+          }
+        }
+      }
+    } else if (auto cop_op = llvm::dyn_cast<CopOp>(op)) {
+      op_json["kind"] = "cop";
+      op_json["id"] = cop_op.getId().str();
+      op_json["row"] = cop_op.getRow();
+      op_json["col"] = cop_op.getCol();
+
+      // get its internal block
+      mlir::Region &copBodyRegion = cop_op.getBody();
+      mlir::Block *copEntryBlock;
+      if (!copBodyRegion.empty()) {
+
+        copEntryBlock = &copBodyRegion.front();
+
+        op_json["body"] = nlohmann::json::array();
+        for (mlir::Operation &cop_child_op : *copEntryBlock) {
+          if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
+            std::string id = instr_op.getId().str();
+            std::string type = instr_op.getType().str();
+            std::unordered_map<std::string, std::string> param_map;
+            for (auto &param : instr_op.getParam()) {
+              std::string param_name = param.getName().str();
+              mlir::Attribute param_value = param.getValue();
+              if (auto str_attr =
+                      llvm::dyn_cast<mlir::StringAttr>(param_value)) {
+                param_map[param_name] = str_attr.getValue().str();
+              } else if (auto int_attr =
+                             llvm::dyn_cast<mlir::IntegerAttr>(param_value)) {
+                param_map[param_name] = std::to_string(int_attr.getInt());
+              } else {
+                llvm::outs()
+                    << "Unsupported parameter type in InstrOp: " << param_value
+                    << "\n";
+                std::exit(-1);
+              }
+            }
+
+            nlohmann::json instr_json;
+            instr_json["kind"] = type;
+            instr_json["params"] = nlohmann::json::array();
+            for (auto &param : param_map) {
+              nlohmann::json param_json;
+              param_json["name"] = param.first;
+              param_json["value"] = param.second;
+              instr_json["params"].push_back(param_json);
+            }
+            op_json["body"].push_back(instr_json);
+          } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
+            // DO NOTHING
+          } else {
+            llvm::outs() << "Illegal operation type in CopOp: "
+                         << cop_child_op.getName() << "\n";
+            std::exit(-1);
+          }
+        }
+      }
+    } else {
+      llvm::outs() << "Unsupported operation type for JSON conversion: "
+                   << op->getName() << "\n";
+      std::exit(-1);
+    }
+
+    return op_json;
+  }
+
+  void json2op(nlohmann::json op_json, PatternRewriter &rewriter) {
+    if (op_json["kind"].get<std::string>() == "rop") {
+      auto rop_op = rewriter.create<RopOp>(
+          rewriter.getUnknownLoc(),
+          rewriter.getStringAttr(op_json["id"].get<std::string>()),
+          rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
+          rewriter.getI32IntegerAttr(op_json["col"].get<int>()),
+          rewriter.getI32IntegerAttr(op_json["slot"].get<int>()),
+          rewriter.getI32IntegerAttr(op_json["port"].get<int>()));
+
+      // get its internal block
+      mlir::Region &ropBodyRegion = rop_op.getBody();
+      mlir::Block *ropEntryBlock;
+      if (ropBodyRegion.empty()) {
+        ropEntryBlock = rewriter.createBlock(&ropBodyRegion);
+      } else {
+        ropEntryBlock = &ropBodyRegion.front();
+      }
+      rewriter.setInsertionPointToEnd(ropEntryBlock);
+
+      for (auto &instr : op_json["body"]) {
+        std::unordered_map<std::string, std::string> param_map;
+        for (auto &param : instr["params"]) {
+          param_map[param["name"].get<std::string>()] =
+              param["value"].get<std::string>();
+        }
+
+        mlir::StringAttr id =
+            rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8));
+        mlir::StringAttr type =
+            rewriter.getStringAttr(instr["kind"].get<std::string>());
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+
+        for (const auto &param : param_map) {
+          // check if it's a number or a string
+          if (std::isdigit(param.second[0])) {
+            attrs.push_back(rewriter.getNamedAttr(
+                param.first,
+                rewriter.getI32IntegerAttr(std::stoi(param.second))));
+          } else {
+            attrs.push_back(rewriter.getNamedAttr(
+                param.first, rewriter.getStringAttr(param.second)));
+          }
+        }
+        mlir::DictionaryAttr param = rewriter.getDictionaryAttr(attrs);
+        rewriter.create<InstrOp>(
+            rop_op.getLoc(),
+            rewriter.getStringAttr(instr["id"].get<std::string>()),
+            rewriter.getStringAttr(instr["kind"].get<std::string>()), param);
+      }
+      // insert a yield operation at the end of the RopOp
+      rewriter.create<YieldOp>(rop_op.getLoc());
+
+    } else if (op_json["kind"] == "cop") {
+      auto cop_op = rewriter.create<CopOp>(
+          rewriter.getUnknownLoc(),
+          rewriter.getStringAttr(op_json["id"].get<std::string>()),
+          rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
+          rewriter.getI32IntegerAttr(op_json["col"].get<int>()));
+      // get its internal block
+      mlir::Region &copBodyRegion = cop_op.getBody();
+      mlir::Block *copEntryBlock;
+      if (copBodyRegion.empty()) {
+        copEntryBlock = rewriter.createBlock(&copBodyRegion);
+      } else {
+        copEntryBlock = &copBodyRegion.front();
+      }
+      rewriter.setInsertionPointToEnd(copEntryBlock);
+      for (auto &instr : op_json["body"]) {
+        std::unordered_map<std::string, std::string> param_map;
+        for (auto &param : instr["params"]) {
+          param_map[param["name"].get<std::string>()] =
+              param["value"].get<std::string>();
+        }
+
+        mlir::StringAttr id =
+            rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8));
+        mlir::StringAttr type =
+            rewriter.getStringAttr(instr["kind"].get<std::string>());
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+
+        for (const auto &param : param_map) {
+          // check if it's a number or a string
+          if (std::isdigit(param.second[0])) {
+            attrs.push_back(rewriter.getNamedAttr(
+                param.first,
+                rewriter.getI32IntegerAttr(std::stoi(param.second))));
+          } else {
+            attrs.push_back(rewriter.getNamedAttr(
+                param.first, rewriter.getStringAttr(param.second)));
+          }
+        }
+        mlir::DictionaryAttr param = rewriter.getDictionaryAttr(attrs);
+        rewriter.create<InstrOp>(
+            cop_op.getLoc(),
+            rewriter.getStringAttr(instr["id"].get<std::string>()),
+            rewriter.getStringAttr(instr["kind"].get<std::string>()), param);
+      }
+      // insert a yield operation at the end of the CopOp
+      rewriter.create<YieldOp>(cop_op.getLoc());
+    } else {
+      llvm::outs() << "Unsupported operation kind: "
+                   << op_json["kind"].get<std::string>() << "\n";
+      std::exit(-1);
+    }
+  }
+
   void synchronize(EpochOp *op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
@@ -115,8 +346,8 @@ private:
     std::unordered_map<mlir::Operation *, int> time_table_rop;
     std::unordered_map<mlir::Operation *, int> time_table_cop;
 
-    // initialize the time_table and ordered_time_table, add the label for every
-    // cell in the fabric
+    // initialize the time_table and ordered_time_table, add the label for
+    // every cell in the fabric
     for (int r = 0; r < _row; r++) {
       for (int c = 0; c < _col; c++) {
         std::string label = std::to_string(r) + "_" + std::to_string(c);
@@ -229,9 +460,6 @@ private:
           slot_port_index_list.push_back(slot * 4 + port);
         }
 
-        llvm::outs() << "ROP2: "
-                     << "\n";
-
         // create an ACT instruction
         auto act_instr_param_map = create_act_instr(slot_port_index_list);
         auto act_instr = rewriter.create<vesyla::pasm::InstrOp>(
@@ -283,9 +511,10 @@ private:
           for (auto rop_child_op : rop_child_ops) {
             if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
 
-              // find out all StringAttr parameters in the DictionaryAttr, check
-              // if it matches any entry in the schedule_table, if it does, then
-              // replace the field with integer value in schedule_table.
+              // find out all StringAttr parameters in the DictionaryAttr,
+              // check if it matches any entry in the schedule_table, if it
+              // does, then replace the field with integer value in
+              // schedule_table.
 
               mlir::DictionaryAttr current_instr_params = instr_op.getParam();
               llvm::SmallVector<mlir::NamedAttribute> updated_attrs;
@@ -321,13 +550,13 @@ private:
                 }
               }
 
-              // If any attributes were changed, create a new DictionaryAttr and
-              // update the operation
+              // If any attributes were changed, create a new DictionaryAttr
+              // and update the operation
               if (params_changed) {
                 mlir::DictionaryAttr new_instr_params =
                     rewriter.getDictionaryAttr(updated_attrs);
-                // "param" is the name of the DictionaryAttr attribute in your
-                // InstrOp definition
+                // "param" is the name of the DictionaryAttr attribute in
+                // your InstrOp definition
                 instr_op->setAttr("param", new_instr_params);
               }
 
@@ -393,8 +622,8 @@ private:
       int prev_t = 0;
       std::vector<std::pair<int, mlir::Operation *>> new_time_op_vec;
       if (time_op_vec.size() > 0) {
-        // start from the smallest time, insert the WAIT instructions if there
-        // is a gap between consecutive operations
+        // start from the smallest time, insert the WAIT instructions if
+        // there is a gap between consecutive operations
         for (int i = 0; i < time_op_vec.size(); i++) {
           int curr_t = time_op_vec[i].first;
           if (curr_t - prev_t > 1) {
@@ -421,8 +650,8 @@ private:
         }
       }
 
-      // insert a wait instruction at the end if the last operation is not the
-      // total_latency-1
+      // insert a wait instruction at the end if the last operation is not
+      // the total_latency-1
       if (prev_t != total_latency - 1) {
         auto wait_instr_param_map =
             create_wait_instr(total_latency - 1 - prev_t);
@@ -548,78 +777,25 @@ public:
     for (mlir::Operation &child_op : *entryBlock) {
       // cast to the correct type
       if (auto rop_op = llvm::dyn_cast<RopOp>(&child_op)) {
-        std::string id = rop_op.getId().str();
-        uint32_t row = rop_op.getRow();
-        uint32_t col = rop_op.getCol();
-        uint32_t slot = rop_op.getSlot();
-        uint32_t port = rop_op.getPort();
 
-        // get its internal block
-        mlir::Region &ropBodyRegion = rop_op.getBody();
-        mlir::Block *ropEntryBlock;
-        if (ropBodyRegion.empty()) {
-          ropEntryBlock = rewriter.createBlock(&ropBodyRegion);
-        } else {
-          ropEntryBlock = &ropBodyRegion.front();
-        }
+        nlohmann::json rop_json = op2json(rop_op.getOperation());
 
-        nlohmann::json rop_json;
-        rop_json["op_name"] = id;
-        rop_json["row"] = row;
-        rop_json["col"] = col;
-        rop_json["slot"] = slot;
-        rop_json["port"] = port;
-        rop_json["instr_list"] = nlohmann::json::array();
-        for (mlir::Operation &rop_child_op : *ropEntryBlock) {
-          if (auto instr_op = llvm::dyn_cast<InstrOp>(&rop_child_op)) {
-            std::string id = instr_op.getId().str();
-            std::string type = instr_op.getType().str();
-            std::unordered_map<std::string, std::string> param_map;
-            for (auto &param : instr_op.getParam()) {
-              std::string param_name = param.getName().str();
-              mlir::Attribute param_value = param.getValue();
-              if (auto str_attr =
-                      llvm::dyn_cast<mlir::StringAttr>(param_value)) {
-                param_map[param_name] = str_attr.getValue().str();
-              } else if (auto int_attr =
-                             llvm::dyn_cast<mlir::IntegerAttr>(param_value)) {
-                param_map[param_name] = std::to_string(int_attr.getInt());
-              } else {
-                llvm::outs()
-                    << "Unsupported parameter type in InstrOp: " << param_value
-                    << "\n";
-                std::exit(-1);
-              }
-            }
-
-            nlohmann::json instr_json;
-            instr_json["name"] = type;
-            instr_json["fields"] = nlohmann::json::array();
-            for (auto &param : param_map) {
-              nlohmann::json param_json;
-              param_json["name"] = param.first;
-              param_json["value"] = param.second;
-              instr_json["fields"].push_back(param_json);
-            }
-            rop_json["instr_list"].push_back(instr_json);
-          } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&rop_child_op)) {
-            // DO NOTHING
-          } else {
-            llvm::outs() << "Illegal operation type in RopOp: "
-                         << rop_child_op.getName() << "\n";
-            std::exit(-1);
-          }
-        }
+        LOG_DEBUG << rop_json.dump(4);
 
         // create a temporary file in the tmp directory with random name
         // and call the timing model builder to generate the timing model
         // expression.
         std::string random_str = vesyla::util::Common::gen_random_string(10);
+        LOG_DEBUG << "Random string for temporary file: " << random_str;
         std::string input_filename = tmp_path + "/" + random_str + ".json";
         std::string output_filename = tmp_path + "/" + random_str + ".txt";
-        std::string label = std::to_string(row) + "_" + std::to_string(col) +
-                            "_" + std::to_string(slot) + "_" +
-                            std::to_string(port);
+        LOG_DEBUG << "Input filename: " << input_filename;
+        LOG_DEBUG << "Output filename: " << output_filename;
+        std::string label = std::to_string(rop_json["row"].get<int>()) + "_" +
+                            std::to_string(rop_json["col"].get<int>()) + "_" +
+                            std::to_string(rop_json["slot"].get<int>()) + "_" +
+                            std::to_string(rop_json["port"].get<int>());
+        LOG_DEBUG << "Label: " << label;
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
@@ -627,8 +803,10 @@ public:
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
-                              "/timing_model " + input_filename + " " +
-                              output_filename;
+                              "/compile_util get_timing_model " +
+                              input_filename + " " + output_filename;
+
+        llvm::outs() << "Executing command: " << command << "\n";
 
         std::ofstream file(input_filename);
         if (!file.is_open()) {
@@ -654,7 +832,8 @@ public:
                                std::istreambuf_iterator<char>());
         output_file.close();
 
-        model.add_operation(tm::Operation(id, output_str));
+        model.add_operation(
+            tm::Operation(rop_json["id"].get<std::string>(), output_str));
 
         // delete the temporary files
         remove(input_filename.c_str());
