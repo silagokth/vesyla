@@ -23,6 +23,7 @@ fn main() {
     let help_message = format!(
         "Usage: {} [command and options]\n\
          Commands:\n\
+         \tcompile     Compile the source code\n\
          \tcomponent   Assemble the system\n\
          \tmanas       Validate JSON file\n\
          \tschedule    Clean the build directory\n\
@@ -40,7 +41,7 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = vec!["component", "manas", "schedule", "testcase"];
+    let tools_list = vec!["compile", "component", "manas", "schedule", "testcase"];
     match command.as_str() {
         "-h" | "--help" => {
             info!("{}", help_message);

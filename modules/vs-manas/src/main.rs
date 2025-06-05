@@ -6,7 +6,7 @@ use clap::error::ErrorKind;
 use clap::Parser as clappar;
 use core::panic;
 use gen::Generator;
-use log::{error, info};
+use log::{error, info, warn};
 use parser::Parser;
 use std::fs;
 use std::path::Path;
@@ -30,6 +30,9 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     log_panics::init();
+
+    // Print a warning
+    warn!("This program is deprecated and will be removed soon. Please use `vesyla compile` subcommand instead!");
 
     // make sure the program return non-zero status code when arguments are invalid
     let args = match Args::try_parse() {
