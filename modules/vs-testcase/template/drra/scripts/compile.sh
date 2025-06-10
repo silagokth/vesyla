@@ -44,35 +44,22 @@ for id in ${ids}; do
   fi
 done
 
-# check .cstr file exists for each .pasm file
-for id in ${ids}; do
-  if [ ! -f ${input_dir}/${id}.cstr ]; then
-    echo "${input_dir}/${id}.cstr does not exist"
-    exit 1
-  fi
-done
-
 # for each id, compile
 for id in ${ids}; do
   # create a temp directory for each id
   mkdir -p ${workspace_path}/temp
 
-  # schedule, assemble, and simulate the code segment
-  vesyla schedule \
-    -a ${workspace_path}/system/arch/arch.json \
-    -p ${template_path}/pasm/${id}.pasm \
-    -c ${template_path}/pasm/${id}.cstr \
-    -o ${workspace_path}/temp
-  vesyla manas \
+  # schedule, assemble the code segment
+  vesyla compile \
     -a ${workspace_path}/system/arch/arch.json \
     -i ${workspace_path}/system/isa/isa.json \
-    -s ${workspace_path}/temp/0.asm \
+    -p ${template_path}/pasm/${id}.pasm \
     -o ${workspace_path}/temp
 
   # preserve the instructions
   mkdir -p ${workspace_path}/system/instr/${id}
   cp ${workspace_path}/temp/instr.bin system/instr/${id}
-  cp ${workspace_path}/temp/instr.txt system/instr/${id}
+  cp ${workspace_path}/temp/instr.asm system/instr/${id}
 
   # archive everything
   mv ${workspace_path}/temp ${workspace_path}/archive/compile_${id}

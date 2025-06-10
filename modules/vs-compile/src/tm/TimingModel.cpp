@@ -31,7 +31,7 @@ string TimingModel::to_mzn() {
     compile();
   }
 
-  int max_latency = 1000;
+  int max_latency = 100000;
 
   // build translation table for operations
   unordered_map<string, int> op2idx;
@@ -392,6 +392,14 @@ void TimingModel::from_string(string str) {
       std::exit(-1);
     }
   }
+}
+
+Operation TimingModel::get_operation(string name) {
+  if (operations.find(name) == operations.end()) {
+    LOG_FATAL << "Operation not found: " << name;
+    std::exit(-1);
+  }
+  return operations[name];
 }
 
 } // namespace tm

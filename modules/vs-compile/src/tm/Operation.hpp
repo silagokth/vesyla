@@ -20,6 +20,7 @@ struct OperationExpr {
   OperationExpr(string str);
   ~OperationExpr();
   string to_string();
+  std::vector<std::pair<std::string, std::vector<int>>> get_all_anchors();
 };
 
 struct Operation {
@@ -33,6 +34,7 @@ struct Operation {
   Operation(string expr_);
   ~Operation() {}
   string to_string();
+  std::vector<std::string> get_all_anchors();
 };
 
 } // namespace tm

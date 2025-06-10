@@ -49,7 +49,9 @@ private:
     int max_index = *std::max_element(indices.begin(), indices.end());
 
     int min_slot = min_index / 4;
-    int max_slot = max_index / 4 + 1;
+    int max_slot = max_index / 4;
+    llvm::outs() << "min_slot: " << min_slot << ", max_slot: " << max_slot
+                 << "\n";
     if (max_slot - min_slot < 4) {
       mode = 0;
       param = min_slot;
@@ -63,7 +65,7 @@ private:
         int slot = index / 4;
         int port = index % 4;
         ports |= (1 << slot);
-        param_vec[index] |= (1 << port);
+        param_vec[slot] |= (1 << port);
       }
       // it's valid only if param_vec value is either 0 or equal value
       int param = 0;
@@ -77,6 +79,7 @@ private:
             llvm::outs() << index << " ";
           }
           llvm::outs() << "\n";
+          exit(-1);
         }
       }
     }
@@ -212,7 +215,7 @@ private:
     return op_json;
   }
 
-  void json2op(nlohmann::json op_json, PatternRewriter &rewriter) {
+  void json2op(nlohmann::json op_json, PatternRewriter &rewriter) const {
     if (op_json["kind"].get<std::string>() == "rop") {
       auto rop_op = rewriter.create<RopOp>(
           rewriter.getUnknownLoc(),
@@ -317,6 +320,292 @@ private:
                    << op_json["kind"].get<std::string>() << "\n";
       std::exit(-1);
     }
+  }
+
+  void replace_time_in_instr_param(
+      EpochOp *op, std::unordered_map<std::string, int> &schedule_table,
+      PatternRewriter &rewriter) const {
+
+    auto epoch_op = *op;
+    mlir::Region &epoch_region = epoch_op.getBody();
+    if (epoch_region.empty()) {
+      return;
+    }
+    mlir::Block *epoch_block = &epoch_region.front();
+    for (mlir::Operation &child_op : *epoch_block) {
+      if (auto rop_op = llvm::dyn_cast<RopOp>(&child_op)) {
+        mlir::Region &rop_region = rop_op.getBody();
+        if (rop_region.empty()) {
+          continue;
+        }
+        mlir::Block *rop_entry_block = &rop_region.front();
+        for (mlir::Operation &instr_op : *rop_entry_block) {
+          if (auto instr = llvm::dyn_cast<InstrOp>(&instr_op)) {
+            mlir::DictionaryAttr current_instr_params = instr.getParam();
+            llvm::SmallVector<mlir::NamedAttribute> updated_attrs;
+            bool params_changed = false;
+
+            for (const mlir::NamedAttribute &named_attr_entry :
+                 current_instr_params) {
+              auto attr_name = named_attr_entry.getName();
+              auto attr_value = named_attr_entry.getValue();
+
+              if (auto str_attr =
+                      llvm::dyn_cast<mlir::StringAttr>(attr_value)) {
+                std::string str_value = str_attr.getValue().str();
+                // Check if the string value exists as a key in the
+                // schedule_table
+                auto it = schedule_table.find(str_value);
+                if (it != schedule_table.end()) {
+                  int int_value = it->second;
+                  mlir::Attribute new_attr_value =
+                      rewriter.getIntegerAttr(rewriter.getI32Type(), int_value);
+                  // Add the modified attribute to our new list
+                  updated_attrs.push_back(
+                      rewriter.getNamedAttr(attr_name, new_attr_value));
+                  params_changed = true;
+                } else {
+                  // If no match in schedule_table, keep the original
+                  // attribute
+                  updated_attrs.push_back(named_attr_entry);
+                }
+              } else {
+                // If not a StringAttr, keep the original attribute
+                updated_attrs.push_back(named_attr_entry);
+              }
+            }
+
+            // If any attributes were changed, create a new DictionaryAttr
+            // and update the operation
+            if (params_changed) {
+              mlir::DictionaryAttr new_instr_params =
+                  rewriter.getDictionaryAttr(updated_attrs);
+              instr->setAttr("param", new_instr_params);
+            }
+          }
+        }
+
+      } else if (auto cop_op = llvm::dyn_cast<CopOp>(&child_op)) {
+        mlir::Region &cop_region = cop_op.getBody();
+        if (cop_region.empty()) {
+          continue;
+        }
+        mlir::Block *cop_entry_block = &cop_region.front();
+        for (mlir::Operation &instr_op : *cop_entry_block) {
+          if (auto instr = llvm::dyn_cast<InstrOp>(&instr_op)) {
+            mlir::DictionaryAttr current_instr_params = instr.getParam();
+            llvm::SmallVector<mlir::NamedAttribute> updated_attrs;
+            bool params_changed = false;
+
+            for (const mlir::NamedAttribute &named_attr_entry :
+                 current_instr_params) {
+              auto attr_name = named_attr_entry.getName();
+              auto attr_value = named_attr_entry.getValue();
+
+              if (auto str_attr =
+                      llvm::dyn_cast<mlir::StringAttr>(attr_value)) {
+                std::string str_value = str_attr.getValue().str();
+                // Check if the string value exists as a key in the
+                // schedule_table
+                auto it = schedule_table.find(str_value);
+                if (it != schedule_table.end()) {
+                  int int_value = it->second;
+                  mlir::Attribute new_attr_value =
+                      rewriter.getIntegerAttr(rewriter.getI32Type(), int_value);
+                  // Add the modified attribute to our new list
+                  updated_attrs.push_back(
+                      rewriter.getNamedAttr(attr_name, new_attr_value));
+                  params_changed = true;
+                } else {
+                  // If no match in schedule_table, keep the original
+                  // attribute
+                  updated_attrs.push_back(named_attr_entry);
+                }
+              } else {
+                // If not a StringAttr, keep the original attribute
+                updated_attrs.push_back(named_attr_entry);
+              }
+            }
+
+            // If any attributes were changed, create a new DictionaryAttr
+            // and update the operation
+            if (params_changed) {
+              mlir::DictionaryAttr new_instr_params =
+                  rewriter.getDictionaryAttr(updated_attrs);
+              instr->setAttr("param", new_instr_params);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void reshape_instr(EpochOp *op, PatternRewriter &rewriter) const {
+    // Get the block to insert the new operations
+    auto epoch_op = *op;
+    if (!epoch_op) {
+      llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
+      std::exit(-1);
+    }
+    mlir::Region &epochBodyRegion = epoch_op.getBody();
+    mlir::Block *block;
+    if (epochBodyRegion.empty()) {
+      block = rewriter.createBlock(&epochBodyRegion);
+    } else {
+      block = &epochBodyRegion.front();
+    }
+
+    std::vector<mlir::Operation *> ops_to_erase;
+    std::vector<mlir::Operation *> ops_to_reshape;
+
+    for (mlir::Operation &child_op : *block) {
+      ops_to_reshape.push_back(&child_op);
+    }
+
+    for (mlir::Operation *child_op : ops_to_reshape) {
+      if (auto rop_op = llvm::dyn_cast<RopOp>(child_op)) {
+        // convert the RopOp to JSON
+        nlohmann::json rop_json = op2json(child_op);
+        // create command
+        // create a temporary file in the tmp directory with random name
+        // and call the timing model builder to generate the timing model
+        // expression.
+        std::string random_str = vesyla::util::Common::gen_random_string(10);
+        LOG_DEBUG << "Random string for temporary file: " << random_str;
+        std::string input_filename = tmp_path + "/" + random_str + ".json";
+        std::string output_filename = tmp_path + "/" + random_str + "_out.json";
+        LOG_DEBUG << "Input filename: " << input_filename;
+        LOG_DEBUG << "Output filename: " << output_filename;
+        std::string label = std::to_string(rop_json["row"].get<int>()) + "_" +
+                            std::to_string(rop_json["col"].get<int>()) + "_" +
+                            std::to_string(rop_json["slot"].get<int>()) + "_" +
+                            std::to_string(rop_json["port"].get<int>());
+        LOG_DEBUG << "Label: " << label;
+        if (component_map.find(label) == component_map.end()) {
+          llvm::outs() << "Error: Cannot find the component : " << label
+                       << "\n";
+          std::exit(-1);
+        }
+        std::string command = component_path + "/resources/" +
+                              component_map[label].get<std::string>() +
+                              "/compile_util reshape_instr " + input_filename +
+                              " " + output_filename;
+
+        llvm::outs() << "Executing command: " << command << "\n";
+
+        std::ofstream file(input_filename);
+        if (!file.is_open()) {
+          llvm::outs() << "Error: Failed to create temporary file.\n";
+          std::exit(-1);
+        }
+        file << rop_json.dump(4);
+        file.close();
+        int result = system(command.c_str());
+        if (result != 0) {
+          llvm::outs() << "Error: Command failed with error code: " << result
+                       << "\n";
+          std::exit(-1);
+        }
+
+        // read the output file
+        std::ifstream output_file(output_filename);
+        if (!output_file.is_open()) {
+          llvm::outs() << "Error: Failed to open output file.\n";
+          std::exit(-1);
+        }
+        nlohmann::json output_json = nlohmann::json::parse(output_file);
+        output_file.close();
+        // delete the temporary files
+        std::filesystem::remove(input_filename);
+        std::filesystem::remove(output_filename);
+        if (output_json["kind"].get<std::string>() != "rop") {
+          llvm::outs() << "Error: Output JSON is not a RopOp.\n";
+          std::exit(-1);
+        }
+        // convert the output JSON to operation
+        rewriter.setInsertionPointToEnd(block);
+        json2op(output_json, rewriter);
+        // remove the original RopOp
+        ops_to_erase.push_back(child_op);
+      } else if (auto cop_op = llvm::dyn_cast<CopOp>(child_op)) {
+        // convert the CopOp to JSON
+        nlohmann::json cop_json = op2json(child_op);
+        // create command
+        // create a temporary file in the tmp directory with random name
+        // and call the timing model builder to generate the timing model
+        // expression.
+        std::string random_str = vesyla::util::Common::gen_random_string(10);
+        LOG_DEBUG << "Random string for temporary file: " << random_str;
+        std::string input_filename = tmp_path + "/" + random_str + ".json";
+        std::string output_filename = tmp_path + "/" + random_str + "_out.json";
+        LOG_DEBUG << "Input filename: " << input_filename;
+        LOG_DEBUG << "Output filename: " << output_filename;
+        std::string label = std::to_string(cop_json["row"].get<int>()) + "_" +
+                            std::to_string(cop_json["col"].get<int>());
+        LOG_DEBUG << "Label: " << label;
+        if (component_map.find(label) == component_map.end()) {
+          llvm::outs() << "Error: Cannot find the component : " << label
+                       << "\n";
+          std::exit(-1);
+        }
+        std::string command = component_path + "/resources/" +
+                              component_map[label].get<std::string>() +
+                              "/compile_util reshape_instr " + input_filename +
+                              " " + output_filename;
+
+        llvm::outs() << "Executing command: " << command << "\n";
+
+        std::ofstream file(input_filename);
+        if (!file.is_open()) {
+          llvm::outs() << "Error: Failed to create temporary file.\n";
+          std::exit(-1);
+        }
+        file << cop_json.dump(4);
+        file.close();
+        int result = system(command.c_str());
+        if (result != 0) {
+          llvm::outs() << "Error: Command failed with error code: " << result
+                       << "\n";
+          std::exit(-1);
+        }
+
+        // read the output file
+        std::ifstream output_file(output_filename);
+        if (!output_file.is_open()) {
+          llvm::outs() << "Error: Failed to open output file.\n";
+          std::exit(-1);
+        }
+        nlohmann::json output_json = nlohmann::json::parse(output_file);
+        output_file.close();
+        // delete the temporary files
+        std::filesystem::remove(input_filename);
+        std::filesystem::remove(output_filename);
+        if (output_json["kind"].get<std::string>() != "cop") {
+          llvm::outs() << "Error: Output JSON is not a CopOp.\n";
+          std::exit(-1);
+        }
+        // convert the output JSON to operation
+        rewriter.setInsertionPointToEnd(block);
+        json2op(output_json, rewriter);
+        // remove the original CopOp
+        ops_to_erase.push_back(child_op);
+      } else if (auto raw_op = llvm::dyn_cast<RawOp>(child_op)) {
+        // DO NOTHING
+      } else if (auto cstr_op = llvm::dyn_cast<CstrOp>(child_op)) {
+        // DO NOTHING
+      } else if (auto yield_op = llvm::dyn_cast<YieldOp>(child_op)) {
+        // DO NOTHING
+      } else {
+        llvm::outs() << "Illegal operation type in EpochOp: "
+                     << child_op->getName() << "\n";
+        std::exit(-1);
+      }
+    }
+
+    // erase the original operations
+    for (auto op : ops_to_erase) {
+      rewriter.eraseOp(op);
+    } // end of erasing operations
   }
 
   void synchronize(EpochOp *op,
@@ -511,54 +800,54 @@ private:
           for (auto rop_child_op : rop_child_ops) {
             if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
 
-              // find out all StringAttr parameters in the DictionaryAttr,
-              // check if it matches any entry in the schedule_table, if it
-              // does, then replace the field with integer value in
-              // schedule_table.
+              // // find out all StringAttr parameters in the DictionaryAttr,
+              // // check if it matches any entry in the schedule_table, if it
+              // // does, then replace the field with integer value in
+              // // schedule_table.
 
-              mlir::DictionaryAttr current_instr_params = instr_op.getParam();
-              llvm::SmallVector<mlir::NamedAttribute> updated_attrs;
-              bool params_changed = false;
+              // mlir::DictionaryAttr current_instr_params =
+              // instr_op.getParam(); llvm::SmallVector<mlir::NamedAttribute>
+              // updated_attrs; bool params_changed = false;
 
-              for (const mlir::NamedAttribute &named_attr_entry :
-                   current_instr_params) {
-                auto attr_name = named_attr_entry.getName();
-                auto attr_value = named_attr_entry.getValue();
+              // for (const mlir::NamedAttribute &named_attr_entry :
+              //      current_instr_params) {
+              //   auto attr_name = named_attr_entry.getName();
+              //   auto attr_value = named_attr_entry.getValue();
 
-                if (auto str_attr =
-                        llvm::dyn_cast<mlir::StringAttr>(attr_value)) {
-                  std::string str_value = str_attr.getValue().str();
-                  // Check if the string value exists as a key in the
-                  // schedule_table
-                  auto it = schedule_table.find(str_value);
-                  if (it != schedule_table.end()) {
-                    int int_value = it->second;
-                    mlir::Attribute new_attr_value = rewriter.getIntegerAttr(
-                        rewriter.getI32Type(), int_value);
-                    // Add the modified attribute to our new list
-                    updated_attrs.push_back(
-                        rewriter.getNamedAttr(attr_name, new_attr_value));
-                    params_changed = true;
-                  } else {
-                    // If no match in schedule_table, keep the original
-                    // attribute
-                    updated_attrs.push_back(named_attr_entry);
-                  }
-                } else {
-                  // If not a StringAttr, keep the original attribute
-                  updated_attrs.push_back(named_attr_entry);
-                }
-              }
+              //   if (auto str_attr =
+              //           llvm::dyn_cast<mlir::StringAttr>(attr_value)) {
+              //     std::string str_value = str_attr.getValue().str();
+              //     // Check if the string value exists as a key in the
+              //     // schedule_table
+              //     auto it = schedule_table.find(str_value);
+              //     if (it != schedule_table.end()) {
+              //       int int_value = it->second;
+              //       mlir::Attribute new_attr_value = rewriter.getIntegerAttr(
+              //           rewriter.getI32Type(), int_value);
+              //       // Add the modified attribute to our new list
+              //       updated_attrs.push_back(
+              //           rewriter.getNamedAttr(attr_name, new_attr_value));
+              //       params_changed = true;
+              //     } else {
+              //       // If no match in schedule_table, keep the original
+              //       // attribute
+              //       updated_attrs.push_back(named_attr_entry);
+              //     }
+              //   } else {
+              //     // If not a StringAttr, keep the original attribute
+              //     updated_attrs.push_back(named_attr_entry);
+              //   }
+              // }
 
-              // If any attributes were changed, create a new DictionaryAttr
-              // and update the operation
-              if (params_changed) {
-                mlir::DictionaryAttr new_instr_params =
-                    rewriter.getDictionaryAttr(updated_attrs);
-                // "param" is the name of the DictionaryAttr attribute in
-                // your InstrOp definition
-                instr_op->setAttr("param", new_instr_params);
-              }
+              // // If any attributes were changed, create a new DictionaryAttr
+              // // and update the operation
+              // if (params_changed) {
+              //   mlir::DictionaryAttr new_instr_params =
+              //       rewriter.getDictionaryAttr(updated_attrs);
+              //   // "param" is the name of the DictionaryAttr attribute in
+              //   // your InstrOp definition
+              //   instr_op->setAttr("param", new_instr_params);
+              // }
 
               while (time_table[label].find(curr_t) !=
                      time_table[label].end()) {
@@ -575,8 +864,10 @@ private:
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       llvm::outs() << "Time table: " << it->first << "\n";
       for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
-        llvm::outs() << "  " << it2->first << ": " << it2->second->getName()
-                     << "\n";
+        llvm::outs()
+            << "  " << it2->first << ": " << it2->second->getName() << ", "
+            << llvm::dyn_cast<vesyla::pasm::InstrOp>(it2->second).getType()
+            << "\n";
       }
     }
 
@@ -628,6 +919,7 @@ private:
           int curr_t = time_op_vec[i].first;
           if (curr_t - prev_t > 1) {
             // create a WAIT instruction
+            rewriter.setInsertionPointToEnd(block);
             auto wait_instr_param_map = create_wait_instr(curr_t - prev_t - 1);
             mlir::StringAttr id = rewriter.getStringAttr(
                 vesyla::util::Common::gen_random_string(8));
@@ -643,6 +935,7 @@ private:
                 time_op_vec[i].second->getLoc(), id, type, param);
             new_time_op_vec.push_back(
                 std::make_pair(prev_t + 1, wait_instr.getOperation()));
+            new_time_op_vec.push_back(time_op_vec[i]);
           } else {
             new_time_op_vec.push_back(time_op_vec[i]);
           }
@@ -653,6 +946,7 @@ private:
       // insert a wait instruction at the end if the last operation is not
       // the total_latency-1
       if (prev_t != total_latency - 1) {
+        rewriter.setInsertionPointToEnd(block);
         auto wait_instr_param_map =
             create_wait_instr(total_latency - 1 - prev_t);
         mlir::StringAttr id =
@@ -691,6 +985,7 @@ private:
 
     // add a yield instruction at the end of the block to separate the
     // operations
+    rewriter.setInsertionPointToEnd(block);
     auto yield_instr = rewriter.create<vesyla::pasm::YieldOp>(op->getLoc());
 
     // insert a RawOp for each cell at the end of the block
@@ -716,8 +1011,9 @@ private:
       } else {
         raw_op_entry_block = &raw_op_body.front();
       }
-      rewriter.setInsertionPointToEnd(raw_op_entry_block);
+
       for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        rewriter.setInsertionPointToEnd(raw_op_entry_block);
         rewriter.clone(**it2);
       }
       // add a terminator to raw_op_block
@@ -762,6 +1058,16 @@ public:
   LogicalResult matchAndRewrite(EpochOp op,
                                 PatternRewriter &rewriter) const final {
 
+    struct OpExprTuple {
+      std::string id;
+      std::string kind;
+      int row;
+      int col;
+      int slot;
+      int port;
+      std::string expr;
+    };
+    std::vector<OpExprTuple> op_exprs;
     tm::TimingModel model;
     tm::Solver solver(tmp_path);
     // Get the EpochOp's ID
@@ -780,15 +1086,13 @@ public:
 
         nlohmann::json rop_json = op2json(rop_op.getOperation());
 
-        LOG_DEBUG << rop_json.dump(4);
-
         // create a temporary file in the tmp directory with random name
         // and call the timing model builder to generate the timing model
         // expression.
         std::string random_str = vesyla::util::Common::gen_random_string(10);
         LOG_DEBUG << "Random string for temporary file: " << random_str;
         std::string input_filename = tmp_path + "/" + random_str + ".json";
-        std::string output_filename = tmp_path + "/" + random_str + ".txt";
+        std::string output_filename = tmp_path + "/" + random_str + "_out.txt";
         LOG_DEBUG << "Input filename: " << input_filename;
         LOG_DEBUG << "Output filename: " << output_filename;
         std::string label = std::to_string(rop_json["row"].get<int>()) + "_" +
@@ -839,6 +1143,12 @@ public:
         remove(input_filename.c_str());
         remove(output_filename.c_str());
 
+        op_exprs.push_back(OpExprTuple{
+            rop_json["id"].get<std::string>(),
+            rop_json["kind"].get<std::string>(), rop_json["row"].get<int>(),
+            rop_json["col"].get<int>(), rop_json["slot"].get<int>(),
+            rop_json["port"].get<int>(), output_str});
+
       } else if (auto cop_op = llvm::dyn_cast<CopOp>(&child_op)) {
         llvm::outs() << "CopOp ID: " << cop_op.getId() << "\n";
       } else if (auto raw_op = llvm::dyn_cast<RawOp>(&child_op)) {
@@ -862,6 +1172,94 @@ public:
       operation_type_set.insert(child_op.getName().getStringRef().str());
     }
 
+    // add build-in constraints
+    std::unordered_map<std::string, std::vector<std::string>> all_resource_op;
+    std::unordered_map<std::string, std::vector<std::string>>
+        all_control_op_anchors;
+    for (auto &op_expr : op_exprs) {
+      if (op_expr.kind == "rop") {
+        std::string label =
+            std::to_string(op_expr.row) + "_" + std::to_string(op_expr.col);
+        if (all_resource_op.find(label) == all_resource_op.end()) {
+          all_resource_op[label] = std::vector<std::string>();
+        }
+        all_resource_op[label].push_back(op_expr.id);
+      } else if (op_expr.kind == "cop") {
+        std::string label =
+            std::to_string(op_expr.row) + "_" + std::to_string(op_expr.col);
+        if (all_control_op_anchors.find(label) ==
+            all_control_op_anchors.end()) {
+          all_control_op_anchors[label] = std::vector<std::string>();
+        }
+        std::vector<std::string> anchors =
+            model.get_operation(op_expr.id).get_all_anchors();
+        all_control_op_anchors[label].insert(
+            all_control_op_anchors[label].end(), anchors.begin(),
+            anchors.end());
+      } else if (op_expr.kind == "raw") {
+        // DO NOTHING
+      } else if (op_expr.kind == "cstr") {
+        // DO NOTHING
+      } else if (op_expr.kind == "yield") {
+        // DO NOTHING
+      } else {
+        llvm::outs() << "Error: Illegal operation kind in EpochOp: "
+                     << op_expr.kind << "\n";
+        std::exit(-1);
+      }
+    }
+
+    for (auto cell : all_resource_op) {
+      std::string label = cell.first;
+      std::vector<std::string> ops = cell.second;
+      if (ops.size() > 1) {
+        // add a constraint that all ROPs in the same cell cannot be executed
+        // at the same time
+        for (size_t i = 0; i < ops.size(); i++) {
+          int slot = -1;
+          int port = -1;
+          for (auto &op : op_exprs) {
+            if (op.id == ops[i]) {
+              slot = op.slot;
+              port = op.port;
+              break;
+            }
+          }
+          for (size_t j = i + 1; j < ops.size(); j++) {
+            int slot2 = -1;
+            int port2 = -1;
+            for (auto &op : op_exprs) {
+              if (op.id == ops[j]) {
+                slot2 = op.slot;
+                port2 = op.port;
+                break;
+              }
+            }
+            if (slot == -1 || slot2 == -1) {
+              llvm::outs() << "Error: Cannot find the slot or port for "
+                           << ops[i] << " or " << ops[j] << "\n";
+              std::exit(-1);
+            }
+            if (slot >= slot2 + 4 || slot2 >= slot + 4) {
+              if (port != port2) {
+                model.add_constraint(
+                    tm::Constraint("linear", ops[i] + " != " + ops[j]));
+              }
+            }
+          }
+          if (all_control_op_anchors.find(label) !=
+              all_control_op_anchors.end()) {
+            // add a constraint that the ROPs cannot be executed at the same
+            // time as the control operations
+            for (auto &anchor : all_control_op_anchors[label]) {
+              model.add_constraint(
+                  tm::Constraint("linear", ops[i] + " != " + anchor));
+            }
+          }
+        }
+      }
+    }
+
     // solve the timing model
     std::unordered_map<std::string, std::string> result = solver.solve(model);
     if (result.empty()) {
@@ -879,6 +1277,8 @@ public:
       }
     }
 
+    replace_time_in_instr_param(&op, schedule_table, rewriter);
+    reshape_instr(&op, rewriter);
     synchronize(&op, schedule_table, rewriter);
 
     return success();

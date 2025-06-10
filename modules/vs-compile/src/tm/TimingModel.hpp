@@ -44,6 +44,7 @@ public:
     constraints.push_back(constraint);
   }
   void from_string(string str);
+  Operation get_operation(string name);
 
 private:
   BinaryTree *build_binary_tree(OperationExpr &expr);

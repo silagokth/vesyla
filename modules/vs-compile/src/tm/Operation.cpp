@@ -1,4 +1,5 @@
 #include "Operation.hpp"
+#include <string>
 
 namespace vesyla {
 namespace tm {
@@ -161,6 +162,46 @@ string OperationExpr::to_string() {
 string Operation::to_string() {
   string str = "operation " + name + " " + expr.to_string();
   return str;
+}
+
+std::vector<std::pair<std::string, std::vector<int>>>
+OperationExpr::get_all_anchors() {
+  std::vector<std::pair<std::string, std::vector<int>>> anchors;
+  if (kind == TRANSIT) {
+    anchors = children[0].get_all_anchors();
+    anchors.insert(anchors.end(), children[1].get_all_anchors().begin(),
+                   children[1].get_all_anchors().end());
+  } else if (kind == REPEAT) {
+    std::vector<std::pair<std::string, std::vector<int>>> child_anchors =
+        children[0].get_all_anchors();
+    int iter = std::stoi(parameters["iter"]);
+    for (int i = 0; i < iter; i++) {
+      for (int j = 0; j < child_anchors.size(); j++) {
+        std::string anchor_event = child_anchors[j].first;
+        std::vector<int> indices = child_anchors[j].second;
+        indices.push_back(i);
+        anchors.push_back({anchor_event, indices});
+      }
+    }
+  } else if (kind == EVENT) {
+    anchors.push_back({"e" + parameters["id"], {}});
+  }
+  return anchors;
+}
+
+std::vector<std::string> Operation::get_all_anchors() {
+  std::vector<std::string> anchors;
+  for (const auto &anchor : expr.get_all_anchors()) {
+    std::string anchor_event = anchor.first;
+    std::vector<int> indices = anchor.second;
+    std::string anchor_str = anchor_event;
+    for (int i = indices.size() - 1; i >= 0; --i) {
+      int index = indices[i];
+      anchor_str += "[" + std::to_string(index) + "]";
+    }
+    anchors.push_back(anchor_str);
+  }
+  return anchors;
 }
 
 } // namespace tm

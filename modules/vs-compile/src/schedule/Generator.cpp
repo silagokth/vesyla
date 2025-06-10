@@ -268,9 +268,8 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
 
                     // pad the instruction binary to the required bitwidth
                     if (instr_bin.size() < instr_bitwidth) {
-                      instr_bin =
-                          std::string(instr_bitwidth - instr_bin.size(), '0') +
-                          instr_bin;
+                      instr_bin +=
+                          std::string(instr_bitwidth - instr_bin.size(), '0');
                     } else if (instr_bin.size() > instr_bitwidth) {
                       llvm::outs() << "Error: Instruction binary size "
                                    << instr_bin.size()

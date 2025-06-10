@@ -62,8 +62,8 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   }
 
   // delete the temporary files
-  remove(input_filename.c_str());
-  remove(output_filename.c_str());
+  // remove(input_filename.c_str());
+  // remove(output_filename.c_str());
 
   // get output
   string output_str = json_output["output"]["dzn"].get<string>();
