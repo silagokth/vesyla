@@ -43,7 +43,7 @@ enum Command {
 }
 
 #[derive(Parser)]
-#[command(version, about, long_about=None)]
+#[command(about, long_about=None)]
 struct Args {
     /// Command to execute
     #[command(subcommand)]
@@ -61,14 +61,6 @@ fn main() {
     let cli_args = match Args::try_parse() {
         Ok(args) => args,
         Err(e) => match e.kind() {
-            ErrorKind::DisplayVersion => {
-                println!(
-                    "vesyla ({}) {}",
-                    env!("CARGO_PKG_NAME"),
-                    env!("VESYLA_VERSION")
-                );
-                std::process::exit(0);
-            }
             ErrorKind::DisplayHelp => {
                 println!("{}", e);
                 std::process::exit(0);

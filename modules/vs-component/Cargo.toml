@@ -7,9 +7,6 @@ description = "Vesyla tool to generate fabrics RTL and SST simulation configurat
 name = "vs-component"
 path = "src/main.rs"
 
-[build-dependencies]
-build-utils = { path = "../build-utils" }
-
 [dependencies]
 bs58 = "0.5.1"
 clap = { version = "4.5.21", features = ["derive"] }
