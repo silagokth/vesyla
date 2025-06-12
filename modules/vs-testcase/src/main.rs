@@ -56,7 +56,7 @@ enum Command {
 }
 
 #[derive(Parser)]
-#[command(version, about, long_about = None, allow_missing_positional = true, after_help = "")]
+#[command(about, long_about = None, allow_missing_positional = true, after_help = "")]
 struct Args {
     /// Command to execute
     #[command(subcommand)]
@@ -75,14 +75,6 @@ fn main() -> Result<(), io::Error> {
         Err(e) => {
             // Check if the error is for displaying help or version
             match e.kind() {
-                ErrorKind::DisplayVersion => {
-                    println!(
-                        "vesyla ({}) {}",
-                        env!("CARGO_PKG_NAME"),
-                        env!("VESYLA_VERSION")
-                    );
-                    return Ok(());
-                }
                 ErrorKind::DisplayHelp => {
                     println!("{}", e);
                     return Ok(());
