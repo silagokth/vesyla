@@ -57,7 +57,7 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = vec!["component", "manas", "schedule", "testcase"];
+    let tools_list = ["component", "manas", "schedule", "testcase"];
     match command.as_str() {
         "-h" | "--help" => {
             info!("{}", help_message);
@@ -81,18 +81,16 @@ fn main() {
             let prog_path = current_exe_dir.join(format!("vs-{}", command));
             let prog = prog_path.to_str().unwrap();
 
-            let status = process::Command::new(&prog)
+            let status = process::Command::new(prog)
                 .args(&args[2..])
                 .stdout(process::Stdio::inherit())
                 .stderr(process::Stdio::inherit())
                 .status()
-                .expect(format!("Failed to execute command: vs-{}", command).as_str());
-            if !status.success() {
-                if status.code() != Some(2) {
-                    error!("{} command failed", command);
-                    info!("Exit code: {}", status.code().unwrap_or(-1));
-                    process::exit(status.code().unwrap_or(-1));
-                }
+                .unwrap_or_else(|_| panic!("Failed to execute command: vs-{}", command));
+            if !status.success() && status.code() != Some(2) {
+                error!("{} command failed", command);
+                info!("Exit code: {}", status.code().unwrap_or(-1));
+                process::exit(status.code().unwrap_or(-1));
             }
         }
         _ => {
@@ -122,7 +120,7 @@ fn init() {
 fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {
     let mut saved_env: Vec<(String, Option<String>)> = Vec::new();
     for name in name_list {
-        match env::var(&name) {
+        match env::var(name) {
             Ok(val) => {
                 saved_env.push((name.to_string(), Some(val)));
             }
@@ -139,10 +137,10 @@ fn pop_env(name_list: &Vec<String>, saved_env: Vec<(String, Option<String>)>) {
     for (name, val) in saved_env {
         match val {
             Some(val) => unsafe {
-                env::set_var(name.to_string(), val);
+                env::set_var(&name, val);
             },
             None => unsafe {
-                env::remove_var(name.to_string());
+                env::remove_var(&name);
             },
         }
     }
