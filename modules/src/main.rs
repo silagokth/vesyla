@@ -60,7 +60,7 @@ fn main() {
     let tools_list = ["component", "manas", "schedule", "testcase"];
     match command.as_str() {
         "-h" | "--help" => {
-            info!("{}", help_message);
+            println!("{}", help_message);
             process::exit(0);
         }
         "-V" | "--version" => {
@@ -89,7 +89,7 @@ fn main() {
                 .unwrap_or_else(|_| panic!("Failed to execute command: vs-{}", command));
             if !status.success() && status.code() != Some(2) {
                 error!("{} command failed", command);
-                info!("Exit code: {}", status.code().unwrap_or(-1));
+                error!("Exit code: {}", status.code().unwrap_or(-1));
                 process::exit(status.code().unwrap_or(-1));
             }
         }
