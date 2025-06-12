@@ -1803,7 +1803,6 @@ name = "vs-component"
 version = "0.0.0"
 dependencies = [
  "bs58",
- "build-utils",
  "clap",
  "env_logger 0.11.8",
  "jsonschema",
@@ -1822,7 +1821,6 @@ dependencies = [
 name = "vs-manas"
 version = "0.0.0"
 dependencies = [
- "build-utils",
  "cfgrammar",
  "clap",
  "env_logger 0.10.2",
@@ -1839,7 +1837,6 @@ dependencies = [
 name = "vs-testcase"
 version = "0.0.0"
 dependencies = [
- "build-utils",
  "clap",
  "env_logger 0.10.2",
  "log",
