@@ -2,6 +2,23 @@ use log::{error, info};
 use std::env;
 use std::process;
 
+fn get_drra_components_version() -> Result<String, std::io::Error> {
+    // Check if the VESYLA_SUITE_PATH_COMPONENTS environment variable is set
+    if env::var("VESYLA_SUITE_PATH_COMPONENTS").is_err() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "VESYLA_SUITE_PATH_COMPONENTS environment variable is not set",
+        ));
+    }
+
+    // Read the version file (library/VERSION)
+    let drra_components_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").unwrap();
+    let version_file_path = format!("{}/VERSION", drra_components_path);
+    let version_content = std::fs::read_to_string(version_file_path)?;
+
+    Ok(version_content.trim().to_string())
+}
+
 fn main() {
     // define the used environment variables
     let name_list = vec!["VESYLA_SUITE_PATH_TESTCASE".to_string()];
@@ -48,6 +65,15 @@ fn main() {
         }
         "-V" | "--version" => {
             println!("vesyla {}", env!("VESYLA_VERSION"));
+            match get_drra_components_version() {
+                Ok(version) => {
+                    println!("drra-components {}", version);
+                }
+                Err(err) => {
+                    println!("drra-components version unknown");
+                    error!("Failed to retrieve drra-components version: {}", err);
+                }
+            }
         }
         cmd if tools_list.contains(&cmd) => {
             let current_exe = env::current_exe().unwrap();
