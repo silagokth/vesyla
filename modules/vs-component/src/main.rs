@@ -8,9 +8,9 @@ mod utils;
 
 use clap::{error::ErrorKind, Parser, Subcommand};
 use log::{error, info};
+use std::fs;
 use std::io::Result;
 use std::path::Path;
-use std::{env, fs};
 
 #[derive(Subcommand)]
 enum Command {
