@@ -5,11 +5,6 @@ import logging
 import time
 import dispatch
 
-try:
-    from __version__ import VESYLA_VERSION
-except ImportError:
-    VESYLA_VERSION = "version unknown"
-
 
 def main(args):
     # record the start time
@@ -33,12 +28,6 @@ def main(args):
     )
     parser.add_argument(
         "-o", "--output", type=str, help="output directory", default="."
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="vesyla (%(prog)s) " + VESYLA_VERSION,
-        help="show version and exit",
     )
     args = parser.parse_args(args)
 

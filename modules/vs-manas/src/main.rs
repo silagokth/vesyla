@@ -13,7 +13,7 @@ use std::path::Path;
 use std::process;
 
 #[derive(clappar)]
-#[command(version, about, long_about=None)]
+#[command(about, long_about=None)]
 struct Args {
     #[arg(short, long)]
     arch: String,
@@ -37,14 +37,6 @@ fn main() {
         Err(e) => {
             // Check if the error is for displaying help or version
             match e.kind() {
-                ErrorKind::DisplayVersion => {
-                    println!(
-                        "vesyla ({}) {}",
-                        env!("CARGO_PKG_NAME"),
-                        env!("VESYLA_VERSION")
-                    );
-                    process::exit(0);
-                }
                 ErrorKind::DisplayHelp => {
                     println!("{}", e);
                     process::exit(0);
