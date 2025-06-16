@@ -53,7 +53,6 @@ include_directories(${PROJECT_SOURCE_DIR}/src/util/plog)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
-file(GLOB SOURCE_CIDFG "src/cidfg/*.cpp")
 file(GLOB SOURCE_EXEC "src/exec/*.cpp")
 file(GLOB SOURCE_PASM "src/pasm/*.cpp")
 file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")

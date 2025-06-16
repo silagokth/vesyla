@@ -12,6 +12,9 @@ int main(int argc, char **argv) {
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vs-compile --arch FILE --isa FILE --pasm FILE "
                 "[--output DIR]";
+    LOG_INFO << "Or";
+    LOG_INFO << "vs-compile --arch FILE --isa FILE --cpp FILE "
+                "[--output DIR]";
     return 0;
   }
 
