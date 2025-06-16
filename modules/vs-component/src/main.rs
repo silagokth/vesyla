@@ -8,9 +8,9 @@ mod utils;
 
 use clap::{error::ErrorKind, Parser, Subcommand};
 use log::{error, info};
+use std::fs;
 use std::io::Result;
 use std::path::Path;
-use std::{env, fs};
 
 #[derive(Subcommand)]
 enum Command {
@@ -43,7 +43,7 @@ enum Command {
 }
 
 #[derive(Parser)]
-#[command(version, about, long_about=None)]
+#[command(about, long_about=None)]
 struct Args {
     /// Command to execute
     #[command(subcommand)]
@@ -61,14 +61,6 @@ fn main() {
     let cli_args = match Args::try_parse() {
         Ok(args) => args,
         Err(e) => match e.kind() {
-            ErrorKind::DisplayVersion => {
-                println!(
-                    "vesyla ({}) {}",
-                    env!("CARGO_PKG_NAME"),
-                    env!("VESYLA_VERSION")
-                );
-                std::process::exit(0);
-            }
             ErrorKind::DisplayHelp => {
                 println!("{}", e);
                 std::process::exit(0);
@@ -155,14 +147,16 @@ fn assemble(arch: &String, output: &String) {
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
     fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
     fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
-    match rtl_code_gen::gen_rtl(&arch, &output, &format!("{}/arch/arch.json", output)) {
+    match rtl_code_gen::gen_rtl(arch, output, &format!("{}/arch/arch.json", output)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }
-    isa_gen::generate(
-        &format!("{}/arch/arch.json", output),
-        &format!("{}/isa", output),
-    );
+
+    // Generate ISA (doc and json) from architecture JSON file
+    let arch_json_path = Path::new(output).join("arch/arch.json");
+    let doc_path = Path::new(output).join("isa/");
+    isa_gen::generate(&arch_json_path, &doc_path);
+
     arch_visual_gen::generate(
         &format!("{}/arch/arch.json", output),
         &format!("{}/arch", output),

@@ -56,7 +56,7 @@ enum Command {
 }
 
 #[derive(Parser)]
-#[command(version, about, long_about = None, allow_missing_positional = true, after_help = "")]
+#[command(about, long_about = None, allow_missing_positional = true, after_help = "")]
 struct Args {
     /// Command to execute
     #[command(subcommand)]
@@ -75,14 +75,6 @@ fn main() -> Result<(), io::Error> {
         Err(e) => {
             // Check if the error is for displaying help or version
             match e.kind() {
-                ErrorKind::DisplayVersion => {
-                    println!(
-                        "vesyla ({}) {}",
-                        env!("CARGO_PKG_NAME"),
-                        env!("VESYLA_VERSION")
-                    );
-                    return Ok(());
-                }
                 ErrorKind::DisplayHelp => {
                     println!("{}", e);
                     return Ok(());
@@ -270,7 +262,7 @@ fn run(
     info!("Copying and running testcase in {:?}", temp_dir_path);
     copy_dir_all(test_dir, temp_dir_path).expect("Failed to copy testcase directory");
     let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
-    let status = process::Command::new("sh")
+    let status = process::Command::new("bash")
         .arg(testcase_script_path)
         .status()
         .expect("Failed to run the testcase");
@@ -322,7 +314,7 @@ fn generate_autotest_config_robot(
     testcase_entries: &[TestcaseEntry],
     output_dir: &String,
 ) -> Result<(), io::Error> {
-    let template = include_str!("../assets/autotest_template.robot.j2");
+    let template = include_str!("../assets/autotest_template.robot.jinja");
     let mut context = minijinja::Environment::new();
     context.add_template("autotest_template", template).unwrap();
     let result = context

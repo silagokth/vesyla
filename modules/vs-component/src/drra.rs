@@ -189,7 +189,7 @@ impl Controller {
                 controller.isa = Some(isa_result.unwrap());
             }
         } else if let Some(kind) = &controller.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
             let isa = InstructionSet::from_json(lib_isa_json);
             if isa.is_err() {
                 panic!(
@@ -265,15 +265,15 @@ impl Controller {
 impl RTLComponent for Controller {
     fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
         generate_rtl_for_component(
-            &self.kind.as_ref().unwrap(),
-            &self.name.as_str(),
+            self.kind.as_ref().unwrap(),
+            self.name.as_str(),
             output_folder,
             &self,
         )
     }
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
-        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         let component_with_hash: String =
             format!("{}_{}", self.name, self.clone().get_fingerprint());
@@ -403,7 +403,8 @@ impl Resource {
         if self.required_parameters.is_empty() {
             warn!("Resource {} has no required parameters", self.name);
         }
-        return Ok(());
+
+        Ok(())
     }
 
     pub fn from_json(json_str: &str) -> Result<Self, Error> {
@@ -499,7 +500,7 @@ impl Resource {
                 panic!("Error parsing ISA: {:?}", isa.to_string());
             }
         } else if let Some(kind) = &resource.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
             let isa = InstructionSet::from_json(lib_isa_json);
             if isa.is_err() {
                 panic!(
@@ -579,15 +580,15 @@ impl Resource {
 impl RTLComponent for Resource {
     fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
         generate_rtl_for_component(
-            &self.kind.as_ref().unwrap(),
-            &self.name.as_str(),
+            self.kind.as_ref().unwrap(),
+            self.name.as_str(),
             output_folder,
             &self,
         )
     }
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
-        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         let component_with_hash: String =
             format!("{}_{}", self.name, self.clone().get_fingerprint());
@@ -721,9 +722,7 @@ impl Cell {
         if self.isa.is_none() {
             return Err(Error::ComponentWithoutISA);
         }
-        if self.resources.is_none() {
-            return Err(Error::CellWithoutResources);
-        } else if self.resources.as_ref().unwrap().is_empty() {
+        if self.resources.is_none() || self.resources.as_ref().unwrap().is_empty() {
             return Err(Error::CellWithoutResources);
         }
         Ok(())
@@ -835,7 +834,7 @@ impl Cell {
                 panic!("Error parsing ISA: {:?}", isa.to_string());
             }
         } else if let Some(kind) = &cell.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone()).unwrap();
+            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
             let isa = InstructionSet::from_json(lib_isa_json);
             if isa.is_err() {
                 panic!(
@@ -934,15 +933,15 @@ impl Cell {
 impl RTLComponent for Cell {
     fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
         generate_rtl_for_component(
-            &self.kind.as_ref().unwrap(),
-            &self.name.as_str(),
+            self.kind.as_ref().unwrap(),
+            self.name.as_str(),
             output_folder,
             &self,
         )
     }
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
-        let component_path = get_path_from_library(&self.kind.as_ref().unwrap()).unwrap();
+        let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
 
         if !bender_filepath.exists() {
@@ -1185,7 +1184,7 @@ impl RTLComponent for Fabric {
     }
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
-        let component_path = get_path_from_library(&"fabric".to_string()).unwrap();
+        let component_path = get_path_from_library(&"fabric".to_string(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         if !bender_filepath.exists() {
             panic!(

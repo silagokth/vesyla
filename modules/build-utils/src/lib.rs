@@ -1,9 +1,10 @@
+use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub fn set_git_version_env(var_name: &str) {
+pub fn get_git_version_env() -> Result<String, io::Error> {
     let git_dir_output = Command::new("git")
-        .args(&["rev-parse", "--git-dir"])
+        .args(["rev-parse", "--git-dir"])
         .output();
 
     let git_dir = match git_dir_output {
@@ -20,7 +21,7 @@ pub fn set_git_version_env(var_name: &str) {
 
     if let Some(git_dir) = git_dir {
         let tag_output = Command::new("git")
-            .args(&["describe", "--tags", "--exact-match"])
+            .args(["describe", "--tags", "--exact-match"])
             .output()
             .ok();
 
@@ -31,7 +32,7 @@ pub fn set_git_version_env(var_name: &str) {
                     .to_string()
             } else {
                 let fallback_output = Command::new("git")
-                    .args(&["describe", "--always", "--tags"])
+                    .args(["describe", "--always", "--tags"])
                     .output()
                     .expect("Failed to run git describe");
                 String::from_utf8_lossy(&fallback_output.stdout)
@@ -41,8 +42,6 @@ pub fn set_git_version_env(var_name: &str) {
         } else {
             "version unknown".to_string()
         };
-
-        println!("cargo:rustc-env={}={}", var_name, version);
 
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let git_dir_path = PathBuf::from(&manifest_dir).join(&git_dir);
@@ -55,9 +54,17 @@ pub fn set_git_version_env(var_name: &str) {
             "cargo:rerun-if-changed={}/refs/tags",
             git_dir_path.display()
         );
-        return;
+        return Ok(version);
     }
 
-    // Fallback if not in a git repository
-    println!("cargo:rustc-env={}={}", var_name, "version unknown");
+    Ok("version unknown".to_string())
+}
+
+pub fn set_git_version_env(var_name: &str) {
+    let version = match get_git_version_env() {
+        Ok(v) => v,
+        Err(_) => "version unknown".to_string(),
+    };
+
+    println!("cargo:rustc-env={}={}", var_name, version);
 }

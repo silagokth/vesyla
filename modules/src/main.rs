@@ -2,6 +2,23 @@ use log::{error, info};
 use std::env;
 use std::process;
 
+fn get_drra_components_version() -> Result<String, std::io::Error> {
+    // Check if the VESYLA_SUITE_PATH_COMPONENTS environment variable is set
+    if env::var("VESYLA_SUITE_PATH_COMPONENTS").is_err() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "VESYLA_SUITE_PATH_COMPONENTS environment variable is not set",
+        ));
+    }
+
+    // Read the version file (library/VERSION)
+    let drra_components_path = env::var("VESYLA_SUITE_PATH_COMPONENTS").unwrap();
+    let version_file_path = format!("{}/VERSION", drra_components_path);
+    let version_content = std::fs::read_to_string(version_file_path)?;
+
+    Ok(version_content.trim().to_string())
+}
+
 fn main() {
     // define the used environment variables
     let name_list = vec!["VESYLA_SUITE_PATH_TESTCASE".to_string()];
@@ -44,11 +61,20 @@ fn main() {
     let tools_list = vec!["compile", "component", "manas", "schedule", "testcase"];
     match command.as_str() {
         "-h" | "--help" => {
-            info!("{}", help_message);
+            println!("{}", help_message);
             process::exit(0);
         }
         "-V" | "--version" => {
             println!("vesyla {}", env!("VESYLA_VERSION"));
+            match get_drra_components_version() {
+                Ok(version) => {
+                    println!("drra-components {}", version);
+                }
+                Err(err) => {
+                    println!("drra-components version unknown");
+                    error!("Failed to retrieve drra-components version: {}", err);
+                }
+            }
         }
         cmd if tools_list.contains(&cmd) => {
             let current_exe = env::current_exe().unwrap();
@@ -56,18 +82,16 @@ fn main() {
             let prog_path = current_exe_dir.join(format!("vs-{}", command));
             let prog = prog_path.to_str().unwrap();
 
-            let status = process::Command::new(&prog)
+            let status = process::Command::new(prog)
                 .args(&args[2..])
                 .stdout(process::Stdio::inherit())
                 .stderr(process::Stdio::inherit())
                 .status()
-                .expect(format!("Failed to execute command: vs-{}", command).as_str());
-            if !status.success() {
-                if status.code() != Some(2) {
-                    error!("{} command failed", command);
-                    info!("Exit code: {}", status.code().unwrap_or(-1));
-                    process::exit(status.code().unwrap_or(-1));
-                }
+                .unwrap_or_else(|_| panic!("Failed to execute command: vs-{}", command));
+            if !status.success() && status.code() != Some(2) {
+                error!("{} command failed", command);
+                error!("Exit code: {}", status.code().unwrap_or(-1));
+                process::exit(status.code().unwrap_or(-1));
             }
         }
         _ => {
@@ -97,7 +121,7 @@ fn init() {
 fn push_env(name_list: &Vec<String>) -> Vec<(String, Option<String>)> {
     let mut saved_env: Vec<(String, Option<String>)> = Vec::new();
     for name in name_list {
-        match env::var(&name) {
+        match env::var(name) {
             Ok(val) => {
                 saved_env.push((name.to_string(), Some(val)));
             }
@@ -114,10 +138,10 @@ fn pop_env(name_list: &Vec<String>, saved_env: Vec<(String, Option<String>)>) {
     for (name, val) in saved_env {
         match val {
             Some(val) => unsafe {
-                env::set_var(name.to_string(), val);
+                env::set_var(&name, val);
             },
             None => unsafe {
-                env::remove_var(name.to_string());
+                env::remove_var(&name);
             },
         }
     }
