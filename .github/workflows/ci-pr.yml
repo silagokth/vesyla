@@ -15,4 +15,4 @@ jobs:
     needs: ci-build-vesyla
     secrets: inherit
     with:
-      version: ${{ needs.check-version.outputs.version }}
+      version: ${{ needs.version }}
