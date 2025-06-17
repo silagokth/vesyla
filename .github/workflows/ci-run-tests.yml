@@ -2,6 +2,10 @@ name: Run DRRA tests
 
 on:
   workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
 
 jobs:
   run-tests:
@@ -52,6 +56,19 @@ jobs:
       - name: Check if vesyla is correctly installed
         run: |
           vesyla --version
+          version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          if [ "$version" = "${{ inputs.version }}" ]; then
+            echo "Versions match"
+          else
+            echo "Versions do not match"
+            exit 1
+          fi
+
+      - name: Check version
+        id: check-version
+        run: |
+          version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Run DRRA tests
         run: |
