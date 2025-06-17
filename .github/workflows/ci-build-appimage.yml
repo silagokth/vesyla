@@ -48,6 +48,7 @@ jobs:
         id: check-version
         run: |
           version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Upload built artifact
