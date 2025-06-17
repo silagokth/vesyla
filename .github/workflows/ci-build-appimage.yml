@@ -2,6 +2,10 @@ name: Create AppImage
 
 on:
   workflow_call:
+    outputs:
+      version:
+        description: "Version from the built vesyla appimage"
+        value: ${{ jobs.check-version.outputs.version }}
 
 jobs:
   run-cargo-tests:
@@ -16,7 +20,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh
           mkdir -p $HOME/.local/bin
           mv bender $HOME/.local/bin/.
-          echo "$HOME/.local/bin" > $GITHUB_PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check bender installation
         run: bender --version
@@ -29,6 +33,8 @@ jobs:
   build:
     name: Build AppImage
     runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.check-version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,6 +43,12 @@ jobs:
         run: |
           make all
           make install
+
+      - name: Check version
+        id: check-version
+        run: |
+          version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Upload built artifact
         id: upload-artifact
