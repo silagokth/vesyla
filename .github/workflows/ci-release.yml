@@ -16,6 +16,8 @@ jobs:
     uses: ./.github/workflows/ci-run-tests.yml
     needs: ci-build-vesyla
     secrets: inherit
+    with:
+      version: ${{ needs.ci-build-vesyla.outputs.version }}
 
   ci-draft-release:
     name: Draft Release
