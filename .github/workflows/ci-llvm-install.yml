@@ -60,7 +60,7 @@ jobs:
         mkdir -p ${{ env.LLVM_BUILD_PATH }}
         wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.LLVM_VERSION }}/llvm-project-${{ env.LLVM_VERSION }}.src.tar.xz
         tar xvf ./llvm-project-${{ env.LLVM_VERSION }}.src.tar.xz
-        mv ./llvm-project-${{ env.LLVM_VERSION }} ${{ env.LLVM_SOURCE_PATH }}
+        mv ./llvm-project-${{ env.LLVM_VERSION }}.src ${{ env.LLVM_SOURCE_PATH }}
 
     - name: Configure LLVM build
       if: steps.check-llvm.outputs.llvm_installed == 'false'
