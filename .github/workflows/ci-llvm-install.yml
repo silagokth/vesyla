@@ -13,7 +13,7 @@ env:
   LLVM_VERSION: "20.1.7"
 
 jobs:
-  sst-install:
+  llvm-install:
     runs-on: ubuntu-22.04
     steps:
 
