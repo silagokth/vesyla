@@ -60,6 +60,7 @@ jobs:
         mkdir -p ${{ env.LLVM_BUILD_PATH }}
         cd ${{ github.workspace }}
         git clone https://github.com/llvm/llvm-project.git
+        cd ${{ env.LLVM_SOURCE_PATH }}
         git checkout llvmorg-${{ env.LLVM_VERSION }}
 
     - name: Configure LLVM build
