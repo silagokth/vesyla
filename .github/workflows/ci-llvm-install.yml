@@ -3,6 +3,8 @@ name: Install LLVM with MLIR
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branch: ci-llvm-install
 
 env:
   LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
