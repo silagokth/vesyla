@@ -1,0 +1,43 @@
+name: 'Check LLVM Installation'
+description: 'Checks if LLVM is installed with MLIR'
+
+inputs:
+  llvm-install-path:
+    description: 'Path to LLVM installation'
+    required: true
+  llvm-build-path:
+    description: 'Path to LLVM build'
+    required: true
+  llvm-source-path:
+    description: 'Path to LLVM source'
+    required: true
+
+outputs:
+  llvm_installed:
+    description: 'Whether LLVM is built and installed correctly'
+    value: ${{ steps.check-llvm.outputs.llvm_installed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: check-llvm
+      shell: bash
+      run: |
+        if [ ! -d "${{ inputs.llvm-install-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-install-path }}")" ]; then
+          echo "LLVM install path does not exist or is empty"
+          echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        if [ ! -d "${{ inputs.llvm-build-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-build-path }}")" ]; then
+          echo "LLVM build path does not exist or is empty"
+          echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        if [ ! -d "${{ inputs.llvm-source-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-source-path }}")" ]; then
+          echo "LLVM source path does not exist or is empty"
+          echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        echo "llvm_installed=true" >> $GITHUB_OUTPUT
+
+
