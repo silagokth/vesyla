@@ -26,14 +26,17 @@ runs:
         if [ ! -d "${{ inputs.llvm-install-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-install-path }}")" ]; then
           echo "LLVM install path does not exist or is empty"
           echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 0
         fi
         if [ ! -d "${{ inputs.llvm-build-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-build-path }}")" ]; then
           echo "LLVM build path does not exist or is empty"
           echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 0
         fi
         if [ ! -d "${{ inputs.llvm-source-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-source-path }}")" ]; then
           echo "LLVM source path does not exist or is empty"
           echo "llvm_installed=false" >> $GITHUB_OUTPUT
+          exit 0
         fi
         echo "llvm_installed=true" >> $GITHUB_OUTPUT
 
