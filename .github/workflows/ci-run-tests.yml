@@ -53,9 +53,6 @@ jobs:
           mv vesyla $HOME/.local/bin
           echo "$HOME/.local/bin" > $GITHUB_PATH
 
-      - name: Debug check inputs
-        run: echo ${{ inputs }}
-
       - name: Check if vesyla is correctly installed
         run: |
           version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')

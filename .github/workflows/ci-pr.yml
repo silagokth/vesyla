@@ -9,14 +9,6 @@ jobs:
     uses: ./.github/workflows/ci-build-appimage.yml
     secrets: inherit
 
-  debug-version:
-    name: Debug version output
-    needs: ci-build-vesyla
-    runs-on: ubuntu-22.04
-    steps:
-      - run: echo '${{ toJson(needs.ci-build-vesyla.outputs) }}'
-      - run: echo ${{ needs.ci-build-vesyla.outputs.version }}
-
   ci-run-tests:
     name: Run DRRA Tests
     uses: ./.github/workflows/ci-run-tests.yml
