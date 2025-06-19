@@ -63,6 +63,8 @@ jobs:
         run: |
           pwd
           ls -al .
+          ls -al ..
+          ls -al ../..
           echo $LLVM_HOME
           ls $LLVM_HOME
           ls $LLVM_HOME/lib/cmake/mlir
