@@ -58,20 +58,12 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Debug print of llvm-build
-        run: |
-          pwd
-          ls -al .
-          ls -al ..
-          ls -al ../..
-          echo $LLVM_HOME
-          ls $LLVM_HOME
-          ls $LLVM_HOME/lib/cmake/mlir
-          ls $LLVM_HOME/lib/cmake/llvm
+        path: ./vesyla-source
+        clean: false
 
       - name: Build project
         run: |
+          cd ${{ github.workspace }}/vesyla-source
           set -e
           make all
           make install
@@ -80,6 +72,7 @@ jobs:
       - name: Check version
         id: check-version
         run: |
+          cd ${{ github.workspace }}/vesyla-source
           version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
@@ -89,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vesyla-${{ github.sha }}
-          path: ./vesyla
+          path: ${{ github.workspace }}/vesyla-source/vesyla
           overwrite: true
