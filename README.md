@@ -51,9 +51,7 @@ Tool suite for DRRA-2 hardware accelerator platform.
 - [minizinc](https://www.minizinc.org/)
 - [drra-components](https://github.com/silagokth/drra-components): v2.6.0 or later
 
-### Usage
-
-#### `vesyla`
+### `vesyla`
 
 ```shell
 Usage: vesyla [command and options]
@@ -68,7 +66,7 @@ Options:
         -V, --version  Show version information
 ```
 
-#### `vs-testcase`
+### `vs-testcase`
 
 ```shell
 Usage: vs-testcase <COMMAND>
@@ -84,7 +82,7 @@ Options:
   -h, --help  Print help
 ```
 
-#### `vs-component`
+### `vs-component`
 
 ```shell
 Usage: vs-component <COMMAND>
@@ -99,7 +97,7 @@ Options:
   -h, --help  Print help
 ```
 
-#### `vs-compile`
+### `vs-compile`
 
 ```shell
 Usage: vs-compile --arch FILE --isa FILE --pasm FILE [--output DIR]
