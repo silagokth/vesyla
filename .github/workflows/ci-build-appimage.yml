@@ -7,6 +7,12 @@ on:
         description: "Version from the built vesyla appimage"
         value: ${{ jobs.build.outputs.version }}
 
+env:
+  LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
+  LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
+  LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
+  LLVM_VERSION: "20.1.7"
+
 jobs:
   run-cargo-tests:
     name: Run Cargo tests
@@ -33,20 +39,41 @@ jobs:
   build:
     name: Build AppImage
     runs-on: ubuntu-22.04
+    env:
+      LLVM_HOME: ${{ github.workspace }}/llvm-build
     outputs:
       version: ${{ steps.check-version.outputs.version }}
     steps:
+      - name: Restore LLVM Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.LLVM_INSTALL_PATH }}
+            ${{ env.LLVM_SOURCE_PATH }}
+            ${{ env.LLVM_BUILD_PATH }}
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+            ${{ runner.os }}-llvm-
+
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          path: ./vesyla-source
+          clean: false
 
       - name: Build project
         run: |
+          cd ${{ github.workspace }}/vesyla-source
+          set -e
           make all
           make install
+          set +e
 
       - name: Check version
         id: check-version
         run: |
+          cd ${{ github.workspace }}/vesyla-source
           version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
@@ -56,5 +83,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vesyla-${{ github.sha }}
-          path: ./vesyla
+          path: ${{ github.workspace }}/vesyla-source/vesyla
           overwrite: true

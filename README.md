@@ -11,11 +11,18 @@ Tool suite for DRRA-2 hardware accelerator platform.
 
 ## Projects
 
-- vs-manas: Low level assembler for DRRA-2 ISA
 - vs-testcase: Test case infrastructure and build-in test cases for DRRA-2
-- vs-entry: Entry point for vesyla
-- vs-schedule: Scheduler for DRRA-2 instruction. It will be integrated into the future compiler
-- vs-component: Assemble the components of vesyla, it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`. Check the repo [drra-components](https://github.com/silagokth/drra-components).
+- vs-component: Assemble the components of vesyla,
+  it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`.
+  Check the repo [drra-components](https://github.com/silagokth/drra-components).
+- vs-compile: Compiler for DRRA-2 instruction set architecture (ISA).
+  It compiles the proto-assembly code (.pasm) into binary code.
+  The compiler uses the [minizinc](https://www.minizinc.org/) solver.
+
+- vs-manas (**deprecated**): Low level assembler for DRRA-2 ISA
+  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
+- vs-schedule (**deprecated**): Scheduler for DRRA-2 instruction.
+  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
 
 ## Compile and Install
 
@@ -36,3 +43,66 @@ Tool suite for DRRA-2 hardware accelerator platform.
    ```bash
    sudo make install
    ```
+
+## Usage
+
+### Requirements
+
+- [minizinc](https://www.minizinc.org/)
+- [drra-components](https://github.com/silagokth/drra-components): v2.6.0 or later
+
+### Usage
+
+#### `vesyla`
+
+```shell
+Usage: vesyla [command and options]
+Commands:
+        compile     Compile the source code
+        component   Assemble the system
+        manas       Validate JSON file
+        schedule    Clean the build directory
+        testcase    Test the system
+Options:
+        -h, --help     Show this help message
+        -V, --version  Show version information
+```
+
+#### `vs-testcase`
+
+```shell
+Usage: vs-testcase <COMMAND>
+
+Commands:
+  init      Initialize testcase directory
+  run       Run testcase
+  generate  Generate testcase scripts
+  export    Export testcase
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+#### `vs-component`
+
+```shell
+Usage: vs-component <COMMAND>
+
+Commands:
+  assemble       Assemble the system
+  validate_json  Validate JSON file
+  clean          Clean the build directory
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+#### `vs-compile`
+
+```shell
+Usage: vs-compile --arch FILE --isa FILE --pasm FILE [--output DIR]
+Or
+vs-compile --arch FILE --isa FILE --cpp FILE [--output DIR]
+```

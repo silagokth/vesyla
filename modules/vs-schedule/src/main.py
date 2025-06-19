@@ -15,6 +15,10 @@ def main(args):
         level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
+    logging.warning(
+        "This program is deprecated and will be removed soon. Please use `vesyla compile` subcommand instead!"
+    )
+
     # parse the arguments
     parser = argparse.ArgumentParser(description="vs-schedule")
     parser.add_argument(
