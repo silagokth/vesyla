@@ -61,6 +61,8 @@ jobs:
 
       - name: Debug print of llvm-build
         run: |
+          pwd
+          ls -al .
           echo $LLVM_HOME
           ls $LLVM_HOME
           ls $LLVM_HOME/lib/cmake/mlir
