@@ -58,49 +58,49 @@ file(GLOB SOURCE_PASM "src/pasm/*.cpp")
 file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")
 
 function(add_custom_mlir_dialect dialect dialect_namespace)
-        message(STATUS "Adding custom MLIR dialect: ${dialect}")
+  message(STATUS "Adding custom MLIR dialect: ${dialect}")
 
-        # Define paths - making them relative to CMAKE_BINARY_DIR
-        set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
-        set(DIALECT_INCLUDE_DIR ../../../build/lib/src/${dialect_namespace})
-        set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace})
+  # Define paths - making them relative to CMAKE_BINARY_DIR
+  set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
+  set(DIALECT_INCLUDE_DIR ../../../build/lib/src/${dialect_namespace})
+  set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace})
 
-        # print paths
-        message(STATUS "Dialect source directory: ${DIALECT_SRC_DIR}")
-        message(STATUS "Dialect include directory: ${DIALECT_INCLUDE_DIR}")
-        message(STATUS "Dialect output directory: ${DIALECT_OUT_DIR}")
+  # print paths
+  message(STATUS "Dialect source directory: ${DIALECT_SRC_DIR}")
+  message(STATUS "Dialect include directory: ${DIALECT_INCLUDE_DIR}")
+  message(STATUS "Dialect output directory: ${DIALECT_OUT_DIR}")
 
-        # Create output directory
-        file(MAKE_DIRECTORY ${DIALECT_OUT_DIR})
+  # Create output directory
+  file(MAKE_DIRECTORY ${DIALECT_OUT_DIR})
 
-        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Ops.td)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.hpp.inc -gen-op-decls)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.cpp.inc -gen-op-defs)
-        add_public_tablegen_target(Vesyla${dialect}OpsIncGen)
+  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Ops.td)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.hpp.inc -gen-op-decls)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.cpp.inc -gen-op-defs)
+  add_public_tablegen_target(Vesyla${dialect}OpsIncGen)
 
-        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Dialect.td)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.hpp.inc -gen-dialect-decls)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.cpp.inc -gen-dialect-defs)
-        add_public_tablegen_target(Vesyla${dialect}DialectIncGen)
+  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Dialect.td)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.hpp.inc -gen-dialect-decls)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.cpp.inc -gen-dialect-defs)
+  add_public_tablegen_target(Vesyla${dialect}DialectIncGen)
 
-        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Types.td)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.hpp.inc -gen-typedef-decls)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
-        add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
+  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Types.td)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.hpp.inc -gen-typedef-decls)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
+  add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
 
-        set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
-        mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
-        add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
+  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
+  add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
 
-        # Create a meta-target that depends on all tablegen targets
-        add_custom_target(Vesyla${dialect}IncGen DEPENDS
+  # Create a meta-target that depends on all tablegen targets
+  add_custom_target(Vesyla${dialect}IncGen DEPENDS
                 Vesyla${dialect}DialectIncGen
                 Vesyla${dialect}OpsIncGen
                 Vesyla${dialect}TypesIncGen
                 Vesyla${dialect}PassesIncGen)
 
-        # Add dependencies
-        add_dependencies(mlir-headers Vesyla${dialect}IncGen)
+  # Add dependencies
+  add_dependencies(mlir-headers Vesyla${dialect}IncGen)
 endfunction()
 
 add_custom_mlir_dialect(Pasm pasm)
@@ -108,7 +108,7 @@ add_mlir_dialect_library(VesylaPasm
         ${SOURCE_PASM}
 
         DISABLE_INSTALL
-        
+
         DEPENDS
         VesylaPasmIncGen
 
