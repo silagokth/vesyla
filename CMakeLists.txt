@@ -19,12 +19,12 @@ set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 include(FetchContent)
-FetchContent_Declare(
+fetchcontent_declare(
     Corrosion
     GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
     GIT_TAG v0.5.2
 )
-FetchContent_MakeAvailable(Corrosion)
+fetchcontent_makeavailable(Corrosion)
 
 get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 message(STATUS "Target name: ${CORROSION_TARGET_NAME}")
@@ -43,7 +43,10 @@ install(
     DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/
     DESTINATION bin
     FILES_MATCHING PATTERN "vs-*"
-    PERMISSIONS OWNER_EXECUTE OWNER_READ OWNER_WRITE GROUP_EXECUTE GROUP_READ GROUP_WRITE WORLD_EXECUTE WORLD_READ WORLD_WRITE
+    PERMISSIONS
+      OWNER_EXECUTE OWNER_READ OWNER_WRITE
+      GROUP_EXECUTE GROUP_READ GROUP_WRITE
+      WORLD_EXECUTE WORLD_READ WORLD_WRITE
 )
 install(DIRECTORY assets/applications DESTINATION share)
 file(COPY assets/applications DESTINATION ${CMAKE_BINARY_DIR}/share)
