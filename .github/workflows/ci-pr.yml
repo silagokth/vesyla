@@ -16,3 +16,4 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.ci-build-vesyla.outputs.version }}
+      branch: ${{ needs.ci-build-vesyla.outputs.branch }}

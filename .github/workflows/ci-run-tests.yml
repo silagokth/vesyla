@@ -6,6 +6,9 @@ on:
       version:
         required: true
         type: string
+      branch:
+        type: string
+        default: 'master'
 
 jobs:
   run-tests:
@@ -40,6 +43,19 @@ jobs:
           path: tests
           ref: master
           token: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
+
+      - name: Check drra-tests branch
+        run: |
+          cd "${{ github.workspace }}/tests"
+          git fetch --all
+          if git show-ref --verify --quiet refs/remotes/origin/${{ inputs.branch }}; then
+            git checkout ${{ inputs.branch }}
+            echo "Switching to drra-tests@${{ inputs.branch }}"
+          else
+            echo "Using the drra-tests master branch"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
 
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
