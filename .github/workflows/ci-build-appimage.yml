@@ -6,6 +6,9 @@ on:
       version:
         description: "Version from the built vesyla appimage"
         value: ${{ jobs.build.outputs.version }}
+      branch:
+        description: "Current vesyla branch on which this workflow is running"
+        value: ${{ jobs.build.outputs.branch }}
 
 env:
   LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
@@ -43,6 +46,7 @@ jobs:
       LLVM_HOME: ${{ github.workspace }}/llvm-build
     outputs:
       version: ${{ steps.check-version.outputs.version }}
+      branch: ${{ steps.check-branch.outputs.branch }}
     steps:
       - name: Restore LLVM Cache
         uses: actions/cache@v4
@@ -61,6 +65,14 @@ jobs:
         with:
           path: ./vesyla-source
           clean: false
+
+      - name: Check branch name
+        id: check-branch
+        run: |
+          cd ${{ github.workspace }}/vesyla-source
+          branch=${{ github.head_ref || github.ref_name }}
+          echo "Current branch is $branch"
+          echo "branch=$branch" >> $GITHUB_OUTPUT
 
       - name: Build project
         run: |
