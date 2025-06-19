@@ -59,6 +59,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug print of llvm-build
+        run: |
+          echo $LLVM_HOME
+          ls $LLVM_HOME
+          ls $LLVM_HOME/lib/cmake/mlir
+          ls $LLVM_HOME/lib/cmake/llvm
+
       - name: Build project
         run: |
           set -e
