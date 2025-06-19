@@ -7,6 +7,12 @@ on:
         description: "Version from the built vesyla appimage"
         value: ${{ jobs.build.outputs.version }}
 
+env:
+  LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
+  LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
+  LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
+  LLVM_VERSION: "20.1.7"
+
 jobs:
   run-cargo-tests:
     name: Run Cargo tests
@@ -33,9 +39,23 @@ jobs:
   build:
     name: Build AppImage
     runs-on: ubuntu-22.04
+    env:
+      LLVM_HOME: ${{ env.LLVM_INSTALL_PATH }}
     outputs:
       version: ${{ steps.check-version.outputs.version }}
     steps:
+      - name: Restore LLVM Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.LLVM_INSTALL_PATH }}
+            ${{ env.LLVM_SOURCE_PATH }}
+            ${{ env.LLVM_BUILD_PATH }}
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+            ${{ runner.os }}-llvm-
+
       - name: Checkout code
         uses: actions/checkout@v4
 
