@@ -40,7 +40,7 @@ jobs:
     name: Build AppImage
     runs-on: ubuntu-22.04
     env:
-      LLVM_HOME: ${{ github.workspace }}/llvm-install
+      LLVM_HOME: ${{ github.workspace }}/llvm-build
     outputs:
       version: ${{ steps.check-version.outputs.version }}
     steps:
