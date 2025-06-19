@@ -118,3 +118,7 @@ chmod +x linuxdeploy-x86_64.AppImage
 log info "Creating the AppImage..."
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir $APPDIR --output appimage
 mv vesyla-x86_64.AppImage ../vesyla
+
+# Show success message
+echo "AppImage created successfully!"
+../vesyla --version
