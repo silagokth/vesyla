@@ -20,6 +20,6 @@ elif [ -f /etc/arch-release ]; then
   # Arch
   sudo pacman -Syu --noconfirm make gcc cmake boost protobuf python python-pip flex bison
 else
-  echo "Unsupported distribution! You need to install the dependencies manually.
+  echo "Unsupported distribution! You need to install the dependencies manually."
   exit 1
 fi
