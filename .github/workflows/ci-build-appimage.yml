@@ -58,8 +58,9 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
-        path: ./vesyla-source
-        clean: false
+        with:
+          path: ./vesyla-source
+          clean: false
 
       - name: Build project
         run: |
