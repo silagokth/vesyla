@@ -15,5 +15,6 @@ target/
 .vscode/
 *.code-workspace
 .clangd
+.cache/
 
 test/
