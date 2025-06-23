@@ -6,7 +6,6 @@ use std::hash::{DefaultHasher, Hasher};
 use std::io::{Error, Result};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
-use tempfile::tempdir;
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -249,6 +248,7 @@ pub fn get_isa_from_library(
 pub fn get_rtl_files_from_library(
     component_name: &String,
     library_path: Option<&Path>,
+    tmp_dir: &Path,
 ) -> Result<Vec<String>> {
     let component_path = match get_path_from_library(component_name, library_path) {
         Ok(path) => path,
@@ -269,8 +269,8 @@ pub fn get_rtl_files_from_library(
     }
 
     // Copy the component_path to a temporary directory in /tmp with random name
-    let tmp_component_path = tempdir()?.path().to_owned();
-    copy_dir(&component_path, &tmp_component_path)?;
+    let tmp_component_path = tmp_dir;
+    copy_dir(&component_path, tmp_component_path)?;
 
     // Run the bender command to get the list of files
     let mut bender_cmd = std::process::Command::new("bender");
@@ -347,7 +347,9 @@ pub fn generate_rtl_for_component(
         );
     }
 
-    let rtl_files_list = match get_rtl_files_from_library(&kind.to_string(), None) {
+    // Create a temporary directory for the component files
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    let rtl_files_list = match get_rtl_files_from_library(&kind.to_string(), None, tmp_dir.path()) {
         Ok(rtl_files) => rtl_files,
         Err(e) => {
             return Err(Error::new(
@@ -421,6 +423,10 @@ pub fn generate_rtl_for_component(
         name,
         output_folder.to_str().unwrap()
     );
+
+    tmp_dir
+        .close()
+        .expect("Failed to close temporary directory");
 
     Ok(())
 }
