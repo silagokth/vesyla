@@ -6,23 +6,58 @@
 namespace vesyla {
 namespace tm {
 
-class BinaryTree;
-
-// define a CALLBACK function for traversing the tree
-typedef void (*CALLBACK)(void *data, BinaryTree *left, BinaryTree *right);
-
-class BinaryTree {
+template <typename T> class BinaryTree {
 public:
   BinaryTree *left;
   BinaryTree *right;
-  void *data;
+  T *data;
 
 public:
-  BinaryTree(void *data_, BinaryTree *left_, BinaryTree *right_);
-  ~BinaryTree();
-  void traverse_LRC(std::function<void(BinaryTree *node)> f_);
-  void traverse_LCR(std::function<void(BinaryTree *node)> f_);
-  void traverse_CLR(std::function<void(BinaryTree *node)> f_);
+  BinaryTree() : left(nullptr), right(nullptr), data(nullptr) {}
+  BinaryTree(T *data_, BinaryTree *left_, BinaryTree *right_)
+      : left(left_), right(right_), data(data_) {}
+  ~BinaryTree() {
+    if (left != nullptr) {
+      delete left;
+    }
+    if (right != nullptr) {
+      delete right;
+    }
+    if (data != nullptr) {
+      delete data;
+    }
+    data = nullptr;
+    left = nullptr;
+    right = nullptr;
+  }
+  void traverse_LRC(std::function<void(BinaryTree<T> *node)> f_) {
+    if (left != nullptr) {
+      left->traverse_LRC(f_);
+    }
+    if (right != nullptr) {
+      right->traverse_LRC(f_);
+    }
+    f_(this);
+  }
+  void traverse_LCR(std::function<void(BinaryTree<T> *node)> f_) {
+
+    if (left != nullptr) {
+      left->traverse_LCR(f_);
+    }
+    f_(this);
+    if (right != nullptr) {
+      right->traverse_LCR(f_);
+    }
+  }
+  void traverse_CLR(std::function<void(BinaryTree<T> *node)> f_) {
+    f_(this);
+    if (left != nullptr) {
+      left->traverse_CLR(f_);
+    }
+    if (right != nullptr) {
+      right->traverse_CLR(f_);
+    }
+  }
 };
 
 } // namespace tm

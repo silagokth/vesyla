@@ -5,15 +5,15 @@ Library           String
 Suite Teardown    Terminate All Processes    kill=True
 Test Template     Autotest Template
 
-*** Test Cases ***  filename  testcase_path
+*** Test Cases ***  testcase_path
 {% for testcase in testcases %}
-tc   {{ testcase.name }}    {{ testcase.path }}
+{{ testcase.name }}    {{ testcase.path }}
     [Tags]    {{ testcase.tags }}
 {% endfor %}
 
 *** Keywords ***
 Autotest Template
-    [Arguments]    ${filename}    ${testcase_path}
+    [Arguments]    ${testcase_path}
     ${random_string} =    Generate Random String    12    [LOWER]
     Create Directory    work/${random_string}
     ${result} =    Run Process    vesyla testcase run -d "${testcase_path}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}

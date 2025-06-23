@@ -47,7 +47,7 @@ public:
   Operation get_operation(string name);
 
 private:
-  BinaryTree *build_binary_tree(OperationExpr &expr);
+  BinaryTree<BinaryTreeData> *build_binary_tree(OperationExpr &expr);
 };
 
 } // namespace tm

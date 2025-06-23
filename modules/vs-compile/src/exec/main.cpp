@@ -1,11 +1,14 @@
 #include "schedule/Scheduler.hpp"
 #include "util/Common.hpp"
+#include <string>
 
 int main(int argc, char **argv) {
 
+  // Set up logging system
   static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
   plog::init(plog::debug).addAppender(&consoleAppender);
 
+  // Parsing command line arguments
   vesyla::util::MiniArgs args;
   args.parse(argc, argv);
 
@@ -43,6 +46,7 @@ int main(int argc, char **argv) {
   if (!std::filesystem::exists(output_dir)) {
     std::filesystem::create_directories(output_dir);
   }
+  vesyla::util::GlobalVar::puts("__OUTPUT_DIR__", output_dir);
 
   if (!cpp_file.empty()) {
     LOG_FATAL << "Compilation from C++ model is not supported right now!";
@@ -60,14 +64,14 @@ int main(int argc, char **argv) {
   cfg.set_arch_json(arch_file);
   cfg.set_isa_json(isa_file);
 
-  // prepare the temporary directory
-  std::string tmp_path = "/tmp/vesyla";
-  if (!std::filesystem::exists(tmp_path)) {
-    std::filesystem::create_directory(tmp_path);
-  }
-
   vesyla::schedule::Scheduler scheduler;
   scheduler.run(pasm_file, output_dir);
+
+  // clean up temporary directories
+  std::string temp_dir = vesyla::util::SysPath::temp_dir();
+  if (std::filesystem::exists(temp_dir)) {
+    std::filesystem::remove_all(temp_dir);
+  }
 
   return 0;
 }
