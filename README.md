@@ -51,7 +51,7 @@ Tool suite for DRRA-2 hardware accelerator platform.
 - [minizinc](https://www.minizinc.org/)
 - [drra-components](https://github.com/silagokth/drra-components): v2.6.0 or later
 
-### Usage
+### Commands
 
 #### `vesyla`
 
