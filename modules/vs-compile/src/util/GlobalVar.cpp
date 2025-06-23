@@ -135,7 +135,7 @@ bool GlobalVar::puts(const string key, const string val) {
   it = _pool.find(key);
   glvar_t v;
   v.type = "string";
-  strncpy(v.s, val.c_str(), sizeof(v.s));
+  v.s = val;
   _pool[key] = v;
   return true;
 }

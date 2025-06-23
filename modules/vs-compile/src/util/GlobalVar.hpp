@@ -56,7 +56,7 @@ public:
     bool b;      /**< boolean type */
     int i;       /**< signed integer type */
     float f;     /**< single floating point type */
-    char s[256]; /**< string type */
+    string s;    /**< string type */
   };
 
   /**

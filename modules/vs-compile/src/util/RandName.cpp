@@ -7,10 +7,6 @@ std::string RandName::generate(size_t length) {
     return "";
   }
 
-  // seed the random number generator
-  auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-  srand(static_cast<unsigned int>(seed));
-
   // generate a random string starting with a alphabetic character
   const std::string letters =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

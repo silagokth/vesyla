@@ -4,6 +4,10 @@
 
 int main(int argc, char **argv) {
 
+  // seed the random number generator
+  auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+  srand(static_cast<unsigned int>(seed));
+
   // Set up logging system
   static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
   plog::init(plog::debug).addAppender(&consoleAppender);
