@@ -553,28 +553,33 @@ sources:
         let result =
             get_rtl_files_from_library(&"nonexistent_component".to_string(), None, tmp_dir.path());
         assert!(result.is_err());
+        tmp_dir
+            .close()
+            .expect("Failed to close temporary directory");
     }
 
     #[test]
     fn test_get_arch_from_library() {
-        let temp_dir = tempfile::tempdir()
-            .expect("Failed to create temporary directory")
-            .path()
-            .to_owned();
-        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let temp_dir_path = temp_dir.path().to_owned();
+        let fake_library_path = create_fake_library(temp_dir_path).unwrap();
         let result = get_arch_from_library(&"dummy".to_string(), Some(&fake_library_path));
         assert!(result.is_ok());
+        temp_dir
+            .close()
+            .expect("Failed to close temporary directory");
     }
 
     #[test]
     fn test_get_isa_from_library() {
-        let temp_dir = tempfile::tempdir()
-            .expect("Failed to create temporary directory")
-            .path()
-            .to_owned();
-        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let temp_dir_path = temp_dir.path().to_owned();
+        let fake_library_path = create_fake_library(temp_dir_path).unwrap();
         let result = get_isa_from_library(&"dummy".to_string(), Some(&fake_library_path));
         assert!(result.is_ok());
+        temp_dir
+            .close()
+            .expect("Failed to close temporary directory");
     }
 
     #[test]
@@ -624,6 +629,9 @@ sources:
             "RTL files retrieval failed: {:?}",
             result.err()
         );
+        temp_dir
+            .close()
+            .expect("Failed to close temporary directory");
     }
 
     #[test]
