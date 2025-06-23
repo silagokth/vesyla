@@ -4,8 +4,6 @@ project(vs-compile LANGUAGES CXX C)
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-
-
 # Find Flex and Bison
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
@@ -15,12 +13,11 @@ set(FLEX_INPUT src/schedule/pasm.l)
 set(BISON_INPUT src/schedule/pasm.y)
 
 # Generate lexer and parser
-FLEX_TARGET(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
-BISON_TARGET(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
-ADD_FLEX_BISON_DEPENDENCY(PasmLexer PasmParser)
+flex_target(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
+bison_target(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
+add_flex_bison_dependency(PasmLexer PasmParser)
 
 set(LLVM_HOME $ENV{LLVM_HOME})
-# print LLVM_HOME
 message(STATUS "Setting LLVM_HOME: ${LLVM_HOME}")
 set(MLIR_DIR ${LLVM_HOME}/lib/cmake/mlir)
 set(LLVM_DIR ${LLVM_HOME}/lib/cmake/llvm)
@@ -132,7 +129,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Create object libraries
 add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
-add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS} ${BISON_PasmParser_OUTPUTS})
+add_library(
+  VesylaSchedule
+  ${SOURCE_SCHEDULE}
+  ${FLEX_PasmLexer_OUTPUTS}
+  ${BISON_PasmParser_OUTPUTS}
+)
 
 set(LIBS
     VesylaSchedule
@@ -150,23 +152,30 @@ mlir_check_all_link_libraries(vs-compile)
 
 
 include(FetchContent)
-FetchContent_Declare(
+fetchcontent_declare(
   googletest
   URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
 )
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+fetchcontent_makeavailable(googletest)
 
 enable_testing()
 # Set the unit test directory
 set(UNIT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/unit_test)
-# Automatically add all .cpp .c and .cc files in the unit test directory, including subdirectories
+# Automatically add all .cpp .c and .cc files in the unit test directory,
+# including subdirectories
 # This will include all files in the unit test directory and its subdirectories
 # into the UNIT_TEST_SOURCES variable
 # and add them to the hello_test executable
-file(GLOB_RECURSE UNIT_TEST_SOURCES "${UNIT_TEST_DIR}/*.cpp" "${UNIT_TEST_DIR}/*.c" "${UNIT_TEST_DIR}/*.cc")
+file(
+  GLOB_RECURSE
+  UNIT_TEST_SOURCES
+    "${UNIT_TEST_DIR}/*.cpp"
+    "${UNIT_TEST_DIR}/*.c"
+    "${UNIT_TEST_DIR}/*.cc"
+)
 include(GoogleTest)
 # for each file in the UNIT_TEST_SOURCES variable
 foreach(test_file ${UNIT_TEST_SOURCES})
