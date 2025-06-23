@@ -549,13 +549,15 @@ sources:
 
     #[test]
     fn test_get_rtl_files_from_library_not_found() {
-        let result = get_rtl_files_from_library(&"nonexistent_component".to_string(), None);
+        let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let result =
+            get_rtl_files_from_library(&"nonexistent_component".to_string(), None, tmp_dir.path());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_get_arch_from_library() {
-        let temp_dir = tempdir()
+        let temp_dir = tempfile::tempdir()
             .expect("Failed to create temporary directory")
             .path()
             .to_owned();
@@ -566,7 +568,7 @@ sources:
 
     #[test]
     fn test_get_isa_from_library() {
-        let temp_dir = tempdir()
+        let temp_dir = tempfile::tempdir()
             .expect("Failed to create temporary directory")
             .path()
             .to_owned();
@@ -577,11 +579,9 @@ sources:
 
     #[test]
     fn test_get_rtl_files_from_library() {
-        let temp_dir = tempdir()
-            .expect("Failed to create temporary directory")
-            .path()
-            .to_owned();
-        let fake_library_path = create_fake_library(temp_dir.to_path_buf()).unwrap();
+        let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let temp_dir_path = temp_dir.path();
+        let fake_library_path = create_fake_library(temp_dir_path.to_path_buf()).unwrap();
         assert!(
             fake_library_path.exists(),
             "Temporary library path does not exist"
@@ -614,7 +614,11 @@ sources:
                 .exists(),
             "RTL file for dummy component does not exist"
         );
-        let result = get_rtl_files_from_library(&"dummy".to_string(), Some(&fake_library_path));
+        let result = get_rtl_files_from_library(
+            &"dummy".to_string(),
+            Some(&fake_library_path),
+            temp_dir_path,
+        );
         assert!(
             result.is_ok(),
             "RTL files retrieval failed: {:?}",
