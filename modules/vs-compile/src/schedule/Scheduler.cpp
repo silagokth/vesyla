@@ -65,8 +65,9 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.clear();
   save_mlir(module, module_debug_path + "/2.mlir");
 
+  std::string temp_dir = vesyla::util::SysPath::temp_dir();
   pm.addPass(vesyla::pasm::createScheduleEpochPass(
-      {VESYLA_SUITE_PATH_COMPONENTS, "/tmp/vesyla"}));
+      {VESYLA_SUITE_PATH_COMPONENTS, temp_dir}));
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
     std::exit(-1);

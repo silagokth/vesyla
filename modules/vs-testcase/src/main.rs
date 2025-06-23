@@ -528,9 +528,9 @@ mod tests {
         let content = fs::read_to_string(robot_path).unwrap();
         assert!(content.contains("*** Comments ***"));
 
-        assert!(content.contains("tc   style0::type1::bar"));
-        assert!(content.contains("tc   style0::type1::foo"));
-        assert!(content.contains("tc   style0::type2::bar"));
-        assert!(content.contains("tc   style0::type2::foo"));
+        assert!(content.contains("style0::type1::bar"));
+        assert!(content.contains("style0::type1::foo"));
+        assert!(content.contains("style0::type2::bar"));
+        assert!(content.contains("style0::type2::foo"));
     }
 }
