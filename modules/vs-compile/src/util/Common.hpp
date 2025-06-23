@@ -18,7 +18,10 @@
 #ifndef __VESYLA_UTIL_COMMON_HPP__
 #define __VESYLA_UTIL_COMMON_HPP__
 
+#include "GlobalVar.hpp"
 #include "MiniArgs.hpp"
+#include "RandName.hpp"
+#include "SysPath.hpp"
 #include "plog/Appenders/ColorConsoleAppender.h"
 #include "plog/Initializers/RollingFileInitializer.h"
 #include "plog/Log.h"
@@ -56,26 +59,7 @@ namespace util {
 class Common {
 public:
   static std::string gen_random_string(size_t length) {
-    if (length == 0) {
-      return "";
-    }
-
-    // seed the random number generator
-    auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-    srand(static_cast<unsigned int>(seed));
-
-    // generate a random string starting with a alphabetic character
-    const std::string letters =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    const std::string numbers = "0123456789";
-    const std::string characters = letters + numbers;
-    std::string result;
-    result.reserve(length);
-    result += letters[rand() % letters.size()];
-    for (size_t i = 1; i < length; ++i) {
-      result += characters[rand() % characters.size()];
-    }
-    return result;
+    return RandName::generate(length);
   }
 
   static std::string remove_leading_and_trailing_white_space(std::string line) {

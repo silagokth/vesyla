@@ -47,12 +47,6 @@ enum Command {
         #[arg(short, long, default_value = ".")]
         output_dir: String,
     },
-    #[command(about = "Export testcase", name = "export")]
-    Export {
-        /// Output directory
-        #[arg(short, long, default_value = ".")]
-        output: String,
-    },
 }
 
 #[derive(Parser)]
@@ -132,27 +126,7 @@ fn main() -> Result<(), io::Error> {
             info!("Generating testcase scripts ...");
             generate(directory, output_dir)
         }
-        Command::Export { output } => {
-            info!("Exporting testcase ...");
-            export(output)
-        }
     }
-}
-
-fn export(output: &str) -> Result<(), io::Error> {
-    // convert the output path to absolute path
-    let output_dir = output;
-
-    // check if the output directory exists, if not create it
-    if !Path::new(&output_dir).exists() {
-        fs::create_dir_all(output_dir).expect("Failed to create output directory");
-    }
-
-    // copy everything from default test directory to the output directory
-    let testcase_dir = get_testcase_dir(None).expect("Failed to get testcase directory");
-    copy_dir_all(&testcase_dir, output_dir).expect("Failed to copy testcase directory");
-
-    Ok(())
 }
 
 fn init(
@@ -232,7 +206,7 @@ fn run(
     directory: &String,
     output_dir: &String,
 ) -> Result<(), io::Error> {
-    let test_dir = get_testcase_dir(Some(Path::new(directory).to_path_buf()))
+    let test_dir = get_testcase_dir(Path::new(directory).to_path_buf())
         .expect("Failed to get testcase directory");
 
     // check if the directory is the current directory, if yes, exit
@@ -358,25 +332,14 @@ fn collect_dirs_at_depth(root: &Path, depth: u8) -> Vec<String> {
 }
 
 fn generate(directory: &String, output_dir: &String) -> Result<(), io::Error> {
-    let testcases_dir = get_testcase_dir(Some(Path::new(&directory).to_path_buf()))
+    let testcases_dir = get_testcase_dir(Path::new(&directory).to_path_buf())
         .expect("Failed to get testcase directory");
 
     info!("Testcase directory: {:?}", testcases_dir);
 
     let leaf_path_vec: Vec<String> = collect_dirs_at_depth(Path::new(&testcases_dir), 3);
 
-    let mut testcase_entries = build_testcase_entries(leaf_path_vec);
-
-    let testcase_path_str = get_testcase_dir(None)
-        .expect("Failed to get testcase directory")
-        .to_str()
-        .unwrap()
-        .to_string();
-    for tc in &mut testcase_entries {
-        if tc.path.starts_with(&testcase_path_str) {
-            tc.path = tc.path.replace(&testcase_path_str, "");
-        }
-    }
+    let testcase_entries = build_testcase_entries(leaf_path_vec);
 
     // check if the testcase entries are empty
     if testcase_entries.is_empty() {
@@ -429,18 +392,8 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     Ok(())
 }
 
-fn get_testcase_dir(
-    overwrite: Option<std::path::PathBuf>,
-) -> Result<std::path::PathBuf, io::Error> {
-    let testcase_dir;
-    if let Some(overwrite) = overwrite {
-        testcase_dir = overwrite;
-    } else {
-        let current_exe = env::current_exe().unwrap();
-        let current_exe_dir = current_exe.parent().unwrap();
-        let usr_dir = current_exe_dir.parent().unwrap();
-        testcase_dir = Path::new(usr_dir).join("share/vesyla/testcase");
-    }
+fn get_testcase_dir(dir: std::path::PathBuf) -> Result<std::path::PathBuf, io::Error> {
+    let testcase_dir = dir;
 
     // check if the directory exists
     if !Path::new(&testcase_dir).exists() {
@@ -575,9 +528,9 @@ mod tests {
         let content = fs::read_to_string(robot_path).unwrap();
         assert!(content.contains("*** Comments ***"));
 
-        assert!(content.contains("tc   style0::type1::bar"));
-        assert!(content.contains("tc   style0::type1::foo"));
-        assert!(content.contains("tc   style0::type2::bar"));
-        assert!(content.contains("tc   style0::type2::foo"));
+        assert!(content.contains("style0::type1::bar"));
+        assert!(content.contains("style0::type1::foo"));
+        assert!(content.contains("style0::type2::bar"));
+        assert!(content.contains("style0::type2::foo"));
     }
 }

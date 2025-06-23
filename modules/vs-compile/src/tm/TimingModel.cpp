@@ -186,23 +186,20 @@ void TimingModel::compile() {
     }
 
     // Build binary tree for the operation expression
-    BinaryTree *tree = build_binary_tree(expr);
+    BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
 
     // calculate the duration of the operation
-    tree->traverse_LRC([](BinaryTree *node) {
-      BinaryTreeData *tree_data = (BinaryTreeData *)node->data;
-      BinaryTree *left = node->left;
-      BinaryTree *right = node->right;
+    tree->traverse_LRC([](BinaryTree<BinaryTreeData> *node) {
+      BinaryTreeData *tree_data = node->data;
+      BinaryTree<BinaryTreeData> *left = node->left;
+      BinaryTree<BinaryTreeData> *right = node->right;
       if (tree_data->expr.kind == OperationExpr::TRANSIT) {
-        string left_duration =
-            static_cast<BinaryTreeData *>(left->data)->duration;
-        string right_duration =
-            static_cast<BinaryTreeData *>(right->data)->duration;
+        string left_duration = left->data->duration;
+        string right_duration = right->data->duration;
         tree_data->duration = "(" + left_duration + "+" + right_duration +
                               "+(" + tree_data->expr.parameters["delay"] + "))";
       } else if (tree_data->expr.kind == OperationExpr::REPEAT) {
-        string left_duration =
-            static_cast<BinaryTreeData *>(left->data)->duration;
+        string left_duration = left->data->duration;
         int iter = std::stoi(tree_data->expr.parameters["iter"]);
         tree_data->duration = "(" + left_duration + "*" + std::to_string(iter) +
                               "+(" + tree_data->expr.parameters["delay"] +
@@ -212,31 +209,31 @@ void TimingModel::compile() {
       }
     });
     // calculate the start time of the operation
-    static_cast<BinaryTreeData *>(tree->data)->start = "(0)";
-    tree->traverse_CLR([](BinaryTree *node) {
-      BinaryTree *left = node->left;
-      BinaryTree *right = node->right;
-      BinaryTreeData *tree_data = (BinaryTreeData *)(node->data);
+    tree->data->start = "(0)";
+    tree->traverse_CLR([](BinaryTree<BinaryTreeData> *node) {
+      BinaryTree<BinaryTreeData> *left = node->left;
+      BinaryTree<BinaryTreeData> *right = node->right;
+      BinaryTreeData *tree_data = node->data;
       if (left) {
-        static_cast<BinaryTreeData *>(left->data)->start = tree_data->start;
+        left->data->start = tree_data->start;
       }
       if (right) {
-        static_cast<BinaryTreeData *>(right->data)->start =
-            "(" + tree_data->start + "+" +
-            static_cast<BinaryTreeData *>(left->data)->duration + "+(" +
-            tree_data->expr.parameters["delay"] + "))";
+        right->data->start = "(" + tree_data->start + "+" +
+                             left->data->duration + "+(" +
+                             tree_data->expr.parameters["delay"] + "))";
       }
     });
 
-    unordered_map<BinaryTree *, BinaryTree *> node_parent_map;
-    tree->traverse_CLR([&node_parent_map](BinaryTree *node) {
-      BinaryTree *left = node->left;
-      BinaryTree *right = node->right;
+    unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+        node_parent_map;
+    tree->traverse_CLR([&node_parent_map](BinaryTree<BinaryTreeData> *node) {
+      BinaryTree<BinaryTreeData> *left = node->left;
+      BinaryTree<BinaryTreeData> *right = node->right;
       if (left) {
-        node_parent_map[static_cast<BinaryTree *>(left)] = node;
+        node_parent_map[left] = node;
       }
       if (right) {
-        node_parent_map[static_cast<BinaryTree *>(right)] = node;
+        node_parent_map[right] = node;
       }
     });
 
@@ -245,20 +242,17 @@ void TimingModel::compile() {
       string op_name = it->first;
       Anchor &anchor = anchors[anchor_name];
       string event_id = std::to_string(anchor.expr.event_id);
-      std::vector<BinaryTree *> r_op_stack;
+      std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
       for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
            ++it3) {
-        if (static_cast<BinaryTreeData *>(it3->first->data)->expr.kind ==
-            OperationExpr::EVENT) {
-          string event_id_1 = static_cast<BinaryTreeData *>(it3->first->data)
-                                  ->expr.parameters["id"];
+        if (it3->first->data->expr.kind == OperationExpr::EVENT) {
+          string event_id_1 = it3->first->data->expr.parameters["id"];
           if (event_id_1 == event_id) {
             // go through all its parents and find the repeat operation
-            BinaryTree *parent = it3->second;
+            BinaryTree<BinaryTreeData> *parent = it3->second;
 
             while (parent) {
-              if (static_cast<BinaryTreeData *>(parent->data)->expr.kind ==
-                  OperationExpr::REPEAT) {
+              if (parent->data->expr.kind == OperationExpr::REPEAT) {
                 r_op_stack.push_back(parent);
               }
 
@@ -275,9 +269,8 @@ void TimingModel::compile() {
             if (r_op_stack.size() < indices.size()) {
               LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
               for (auto i = 0; i < r_op_stack.size(); ++i) {
-                LOG_ERROR << "r_op_stack[" << i << "]: "
-                          << static_cast<BinaryTreeData *>(r_op_stack[i]->data)
-                                 ->expr.to_string();
+                LOG_ERROR << "r_op_stack[" << i
+                          << "]: " << r_op_stack[i]->data->expr.to_string();
               }
               LOG_ERROR << "indices size: " << indices.size();
               for (auto i = 0; i < indices.size(); ++i) {
@@ -287,27 +280,19 @@ void TimingModel::compile() {
               std::exit(-1);
             }
 
-            string expr_str =
-                "(" + op_name + "+" +
-                static_cast<BinaryTreeData *>(it3->first->data)->start;
+            string expr_str = "(" + op_name + "+" + it3->first->data->start;
             for (auto i = 0; i < indices.size(); ++i) {
               int index = indices[i];
               int iter =
-                  std::stoi(static_cast<BinaryTreeData *>(r_op_stack[i]->data)
-                                ->expr.parameters["iter"]);
+                  std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
               if (index >= iter) {
                 LOG_FATAL << "Index out of range: index(" << index
                           << ") >= iter(" << iter << ")";
                 std::exit(-1);
               }
-              expr_str =
-                  expr_str + "+(" +
-                  static_cast<BinaryTreeData *>(r_op_stack[i]->left->data)
-                      ->duration +
-                  "+(" +
-                  static_cast<BinaryTreeData *>(r_op_stack[i]->data)
-                      ->expr.parameters["delay"] +
-                  "))*" + std::to_string(index);
+              expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
+                         "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
+                         "))*" + std::to_string(index);
             }
             expr_str += ")";
             anchor.timing_expr = expr_str;
@@ -316,8 +301,7 @@ void TimingModel::compile() {
       }
     }
 
-    it->second.duration_expr =
-        static_cast<BinaryTreeData *>(tree->data)->duration;
+    it->second.duration_expr = tree->data->duration;
 
     // delete the tree
     delete tree;
@@ -327,13 +311,14 @@ void TimingModel::compile() {
   state = COMPILED;
 }
 
-BinaryTree *TimingModel::build_binary_tree(OperationExpr &expr) {
+BinaryTree<BinaryTreeData> *
+TimingModel::build_binary_tree(OperationExpr &expr) {
   BinaryTreeData *data = new BinaryTreeData();
   data->expr = expr;
   data->start = "";
   data->duration = "";
-  BinaryTree *left = nullptr;
-  BinaryTree *right = nullptr;
+  BinaryTree<BinaryTreeData> *left = nullptr;
+  BinaryTree<BinaryTreeData> *right = nullptr;
   if (expr.kind == OperationExpr::TRANSIT) {
     left = build_binary_tree(expr.children[0]);
     right = build_binary_tree(expr.children[1]);
@@ -346,7 +331,8 @@ BinaryTree *TimingModel::build_binary_tree(OperationExpr &expr) {
     LOG_FATAL << "Invalid operation expression kind: " << expr.kind;
     std::exit(-1);
   }
-  BinaryTree *tree = new BinaryTree(data, left, right);
+  BinaryTree<BinaryTreeData> *tree =
+      new BinaryTree<BinaryTreeData>(data, left, right);
   return tree;
 }
 
