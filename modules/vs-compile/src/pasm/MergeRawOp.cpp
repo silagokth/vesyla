@@ -217,7 +217,7 @@ public:
     patterns.add<MergeRawOpRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     // Apply the patterns to the module
-    if (failed(applyPatternsAndFoldGreedily(module, patternSet))) {
+    if (failed(applyPatternsGreedily(module, patternSet))) {
       signalPassFailure();
     }
   }

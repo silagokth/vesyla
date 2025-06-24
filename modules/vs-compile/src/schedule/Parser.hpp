@@ -18,8 +18,8 @@
 #include "pasm/Types.hpp"
 #include <cctype>
 
+#include "GlobalUtil.hpp"
 #include "PasmParser.hpp"
-#include "global_util.hpp"
 #include "util/Common.hpp"
 
 namespace vesyla {

@@ -1302,7 +1302,7 @@ public:
     patterns.add<ScheduleEpochPassRewriter>(&getContext(), component_map_json,
                                             component_path, tmp_path, row, col);
     FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+    if (failed(applyPatternsGreedily(getOperation(), patternSet)))
       signalPassFailure();
   }
 };
