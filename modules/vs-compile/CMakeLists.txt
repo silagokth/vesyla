@@ -5,6 +5,7 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 set(CMAKE_CXX_STANDARD
     17
     CACHE STRING "C++ standard to conform to")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Find Flex and Bison
 find_package(FLEX REQUIRED)
