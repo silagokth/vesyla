@@ -21,19 +21,17 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 include(FetchContent)
 fetchcontent_declare(
-    Corrosion
-    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-    GIT_TAG v0.5.2
-)
+  Corrosion
+  GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+  GIT_TAG v0.5.2)
 fetchcontent_makeavailable(Corrosion)
 
 get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 message(STATUS "Target name: ${CORROSION_TARGET_NAME}")
 
 corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules/Cargo.toml"
-    PROFILE release
-)
+  MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules/Cargo.toml" PROFILE
+  release)
 
 add_subdirectory("modules/vs-testcase")
 add_subdirectory("modules/vs-schedule")
@@ -41,15 +39,24 @@ add_subdirectory("modules/vs-compile")
 
 install(PROGRAMS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vesyla DESTINATION bin)
 install(
-    DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/
-    DESTINATION bin
-    FILES_MATCHING PATTERN "vs-*"
+  DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/
+  DESTINATION bin
+  FILES_MATCHING
+  PATTERN
+    "vs-*"
     PERMISSIONS
-      OWNER_EXECUTE OWNER_READ OWNER_WRITE
-      GROUP_EXECUTE GROUP_READ GROUP_WRITE
-      WORLD_EXECUTE WORLD_READ WORLD_WRITE
-)
+      OWNER_EXECUTE
+      OWNER_READ
+      OWNER_WRITE
+      GROUP_EXECUTE
+      GROUP_READ
+      GROUP_WRITE
+      WORLD_EXECUTE
+      WORLD_READ
+      WORLD_WRITE)
+
 install(DIRECTORY assets/applications DESTINATION share)
 file(COPY assets/applications DESTINATION ${CMAKE_BINARY_DIR}/share)
 install(DIRECTORY assets/icons DESTINATION share)
+file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
 file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
