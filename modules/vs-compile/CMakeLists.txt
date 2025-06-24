@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.20.0)
 project(vs-compile LANGUAGES CXX C)
 
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
-set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
-
-
+set(CMAKE_CXX_STANDARD
+    17
+    CACHE STRING "C++ standard to conform to")
 
 # Find Flex and Bison
 find_package(FLEX REQUIRED)
@@ -15,9 +15,9 @@ set(FLEX_INPUT src/schedule/pasm.l)
 set(BISON_INPUT src/schedule/pasm.y)
 
 # Generate lexer and parser
-FLEX_TARGET(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
-BISON_TARGET(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
-ADD_FLEX_BISON_DEPENDENCY(PasmLexer PasmParser)
+flex_target(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
+bison_target(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
+add_flex_bison_dependency(PasmLexer PasmParser)
 
 set(LLVM_HOME $ENV{LLVM_HOME})
 # print LLVM_HOME
@@ -93,30 +93,27 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
   add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
 
   # Create a meta-target that depends on all tablegen targets
-  add_custom_target(Vesyla${dialect}IncGen DEPENDS
-                Vesyla${dialect}DialectIncGen
-                Vesyla${dialect}OpsIncGen
-                Vesyla${dialect}TypesIncGen
-                Vesyla${dialect}PassesIncGen)
+  add_custom_target(
+    Vesyla${dialect}IncGen
+    DEPENDS Vesyla${dialect}DialectIncGen Vesyla${dialect}OpsIncGen
+            Vesyla${dialect}TypesIncGen Vesyla${dialect}PassesIncGen)
 
   # Add dependencies
   add_dependencies(mlir-headers Vesyla${dialect}IncGen)
 endfunction()
 
 add_custom_mlir_dialect(Pasm pasm)
-add_mlir_dialect_library(VesylaPasm
-        ${SOURCE_PASM}
-
-        DISABLE_INSTALL
-
-        DEPENDS
-        VesylaPasmIncGen
-
-        LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRInferTypeOpInterface
-        MLIRFuncDialect
-)
+add_mlir_dialect_library(
+  VesylaPasm
+  ${SOURCE_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRInferTypeOpInterface
+  MLIRFuncDialect)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -132,41 +129,39 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Create object libraries
 add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
-add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS} ${BISON_PasmParser_OUTPUTS})
+add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
+                           ${BISON_PasmParser_OUTPUTS})
 
-set(LIBS
-    VesylaSchedule
-    VesylaPasm
-    VesylaTm
-    VesylaUtil
-    ${dialect_libs}
-    ${conversion_libs}
-)
+set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
+         ${conversion_libs})
 
 add_llvm_executable(vs-compile ${SOURCE_EXEC})
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
 
-
 include(FetchContent)
-FetchContent_Declare(
+fetchcontent_declare(
   googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
-)
+  URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip)
 # For Windows: Prevent overriding the parent project's compiler/linker settings
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+set(INSTALL_GTEST
+    OFF
+    CACHE BOOL "" FORCE)
+set(gtest_force_shared_crt
+    ON
+    CACHE BOOL "" FORCE)
+fetchcontent_makeavailable(googletest)
 
 enable_testing()
 # Set the unit test directory
 set(UNIT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/unit_test)
-# Automatically add all .cpp .c and .cc files in the unit test directory, including subdirectories
-# This will include all files in the unit test directory and its subdirectories
-# into the UNIT_TEST_SOURCES variable
-# and add them to the hello_test executable
-file(GLOB_RECURSE UNIT_TEST_SOURCES "${UNIT_TEST_DIR}/*.cpp" "${UNIT_TEST_DIR}/*.c" "${UNIT_TEST_DIR}/*.cc")
+# Automatically add all .cpp .c and .cc files in the unit test directory,
+# including subdirectories This will include all files in the unit test
+# directory and its subdirectories into the UNIT_TEST_SOURCES variable and add
+# them to the hello_test executable
+file(GLOB_RECURSE UNIT_TEST_SOURCES "${UNIT_TEST_DIR}/*.cpp"
+     "${UNIT_TEST_DIR}/*.c" "${UNIT_TEST_DIR}/*.cc")
 include(GoogleTest)
 # for each file in the UNIT_TEST_SOURCES variable
 foreach(test_file ${UNIT_TEST_SOURCES})
@@ -179,3 +174,8 @@ foreach(test_file ${UNIT_TEST_SOURCES})
   # Add the test executable to the list of tests
   gtest_discover_tests(${test_name})
 endforeach()
+
+# Add a target to build mlir-lsp-server from util/mlir_lsp_support
+add_executable(pasm-mlir-lsp-server src/util/mlir_lsp_support/lsp_server.cpp)
+target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
+add_dependencies(pasm-mlir-lsp-server vs-compile)
