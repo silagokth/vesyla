@@ -16,5 +16,6 @@ target/
 *.code-workspace
 .clangd
 .cache/
+.cmake-format.yaml
 
 test/
