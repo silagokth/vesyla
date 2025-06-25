@@ -2,7 +2,7 @@
     #include <stdio.h>
     #include <stdlib.h>
     #include "util/Common.hpp"
-    #include "schedule/bison_util.hpp"
+    #include "schedule/BisonUtil.hpp"
 
     #include <vector>
     #include <string>

@@ -1,6 +1,6 @@
 %{
 #include "PasmParser.hpp"
-#include "schedule/flex_util.hpp"
+#include "schedule/FlexUtil.hpp"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,5 +1,5 @@
-#ifndef VESYLA_IROPT_PASM_DIALECT
-#define VESYLA_IROPT_PASM_DIALECT
+#ifndef VESYLA_PASM_DIALECT
+#define VESYLA_PASM_DIALECT
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
@@ -20,4 +20,4 @@ def Pasm_Dialect : Dialect {
     }];
 }
 
-#endif // VESYLA_IROPT_PASM_DIALECT
+#endif // VESYLA_PASM_DIALECT

@@ -1,5 +1,5 @@
-#ifndef VESYLA_IROPT_PASM_TYPE
-#define VESYLA_IROPT_PASM_TYPE
+#ifndef VESYLA_PASM_TYPE
+#define VESYLA_PASM_TYPE
 
 include "pasm/Dialect.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -18,4 +18,4 @@ def DummyType : Pasm_Type<"Dummy", "dummy"> {
 }
 
 
-#endif // VESYLA_IROPT_PASM_TYPE
+#endif // VESYLA_PASM_TYPE
