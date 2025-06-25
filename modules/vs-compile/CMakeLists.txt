@@ -54,7 +54,6 @@ include_directories(${PROJECT_SOURCE_DIR}/src/util/plog)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
-file(GLOB SOURCE_EXEC "src/exec/*.cpp")
 file(GLOB SOURCE_PASM "src/pasm/*.cpp")
 file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")
 
@@ -132,14 +131,21 @@ add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
 add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
                            ${BISON_PasmParser_OUTPUTS})
+add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is generated before schedule
 
 set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
          ${conversion_libs})
 
-add_llvm_executable(vs-compile ${SOURCE_EXEC})
+# Add the main executable target vs-compile
+add_llvm_executable(vs-compile src/exec/vs-compile/main.cpp)
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
+
+# Add a target to build mlir-lsp-server from util/mlir_lsp_support
+add_executable(pasm-mlir-lsp-server src/exec/pasm-mlir-lsp-server/main.cpp)
+target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
+add_dependencies(pasm-mlir-lsp-server vs-compile)
 
 include(FetchContent)
 fetchcontent_declare(
@@ -176,7 +182,4 @@ foreach(test_file ${UNIT_TEST_SOURCES})
   gtest_discover_tests(${test_name})
 endforeach()
 
-# Add a target to build mlir-lsp-server from util/mlir_lsp_support
-add_executable(pasm-mlir-lsp-server src/util/mlir_lsp_support/lsp_server.cpp)
-target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
-add_dependencies(pasm-mlir-lsp-server vs-compile)
+

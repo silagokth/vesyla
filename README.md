@@ -106,3 +106,18 @@ Usage: vs-compile --arch FILE --isa FILE --pasm FILE [--output DIR]
 Or
 vs-compile --arch FILE --isa FILE --cpp FILE [--output DIR]
 ```
+
+## MLIR LSP Server for PASM
+
+Vesyla also compile a MLIR LSP server for PASM (Proto-Assembly) files. It is located
+in `build/bin/pasm-mlir-lsp-server`. You can use it with the MLIR plugin for VSCode or
+any other editor that supports LSP. To set it up in VSCode, you can use the MLIR
+extension and configure the server path in the settings:
+
+```json
+{
+  "settings": {
+    "mlir.server_path": "build/bin/pasm-mlir-lsp-server"
+  }
+}
+```
