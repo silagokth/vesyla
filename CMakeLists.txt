@@ -1,5 +1,22 @@
 cmake_minimum_required(VERSION 3.5)
 
+# Try to find clang and clang++ in PATH
+find_program(CLANG_PATH clang)
+find_program(CLANGXX_PATH clang++)
+
+# If both are found and user hasn't set a compiler, use them
+if(CLANG_PATH
+   AND CLANGXX_PATH
+   AND NOT DEFINED ENV{CC}
+   AND NOT DEFINED ENV{CXX})
+  set(CMAKE_C_COMPILER
+      "${CLANG_PATH}"
+      CACHE STRING "C compiler" FORCE)
+  set(CMAKE_CXX_COMPILER
+      "${CLANGXX_PATH}"
+      CACHE STRING "C++ compiler" FORCE)
+endif()
+
 project(vesyla)
 
 # Find includes in corresponding build directories
