@@ -24,11 +24,14 @@ set(LLVM_HOME $ENV{LLVM_HOME})
 message(STATUS "Setting LLVM_HOME: ${LLVM_HOME}")
 set(MLIR_DIR ${LLVM_HOME}/lib/cmake/mlir)
 set(LLVM_DIR ${LLVM_HOME}/lib/cmake/llvm)
+set(CLANG_DIR ${LLVM_HOME}/lib/cmake/clang)
 
 find_package(MLIR REQUIRED CONFIG)
+find_package(Clang REQUIRED CONFIG)
 
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+message(STATUS "Using ClangConfig.cmake in: ${CLANG_DIR}")
 
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
@@ -36,9 +39,11 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${CLANG_DIR}")
 include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
+include(AddClang)
 include(HandleLLVMOptions)
 
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -133,8 +138,14 @@ add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
 add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
                                                   # generated before schedule
 
-set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
-         ${conversion_libs})
+set(LIBS
+    VesylaSchedule
+    VesylaPasm
+    VesylaTm
+    VesylaUtil
+    ${dialect_libs}
+    ${conversion_libs}
+    clangCIR)
 
 # Add the main executable target vs-compile
 add_llvm_executable(vs-compile src/exec/vs-compile/main.cpp)
