@@ -1,5 +1,5 @@
-#ifndef VESYLA_IROPT_PASM_OPS
-#define VESYLA_IROPT_PASM_OPS
+#ifndef VESYLA_PASM_OPS
+#define VESYLA_PASM_OPS
 
 include "pasm/Dialect.td"
 include "pasm/Types.td"
@@ -138,4 +138,4 @@ def YieldOp : Pasm_Op<"yield", [Terminator,
   }];
 }
 
-#endif // VESYLA_IROPT_PASM_OPS
+#endif // VESYLA_PASM_OPS

@@ -1,5 +1,5 @@
-#ifndef VESYLA_IROPT_PASM_PASSES
-#define VESYLA_IROPT_PASM_PASSES
+#ifndef VESYLA_PASM_PASSES
+#define VESYLA_PASM_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -47,4 +47,4 @@ def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
     Add slot and port operations to the module.
   }];
 }
-#endif // VESYLA_IROPT_PASM_PASSES
+#endif // VESYLA_PASM_PASSES

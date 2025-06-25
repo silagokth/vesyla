@@ -5,6 +5,7 @@
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
 #include "AddHaltPass.hpp"
+#include "util/RandName.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_ADDHALTPASS
@@ -41,7 +42,7 @@ public:
     rewriter.setInsertionPoint(op_block->getTerminator());
     // Create a new Halt instruction
     auto halt_op = rewriter.create<vesyla::pasm::InstrOp>(
-        op.getLoc(), rewriter.getStringAttr(gen_random_string(8)),
+        op.getLoc(), rewriter.getStringAttr(util::RandName::generate(8)),
         rewriter.getStringAttr("halt"), rewriter.getDictionaryAttr({}));
 
     return mlir::success();
@@ -61,7 +62,7 @@ public:
     patterns.add<AddHaltPassRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
     // Apply the patterns to the module
-    if (failed(applyPatternsAndFoldGreedily(module, patternSet))) {
+    if (failed(applyPatternsGreedily(module, patternSet))) {
       signalPassFailure();
     }
   }

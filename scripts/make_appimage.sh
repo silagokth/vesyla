@@ -101,7 +101,7 @@ pip3 install -r $SCRIPTDIR/requirements.txt
 # Compile the application to a fakeroot directory: $APPDIR
 log info "Compiling the application..."
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DPROTOC_PATH=$APPDIR/usr/bin/protoc ..
-cmake --build .
+cmake --build . -- -j$(nproc)
 make DESTDIR=$APPDIR install
 
 # Download the linuxdeploy tool
