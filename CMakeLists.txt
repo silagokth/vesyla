@@ -15,6 +15,8 @@ if(CLANG_PATH
   set(CMAKE_CXX_COMPILER
       "${CLANGXX_PATH}"
       CACHE STRING "C++ compiler" FORCE)
+  message(STATUS "Using clang as C compiler: ${CMAKE_C_COMPILER}")
+  message(STATUS "Using clang++ as C++ compiler: ${CMAKE_CXX_COMPILER}")
 endif()
 
 project(vesyla)
