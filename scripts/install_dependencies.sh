@@ -8,7 +8,12 @@ set -x
 if [ -f /etc/lsb-release ]; then
   # Ubuntu
   sudo apt-get update
-  sudo apt-get install -y cmake curl python3 python3-pip python3-venv protobuf-compiler libprotobuf-dev wget libfuse2 file flex bison
+  sudo apt-get install -y \
+    clang cmake \
+    curl file wget \
+    python3 python3-pip python3-venv \
+    protobuf-compiler libprotobuf-dev \
+    libfuse2 flex bison
 elif [ -f /etc/debian_version ]; then
   # Debian
   sudo apt-get update
