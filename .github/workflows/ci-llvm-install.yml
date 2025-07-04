@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
 
 env:
+  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
   LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
   LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
-  LLVM_VERSION: "20.1.7"
 
 jobs:
   llvm-install:
@@ -51,34 +51,9 @@ jobs:
         sudo apt-get install -y git build-essential cmake python-is-python3 zlib1g-dev ninja-build clang lld wget
         pip3 install PyYAML
 
-    - name: Clone LLVM
-      if: steps.check-llvm.outputs.llvm_installed == 'false'
-      run: |
-        mkdir -p ${{ env.LLVM_INSTALL_PATH }}
-        mkdir -p ${{ env.LLVM_BUILD_PATH }}
-        wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.LLVM_VERSION }}/llvm-project-${{ env.LLVM_VERSION }}.src.tar.xz
-        tar xvf ./llvm-project-${{ env.LLVM_VERSION }}.src.tar.xz
-        rm ./llvm-project-${{ env.LLVM_VERSION }}.src.tar.xz
-        mv ./llvm-project-${{ env.LLVM_VERSION }}.src ${{ env.LLVM_SOURCE_PATH }}
 
-    - name: Configure LLVM build
-      if: steps.check-llvm.outputs.llvm_installed == 'false'
+    - name: Install LLVM with CIR and MLIR
       run: |
-          cd ${{ env.LLVM_BUILD_PATH }}
-          cmake -G Ninja ${{ env.LLVM_SOURCE_PATH }}/llvm \
-          -DLLVM_ENABLE_PROJECTS="clang;mlir" \
-          -DCLANG_ENABLE_CIR=ON \
-          -DLLVM_TARGETS_TO_BUILD="Native;NVPTX;AMDGPU" \
-          -DCMAKE_INSTALL_PREFIX="${{ env.LLVM_INSTALL_PATH }}" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DLLVM_ENABLE_ASSERTIONS=ON \
-          -DCMAKE_C_COMPILER=clang \
-          -DCMAKE_CXX_COMPILER=clang++ \
-          -DLLVM_ENABLE_LLD=ON
+        sudo chmod +x ./scripts/llvm-cir-install.sh
+        bash ./scripts/llvm-cir-install.sh
 
-    - name: Build LLVM with MLIR
-      if: steps.check-llvm.outputs.llvm_installed == 'false'
-      run: |
-          cd ${{ env.LLVM_BUILD_PATH }}
-          cmake --build . --target check-mlir
-          ninja install
