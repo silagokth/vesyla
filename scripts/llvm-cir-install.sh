@@ -2,6 +2,13 @@
 
 REPO_URL="https://github.com/llvm/clangir.git"
 
+# Check if -y arg is passed
+if [[ "$1" == "-y" ]]; then
+  AUTO_CONFIRM=true
+else
+  AUTO_CONFIRM=false
+fi
+
 # Check if LLVM_CIR_COMMIT_HASH environment variable is set
 if [ -z "$LLVM_CIR_COMMIT_HASH" ]; then
   echo "Error: LLVM_CIR_COMMIT_HASH environment variable is not set."
@@ -17,7 +24,11 @@ fi
 # Check if the $LLVM_SOURCE_PATH exists
 if [ -d "$LLVM_SOURCE_PATH" ]; then
   # Ask for user confirmation to remove the directory
-  read -r -p "Directory $LLVM_SOURCE_PATH already exists. Do you want to remove it? (y/N): " confirm
+  if [ "$AUTO_CONFIRM" = false ]; then
+    read -r -p "Directory $LLVM_SOURCE_PTH already exists. Do you want to remove it? (y/N): " confirm
+  else
+    confirm="Y" # Auto-confirm if -y is passed
+  fi
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
     echo "Removing existing directory $LLVM_SOURCE_PATH..."
     rm -rf "$LLVM_SOURCE_PATH"
@@ -49,7 +60,11 @@ if [ ! -d "$LLVM_BUILD_PATH" ]; then
   echo "LLVM_BUILD_PATH does not exist. Creating it..."
   mkdir -p "$LLVM_BUILD_PATH"
 else
-  read -r -p "Build directory $LLVM_BUILD_PATH already exists. Do you want to clean it? (y/N): " confirm
+  if [ "$AUTO_CONFIRM" = false ]; then
+    read -r -p "Build directory $LLVM_BUILD_PATH already exists. Do you want to clean it? (y/N): " confirm
+  else
+    confirm="Y" # Auto-confirm if -y is passed
+  fi
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
     echo "Cleaning existing build directory $LLVM_BUILD_PATH..."
     rm -rf "${LLVM_BUILD_PATH:?}"/*
@@ -79,7 +94,11 @@ echo "Using C compiler: $CLANG"
 echo "Using C++ compiler: ${CLANG}++"
 
 # Ask confirmation to proceed with the build
-read -r -p "Do you want to proceed with the build? (y/N): " confirm
+if [ "$AUTO_CONFIRM" = false ]; then
+  read -r -p "Do you want to proceed with the build? (y/N): " confirm
+else
+  confirm="Y" # Auto-confirm if -y is passed
+fi
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
   echo "Build cancelled."
   exit 0
