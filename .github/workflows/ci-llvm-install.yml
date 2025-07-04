@@ -19,7 +19,6 @@ jobs:
       with:
         submodules: true
         path: vesyla
-        ref: fix-llvm-install
 
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
