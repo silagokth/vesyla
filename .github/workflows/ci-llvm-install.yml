@@ -54,6 +54,6 @@ jobs:
 
     - name: Install LLVM with CIR and MLIR
       run: |
-        sudo chmod +x ./scripts/llvm-cir-install.sh
-        bash ./scripts/llvm-cir-install.sh
+        sudo chmod +x ${{ github.workspace }}/scripts/llvm-cir-install.sh
+        bash ${{ github.workspace}}/scripts/llvm-cir-install.sh
 
