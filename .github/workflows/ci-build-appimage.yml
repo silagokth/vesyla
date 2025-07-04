@@ -43,7 +43,7 @@ jobs:
     name: Build AppImage
     runs-on: ubuntu-22.04
     env:
-      LLVM_HOME: ${{ github.workspace }}/llvm-build
+      LLVM_HOME: ${{ github.workspace }}/llvm-install
     outputs:
       version: ${{ steps.check-version.outputs.version }}
       branch: ${{ steps.check-branch.outputs.branch }}
