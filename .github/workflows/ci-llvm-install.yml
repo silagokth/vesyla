@@ -18,6 +18,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: true
+        path: vesyla
 
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
@@ -54,6 +55,6 @@ jobs:
 
     - name: Install LLVM with CIR and MLIR
       run: |
-        sudo chmod +x ${{ github.workspace }}/scripts/llvm-cir-install.sh
-        bash ${{ github.workspace}}/scripts/llvm-cir-install.sh
+        sudo chmod +x ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh
+        bash ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh
 
