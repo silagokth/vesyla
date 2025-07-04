@@ -55,8 +55,8 @@ jobs:
 
     - name: Install LLVM with CIR and MLIR
       run: |
-        echo $(ls ${{ github.workspace }}
-        echo $(ls ${{ github.workspace }}/vesyla
+        echo $(ls ${{ github.workspace }})
+        echo $(ls ${{ github.workspace }}/vesyla)
         sudo chmod +x ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh
         bash ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh
 
