@@ -75,15 +75,6 @@ jobs:
           llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
           llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
 
-      - name: Reinstall LLVM
-        id: install-llvm
-        if: steps.check-llvm.outputs.llvm_installed == 'false'
-        uses: ./vesyla-source/.github/workflows/ci-llvm-install.yml
-        with:
-          llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
-          llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
-          llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
-
       - name: Check branch name
         id: check-branch
         run: |
