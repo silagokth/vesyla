@@ -80,7 +80,11 @@ if [ ! -d "$LLVM_INSTALL_PATH" ]; then
   echo "LLVM_INSTALL_PATH does not exist. Creating it..."
   mkdir -p "$LLVM_INSTALL_PATH"
 else
-  read -r -p "Install directory $LLVM_INSTALL_PATH already exists. Do you want to clean it? (y/N): " confirm
+  if [ "$AUTO_CONFIRM" = false ]; then
+    read -r -p "Install directory $LLVM_INSTALL_PATH already exists. Do you want to clean it? (y/N): " confirm
+  else
+    confirm="Y" # Auto-confirm if -y is passed
+  fi
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
     echo "Cleaning existing install directory $LLVM_INSTALL_PATH..."
     rm -rf "${LLVM_INSTALL_PATH:?}"/*
