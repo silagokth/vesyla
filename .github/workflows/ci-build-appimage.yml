@@ -11,11 +11,11 @@ on:
         value: ${{ jobs.build.outputs.branch }}
 
 env:
+  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
   LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
   LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
   LLVM_VERSION: "20.1.7"
-  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
 
 jobs:
   run-cargo-tests:
@@ -52,7 +52,6 @@ jobs:
       - name: Restore LLVM Cache
         uses: actions/cache@v4
         with:
-          fail-on-cache-miss: true
           path: |
             ${{ env.LLVM_INSTALL_PATH }}
             ${{ env.LLVM_SOURCE_PATH }}
@@ -61,6 +60,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
             ${{ runner.os }}-llvm-
+
+      - name: Check if LLVM is already installed
+        id: check-llvm
+        uses: ./vesyla/.github/actions/check-llvm-install
+        with:
+          llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
+          llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
+          llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
+
+      - name: Reinstall LLVM
+        if: steps.check-llvm.outputs.llvm_installed == 'false'
+        uses: ./.github/workflow/ci-llvm-install.yml
 
       - name: Checkout code
         uses: actions/checkout@v4
