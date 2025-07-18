@@ -61,6 +61,12 @@ jobs:
             ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
             ${{ runner.os }}-llvm-
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: ./vesyla-source
+          clean: false
+
       - name: Check if LLVM is already installed
         id: check-llvm
         uses: ./.github/actions/check-llvm-install
@@ -77,12 +83,6 @@ jobs:
           llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
           llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
           llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          path: ./vesyla-source
-          clean: false
 
       - name: Check branch name
         id: check-branch
