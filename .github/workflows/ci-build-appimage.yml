@@ -11,6 +11,7 @@ on:
         value: ${{ jobs.build.outputs.branch }}
 
 env:
+  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
   LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
   LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
@@ -43,7 +44,7 @@ jobs:
     name: Build AppImage
     runs-on: ubuntu-22.04
     env:
-      LLVM_HOME: ${{ github.workspace }}/llvm-build
+      LLVM_HOME: ${{ github.workspace }}/llvm-install
     outputs:
       version: ${{ steps.check-version.outputs.version }}
       branch: ${{ steps.check-branch.outputs.branch }}
@@ -55,9 +56,9 @@ jobs:
             ${{ env.LLVM_INSTALL_PATH }}
             ${{ env.LLVM_SOURCE_PATH }}
             ${{ env.LLVM_BUILD_PATH }}
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
           restore-keys: |
-            ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+            ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
             ${{ runner.os }}-llvm-
 
       - name: Checkout code
@@ -65,6 +66,14 @@ jobs:
         with:
           path: ./vesyla-source
           clean: false
+
+      - name: Check if LLVM is already installed
+        id: check-llvm
+        uses: ./vesyla-source/.github/actions/check-llvm-install
+        with:
+          llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
+          llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
+          llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
 
       - name: Check branch name
         id: check-branch

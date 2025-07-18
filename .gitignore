@@ -17,3 +17,5 @@ target/
 .clangd
 
 test/
+
+.cache/
