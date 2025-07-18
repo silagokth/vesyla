@@ -15,6 +15,7 @@ env:
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
   LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
   LLVM_VERSION: "20.1.7"
+  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
 
 jobs:
   run-cargo-tests:
@@ -56,9 +57,8 @@ jobs:
             ${{ env.LLVM_INSTALL_PATH }}
             ${{ env.LLVM_SOURCE_PATH }}
             ${{ env.LLVM_BUILD_PATH }}
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
           restore-keys: |
-            ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
             ${{ runner.os }}-llvm-
 
       - name: Checkout code
