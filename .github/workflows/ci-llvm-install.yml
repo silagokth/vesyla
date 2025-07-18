@@ -28,7 +28,7 @@ jobs:
       uses: actions/cache@v4
       env:
         cache-name: cache-llvm
-      with: 
+      with:
         path: |
           ${{ env.LLVM_INSTALL_PATH }}
           ${{ env.LLVM_SOURCE_PATH }}
@@ -47,6 +47,7 @@ jobs:
         llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
 
     - name: Install dependencies
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
         sudo apt-get install -y git build-essential cmake python-is-python3 zlib1g-dev ninja-build clang lld wget
@@ -54,6 +55,7 @@ jobs:
 
 
     - name: Install LLVM with CIR and MLIR
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
       run: |
         echo $(ls ${{ github.workspace }}/vesyla/scripts/)
         bash ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh -y
