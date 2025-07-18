@@ -35,6 +35,7 @@ jobs:
           ${{ env.LLVM_BUILD_PATH }}
         key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
         restore-keys: |
+          ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
           ${{ runner.os }}-llvm-
 
     - name: Check if LLVM is already installed
