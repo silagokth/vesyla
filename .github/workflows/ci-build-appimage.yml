@@ -51,6 +51,7 @@ jobs:
       - name: Restore LLVM Cache
         uses: actions/cache@v4
         with:
+          fail-on-cache-miss: true
           path: |
             ${{ env.LLVM_INSTALL_PATH }}
             ${{ env.LLVM_SOURCE_PATH }}
