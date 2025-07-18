@@ -1,4 +1,4 @@
-name: Weekly master branch build
+name: master build
 
 on:
   # trigger on any push on master
