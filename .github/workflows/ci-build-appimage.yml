@@ -57,7 +57,8 @@ jobs:
             ${{ env.LLVM_INSTALL_PATH }}
             ${{ env.LLVM_SOURCE_PATH }}
             ${{ env.LLVM_BUILD_PATH }}
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
+          key: ${{ runner.os }}-llvm-
+          #${{ env.LLVM_CIR_COMMIT_HASH }}
           restore-keys: |
             ${{ runner.os }}-llvm-
 
