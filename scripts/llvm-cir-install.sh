@@ -25,7 +25,7 @@ fi
 if [ -d "$LLVM_SOURCE_PATH" ]; then
   # Ask for user confirmation to remove the directory
   if [ "$AUTO_CONFIRM" = false ]; then
-    read -r -p "Directory $LLVM_SOURCE_PTH already exists. Do you want to remove it? (y/N): " confirm
+    read -r -p "Directory $LLVM_SOURCE_PATH already exists. Do you want to remove it? (y/N): " confirm
   else
     confirm="Y" # Auto-confirm if -y is passed
   fi
