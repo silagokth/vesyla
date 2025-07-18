@@ -63,7 +63,7 @@ jobs:
 
       - name: Check if LLVM is already installed
         id: check-llvm
-        uses: ./.github/actions/check-llvm-install
+        uses: ${{ github.workspace }}/.github/actions/check-llvm-install
         with:
           llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
           llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
@@ -71,7 +71,7 @@ jobs:
 
       - name: Reinstall LLVM
         if: steps.check-llvm.outputs.llvm_installed == 'false'
-        uses: ./.github/workflow/ci-llvm-install.yml
+        uses: ${{ github.workspace }}/.github/workflow/ci-llvm-install.yml
 
       - name: Checkout code
         uses: actions/checkout@v4
