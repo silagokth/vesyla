@@ -1,7 +1,7 @@
 # vesyla &emsp; [![Build Status]][actions] [![Rustc Version 1.82+]][rustc] [![Python Version 3.6+]][python]
 
 [Build Status]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml/badge.svg
-[actions]: https://github.com/silagokth/vesyla/actions/workflows/ci-pr.yml?query=branch%3Amaster
+[actions]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml
 [Rustc Version 1.82+]: https://img.shields.io/badge/rustc-1.82+-lightgray.svg?e&logo=rust&logoColor=white
 [rustc]: https://blog.rust-lang.org/2024/10/17/Rust-1.82.0/
 [Python Version 3.6+]: https://img.shields.io/badge/python-3.6+-lightgray.svg?e&logo=python&logoColor=white
