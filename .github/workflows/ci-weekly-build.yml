@@ -8,6 +8,7 @@ on:
   # trigger weekly
   schedule:
     - cron: '0 3 * * 1' # every monday at 3am
+  workflow_dispatch:
 
 jobs:
   ci-build-vesyla:
