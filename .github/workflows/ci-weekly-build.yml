@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - master
-      - ci-weekly-build
   # trigger weekly
   schedule:
     - cron: '0 3 * * 1' # every monday at 3am
