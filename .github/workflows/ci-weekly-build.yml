@@ -1,0 +1,26 @@
+name: master build
+
+on:
+  # trigger on any push on master
+  push:
+    branches:
+      - master
+  # trigger weekly
+  schedule:
+    - cron: '0 3 * * 1' # every monday at 3am
+  workflow_dispatch:
+
+jobs:
+  ci-build-vesyla:
+    name: Build Vesyla
+    uses: ./.github/workflows/ci-build-appimage.yml
+    secrets: inherit
+
+  ci-run-tests:
+    name: Run DRRA Tests
+    uses: ./.github/workflows/ci-run-tests.yml
+    needs: ci-build-vesyla
+    secrets: inherit
+    with:
+      version: ${{ needs.ci-build-vesyla.outputs.version }}
+      branch: ${{ needs.ci-build-vesyla.outputs.branch }}
