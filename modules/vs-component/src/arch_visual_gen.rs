@@ -2,7 +2,7 @@ use crate::drra::Fabric;
 use crate::utils;
 use std::collections::HashMap;
 use std::fs;
-use svg::node::element::{Group, Rectangle, Text};
+use svg::node::element::{Group, Line, Rectangle, Text};
 use svg::Document;
 
 pub fn generate(arch_file: &String, output_dir: &String) {
@@ -206,6 +206,7 @@ fn draw_fabric(
         let resource_color_text = color_map["resource_color_text"].clone();
         let resource_x = x + offset + 10 + 100;
         let mut resource_y = y + offset + 50 + (16 * resource_height);
+        let mut port_num = 0;
         for rs in resources {
             let resource = rs.as_object().unwrap();
             let resource_size = resource["size"].as_i64().unwrap();
@@ -219,6 +220,53 @@ fn draw_fabric(
                     .set("stroke", resource_color_border.clone())
                     .set("stroke-width", 2),
             );
+
+            // add port numbers to the slot
+            for i in 1..(resource_size + 1) {
+                let resource_x0 = resource_x + 11;
+                let resource_x1 = resource_x + 11 + resource_width - 12;
+                let resource_y0 = resource_y - resource_height * i + 1;
+                let resource_y1 = resource_y0 + 8;
+                let corner_top_left = (resource_x0 + 5, resource_y0 + 10, port_num + 3);
+                let corner_btm_left = (resource_x0 + 5, resource_y1 + 10, port_num + 1);
+                let corner_top_right = (resource_x1 - 5, resource_y0 + 10, port_num + 2);
+                let corner_btm_right = (resource_x1 - 5, resource_y1 + 10, port_num);
+                let corners = [
+                    corner_top_left,
+                    corner_btm_left,
+                    corner_top_right,
+                    corner_btm_right,
+                ];
+                for corner in corners.iter() {
+                    cell_group = cell_group.add(
+                        Text::new(corner.2.to_string())
+                            .set("x", corner.0)
+                            .set("y", corner.1)
+                            .set("fill", resource_color_text.clone())
+                            .set("font-size", 8)
+                            .set("text-anchor", "middle"),
+                    );
+                }
+                port_num += 4;
+            }
+
+            // add dotted line if the resource is bigger than 1 slot
+            if resource_size > 1 {
+                for i in 1..resource_size {
+                    let line_x = resource_x + 11;
+                    let line_y = resource_y - resource_height * (resource_size - i) + 1;
+                    cell_group = cell_group.add(
+                        Line::new()
+                            .set("x1", line_x)
+                            .set("y1", line_y)
+                            .set("x2", line_x + resource_width - 12)
+                            .set("y2", line_y)
+                            .set("stroke", resource_color_border.clone())
+                            .set("stroke-width", 1)
+                            .set("stroke-dasharray", "5 5"),
+                    );
+                }
+            }
             // add text rotate 90 degree
             let text_x = resource_x + 11 + resource_width / 2;
             let text_y = resource_y - resource_height * resource_size
