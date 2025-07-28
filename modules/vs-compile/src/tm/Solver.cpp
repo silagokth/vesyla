@@ -17,32 +17,44 @@ string get_random_string(size_t length) {
 }
 
 unordered_map<string, string> Solver::solve(TimingModel &tm) {
+  // create two temporary files with random names
+  string random_id = get_random_string(10);
+  string mzn_filename = tmp_path + "/" + random_id + ".mzn";
+  string dzn_filename = tmp_path + "/" + random_id + ".dzn";
+  string json_filename = tmp_path + "/" + random_id + ".json";
 
-  string mzn_model = tm.to_mzn();
+  std::ofstream mzn_file(mzn_filename);
+  std::ofstream dzn_file(dzn_filename);
 
-  // create a temporary file with random name
-  string filename = tmp_path + "/" + get_random_string(10) + ".mzn";
-  string input_filename = filename + ".mzn";
-  string output_filename = filename + ".json";
-  std::ofstream file(input_filename);
-
-  if (!file.is_open()) {
-    LOG_FATAL << "Failed to create temporary file.";
+  if (!mzn_file.is_open() || !dzn_file.is_open()) {
+    LOG_FATAL << "Failed to create temporary files: " << mzn_filename << " and "
+              << dzn_filename << "\n";
     exit(-1);
   }
 
-  file << mzn_model;
-  file.close();
+  if (tm.to_mzn(mzn_file, dzn_file) != 0) {
+    LOG_FATAL << "Failed to convert TimingModel to MiniZinc.";
+    exit(-1);
+  }
+
+  mzn_file.close();
+  dzn_file.close();
+
   // run minizinc command and collect the json output
-  string command = "minizinc --json-stream --solver cp-sat " + input_filename +
-                   " > " + output_filename;
+  LOG_DEBUG << "Running Minizinc command with input files: " << mzn_filename
+            << " and " << dzn_filename;
+  string command = "minizinc --json-stream --solver cp-sat " + mzn_filename +
+                   " " + dzn_filename + " > " + json_filename;
   int result = system(command.c_str());
+
+  LOG_DEBUG << "Minizinc command executed: " << command;
+  LOG_DEBUG << "Minizinc command output file: " << json_filename;
   if (result != 0) {
     LOG_ERROR << "Minizinc command failed with error code: " << result;
   }
 
   // read the json output
-  ifstream json_file(output_filename);
+  ifstream json_file(json_filename);
   if (!json_file.is_open()) {
     LOG_FATAL << "Failed to open json file.";
     exit(-1);
@@ -56,6 +68,8 @@ unordered_map<string, string> Solver::solve(TimingModel &tm) {
   if (json_output.find("type") == json_output.end() ||
       json_output["type"] != "solution") {
     LOG_ERROR << "Minizinc output is not a solution.";
+    LOG_ERROR << "Input MZN file: " << mzn_filename;
+    LOG_ERROR << "Input DZN file: " << dzn_filename;
     LOG_ERROR << "Output: " << json_output.dump(4);
     LOG_FATAL << "Minizinc command failed.";
     exit(-1);

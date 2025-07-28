@@ -35,7 +35,7 @@ public:
 public:
   void compile();
   string to_string();
-  string to_mzn();
+  int to_mzn(std::ostream &mzn_file, std::ostream &dzn_file);
   string add_operation(Operation op) {
     operations[op.name] = op;
     return op.name;

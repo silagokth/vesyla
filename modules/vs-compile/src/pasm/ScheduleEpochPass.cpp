@@ -1,6 +1,7 @@
 
 
 #include "ScheduleEpochPass.hpp"
+#include <optional>
 #include <string>
 
 namespace vesyla::pasm {
@@ -30,28 +31,31 @@ private:
   std::unordered_map<string, int>
   create_act_instr(std::vector<int> indices) const {
 
-    llvm::outs() << "Create ACT for indices: ";
+    llvm::outs() << "Create ACT for port indices: ";
     for (auto index : indices) {
       llvm::outs() << index << " ";
     }
     llvm::outs() << "\n";
 
     if (indices.size() == 0) {
-      llvm::outs() << "Error: No indices provided.\n";
+      llvm::outs() << "Error: No port indices provided.\n";
       std::exit(-1);
     }
 
+    // arguments for ACT instruction
     int mode = 0;
     int param = 0;
     int ports = 0;
 
     int min_index = *std::min_element(indices.begin(), indices.end());
     int max_index = *std::max_element(indices.begin(), indices.end());
-
     int min_slot = min_index / 4;
     int max_slot = max_index / 4;
-    llvm::outs() << "min_slot: " << min_slot << ", max_slot: " << max_slot
-                 << "\n";
+    llvm::outs() << "min_slot index: " << min_slot
+                 << ", max_slot index: " << max_slot << "\n";
+
+    // if the min_slot and max_slot are placed less than 4 slots apart
+    // we can use the mode 0, otherwise we try to use mode 1
     if (max_slot - min_slot < 4) {
       mode = 0;
       param = min_slot;
@@ -59,29 +63,48 @@ private:
         ports |= (1 << (index - min_slot * 4));
       }
     } else {
+      llvm::outs() << "Warning: Slot indices are too far apart, "
+                      "trying to use activation mode 1.\n";
       mode = 1;
       std::vector<int> param_vec(16, 0);
+
+      // compose the param_vec using the port indices
       for (auto index : indices) {
         int slot = index / 4;
         int port = index % 4;
-        ports |= (1 << slot);
-        param_vec[slot] |= (1 << port);
+        ports |= (1 << slot);           // apply 1 to the slot index in ports
+        param_vec[slot] |= (1 << port); // apply 1 to the port index in param
       }
+
       // it's valid only if param_vec value is either 0 or equal value
-      int param = 0;
+      std::optional<int> commonPortMask;
       for (auto param_value : param_vec) {
-        if (param == 0) {
-          param = param_value;
-        } else if (param != param_value && param_value != 0) {
-          llvm::outs() << "Cannot find a valid ACT instruction for the given "
-                          "indices: ";
+        if (param_value == 0) {
+          continue; // skip the empty slots
+        }
+        if (!commonPortMask.has_value()) {
+          commonPortMask = param_value;
+        } else if (commonPortMask.value() != param_value) {
+          llvm::outs()
+              << "Error: Cannot find a valid ACT instruction for the given "
+                 "port indices: ";
           for (auto index : indices) {
             llvm::outs() << index << " ";
           }
           llvm::outs() << "\n";
-          exit(-1);
+          llvm::outs() << "Binary representation of param_vec:\n";
+          for (auto value : param_vec) {
+            llvm::outs() << "  " << std::bitset<4>(value).to_string() << "\n";
+          }
+          exit(-1); // invalid combination of port indices for mode 1
         }
       }
+      if (!commonPortMask.has_value()) {
+        // if we have a common port mask, we can use it
+        llvm::outs() << "Warning: ACT instruction generated with no ports to "
+                        "activate (mode 1).\n";
+      }
+      int param = commonPortMask.value_or(0);
     }
 
     return {{"mode", mode}, {"param", param}, {"ports", ports}};
@@ -1177,7 +1200,7 @@ public:
       operation_type_set.insert(child_op.getName().getStringRef().str());
     }
 
-    // add build-in constraints
+    // add built-in constraints
     std::unordered_map<std::string, std::vector<std::string>> all_resource_op;
     std::unordered_map<std::string, std::vector<std::string>>
         all_control_op_anchors;
@@ -1223,6 +1246,8 @@ public:
         for (size_t i = 0; i < ops.size(); i++) {
           int slot = -1;
           int port = -1;
+
+          // Find the current operation in the op_exprs
           for (auto &op : op_exprs) {
             if (op.id == ops[i]) {
               slot = op.slot;
@@ -1230,28 +1255,7 @@ public:
               break;
             }
           }
-          for (size_t j = i + 1; j < ops.size(); j++) {
-            int slot2 = -1;
-            int port2 = -1;
-            for (auto &op : op_exprs) {
-              if (op.id == ops[j]) {
-                slot2 = op.slot;
-                port2 = op.port;
-                break;
-              }
-            }
-            if (slot == -1 || slot2 == -1) {
-              llvm::outs() << "Error: Cannot find the slot or port for "
-                           << ops[i] << " or " << ops[j] << "\n";
-              std::exit(-1);
-            }
-            if (slot >= slot2 + 4 || slot2 >= slot + 4) {
-              if (port != port2) {
-                model.add_constraint(
-                    tm::Constraint("linear", ops[i] + " != " + ops[j]));
-              }
-            }
-          }
+
           if (all_control_op_anchors.find(label) !=
               all_control_op_anchors.end()) {
             // add a constraint that the ROPs cannot be executed at the same
@@ -1265,6 +1269,9 @@ public:
       }
     }
 
+    // empty log buffer
+    llvm::outs().flush();
+
     // solve the timing model
     std::unordered_map<std::string, std::string> result = solver.solve(model);
     if (result.empty()) {
@@ -1276,6 +1283,20 @@ public:
     for (auto it = result.begin(); it != result.end(); ++it) {
       std::string key = it->first;
       std::string value = it->second;
+
+      // check if the key is use_act_mode_0
+      if (key == "use_act_mode_0") {
+        // if it is, then set the total_latency to 1
+        llvm::outs() << "Using ACT mode 0: " << value << "\n";
+        continue;
+      }
+      // check if the key is use_act_mode_1
+      if (key == "use_act_mode_1") {
+        // if it is, then set the total_latency to 2
+        llvm::outs() << "Using ACT mode 1: " << value << "\n";
+        continue;
+      }
+
       // if value is not starting with "[", then it is a number
       if (value[0] != '[') {
         schedule_table[key] = std::stoi(value);
