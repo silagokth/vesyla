@@ -1297,6 +1297,9 @@ public:
         continue;
       }
 
+      // TODO(paul) if both modes are false
+      // generate the activation vectors for each activation cycle
+
       // if value is not starting with "[", then it is a number
       if (value[0] != '[') {
         schedule_table[key] = std::stoi(value);
