@@ -28,6 +28,11 @@ struct Operation {
   OperationExpr expr;
   string duration_expr;
 
+  int col = -1;
+  int row = -1;
+  int slot = -1;
+  int port = -1;
+
   Operation() {}
   Operation(string name_, string expr_) : name(name_), expr(expr_) {}
   Operation(string name_, OperationExpr expr_) : name(name_), expr(expr_) {}

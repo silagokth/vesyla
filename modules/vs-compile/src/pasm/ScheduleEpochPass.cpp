@@ -1136,8 +1136,13 @@ public:
                                std::istreambuf_iterator<char>());
         output_file.close();
 
-        model.add_operation(
-            tm::Operation(rop_json["id"].get<std::string>(), output_str));
+        tm::Operation operation =
+            tm::Operation(rop_json["id"].get<std::string>(), output_str);
+        operation.col = rop_json["col"].get<int>();
+        operation.row = rop_json["row"].get<int>();
+        operation.slot = rop_json["slot"].get<int>();
+        operation.port = rop_json["port"].get<int>();
+        model.add_operation(operation);
 
         // delete the temporary files
         remove(input_filename.c_str());
