@@ -28,7 +28,8 @@ string TimingModel::to_string() {
   return str;
 }
 
-int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file) {
+int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
+                        bool allow_act_mode_2) {
   if (state != COMPILED) {
     LOG_WARNING << "Timing model is not compiled. Compiling...";
     compile();
@@ -136,7 +137,11 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file) {
   // add act modes
   mzn_file << "var bool: use_act_mode_0;\n";
   mzn_file << "var bool: use_act_mode_1;\n";
-  mzn_file << "constraint (use_act_mode_0 + use_act_mode_1) = 1;\n";
+  if (allow_act_mode_2) {
+    mzn_file << "constraint (use_act_mode_0 + use_act_mode_1) <= 1;\n";
+  } else {
+    mzn_file << "constraint (use_act_mode_0 + use_act_mode_1) = 1;\n";
+  }
   mzn_file << R"(
 % act mode 0: if resources are within 4 slots of each other
 % then their start times can be the same, else they must not have the same start time

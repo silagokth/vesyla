@@ -13,7 +13,8 @@ public:
   Solver() { tmp_path = "."; }
   Solver(std::string tmp_path_) : tmp_path(tmp_path_) {}
   ~Solver() {}
-  std::unordered_map<std::string, std::string> solve(TimingModel &tm);
+  std::unordered_map<std::string, std::string>
+  solve(TimingModel &tm, bool allow_act_mode_2 = false);
 };
 } // namespace tm
 } // namespace vesyla
