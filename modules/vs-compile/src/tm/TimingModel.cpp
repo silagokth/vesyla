@@ -1,3 +1,5 @@
+// TODO this should come from a config file
+// or global variables at some point
 #define MAX_SLOTS 16
 #define NUM_PORTS_PER_RESOURCE 4
 
