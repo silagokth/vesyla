@@ -36,7 +36,7 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
   if (state != COMPILED) {
     LOG_WARNING << "Timing model is not compiled. Compiling...";
     compile();
-    LOG_WARNING << "Timing model compiled.";
+    LOG_DEBUG << "Timing model compiled.";
   }
 
   // build translation table for operations
