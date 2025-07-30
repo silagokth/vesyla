@@ -3,6 +3,7 @@
 #include "ScheduleEpochPass.hpp"
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_SCHEDULEEPOCHPASS
@@ -28,6 +29,82 @@ public:
         tmp_path(std::move(tmp_path)), _row(row_), _col(col_) {}
 
 private:
+  std::optional<std::unordered_map<string, int>>
+  create_act_0_instr(std::vector<int> indices) const {
+    int min_index = *std::min_element(indices.begin(), indices.end());
+    int max_index = *std::max_element(indices.begin(), indices.end());
+    int min_slot = min_index / 4;
+    int max_slot = max_index / 4;
+
+    if (max_slot - min_slot >= 4) {
+      llvm::outs() << "ACT mode 0 failed: slot indices are too far apart.\n";
+      return std::nullopt;
+    }
+
+    int ports = 0;
+    for (auto index : indices) {
+      ports |= (1 << (index - min_slot * 4));
+    }
+    return std::make_optional<std::unordered_map<string, int>>(
+        {{"mode", 0}, {"param", min_slot}, {"ports", ports}});
+  }
+
+  std::optional<std::unordered_map<string, int>>
+  create_act_1_instr(std::vector<int> indices) const {
+    int ports = 0;
+    std::vector<int> param_vec(16, 0);
+
+    // compose the param_vec using the port indices
+    for (auto index : indices) {
+      int slot = index / 4;
+      int port = index % 4;
+      ports |= (1 << slot);           // apply 1 to the slot index in ports
+      param_vec[slot] |= (1 << port); // apply 1 to the port index in param
+    }
+
+    // it's valid only if param_vec value is either 0 or equal value
+    std::optional<int> commonPortMask;
+    for (auto param_value : param_vec) {
+      if (param_value == 0) {
+        continue; // skip the empty slots
+      }
+      if (!commonPortMask.has_value()) {
+        commonPortMask = param_value;
+      } else if (commonPortMask.value() != param_value) {
+        llvm::outs() << "ACT mode 1 failed: mixed port index patterns.\n";
+        return std::nullopt; // invalid combination of port indices
+      }
+    }
+    if (!commonPortMask.has_value()) {
+      // if we have a common port mask, we can use it
+      llvm::outs() << "Warning: ACT instruction generated with no ports to "
+                      "activate (mode 1).\n";
+    }
+    int param = commonPortMask.value_or(0);
+
+    return std::make_optional<std::unordered_map<string, int>>(
+        {{"mode", 1}, {"param", param}, {"ports", ports}});
+  }
+
+  std::optional<std::unordered_map<string, int>>
+  create_act_2_instr(std::vector<int> indices) const {
+    uint64_t port_vec = 0;
+    for (auto index : indices) {
+      port_vec |= (1ULL << index); // set the bit for the port index
+    }
+    // print binary representation of port_vec
+    llvm::outs() << "Port vector: " << std::bitset<64>(port_vec).to_string()
+                 << "\n";
+
+    // TODO: implement ACT mode 2
+    // - find a suitable address to store the port vector (int address)
+    // return std::make_optional<std::unordered_map<string, int>>(
+    //        {{"mode", 2}, {"param", address}, {"ports", 0}});
+
+    llvm::outs() << "ACT mode 2 failed: not implemented yet.\n";
+    return std::nullopt;
+  }
+
   std::unordered_map<string, int>
   create_act_instr(std::vector<int> indices) const {
 
@@ -42,72 +119,32 @@ private:
       std::exit(-1);
     }
 
-    // arguments for ACT instruction
-    int mode = 0;
-    int param = 0;
-    int ports = 0;
-
-    int min_index = *std::min_element(indices.begin(), indices.end());
-    int max_index = *std::max_element(indices.begin(), indices.end());
-    int min_slot = min_index / 4;
-    int max_slot = max_index / 4;
-    llvm::outs() << "min_slot index: " << min_slot
-                 << ", max_slot index: " << max_slot << "\n";
-
-    // if the min_slot and max_slot are placed less than 4 slots apart
-    // we can use the mode 0, otherwise we try to use mode 1
-    if (max_slot - min_slot < 4) {
-      mode = 0;
-      param = min_slot;
-      for (auto index : indices) {
-        ports |= (1 << (index - min_slot * 4));
-      }
-    } else {
-      llvm::outs() << "Warning: Slot indices are too far apart, "
-                      "trying to use activation mode 1.\n";
-      mode = 1;
-      std::vector<int> param_vec(16, 0);
-
-      // compose the param_vec using the port indices
-      for (auto index : indices) {
-        int slot = index / 4;
-        int port = index % 4;
-        ports |= (1 << slot);           // apply 1 to the slot index in ports
-        param_vec[slot] |= (1 << port); // apply 1 to the port index in param
-      }
-
-      // it's valid only if param_vec value is either 0 or equal value
-      std::optional<int> commonPortMask;
-      for (auto param_value : param_vec) {
-        if (param_value == 0) {
-          continue; // skip the empty slots
-        }
-        if (!commonPortMask.has_value()) {
-          commonPortMask = param_value;
-        } else if (commonPortMask.value() != param_value) {
-          llvm::outs()
-              << "Error: Cannot find a valid ACT instruction for the given "
-                 "port indices: ";
-          for (auto index : indices) {
-            llvm::outs() << index << " ";
-          }
-          llvm::outs() << "\n";
-          llvm::outs() << "Binary representation of param_vec:\n";
-          for (auto value : param_vec) {
-            llvm::outs() << "  " << std::bitset<4>(value).to_string() << "\n";
-          }
-          exit(-1); // invalid combination of port indices for mode 1
-        }
-      }
-      if (!commonPortMask.has_value()) {
-        // if we have a common port mask, we can use it
-        llvm::outs() << "Warning: ACT instruction generated with no ports to "
-                        "activate (mode 1).\n";
-      }
-      int param = commonPortMask.value_or(0);
+    // try ACT mode 0
+    auto result = create_act_0_instr(indices);
+    if (result.has_value()) {
+      return result.value();
     }
 
-    return {{"mode", mode}, {"param", param}, {"ports", ports}};
+    // try ACT mode 1
+    result = create_act_1_instr(indices);
+    if (result.has_value()) {
+      return result.value();
+    }
+
+    // try ACT mode 2
+    result = create_act_2_instr(indices);
+    if (result.has_value()) {
+      return result.value();
+    } else {
+      llvm::outs()
+          << "Error: Cannot find a valid ACT instruction for the given "
+             "port indices: ";
+      for (auto index : indices) {
+        llvm::outs() << index << " ";
+      }
+      llvm::outs() << "\n";
+      exit(-1); // invalid combination of port indices for mode 1
+    }
   }
 
   std::unordered_map<string, int> create_wait_instr(int cycle) const {
@@ -845,7 +882,8 @@ private:
               //     auto it = schedule_table.find(str_value);
               //     if (it != schedule_table.end()) {
               //       int int_value = it->second;
-              //       mlir::Attribute new_attr_value = rewriter.getIntegerAttr(
+              //       mlir::Attribute new_attr_value =
+              //       rewriter.getIntegerAttr(
               //           rewriter.getI32Type(), int_value);
               //       // Add the modified attribute to our new list
               //       updated_attrs.push_back(
@@ -862,7 +900,8 @@ private:
               //   }
               // }
 
-              // // If any attributes were changed, create a new DictionaryAttr
+              // // If any attributes were changed, create a new
+              // DictionaryAttr
               // // and update the operation
               // if (params_changed) {
               //   mlir::DictionaryAttr new_instr_params =
