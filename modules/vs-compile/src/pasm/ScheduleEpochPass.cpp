@@ -116,7 +116,7 @@ private:
 
     if (indices.size() == 0) {
       llvm::outs() << "Error: No port indices provided.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
 
     // try ACT mode 0
@@ -143,7 +143,7 @@ private:
         llvm::outs() << index << " ";
       }
       llvm::outs() << "\n";
-      exit(-1); // invalid combination of port indices for mode 1
+      exit(EXIT_FAILURE); // invalid combination of port indices for mode 1
     }
   }
 
@@ -187,7 +187,7 @@ private:
                 llvm::outs()
                     << "Unsupported parameter type in InstrOp: " << param_value
                     << "\n";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
             }
 
@@ -207,7 +207,7 @@ private:
           } else {
             llvm::outs() << "Illegal operation type in RopOp: "
                          << rop_child_op.getName() << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
         }
       }
@@ -243,7 +243,7 @@ private:
                 llvm::outs()
                     << "Unsupported parameter type in InstrOp: " << param_value
                     << "\n";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
             }
 
@@ -262,14 +262,14 @@ private:
           } else {
             llvm::outs() << "Illegal operation type in CopOp: "
                          << cop_child_op.getName() << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
         }
       }
     } else {
       llvm::outs() << "Unsupported operation type for JSON conversion: "
                    << op->getName() << "\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
 
     return op_json;
@@ -378,7 +378,7 @@ private:
     } else {
       llvm::outs() << "Unsupported operation kind: "
                    << op_json["kind"].get<std::string>() << "\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   }
 
@@ -505,7 +505,7 @@ private:
     auto epoch_op = *op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
     mlir::Region &epochBodyRegion = epoch_op.getBody();
     mlir::Block *block;
@@ -544,7 +544,7 @@ private:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -556,7 +556,7 @@ private:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << rop_json.dump(4);
         file.close();
@@ -564,14 +564,14 @@ private:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
@@ -580,7 +580,7 @@ private:
         std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "rop") {
           llvm::outs() << "Error: Output JSON is not a RopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         // convert the output JSON to operation
         rewriter.setInsertionPointToEnd(block);
@@ -606,7 +606,7 @@ private:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -618,7 +618,7 @@ private:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << cop_json.dump(4);
         file.close();
@@ -626,14 +626,14 @@ private:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
@@ -642,7 +642,7 @@ private:
         std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "cop") {
           llvm::outs() << "Error: Output JSON is not a CopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         // convert the output JSON to operation
         rewriter.setInsertionPointToEnd(block);
@@ -658,7 +658,7 @@ private:
       } else {
         llvm::outs() << "Illegal operation type in EpochOp: "
                      << child_op->getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -676,7 +676,7 @@ private:
     auto epoch_op = *op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
     mlir::Region &epochBodyRegion = epoch_op.getBody();
     mlir::Block *block;
@@ -722,7 +722,7 @@ private:
         llvm::outs()
             << "Illegal operation type in EpochOp for synchronization: "
             << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -754,7 +754,7 @@ private:
                          << instr_op.getId().str() + "_e" +
                                 std::to_string(instr_count)
                          << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
           int t = schedule_table[instr_op.getId().str() + "_e" +
                                  std::to_string(instr_count)];
@@ -764,7 +764,7 @@ private:
             llvm::outs() << "Error: time table already has the entry: " << t
                          << "(" << time_table[label][t]->getName() << ")"
                          << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
           instr_count++;
         } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
@@ -772,7 +772,7 @@ private:
         } else {
           llvm::outs() << "Illegal operation type in CopOp: "
                        << cop_child_op.getName() << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
       }
     }
@@ -834,7 +834,7 @@ private:
           llvm::outs() << "Error: time table already has the entry: " << t
                        << "(" << time_table[label][t]->getName() << ")"
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         llvm::outs() << "ACT: " << act_instr.getId() << " at time " << t
@@ -1165,7 +1165,7 @@ public:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -1177,7 +1177,7 @@ public:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << rop_json.dump(4);
         file.close();
@@ -1185,14 +1185,14 @@ public:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string output_str((std::istreambuf_iterator<char>(output_file)),
                                std::istreambuf_iterator<char>());
@@ -1222,7 +1222,7 @@ public:
         if ((operation_type_set.find("pasm.rop") != operation_type_set.end()) ||
             operation_type_set.find("pasm.cop") != operation_type_set.end()) {
           llvm::outs() << "Error: RawOp cannot be used with RopOp or CopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         return failure();
       } else if (auto cstr_op = llvm::dyn_cast<CstrOp>(&child_op)) {
@@ -1234,7 +1234,7 @@ public:
       } else {
         llvm::outs() << "Illegal operation type in EpochOp: "
                      << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
       operation_type_set.insert(child_op.getName().getStringRef().str());
     }
@@ -1272,7 +1272,7 @@ public:
       } else {
         llvm::outs() << "Error: Illegal operation kind in EpochOp: "
                      << op_expr.kind << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -1315,7 +1315,7 @@ public:
     std::unordered_map<std::string, std::string> result = solver.solve(model);
     if (result.empty()) {
       llvm::outs() << "Error: No solution found.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
 
     std::unordered_map<std::string, int> schedule_table;

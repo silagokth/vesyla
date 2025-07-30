@@ -23,7 +23,7 @@ public:
     mlir::Block *moduleBlock = op.getOperation()->getBlock();
     if (!moduleBlock) {
       llvm::outs() << "Error: EpochOp is not inside a block.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // Iterate through all operations in the module's block
@@ -43,7 +43,7 @@ public:
         mlir::Region &child_op_region = epoch_op.getBody();
         if (child_op_region.empty()) {
           llvm::outs() << "Error: EpochOp has no body.\n";
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         mlir::Block *child_op_block = &child_op_region.front();
         // Iterate through all operations in the child operation's block
@@ -54,7 +54,7 @@ public:
           } else {
             llvm::outs() << "Error: Illegal operation type in EpochOp: "
                          << child_op_child.getName() << "\n";
-            exit(-1);
+            exit(EXIT_FAILURE);
           }
         }
       } else {
@@ -90,7 +90,7 @@ public:
         } else {
           llvm::outs() << "Error: RawOp already exists in the target epoch op: "
                        << label << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
       }
     }
@@ -143,7 +143,7 @@ public:
                 } else {
                   llvm::outs() << "Error: Illegal operation type in RawOp: "
                                << raw_op_child.getName() << "\n";
-                  exit(-1);
+                  exit(EXIT_FAILURE);
                 }
               }
             } else {
@@ -179,7 +179,7 @@ public:
         mlir::Region &epochBodyRegion = epoch_op.getBody();
         if (epochBodyRegion.empty()) {
           llvm::outs() << "Error: EpochOp has no body.\n";
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         mlir::Block *epochEntryBlock = &epochBodyRegion.front();
         // Iterate through all operations in the child operation's block
@@ -192,7 +192,7 @@ public:
           } else {
             llvm::outs() << "Error: Illegal operation type in EpochOp: "
                          << epoch_child_op.getName() << "\n";
-            exit(-1);
+            exit(EXIT_FAILURE);
           }
         }
       }

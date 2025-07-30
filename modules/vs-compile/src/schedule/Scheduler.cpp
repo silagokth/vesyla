@@ -8,7 +8,7 @@ void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
   llvm::raw_fd_ostream ofs(filename, error_code);
   if (error_code) {
     LOG_FATAL << "Error: Failed to open file for writing: " << filename << "\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   module.print(ofs);
   ofs.close();
@@ -37,7 +37,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
           : "";
   if (VESYLA_SUITE_PATH_COMPONENTS == "") {
     LOG_FATAL << "Error: VESYLA_SUITE_PATH_COMPONENTS is not set.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   // create temp directory for scheduler
@@ -53,14 +53,14 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/1.mlir");
   pm.addPass(vesyla::pasm::createAddDefaultValuePass());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/2.mlir");
@@ -70,7 +70,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
       {VESYLA_SUITE_PATH_COMPONENTS, temp_dir}));
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/3.mlir");
@@ -78,7 +78,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.addPass(vesyla::pasm::createReplaceLoopOp());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/4.mlir");
@@ -86,7 +86,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.addPass(vesyla::pasm::createMergeRawOp());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/5.mlir");
@@ -94,7 +94,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.addPass(vesyla::pasm::createAddHaltPass());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: Pass pipeline failed.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/6.mlir");

@@ -30,7 +30,7 @@ public:
     if (!parent_op) {
       llvm::outs()
           << "Error: InstrOp must be inside a RopOp or CopOp or RawOp.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     std::string label = "";
     if (auto rop_op = llvm::dyn_cast<RopOp>(parent_op)) {
@@ -51,13 +51,13 @@ public:
     } else {
       llvm::outs()
           << "Error: InstrOp must be inside a RopOp or CopOp or RawOp.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if (component_map_json.find(label) == component_map_json.end()) {
       llvm::outs() << "Error: Cannot find the component for label: " << label
                    << "\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
     std::string resource_kind = component_map_json[label].get<std::string>();
     // save the dictionary attributes of the InstrOp to a small vector

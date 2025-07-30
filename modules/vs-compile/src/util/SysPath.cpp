@@ -29,7 +29,7 @@ string SysPath::curr_dir() {
   }
   if (!glv.gets("__CURR_DIR__", curr_dir)) {
     LOG_FATAL << "Current directory is not set!";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return curr_dir;
 }
@@ -42,7 +42,7 @@ string SysPath::home_dir() {
   }
   if (!glv.gets("__HOME_DIR__", home_dir)) {
     LOG_FATAL << "Home directory is not set!";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return home_dir;
 }
@@ -55,7 +55,7 @@ string SysPath::temp_dir() {
   }
   if (!glv.gets("__TEMP_DIR__", temp_dir)) {
     LOG_FATAL << "Temporary directory is not set!";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return temp_dir;
 }
@@ -68,7 +68,7 @@ string SysPath::prog_dir() {
   }
   if (!glv.gets("__PROG_DIR__", prog_dir)) {
     LOG_FATAL << "Program directory is not set!";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return prog_dir;
 }

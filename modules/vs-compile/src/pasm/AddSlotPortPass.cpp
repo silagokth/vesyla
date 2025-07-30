@@ -46,7 +46,7 @@ public:
                 llvm::outs()
                     << "Warning: Slot mismatch in InstrOp: " << instr_slot
                     << " != " << slot << "\n";
-                exit(-1);
+                exit(EXIT_FAILURE);
               } else {
                 // Keep the original attribute if it matches the slot
                 updated_attrs.push_back(named_attr_entry);
@@ -58,7 +58,7 @@ public:
                 llvm::outs()
                     << "Warning: Port mismatch in InstrOp: " << instr_port
                     << " != " << port << "\n";
-                exit(-1);
+                exit(EXIT_FAILURE);
               } else {
                 // Keep the original attribute if it matches the port
                 updated_attrs.push_back(named_attr_entry);
