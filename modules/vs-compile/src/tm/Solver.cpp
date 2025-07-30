@@ -107,21 +107,21 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
   std::ofstream mzn_file(mzn_filename);
   if (!mzn_file.is_open()) {
     LOG_FATAL << "Failed to create MiniZinc model file: " << mzn_filename;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // Create the MiniZinc data file
   std::ofstream dzn_file(dzn_filename);
   if (!dzn_file.is_open()) {
     LOG_FATAL << "Failed to create MiniZinc data file: " << dzn_filename;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // Create the JSON output file
   std::ofstream json_file(json_filename);
   if (!json_file.is_open()) {
     LOG_FATAL << "Failed to create JSON output file: " << json_filename;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // Write the MiniZinc model content
@@ -146,11 +146,11 @@ void run_minizinc(string mzn_filename, string dzn_filename,
   LOG_DEBUG << "Minizinc command output file: " << json_filename;
   if (result == -1) {
     LOG_ERROR << "Failed to execute Minizinc command.";
-    exit(-1);
+    exit(EXIT_FAILURE);
   } else if (!WIFEXITED(result) || WEXITSTATUS(result) != 0) {
     LOG_ERROR << "Minizinc command failed with error code: "
               << WEXITSTATUS(result);
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 }
 
@@ -159,7 +159,7 @@ nlohmann::json get_json_from_file(const string &filename) {
   std::ifstream json_file(filename);
   if (!json_file.is_open()) {
     LOG_FATAL << "Failed to open JSON file: " << filename;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   nlohmann::json json_output;
   json_file >> json_output;
@@ -198,7 +198,7 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
       LOG_ERROR << "Input DZN file: " << dzn_filename;
       LOG_ERROR << "Output: " << json_output.dump(4);
       LOG_FATAL << "Minizinc command failed.";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
   }
 
