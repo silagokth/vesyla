@@ -2,6 +2,7 @@
 // or global variables at some point
 #define MAX_SLOTS 16
 #define NUM_PORTS_PER_RESOURCE 4
+#define MAX_LATENCY 100000
 
 #include "tm/TimingModel.hpp"
 
@@ -37,8 +38,6 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
     compile();
     LOG_WARNING << "Timing model compiled.";
   }
-
-  int max_latency = 100000;
 
   // build translation table for operations
   unordered_map<string, int> op2idx;
@@ -86,7 +85,7 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
 
   // generate minizinc model
   mzn_file << "include \"globals.mzn\";\n";
-  mzn_file << "int: MAX_LATENCY = " + std::to_string(max_latency) + ";\n";
+  mzn_file << "int: MAX_LATENCY = " + std::to_string(MAX_LATENCY) + ";\n";
   mzn_file << "int: NUM_OPS = " + std::to_string(num_ops) + ";\n";
   mzn_file << "int: MAX_SLOTS = " + std::to_string(MAX_SLOTS) + ";\n";
   mzn_file << "int: NUM_PORTS_PER_RESOURCE = " +
@@ -252,14 +251,13 @@ void TimingModel::compile() {
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     if (it->kind != "linear") {
       LOG_FATAL << "Invalid constraint kind: " << it->kind;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // Extract all anchors from constraint
     // e.g. op_name.e<event_id>
     // e.g. op_name.e<event_id>[<index_0>]
     // e.g. op_name.e<event_id>[<index_0>][<index_1>]...
-
     string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
@@ -381,7 +379,7 @@ void TimingModel::compile() {
                 LOG_ERROR << "indices[" << i << "]: " << indices[i];
               }
               LOG_FATAL << "Too many indices!";
-              std::exit(-1);
+              std::exit(EXIT_FAILURE);
             }
 
             string expr_str = "(" + op_name + "+" + it3->first->data->start;
@@ -392,7 +390,7 @@ void TimingModel::compile() {
               if (index >= iter) {
                 LOG_FATAL << "Index out of range: index(" << index
                           << ") >= iter(" << iter << ")";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
               expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
                          "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
@@ -433,7 +431,7 @@ TimingModel::build_binary_tree(OperationExpr &expr) {
     // do nothing
   } else {
     LOG_FATAL << "Invalid operation expression kind: " << expr.kind;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   BinaryTree<BinaryTreeData> *tree =
       new BinaryTree<BinaryTreeData>(data, left, right);
@@ -479,7 +477,7 @@ void TimingModel::from_string(string str) {
       constraints.push_back(constraint);
     } else {
       LOG_FATAL << "Invalid line: " << line;
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   }
 }
@@ -487,7 +485,7 @@ void TimingModel::from_string(string str) {
 Operation TimingModel::get_operation(string name) {
   if (operations.find(name) == operations.end()) {
     LOG_FATAL << "Operation not found: " << name;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return operations[name];
 }
