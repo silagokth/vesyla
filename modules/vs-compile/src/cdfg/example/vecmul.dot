@@ -1,0 +1,43 @@
+digraph G {
+    compound = true;
+    input_r -> input_w[arrowhead=none];
+    "route0r" -> read_ab_e0_0;
+    route1wr -> write_a_e0_0;
+    route1wr -> write_b_e0_0;
+    input_w -> read_ab_e0_0;
+	subgraph cluster_read_ab {
+    	read_ab_e0_0 -> read_ab_e0_1 -> read_ab_e0_2 -> read_ab_e0_3
+    	label = "read_ab";
+	}
+	subgraph cluster_write_a {
+	    label = "write_a";
+	    write_a_e0_0 -> write_a_e0_1;
+	}
+	subgraph cluster_write_b {
+	    label = "write_b";
+	    write_b_e0_0 -> write_b_e0_1;
+	}
+	read_ab_e0_0 -> write_a_e0_0;
+	read_ab_e0_1 -> write_b_e0_0;
+	read_ab_e0_2 -> write_a_e0_1;
+	read_ab_e0_3 -> write_b_e0_1;
+	write_a_e0_0 -> read_a_seq;
+	write_b_e0_0 -> read_b_seq;
+	swb -> read_a_seq;
+	read_a_seq -> read_b_seq[arrowhead=none];
+	compute -> read_a_seq[headlabel="1"];
+    write_c_seq_e0_0 -> read_a_seq[headlabel="1", arrowhead=none];
+    subgraph cluster_write_c_seq {
+        label = "write_c_seq";
+        write_c_seq_e0_0 -> write_c_seq_e0_15 -> write_c_seq_e0_31;
+    }
+    subgraph cluster_read_c {
+        label = "read_c";
+        read_c_e0_0 -> read_c_e0_1;
+    }
+    write_c_seq_e0_15 -> read_c_e0_0;
+    write_c_seq_e0_31 -> read_c_e0_1;
+    write_c -> read_c_e0_0[arrowhead=none];
+    write_c -> output_r;
+    output_r -> output_w[arrowhead=none];
+}

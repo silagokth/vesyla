@@ -58,6 +58,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src/util/plog)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
+file(GLOB SOURCE_CDFG "src/cdfg/*.cpp")
 file(GLOB SOURCE_PASM "src/pasm/*.cpp")
 file(GLOB SOURCE_SCHEDULE "src/schedule/*.cpp")
 
@@ -68,6 +69,7 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
   set(DIALECT_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${dialect_namespace})
   set(DIALECT_INCLUDE_DIR ../../../build/lib/src/${dialect_namespace})
   set(DIALECT_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${dialect_namespace})
+  set(DIALECT_INCGEN_TARGETS)
 
   # print paths
   message(STATUS "Dialect source directory: ${DIALECT_SRC_DIR}")
@@ -77,30 +79,39 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
   # Create output directory
   file(MAKE_DIRECTORY ${DIALECT_OUT_DIR})
 
-  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Ops.td)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.hpp.inc -gen-op-decls)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.cpp.inc -gen-op-defs)
-  add_public_tablegen_target(Vesyla${dialect}OpsIncGen)
+  if(EXISTS ${DIALECT_SRC_DIR}/Ops.td)
+    set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Ops.td)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.hpp.inc -gen-op-decls)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Ops.cpp.inc -gen-op-defs)
+    add_public_tablegen_target(Vesyla${dialect}OpsIncGen)
+    list(APPEND DIALECT_INCGEN_TARGETS Vesyla${dialect}OpsIncGen)
+  endif()
 
-  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Dialect.td)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.hpp.inc -gen-dialect-decls)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.cpp.inc -gen-dialect-defs)
-  add_public_tablegen_target(Vesyla${dialect}DialectIncGen)
+  if(EXISTS ${DIALECT_SRC_DIR}/Dialect.td)
+    set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Dialect.td)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.hpp.inc -gen-dialect-decls)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Dialect.cpp.inc -gen-dialect-defs)
+    add_public_tablegen_target(Vesyla${dialect}DialectIncGen)
+    list(APPEND DIALECT_INCGEN_TARGETS Vesyla${dialect}DialectIncGen)
+  endif()
 
-  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Types.td)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.hpp.inc -gen-typedef-decls)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
-  add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
+  if(EXISTS ${DIALECT_SRC_DIR}/Types.td)
+    set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Types.td)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.hpp.inc -gen-typedef-decls)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
+    add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
+    list(APPEND DIALECT_INCGEN_TARGETS Vesyla${dialect}TypesIncGen)
+  endif()
 
-  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
-  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
-  add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
+  if(EXISTS ${DIALECT_SRC_DIR}/Passes.td)
+    set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
+    mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
+    add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
+    list(APPEND DIALECT_INCGEN_TARGETS Vesyla${dialect}PassesIncGen)
+  endif()
 
   # Create a meta-target that depends on all tablegen targets
-  add_custom_target(
-    Vesyla${dialect}IncGen
-    DEPENDS Vesyla${dialect}DialectIncGen Vesyla${dialect}OpsIncGen
-            Vesyla${dialect}TypesIncGen Vesyla${dialect}PassesIncGen)
+  add_custom_target(Vesyla${dialect}IncGen DEPENDS ${DIALECT_INCGEN_TARGETS})
 
   # Add dependencies
   add_dependencies(mlir-headers Vesyla${dialect}IncGen)
@@ -113,6 +124,19 @@ add_mlir_dialect_library(
   DISABLE_INSTALL
   DEPENDS
   VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRInferTypeOpInterface
+  MLIRFuncDialect)
+
+add_custom_mlir_dialect(Cdfg cdfg)
+add_mlir_dialect_library(
+  VesylaCdfg
+  ${SOURCE_CDFG}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaCdfgIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR
@@ -141,6 +165,7 @@ add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
 set(LIBS
     VesylaSchedule
     VesylaPasm
+    VesylaCdfg
     VesylaTm
     VesylaUtil
     ${dialect_libs}
@@ -159,7 +184,7 @@ target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
 add_dependencies(pasm-mlir-lsp-server vs-compile)
 
 include(FetchContent)
-fetchcontent_declare(
+FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip)
 # For Windows: Prevent overriding the parent project's compiler/linker settings
@@ -169,7 +194,7 @@ set(INSTALL_GTEST
 set(gtest_force_shared_crt
     ON
     CACHE BOOL "" FORCE)
-fetchcontent_makeavailable(googletest)
+FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 # Set the unit test directory
