@@ -38,11 +38,11 @@ set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 include(FetchContent)
-fetchcontent_declare(
+FetchContent_Declare(
   Corrosion
   GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
   GIT_TAG v0.5.2)
-fetchcontent_makeavailable(Corrosion)
+FetchContent_MakeAvailable(Corrosion)
 
 get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 message(STATUS "Target name: ${CORROSION_TARGET_NAME}")
@@ -52,7 +52,6 @@ corrosion_import_crate(
   release)
 
 add_subdirectory("modules/vs-testcase")
-add_subdirectory("modules/vs-schedule")
 add_subdirectory("modules/vs-compile")
 
 install(PROGRAMS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vesyla DESTINATION bin)

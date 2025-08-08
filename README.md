@@ -19,11 +19,6 @@ Tool suite for DRRA-2 hardware accelerator platform.
   It compiles the proto-assembly code (.pasm) into binary code.
   The compiler uses the [minizinc](https://www.minizinc.org/) solver.
 
-- vs-manas (**deprecated**): Low level assembler for DRRA-2 ISA
-  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
-- vs-schedule (**deprecated**): Scheduler for DRRA-2 instruction.
-  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
-
 ## Compile and Install
 
 1. Install dependencies
@@ -60,8 +55,6 @@ Usage: vesyla [command and options]
 Commands:
         compile     Compile the source code
         component   Assemble the system
-        manas       Validate JSON file
-        schedule    Clean the build directory
         testcase    Test the system
 Options:
         -h, --help     Show this help message
