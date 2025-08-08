@@ -15,7 +15,7 @@ AnchorExpr::AnchorExpr(string str) {
   // check if the str is empty
   if (str.empty()) {
     LOG_FATAL << "Anchor string is empty!" << str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   // use regex to match <op_name>.<event_id>[<index_0>][<index_1>]...
@@ -37,7 +37,7 @@ AnchorExpr::AnchorExpr(string str) {
     }
   } else {
     LOG_FATAL << "Invalid anchor string: " << str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 }
 

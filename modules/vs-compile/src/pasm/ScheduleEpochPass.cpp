@@ -1,7 +1,9 @@
 
 
 #include "ScheduleEpochPass.hpp"
+#include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_SCHEDULEEPOCHPASS
@@ -27,64 +29,122 @@ public:
         tmp_path(std::move(tmp_path)), _row(row_), _col(col_) {}
 
 private:
+  std::optional<std::unordered_map<string, int>>
+  create_act_0_instr(std::vector<int> indices) const {
+    int min_index = *std::min_element(indices.begin(), indices.end());
+    int max_index = *std::max_element(indices.begin(), indices.end());
+    int min_slot = min_index / 4;
+    int max_slot = max_index / 4;
+
+    if (max_slot - min_slot >= 4) {
+      llvm::outs() << "ACT mode 0 failed: slot indices are too far apart.\n";
+      return std::nullopt;
+    }
+
+    int ports = 0;
+    for (auto index : indices) {
+      ports |= (1 << (index - min_slot * 4));
+    }
+    return std::make_optional<std::unordered_map<string, int>>(
+        {{"mode", 0}, {"param", min_slot}, {"ports", ports}});
+  }
+
+  std::optional<std::unordered_map<string, int>>
+  create_act_1_instr(std::vector<int> indices) const {
+    int ports = 0;
+    std::vector<int> param_vec(16, 0);
+
+    // compose the param_vec using the port indices
+    for (auto index : indices) {
+      int slot = index / 4;
+      int port = index % 4;
+      ports |= (1 << slot);           // apply 1 to the slot index in ports
+      param_vec[slot] |= (1 << port); // apply 1 to the port index in param
+    }
+
+    // it's valid only if param_vec value is either 0 or equal value
+    std::optional<int> commonPortMask;
+    for (auto param_value : param_vec) {
+      if (param_value == 0) {
+        continue; // skip the empty slots
+      }
+      if (!commonPortMask.has_value()) {
+        commonPortMask = param_value;
+      } else if (commonPortMask.value() != param_value) {
+        llvm::outs() << "ACT mode 1 failed: mixed port index patterns.\n";
+        return std::nullopt; // invalid combination of port indices
+      }
+    }
+    if (!commonPortMask.has_value()) {
+      // if we have a common port mask, we can use it
+      llvm::outs() << "Warning: ACT instruction generated with no ports to "
+                      "activate (mode 1).\n";
+    }
+    int param = commonPortMask.value_or(0);
+
+    return std::make_optional<std::unordered_map<string, int>>(
+        {{"mode", 1}, {"param", param}, {"ports", ports}});
+  }
+
+  std::optional<std::unordered_map<string, int>>
+  create_act_2_instr(std::vector<int> indices) const {
+    uint64_t port_vec = 0;
+    for (auto index : indices) {
+      port_vec |= (1ULL << index); // set the bit for the port index
+    }
+    // print binary representation of port_vec
+    llvm::outs() << "Port vector: " << std::bitset<64>(port_vec).to_string()
+                 << "\n";
+
+    // TODO: implement ACT mode 2
+    // - find a suitable address to store the port vector (int address)
+    // return std::make_optional<std::unordered_map<string, int>>(
+    //        {{"mode", 2}, {"param", address}, {"ports", 0}});
+
+    llvm::outs() << "ACT mode 2 failed: not implemented yet.\n";
+    return std::nullopt;
+  }
+
   std::unordered_map<string, int>
   create_act_instr(std::vector<int> indices) const {
 
-    llvm::outs() << "Create ACT for indices: ";
+    llvm::outs() << "Create ACT for port indices: ";
     for (auto index : indices) {
       llvm::outs() << index << " ";
     }
     llvm::outs() << "\n";
 
     if (indices.size() == 0) {
-      llvm::outs() << "Error: No indices provided.\n";
-      std::exit(-1);
+      llvm::outs() << "Error: No port indices provided.\n";
+      std::exit(EXIT_FAILURE);
     }
 
-    int mode = 0;
-    int param = 0;
-    int ports = 0;
+    // try ACT mode 0
+    auto result = create_act_0_instr(indices);
+    if (result.has_value()) {
+      return result.value();
+    }
 
-    int min_index = *std::min_element(indices.begin(), indices.end());
-    int max_index = *std::max_element(indices.begin(), indices.end());
+    // try ACT mode 1
+    result = create_act_1_instr(indices);
+    if (result.has_value()) {
+      return result.value();
+    }
 
-    int min_slot = min_index / 4;
-    int max_slot = max_index / 4;
-    llvm::outs() << "min_slot: " << min_slot << ", max_slot: " << max_slot
-                 << "\n";
-    if (max_slot - min_slot < 4) {
-      mode = 0;
-      param = min_slot;
-      for (auto index : indices) {
-        ports |= (1 << (index - min_slot * 4));
-      }
+    // try ACT mode 2
+    result = create_act_2_instr(indices);
+    if (result.has_value()) {
+      return result.value();
     } else {
-      mode = 1;
-      std::vector<int> param_vec(16, 0);
+      llvm::outs()
+          << "Error: Cannot find a valid ACT instruction for the given "
+             "port indices: ";
       for (auto index : indices) {
-        int slot = index / 4;
-        int port = index % 4;
-        ports |= (1 << slot);
-        param_vec[slot] |= (1 << port);
+        llvm::outs() << index << " ";
       }
-      // it's valid only if param_vec value is either 0 or equal value
-      int param = 0;
-      for (auto param_value : param_vec) {
-        if (param == 0) {
-          param = param_value;
-        } else if (param != param_value && param_value != 0) {
-          llvm::outs() << "Cannot find a valid ACT instruction for the given "
-                          "indices: ";
-          for (auto index : indices) {
-            llvm::outs() << index << " ";
-          }
-          llvm::outs() << "\n";
-          exit(-1);
-        }
-      }
+      llvm::outs() << "\n";
+      exit(EXIT_FAILURE); // invalid combination of port indices for mode 1
     }
-
-    return {{"mode", mode}, {"param", param}, {"ports", ports}};
   }
 
   std::unordered_map<string, int> create_wait_instr(int cycle) const {
@@ -127,7 +187,7 @@ private:
                 llvm::outs()
                     << "Unsupported parameter type in InstrOp: " << param_value
                     << "\n";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
             }
 
@@ -147,7 +207,7 @@ private:
           } else {
             llvm::outs() << "Illegal operation type in RopOp: "
                          << rop_child_op.getName() << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
         }
       }
@@ -183,7 +243,7 @@ private:
                 llvm::outs()
                     << "Unsupported parameter type in InstrOp: " << param_value
                     << "\n";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
             }
 
@@ -202,14 +262,14 @@ private:
           } else {
             llvm::outs() << "Illegal operation type in CopOp: "
                          << cop_child_op.getName() << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
         }
       }
     } else {
       llvm::outs() << "Unsupported operation type for JSON conversion: "
                    << op->getName() << "\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
 
     return op_json;
@@ -318,7 +378,7 @@ private:
     } else {
       llvm::outs() << "Unsupported operation kind: "
                    << op_json["kind"].get<std::string>() << "\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   }
 
@@ -445,7 +505,7 @@ private:
     auto epoch_op = *op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
     mlir::Region &epochBodyRegion = epoch_op.getBody();
     mlir::Block *block;
@@ -484,7 +544,7 @@ private:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -496,7 +556,7 @@ private:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << rop_json.dump(4);
         file.close();
@@ -504,14 +564,14 @@ private:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
@@ -520,7 +580,7 @@ private:
         std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "rop") {
           llvm::outs() << "Error: Output JSON is not a RopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         // convert the output JSON to operation
         rewriter.setInsertionPointToEnd(block);
@@ -546,7 +606,7 @@ private:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -558,7 +618,7 @@ private:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << cop_json.dump(4);
         file.close();
@@ -566,14 +626,14 @@ private:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
@@ -582,7 +642,7 @@ private:
         std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "cop") {
           llvm::outs() << "Error: Output JSON is not a CopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         // convert the output JSON to operation
         rewriter.setInsertionPointToEnd(block);
@@ -598,7 +658,7 @@ private:
       } else {
         llvm::outs() << "Illegal operation type in EpochOp: "
                      << child_op->getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -616,7 +676,7 @@ private:
     auto epoch_op = *op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
     mlir::Region &epochBodyRegion = epoch_op.getBody();
     mlir::Block *block;
@@ -662,7 +722,7 @@ private:
         llvm::outs()
             << "Illegal operation type in EpochOp for synchronization: "
             << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -694,7 +754,7 @@ private:
                          << instr_op.getId().str() + "_e" +
                                 std::to_string(instr_count)
                          << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
           int t = schedule_table[instr_op.getId().str() + "_e" +
                                  std::to_string(instr_count)];
@@ -704,7 +764,7 @@ private:
             llvm::outs() << "Error: time table already has the entry: " << t
                          << "(" << time_table[label][t]->getName() << ")"
                          << "\n";
-            std::exit(-1);
+            std::exit(EXIT_FAILURE);
           }
           instr_count++;
         } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
@@ -712,7 +772,7 @@ private:
         } else {
           llvm::outs() << "Illegal operation type in CopOp: "
                        << cop_child_op.getName() << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
       }
     }
@@ -774,7 +834,7 @@ private:
           llvm::outs() << "Error: time table already has the entry: " << t
                        << "(" << time_table[label][t]->getName() << ")"
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         llvm::outs() << "ACT: " << act_instr.getId() << " at time " << t
@@ -822,7 +882,8 @@ private:
               //     auto it = schedule_table.find(str_value);
               //     if (it != schedule_table.end()) {
               //       int int_value = it->second;
-              //       mlir::Attribute new_attr_value = rewriter.getIntegerAttr(
+              //       mlir::Attribute new_attr_value =
+              //       rewriter.getIntegerAttr(
               //           rewriter.getI32Type(), int_value);
               //       // Add the modified attribute to our new list
               //       updated_attrs.push_back(
@@ -839,7 +900,8 @@ private:
               //   }
               // }
 
-              // // If any attributes were changed, create a new DictionaryAttr
+              // // If any attributes were changed, create a new
+              // DictionaryAttr
               // // and update the operation
               // if (params_changed) {
               //   mlir::DictionaryAttr new_instr_params =
@@ -1103,7 +1165,7 @@ public:
         if (component_map.find(label) == component_map.end()) {
           llvm::outs() << "Error: Cannot find the component : " << label
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string command = component_path + "/resources/" +
                               component_map[label].get<std::string>() +
@@ -1115,7 +1177,7 @@ public:
         std::ofstream file(input_filename);
         if (!file.is_open()) {
           llvm::outs() << "Error: Failed to create temporary file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         file << rop_json.dump(4);
         file.close();
@@ -1123,21 +1185,26 @@ public:
         if (result != 0) {
           llvm::outs() << "Error: Command failed with error code: " << result
                        << "\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
 
         // read the output file
         std::ifstream output_file(output_filename);
         if (!output_file.is_open()) {
           llvm::outs() << "Error: Failed to open output file.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         std::string output_str((std::istreambuf_iterator<char>(output_file)),
                                std::istreambuf_iterator<char>());
         output_file.close();
 
-        model.add_operation(
-            tm::Operation(rop_json["id"].get<std::string>(), output_str));
+        tm::Operation operation =
+            tm::Operation(rop_json["id"].get<std::string>(), output_str);
+        operation.col = rop_json["col"].get<int>();
+        operation.row = rop_json["row"].get<int>();
+        operation.slot = rop_json["slot"].get<int>();
+        operation.port = rop_json["port"].get<int>();
+        model.add_operation(operation);
 
         // delete the temporary files
         remove(input_filename.c_str());
@@ -1155,7 +1222,7 @@ public:
         if ((operation_type_set.find("pasm.rop") != operation_type_set.end()) ||
             operation_type_set.find("pasm.cop") != operation_type_set.end()) {
           llvm::outs() << "Error: RawOp cannot be used with RopOp or CopOp.\n";
-          std::exit(-1);
+          std::exit(EXIT_FAILURE);
         }
         return failure();
       } else if (auto cstr_op = llvm::dyn_cast<CstrOp>(&child_op)) {
@@ -1167,12 +1234,12 @@ public:
       } else {
         llvm::outs() << "Illegal operation type in EpochOp: "
                      << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
       operation_type_set.insert(child_op.getName().getStringRef().str());
     }
 
-    // add build-in constraints
+    // add built-in constraints
     std::unordered_map<std::string, std::vector<std::string>> all_resource_op;
     std::unordered_map<std::string, std::vector<std::string>>
         all_control_op_anchors;
@@ -1205,7 +1272,7 @@ public:
       } else {
         llvm::outs() << "Error: Illegal operation kind in EpochOp: "
                      << op_expr.kind << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
 
@@ -1218,6 +1285,8 @@ public:
         for (size_t i = 0; i < ops.size(); i++) {
           int slot = -1;
           int port = -1;
+
+          // Find the current operation in the op_exprs
           for (auto &op : op_exprs) {
             if (op.id == ops[i]) {
               slot = op.slot;
@@ -1225,28 +1294,7 @@ public:
               break;
             }
           }
-          for (size_t j = i + 1; j < ops.size(); j++) {
-            int slot2 = -1;
-            int port2 = -1;
-            for (auto &op : op_exprs) {
-              if (op.id == ops[j]) {
-                slot2 = op.slot;
-                port2 = op.port;
-                break;
-              }
-            }
-            if (slot == -1 || slot2 == -1) {
-              llvm::outs() << "Error: Cannot find the slot or port for "
-                           << ops[i] << " or " << ops[j] << "\n";
-              std::exit(-1);
-            }
-            if (slot >= slot2 + 4 || slot2 >= slot + 4) {
-              if (port != port2) {
-                model.add_constraint(
-                    tm::Constraint("linear", ops[i] + " != " + ops[j]));
-              }
-            }
-          }
+
           if (all_control_op_anchors.find(label) !=
               all_control_op_anchors.end()) {
             // add a constraint that the ROPs cannot be executed at the same
@@ -1260,17 +1308,37 @@ public:
       }
     }
 
+    // empty log buffer
+    llvm::outs().flush();
+
     // solve the timing model
     std::unordered_map<std::string, std::string> result = solver.solve(model);
     if (result.empty()) {
       llvm::outs() << "Error: No solution found.\n";
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
 
     std::unordered_map<std::string, int> schedule_table;
     for (auto it = result.begin(); it != result.end(); ++it) {
       std::string key = it->first;
       std::string value = it->second;
+
+      // check if the key is use_act_mode_0
+      if (key == "use_act_mode_0") {
+        // if it is, then set the total_latency to 1
+        llvm::outs() << "Using ACT mode 0: " << value << "\n";
+        continue;
+      }
+      // check if the key is use_act_mode_1
+      if (key == "use_act_mode_1") {
+        // if it is, then set the total_latency to 2
+        llvm::outs() << "Using ACT mode 1: " << value << "\n";
+        continue;
+      }
+
+      // TODO(paul) if both modes are false
+      // generate the activation vectors for each activation cycle
+
       // if value is not starting with "[", then it is a number
       if (value[0] != '[') {
         schedule_table[key] = std::stoi(value);

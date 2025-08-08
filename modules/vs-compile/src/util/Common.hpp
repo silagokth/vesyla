@@ -45,13 +45,13 @@
 
 #define __NOT_IMPLEMENTED__                                                    \
   LOG(FATAL) << "Function has not been implemented yet!";                      \
-  std::exit(-1);
+  std::exit(EXIT_FAILURE);
 #define __NOT_SUPPORTED__ LOG(FATAL) << "Function is not supported!";
 #define __DEPRECATED__                                                         \
   LOG(WARNING) << "Function is deprecated and will be removed soon!";
 #define __VIRTUAL_FUNCTION__                                                   \
   LOG(FATAL) << "Virtual function cannot be directly accessed!";               \
-  std::exit(-1);
+  std::exit(EXIT_FAILURE);
 
 namespace vesyla {
 namespace util {

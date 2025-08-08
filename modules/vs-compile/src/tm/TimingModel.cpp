@@ -1,3 +1,9 @@
+// TODO this should come from a config file
+// or global variables at some point
+#define MAX_SLOTS 16
+#define NUM_PORTS_PER_RESOURCE 4
+#define MAX_LATENCY 100000
+
 #include "tm/TimingModel.hpp"
 
 namespace vesyla {
@@ -25,13 +31,13 @@ string TimingModel::to_string() {
   return str;
 }
 
-string TimingModel::to_mzn() {
+int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
+                        bool allow_act_mode_2) {
   if (state != COMPILED) {
     LOG_WARNING << "Timing model is not compiled. Compiling...";
     compile();
+    LOG_DEBUG << "Timing model compiled.";
   }
-
-  int max_latency = 100000;
 
   // build translation table for operations
   unordered_map<string, int> op2idx;
@@ -44,49 +50,146 @@ string TimingModel::to_mzn() {
   }
   int num_ops = operations.size();
 
+  // generate dzn file
+  LOG_DEBUG << "Generating DZN file...";
+  dzn_file << "op_cell_row = array1d(0.." + std::to_string(num_ops - 1) +
+                  ", [\n";
+  for (auto it = operations.begin(); it != operations.end(); ++it) {
+    dzn_file << it->second.row;
+    dzn_file << ", % " << it->second.name << "\n";
+  }
+  dzn_file << "]);\n\n";
+  LOG_DEBUG << "cell_row generated with " << num_ops << " operations.\n";
+  dzn_file << "op_cell_col = array1d(0.." + std::to_string(num_ops - 1) +
+                  ", [\n";
+  for (auto it = operations.begin(); it != operations.end(); ++it) {
+    dzn_file << it->second.col;
+    dzn_file << ", % " << it->second.name << "\n";
+  }
+  dzn_file << "]);\n\n";
+  LOG_DEBUG << "cell_col generated with " << num_ops << " operations.\n";
+  dzn_file << "op_slot = array1d(0.." + std::to_string(num_ops - 1) + ", [\n";
+  for (auto it = operations.begin(); it != operations.end(); ++it) {
+    dzn_file << it->second.slot;
+    dzn_file << ", % " << it->second.name << "\n";
+  }
+  dzn_file << "]);\n\n";
+  LOG_DEBUG << "slot generated with " << num_ops << " operations.\n";
+  dzn_file << "op_port = array1d(0.." + std::to_string(num_ops - 1) + ", [\n";
+  for (auto it = operations.begin(); it != operations.end(); ++it) {
+    dzn_file << it->second.port;
+    dzn_file << ", % " << it->second.name << "\n";
+  }
+  dzn_file << "]);\n\n";
+  LOG_DEBUG << "DZN file generated with " << num_ops << " operations.\n";
+
   // generate minizinc model
-  string str = "include \"globals.mzn\";\n";
-  str += "int: MAX_LATENCY = " + std::to_string(max_latency) + ";\n";
-  str += "int: NUM_OPS = " + std::to_string(num_ops) + ";\n";
+  mzn_file << "include \"globals.mzn\";\n";
+  mzn_file << "int: MAX_LATENCY = " + std::to_string(MAX_LATENCY) + ";\n";
+  mzn_file << "int: NUM_OPS = " + std::to_string(num_ops) + ";\n";
+  mzn_file << "int: MAX_SLOTS = " + std::to_string(MAX_SLOTS) + ";\n";
+  mzn_file << "int: NUM_PORTS_PER_RESOURCE = " +
+                  std::to_string(NUM_PORTS_PER_RESOURCE) + ";\n";
 
   // add total latency variable
-  str += "var 0..MAX_LATENCY: total_latency;\n";
+  mzn_file << "var 0..MAX_LATENCY: total_latency;\n";
 
   // add operations
-  str += "array [0..NUM_OPS-1] of var 0..MAX_LATENCY: op_start_vec;\n";
-  str += "array [0..NUM_OPS-1] of var 0..MAX_LATENCY: op_end_vec;\n";
-  str += "constraint min(op_start_vec) == 0;\n";
-  str += "constraint max(op_end_vec) == total_latency;\n";
+  mzn_file << "array [0..NUM_OPS-1] of var 0..MAX_LATENCY: op_start_vec;\n";
+  mzn_file << "array [0..NUM_OPS-1] of var 0..MAX_LATENCY: op_end_vec;\n";
+
+  mzn_file << "array [0..NUM_OPS-1] of int: op_cell_row;\n";
+  mzn_file << "array [0..NUM_OPS-1] of int: op_cell_col;\n";
+
+  mzn_file << "array [0..NUM_OPS-1] of var 0..MAX_SLOTS-1: op_slot;\n";
+  mzn_file
+      << "array [0..NUM_OPS-1] of var 0..NUM_PORTS_PER_RESOURCE-1: op_port;\n";
+
+  mzn_file << "constraint min(op_start_vec) == 0;\n";
+  mzn_file << "constraint max(op_end_vec) == total_latency;\n";
   for (auto it = operations.begin(); it != operations.end(); ++it) {
-    str += "var 0..MAX_LATENCY: " + it->second.name + ";\n";
-    str += "constraint op_start_vec[" +
-           std::to_string(op2idx[it->second.name]) + "] == " + it->second.name +
-           ";\n";
-    str += "constraint op_end_vec[" + std::to_string(op2idx[it->second.name]) +
-           "] == " + it->second.name + " + " + it->second.duration_expr + ";\n";
+    mzn_file << "var 0..MAX_LATENCY: " + it->second.name + ";\n";
+    mzn_file << "constraint op_start_vec[" +
+                    std::to_string(op2idx[it->second.name]) +
+                    "] == " + it->second.name + ";\n";
+    mzn_file << "constraint op_end_vec[" +
+                    std::to_string(op2idx[it->second.name]) +
+                    "] == " + it->second.name + " + " +
+                    it->second.duration_expr + ";\n";
   }
 
   // add variables
   for (auto it = variables.begin(); it != variables.end(); ++it) {
-    str += "var 0..MAX_LATENCY: " + *it + ";\n";
+    mzn_file << "var 0..MAX_LATENCY: " + *it + ";\n";
   }
 
   // add anchors
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
-    str += "var 0..MAX_LATENCY: " + it->second.name + ";\n";
-    str += "constraint " + it->second.name + " == " + it->second.timing_expr +
-           ";\n";
+    mzn_file << "var 0..MAX_LATENCY: " + it->second.name + ";\n";
+    mzn_file << "constraint " + it->second.name +
+                    " == " + it->second.timing_expr + ";\n";
   }
 
   // add constraints
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
-    str += "constraint " + it->expr + ";\n";
+    mzn_file << "constraint " + it->expr + ";\n";
   }
 
-  // add objective
-  str += "solve minimize total_latency;\n";
+  // add act modes
+  mzn_file << "var bool: use_act_mode_0;\n";
+  mzn_file << "var bool: use_act_mode_1;\n";
+  if (allow_act_mode_2) {
+    mzn_file << "constraint (use_act_mode_0 + use_act_mode_1) <= 1;\n";
+  } else {
+    mzn_file << "constraint (use_act_mode_0 + use_act_mode_1) = 1;\n";
+  }
+  mzn_file << R"(
+% act mode 0: if resources are within 4 slots of each other
+% then their start times can be the same, else they must not have the same start time
+constraint if use_act_mode_0 then
+   forall(i, j in 0..NUM_OPS-1 where i < j) (
+        (op_slot[i] != op_slot[j] /\ op_cell_row[i] == op_cell_row[j] /\ op_cell_col[i] == op_cell_col[j]) -> (
+          (abs(op_slot[i] - op_slot[j]) >= 4) -> (op_start_vec[i] != op_start_vec[j])
+        )
+     )
+endif;
+  )";
+  mzn_file << R"(
+constraint if use_act_mode_1 then
+  % for all operations
+  forall(i, j in 0..NUM_OPS-1 where i < j) (
+    % if two operations start at the same time, are in the same cell,
+    % and are in different slots
+    (op_start_vec[i] == op_start_vec[j] /\
+     op_cell_row[i] == op_cell_row[j] /\
+     op_cell_col[i] == op_cell_col[j] /\
+     op_slot[i] != op_slot[j]) -> (
+      % for each port P
+      forall(P in 0..NUM_PORTS_PER_RESOURCE-1) (
+        % the operations must use the same port P
+        (exists(k in 0..NUM_OPS-1) (
+          op_start_vec[k] == op_start_vec[i] /\
+          op_cell_row[k] == op_cell_row[i] /\
+          op_cell_col[k] == op_cell_col[i] /\
+          op_slot[k] == op_slot[i] /\
+          op_port[k] == P
+        )) <-> (exists(m in 0..NUM_OPS-1) (
+          op_start_vec[m] == op_start_vec[j] /\
+          op_cell_row[m] == op_cell_row[j] /\
+          op_cell_col[m] == op_cell_col[j] /\
+          op_slot[m] == op_slot[j] /\
+          op_port[m] == P
+        ))
+      )
+    )
+  )
+endif;
+  )";
 
-  return str;
+  // add objective
+  mzn_file << "solve minimize total_latency;\n";
+
+  return 0;
 }
 
 bool is_number(string str) {
@@ -148,14 +251,13 @@ void TimingModel::compile() {
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     if (it->kind != "linear") {
       LOG_FATAL << "Invalid constraint kind: " << it->kind;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // Extract all anchors from constraint
     // e.g. op_name.e<event_id>
     // e.g. op_name.e<event_id>[<index_0>]
     // e.g. op_name.e<event_id>[<index_0>][<index_1>]...
-
     string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
@@ -277,7 +379,7 @@ void TimingModel::compile() {
                 LOG_ERROR << "indices[" << i << "]: " << indices[i];
               }
               LOG_FATAL << "Too many indices!";
-              std::exit(-1);
+              std::exit(EXIT_FAILURE);
             }
 
             string expr_str = "(" + op_name + "+" + it3->first->data->start;
@@ -288,7 +390,7 @@ void TimingModel::compile() {
               if (index >= iter) {
                 LOG_FATAL << "Index out of range: index(" << index
                           << ") >= iter(" << iter << ")";
-                std::exit(-1);
+                std::exit(EXIT_FAILURE);
               }
               expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
                          "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
@@ -329,7 +431,7 @@ TimingModel::build_binary_tree(OperationExpr &expr) {
     // do nothing
   } else {
     LOG_FATAL << "Invalid operation expression kind: " << expr.kind;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   BinaryTree<BinaryTreeData> *tree =
       new BinaryTree<BinaryTreeData>(data, left, right);
@@ -375,7 +477,7 @@ void TimingModel::from_string(string str) {
       constraints.push_back(constraint);
     } else {
       LOG_FATAL << "Invalid line: " << line;
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   }
 }
@@ -383,7 +485,7 @@ void TimingModel::from_string(string str) {
 Operation TimingModel::get_operation(string name) {
   if (operations.find(name) == operations.end()) {
     LOG_FATAL << "Operation not found: " << name;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   return operations[name];
 }

@@ -22,7 +22,7 @@ Constraint::Constraint(string expr_str) {
     expr = match[2];
   } else {
     LOG_FATAL << "Invalid constraint string: " << expr_str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 }
 string Constraint::to_string() { return "constraint " + kind + " " + expr; }

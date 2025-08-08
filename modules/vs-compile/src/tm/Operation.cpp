@@ -24,7 +24,7 @@ Operation::Operation(string expr_str) {
     expr = OperationExpr(match[2]);
   } else {
     LOG_FATAL << "Invalid operation string: " << expr_str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 }
 
@@ -40,7 +40,7 @@ OperationExpr::OperationExpr(string str) {
   // check if the str is empty
   if (str.empty()) {
     LOG_FATAL << "Operator string is empty!" << str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   // distinguish the operator type by looking at the first character
@@ -52,7 +52,7 @@ OperationExpr::OperationExpr(string str) {
     kind = TRANSIT;
   } else {
     LOG_FATAL << "Invalid operator string: " << str;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   if (kind == EVENT) {
@@ -65,7 +65,7 @@ OperationExpr::OperationExpr(string str) {
       parameters["id"] = match[1];
     } else {
       LOG_FATAL << "Invalid event string: " << str;
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   } else if (kind == REPEAT) {
     // use regex to match R<iter, delay>(expr)
@@ -79,7 +79,7 @@ OperationExpr::OperationExpr(string str) {
       children.push_back(OperationExpr(match[3]));
     } else {
       LOG_FATAL << "Invalid repeat operator string: " << str;
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   } else if (kind == TRANSIT) {
     // use regex to match T<delay>(expr_0, expr_1)
@@ -121,15 +121,15 @@ OperationExpr::OperationExpr(string str) {
       }
       if (bracket_curly != 0 || bracket_square != 0 || bracket_round != 0) {
         LOG_FATAL << "Invalid transit operator string: " << str;
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
       if (children.size() != 2) {
         LOG_FATAL << "Invalid transit operator string: " << str;
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     } else {
       LOG_FATAL << "Invalid transit operator string: " << str;
-      std::exit(-1);
+      std::exit(EXIT_FAILURE);
     }
   }
 }

@@ -29,7 +29,7 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
   std::ofstream output_file(output_dir + "/" + filename);
   if (!output_file.is_open()) {
     LOG_FATAL << "Error: Failed to open output file.";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   mlir::Region &module_region = module.getBodyRegion();
@@ -79,7 +79,7 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                         llvm::outs()
                             << "Unsupported parameter type in InstrOp: "
                             << attr_value << "\n";
-                        std::exit(-1);
+                        std::exit(EXIT_FAILURE);
                       }
                     }
 
@@ -91,7 +91,7 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                   } else {
                     llvm::outs() << "Error: Illegal operation type in RawOp: "
                                  << child_child_child_op.getName() << "\n";
-                    std::exit(-1);
+                    std::exit(EXIT_FAILURE);
                   }
                 }
               }
@@ -101,7 +101,7 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
             } else {
               llvm::outs() << "Error: Illegal operation type in EpochOp: "
                            << child_op.getName() << "\n";
-              std::exit(-1);
+              std::exit(EXIT_FAILURE);
             }
           }
         }
@@ -111,7 +111,7 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
       } else {
         llvm::outs() << "Error: Illegal operation type in ModuleOp: "
                      << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
   }
@@ -137,7 +137,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
   std::ofstream output_file(output_dir + "/" + filename);
   if (!output_file.is_open()) {
     llvm::outs() << "Error: Failed to open output file.\n";
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   mlir::Region &module_region = module.getBodyRegion();
@@ -182,7 +182,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                           llvm::outs()
                               << "Unsupported parameter type in InstrOp: "
                               << attr_value << "\n";
-                          std::exit(-1);
+                          std::exit(EXIT_FAILURE);
                         }
                       } else if (attr_name.str() == "port") {
                         if (auto int_attr =
@@ -192,7 +192,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                           llvm::outs()
                               << "Unsupported parameter type in InstrOp: "
                               << attr_value << "\n";
-                          std::exit(-1);
+                          std::exit(EXIT_FAILURE);
                         }
                       }
                     }
@@ -208,7 +208,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       llvm::outs() << "Error: Cannot find the component for "
                                       "label: "
                                    << label << "\n";
-                      std::exit(-1);
+                      std::exit(EXIT_FAILURE);
                     }
                     std::string component_kind =
                         component_map_json[label].get<std::string>();
@@ -229,7 +229,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       llvm::outs() << "Error: Cannot find the instruction "
                                       "definition for: "
                                    << instr_type << "\n";
-                      std::exit(-1);
+                      std::exit(EXIT_FAILURE);
                     }
                     std::string instr_bin = "";
                     instr_bin += int2bin(instr_json["instr_type"].get<int>(),
@@ -255,14 +255,14 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                           llvm::outs()
                               << "Unsupported parameter type in InstrOp: "
                               << attr_value << "\n";
-                          std::exit(-1);
+                          std::exit(EXIT_FAILURE);
                         }
                       } else {
                         llvm::outs()
                             << "Error: Missing parameter '" << segment_name
                             << "' in InstrOp for instruction: " << instr_type
                             << "\n";
-                        std::exit(-1);
+                        std::exit(EXIT_FAILURE);
                       }
                     }
 
@@ -275,7 +275,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                                    << instr_bin.size()
                                    << " exceeds the required bitwidth: "
                                    << instr_bitwidth << "\n";
-                      std::exit(-1);
+                      std::exit(EXIT_FAILURE);
                     }
 
                     output_file << instr_bin << "\n";
@@ -286,7 +286,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                   } else {
                     llvm::outs() << "Error: Illegal operation type in RawOp: "
                                  << child_child_child_op.getName() << "\n";
-                    std::exit(-1);
+                    std::exit(EXIT_FAILURE);
                   }
                 }
               }
@@ -297,7 +297,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
             } else {
               llvm::outs() << "Error: Illegal operation type in EpochOp: "
                            << child_op.getName() << "\n";
-              std::exit(-1);
+              std::exit(EXIT_FAILURE);
             }
           }
         }
@@ -307,7 +307,7 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
       } else {
         llvm::outs() << "Error: Illegal operation type in ModuleOp: "
                      << child_op.getName() << "\n";
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
       }
     }
   }

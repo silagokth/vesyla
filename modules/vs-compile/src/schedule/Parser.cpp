@@ -18,7 +18,7 @@ void Parser::parse(std::string &filename_, mlir::ModuleOp *module_) {
   // Make sure the file is valid
   if (!inputfile) {
     LOG_FATAL << "Error: Failed to open input file: " << filename_;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
 
   strncpy(global_input_file_name, filename_.c_str(), 80);

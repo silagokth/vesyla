@@ -13,7 +13,7 @@ void Config::set_isa_json(std::string isa_json_path) {
   std::ifstream ifs(isa_json_path);
   if (!ifs.is_open()) {
     LOG_FATAL << "Error: Failed to open ISA JSON file: " << isa_json_path;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   isa_json = nlohmann::json::parse(ifs);
   ifs.close();
@@ -23,7 +23,7 @@ void Config::set_arch_json(std::string arch_json_path) {
   if (!ifs.is_open()) {
     LOG_FATAL << "Error: Failed to open Architecture JSON file: "
               << arch_json_path;
-    std::exit(-1);
+    std::exit(EXIT_FAILURE);
   }
   arch_json = nlohmann::json::parse(ifs);
   ifs.close();
