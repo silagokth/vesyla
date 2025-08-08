@@ -1,11 +1,9 @@
-# vesyla &emsp; [![Build Status]][actions] [![Rustc Version 1.82+]][rustc] [![Python Version 3.6+]][python]
+# vesyla &emsp; [![Build Status]][actions] [![Rustc Version 1.82+]][rustc]
 
 [Build Status]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml/badge.svg
 [actions]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml
 [Rustc Version 1.82+]: https://img.shields.io/badge/rustc-1.82+-lightgray.svg?e&logo=rust&logoColor=white
 [rustc]: https://blog.rust-lang.org/2024/10/17/Rust-1.82.0/
-[Python Version 3.6+]: https://img.shields.io/badge/python-3.6+-lightgray.svg?e&logo=python&logoColor=white
-[python]: https://www.python.org/downloads/release/python-360/
 
 Tool suite for DRRA-2 hardware accelerator platform.
 
@@ -18,11 +16,6 @@ Tool suite for DRRA-2 hardware accelerator platform.
 - vs-compile: Compiler for DRRA-2 instruction set architecture (ISA).
   It compiles the proto-assembly code (.pasm) into binary code.
   The compiler uses the [minizinc](https://www.minizinc.org/) solver.
-
-- vs-manas (**deprecated**): Low level assembler for DRRA-2 ISA
-  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
-- vs-schedule (**deprecated**): Scheduler for DRRA-2 instruction.
-  This project is deprecated, it will be integrated into [vs-compile](./modules/vs-compile).
 
 ## Compile and Install
 
@@ -60,8 +53,6 @@ Usage: vesyla [command and options]
 Commands:
         compile     Compile the source code
         component   Assemble the system
-        manas       Validate JSON file
-        schedule    Clean the build directory
         testcase    Test the system
 Options:
         -h, --help     Show this help message

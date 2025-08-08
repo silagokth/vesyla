@@ -33,8 +33,6 @@ fn main() {
          Commands:\n\
          \tcompile     Compile the source code\n\
          \tcomponent   Assemble the system\n\
-         \tmanas       Validate JSON file\n\
-         \tschedule    Clean the build directory\n\
          \ttestcase    Test the system\n\
          Options:\n\
          \t-h, --help     Show this help message\n\
@@ -49,7 +47,7 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = ["compile", "component", "manas", "schedule", "testcase"];
+    let tools_list = ["compile", "component", "testcase"];
     match command.as_str() {
         "-h" | "--help" => {
             println!("{}", help_message);

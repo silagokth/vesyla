@@ -1,7 +1,0 @@
-pyinstaller==6.13.0
-binarytree==6.5.1
-sympy==1.13.3
-ortools==9.12.4544
-lark==1.2.2
-protobuf==5.29.4
-pandas==2.2.3
