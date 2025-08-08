@@ -76,31 +76,9 @@ else
   log info "Rust is already installed. Skipping installation."
 fi
 
-# Install protobuf-compiler from release
-if [ ! -f $APPDIR/usr/bin/protoc ]; then
-  PROTOC_FILE=protoc-29.3-linux-x86_64.zip
-  PROTOC_VERSION=v29.3
-  PB_REL="https://github.com/protocolbuffers/protobuf/releases"
-  curl -LO $PB_REL/download/$PROTOC_VERSION/$PROTOC_FILE
-  unzip -o $PROTOC_FILE -d ./protoc/
-  rm -f $PROTOC_FILE
-  if [ ! -d $APPDIR/usr/bin ]; then
-    mkdir -p $APPDIR/usr/bin
-  fi
-  cp -f protoc/bin/protoc $APPDIR/usr/bin/
-  chmod +x $APPDIR/usr/bin/protoc
-fi
-
-# Install python library and requirements
-log info "Installing python library and requirements..."
-python3 -m venv venv
-source venv/bin/activate
-pip3 install --upgrade pip
-pip3 install -r $SCRIPTDIR/requirements.txt
-
 # Compile the application to a fakeroot directory: $APPDIR
 log info "Compiling the application..."
-cmake -DCMAKE_INSTALL_PREFIX=/usr -DPROTOC_PATH=$APPDIR/usr/bin/protoc ..
+cmake -DCMAKE_INSTALL_PREFIX=/usr ..
 cmake --build . -- -j$(nproc)
 make DESTDIR=$APPDIR install
 
