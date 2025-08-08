@@ -467,25 +467,51 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
                 .is_some_and(|ext| ext == "sv" || ext == "v")
             {
                 let comment = "// ".to_string() + comment_content;
-                let content = fs::read_to_string(&path).expect("Failed to read file");
+                let content = fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path.display(), e));
                 let new_content = comment + &content;
-                fs::write(&target_path, new_content).expect("Failed to write file");
+                fs::write(&target_path, new_content).unwrap_or_else(|e| {
+                    panic!("Failed to write file {}: {}", target_path.display(), e)
+                });
             } else if path
                 .extension()
                 .is_some_and(|ext| ext == "vhdl" || ext == "vhd")
             {
                 let comment = "-- ".to_string() + comment_content;
-                let content = fs::read_to_string(&path).expect("Failed to read file");
+                let content = fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path.display(), e));
                 let new_content = comment + &content;
-                fs::write(&target_path, new_content).expect("Failed to write file");
+                fs::write(&target_path, new_content).unwrap_or_else(|e| {
+                    panic!("Failed to write file {}: {}", target_path.display(), e)
+                });
             } else {
                 // Just copy other files
-                fs::copy(&path, &target_path).expect("Failed to copy file");
+                fs::copy(&path, &target_path).unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to copy file {} to {}: {}",
+                        path.display(),
+                        target_path.display(),
+                        e
+                    )
+                });
             }
         } else if path.is_dir() {
             // For subdirectories, use the existing copy_dir function
-            fs::create_dir_all(&target_path).expect("Failed to create directory");
-            copy_dir(&path, &target_path).expect("Failed to copy directory");
+            fs::create_dir_all(&target_path).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to create dir for file {}: {}",
+                    target_path.display(),
+                    e
+                )
+            });
+            copy_dir(&path, &target_path).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to copy file {} to {}: {}",
+                    path.display(),
+                    target_path.display(),
+                    e
+                )
+            });
         }
     }
 
