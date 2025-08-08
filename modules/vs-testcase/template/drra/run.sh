@@ -190,7 +190,6 @@ printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
-export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 if [ "$debug_mode" = true ]; then
   bash ${template_path}/scripts/compile.sh ${template_path}/pasm
 else
