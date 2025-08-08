@@ -136,13 +136,13 @@ print(f"[SST SIM] - Initializing resource {resource_name}")
 {%- if resource.io_input is defined and resource.io_input == True %}
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer = sst.Link("link_{{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer")
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer.connect(
-    ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_port", default_access_time), (input_buffer, "col_port{{c}}", default_access_time)
+    ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_input_port", default_access_time), (input_buffer, "col_port{{c}}", default_access_time)
 )
 {%- endif %}
 {%- if resource.io_output is defined and resource.io_output == True %}
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer = sst.Link("link_{{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer")
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer.connect(
-    ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_port", default_access_time), (output_buffer, "col_port{{c}}", default_access_time)
+    ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_output_port", default_access_time), (output_buffer, "col_port{{c}}", default_access_time)
 )
 {%- endif %}
 
