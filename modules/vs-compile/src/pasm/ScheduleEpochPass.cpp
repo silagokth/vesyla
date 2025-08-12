@@ -1,9 +1,17 @@
-
-
 #include "ScheduleEpochPass.hpp"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
+#include "pasm/Ops.hpp"
+#include "llvm/Support/raw_ostream.h"
+#include <cstdlib>
+#include <ctime>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_SCHEDULEEPOCHPASS
@@ -100,20 +108,14 @@ private:
     // - find a suitable address to store the port vector (int address)
     // return std::make_optional<std::unordered_map<string, int>>(
     //        {{"mode", 2}, {"param", address}, {"ports", 0}});
-
-    llvm::outs() << "ACT mode 2 failed: not implemented yet.\n";
-    return std::nullopt;
+    return std::make_optional<std::unordered_map<string, int>>(
+        {{"mode", 2}, {"param", 0}, {"ports", 0}});
+    // llvm::outs() << "ACT mode 2 failed: not implemented yet.\n";
+    // return std::nullopt;
   }
 
   std::unordered_map<string, int>
   create_act_instr(std::vector<int> indices) const {
-
-    llvm::outs() << "Create ACT for port indices: ";
-    for (auto index : indices) {
-      llvm::outs() << index << " ";
-    }
-    llvm::outs() << "\n";
-
     if (indices.size() == 0) {
       llvm::outs() << "Error: No port indices provided.\n";
       std::exit(EXIT_FAILURE);
@@ -383,10 +385,10 @@ private:
   }
 
   void replace_time_in_instr_param(
-      EpochOp *op, std::unordered_map<std::string, int> &schedule_table,
+      EpochOp &op, std::unordered_map<std::string, int> &schedule_table,
       PatternRewriter &rewriter) const {
 
-    auto epoch_op = *op;
+    auto epoch_op = op;
     mlir::Region &epoch_region = epoch_op.getBody();
     if (epoch_region.empty()) {
       return;
@@ -500,9 +502,9 @@ private:
     }
   }
 
-  void reshape_instr(EpochOp *op, PatternRewriter &rewriter) const {
+  void reshape_instr(EpochOp &op, PatternRewriter &rewriter) const {
     // Get the block to insert the new operations
-    auto epoch_op = *op;
+    auto epoch_op = op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
       std::exit(EXIT_FAILURE);
@@ -668,12 +670,93 @@ private:
     } // end of erasing operations
   }
 
-  void synchronize(EpochOp *op,
+  void insert_rop_instructions(
+      vector<mlir::Operation *> &rop_ops, int t, PatternRewriter &rewriter,
+      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
+          &time_table,
+      std::string &label) const {
+    for (auto op : rop_ops) {
+      auto rop_op = llvm::dyn_cast<RopOp>(op);
+      int curr_t = t - 1;
+      mlir::Region &ropBodyRegion = rop_op.getBody();
+      mlir::Block *ropEntryBlock;
+      if (ropBodyRegion.empty()) {
+        ropEntryBlock = rewriter.createBlock(&ropBodyRegion);
+      } else {
+        ropEntryBlock = &ropBodyRegion.front();
+      }
+      vector<mlir::Operation *> rop_child_ops;
+      for (mlir::Operation &rop_child_op : *ropEntryBlock) {
+        rop_child_ops.push_back(&rop_child_op);
+      }
+      // reverse the order of the child operations
+      std::reverse(rop_child_ops.begin(), rop_child_ops.end());
+      for (auto rop_child_op : rop_child_ops) {
+        if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
+          while (time_table[label].find(curr_t) != time_table[label].end()) {
+            curr_t--;
+          }
+          time_table[label][curr_t] = rop_child_op;
+          curr_t--;
+        }
+      }
+    }
+  }
+
+  vesyla::pasm::InstrOp compose_act_mlir_op(
+      EpochOp op, PatternRewriter &rewriter,
+      std::unordered_map<string, int> &act_instr_param_map) const {
+    return rewriter.create<vesyla::pasm::InstrOp>(
+        op->getLoc(),
+        rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+        rewriter.getStringAttr("act"),
+        rewriter.getDictionaryAttr({
+            rewriter.getNamedAttr("mode", rewriter.getI32IntegerAttr(
+                                              act_instr_param_map["mode"])),
+            rewriter.getNamedAttr("param", rewriter.getI32IntegerAttr(
+                                               act_instr_param_map["param"])),
+            rewriter.getNamedAttr("ports", rewriter.getI32IntegerAttr(
+                                               act_instr_param_map["ports"])),
+        }));
+  }
+
+  void create_time_table_entry(
+      std::string label,
+      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
+          &time_table,
+      int t, vesyla::pasm::InstrOp &act_instr) const {
+
+    if (time_table.find(label) == time_table.end()) {
+      time_table[label] = unordered_map<int, mlir::Operation *>();
+    }
+    if (time_table[label].find(t) == time_table[label].end()) {
+      time_table[label][t] = act_instr.getOperation();
+    } else {
+      llvm::outs() << "Error: time table already has the entry: " << t << "("
+                   << time_table[label][t]->getName() << ")"
+                   << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  std::vector<int>
+  get_absolute_port_indices(vector<mlir::Operation *> &rop_ops) const {
+    std::vector<int> slot_port_index_list;
+    for (auto op : rop_ops) {
+      auto rop_op = llvm::dyn_cast<RopOp>(op);
+      int slot = rop_op.getSlot();
+      int port = rop_op.getPort();
+      slot_port_index_list.push_back(slot * 4 + port);
+    }
+    return slot_port_index_list;
+  }
+
+  void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
 
     // Get the block to insert the new operations
-    auto epoch_op = *op;
+    auto epoch_op = op;
     if (!epoch_op) {
       llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
       std::exit(EXIT_FAILURE);
@@ -798,130 +881,52 @@ private:
           rop_ops_at_t[label].push_back(it->first);
         }
       }
+
+      // for all rop operations
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
         auto rop_ops = it->second;
-        std::vector<int> slot_port_index_list;
-        for (auto op : rop_ops) {
-          auto rop_op = llvm::dyn_cast<RopOp>(op);
-          int slot = rop_op.getSlot();
-          int port = rop_op.getPort();
-          slot_port_index_list.push_back(slot * 4 + port);
-        }
+        std::vector<int> slot_port_index_list =
+            get_absolute_port_indices(rop_ops);
 
-        // create an ACT instruction
         auto act_instr_param_map = create_act_instr(slot_port_index_list);
-        auto act_instr = rewriter.create<vesyla::pasm::InstrOp>(
-            op->getLoc(),
-            rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-            rewriter.getStringAttr("act"),
-            rewriter.getDictionaryAttr({
-                rewriter.getNamedAttr("mode", rewriter.getI32IntegerAttr(
-                                                  act_instr_param_map["mode"])),
-                rewriter.getNamedAttr(
-                    "param",
-                    rewriter.getI32IntegerAttr(act_instr_param_map["param"])),
-                rewriter.getNamedAttr(
-                    "ports",
-                    rewriter.getI32IntegerAttr(act_instr_param_map["ports"])),
-            }));
-        if (time_table.find(label) == time_table.end()) {
-          time_table[label] = unordered_map<int, mlir::Operation *>();
-        }
-        if (time_table[label].find(t) == time_table[label].end()) {
-          time_table[label][t] = act_instr.getOperation();
-        } else {
-          llvm::outs() << "Error: time table already has the entry: " << t
-                       << "(" << time_table[label][t]->getName() << ")"
-                       << "\n";
-          std::exit(EXIT_FAILURE);
-        }
-
-        llvm::outs() << "ACT: " << act_instr.getId() << " at time " << t
-                     << "\n";
-
-        // start from t-1, insert the instructions in the rop_ops
-        for (auto op : rop_ops) {
-          auto rop_op = llvm::dyn_cast<RopOp>(op);
-          int curr_t = t - 1;
-          mlir::Region &ropBodyRegion = rop_op.getBody();
-          mlir::Block *ropEntryBlock;
-          if (ropBodyRegion.empty()) {
-            ropEntryBlock = rewriter.createBlock(&ropBodyRegion);
-          } else {
-            ropEntryBlock = &ropBodyRegion.front();
-          }
-          vector<mlir::Operation *> rop_child_ops;
-          for (mlir::Operation &rop_child_op : *ropEntryBlock) {
-            rop_child_ops.push_back(&rop_child_op);
-          }
-          // reverse the order of the child operations
-          std::reverse(rop_child_ops.begin(), rop_child_ops.end());
-          for (auto rop_child_op : rop_child_ops) {
-            if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
-
-              // // find out all StringAttr parameters in the DictionaryAttr,
-              // // check if it matches any entry in the schedule_table, if it
-              // // does, then replace the field with integer value in
-              // // schedule_table.
-
-              // mlir::DictionaryAttr current_instr_params =
-              // instr_op.getParam(); llvm::SmallVector<mlir::NamedAttribute>
-              // updated_attrs; bool params_changed = false;
-
-              // for (const mlir::NamedAttribute &named_attr_entry :
-              //      current_instr_params) {
-              //   auto attr_name = named_attr_entry.getName();
-              //   auto attr_value = named_attr_entry.getValue();
-
-              //   if (auto str_attr =
-              //           llvm::dyn_cast<mlir::StringAttr>(attr_value)) {
-              //     std::string str_value = str_attr.getValue().str();
-              //     // Check if the string value exists as a key in the
-              //     // schedule_table
-              //     auto it = schedule_table.find(str_value);
-              //     if (it != schedule_table.end()) {
-              //       int int_value = it->second;
-              //       mlir::Attribute new_attr_value =
-              //       rewriter.getIntegerAttr(
-              //           rewriter.getI32Type(), int_value);
-              //       // Add the modified attribute to our new list
-              //       updated_attrs.push_back(
-              //           rewriter.getNamedAttr(attr_name, new_attr_value));
-              //       params_changed = true;
-              //     } else {
-              //       // If no match in schedule_table, keep the original
-              //       // attribute
-              //       updated_attrs.push_back(named_attr_entry);
-              //     }
-              //   } else {
-              //     // If not a StringAttr, keep the original attribute
-              //     updated_attrs.push_back(named_attr_entry);
-              //   }
-              // }
-
-              // // If any attributes were changed, create a new
-              // DictionaryAttr
-              // // and update the operation
-              // if (params_changed) {
-              //   mlir::DictionaryAttr new_instr_params =
-              //       rewriter.getDictionaryAttr(updated_attrs);
-              //   // "param" is the name of the DictionaryAttr attribute in
-              //   // your InstrOp definition
-              //   instr_op->setAttr("param", new_instr_params);
-              // }
-
-              while (time_table[label].find(curr_t) !=
-                     time_table[label].end()) {
-                curr_t--;
-              }
-              time_table[label][curr_t] = rop_child_op;
-              curr_t--;
-            }
-          }
-        }
+        auto act_instr = compose_act_mlir_op(op, rewriter, act_instr_param_map);
+        create_time_table_entry(label, time_table, t, act_instr);
+        insert_rop_instructions(rop_ops, t, rewriter, time_table, label);
       }
     }
+
+    // start from t-1, insert the necessary instructions for act mode 2
+    auto label = "0_0";
+    llvm::outs() << "label: " << label << ", total_latency: " << total_latency
+                 << "\n";
+    for (int i = total_latency; i >= 0; i--) {
+      if (time_table[label].find(i) == time_table[label].end()) {
+        continue; // if no op is scheduled for this cycle, continue
+      }
+      auto instr = time_table[label][i];
+      auto instr_type = instr->getAttr("type");
+      auto instr_type_str =
+          mlir::dyn_cast_or_null<mlir::StringAttr>(instr_type);
+      if (instr_type_str.getValue() != "act") {
+        llvm::outs() << "instr detected at time " << i << " ("
+                     << instr_type_str.getValue() << ")\n";
+        continue; // if the instruction is not an act, continue
+      }
+
+      auto instr_params = instr->getAttr("param");
+      auto instr_params_dict =
+          mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
+      auto mode_attr = instr_params_dict.get("mode");
+      auto mode_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(mode_attr);
+      if (mode_attr_int.getInt() != 2) {
+        continue;
+      }
+      llvm::outs() << "act mode: " << mode_attr_int.getInt() << " detected!\n";
+    }
+    // TODO: remove this
+    // exit(EXIT_FAILURE);
+
     // print the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       llvm::outs() << "Time table: " << it->first << "\n";
@@ -1345,9 +1350,9 @@ public:
       }
     }
 
-    replace_time_in_instr_param(&op, schedule_table, rewriter);
-    reshape_instr(&op, rewriter);
-    synchronize(&op, schedule_table, rewriter);
+    replace_time_in_instr_param(op, schedule_table, rewriter);
+    reshape_instr(op, rewriter);
+    synchronize(op, schedule_table, rewriter);
 
     return success();
   }
