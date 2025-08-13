@@ -824,6 +824,45 @@ private:
     }
   }
 
+  void insert_cop_instructions(
+      mlir::Block *copEntryBlock, const std::string &label,
+      const std::unordered_map<std::string, int> &schedule_table,
+      std::unordered_map<std::string,
+                         std::unordered_map<int, mlir::Operation *>>
+          &time_table) const {
+    int instr_count = 0;
+    for (mlir::Operation &cop_child_op : *copEntryBlock) {
+      if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
+        std::string instr_anchor =
+            instr_op.getId().str() + "_e" + std::to_string(instr_count);
+
+        if (schedule_table.find(instr_anchor) == schedule_table.end()) {
+          llvm::outs() << "Error: Cannot find the instruction anchor: "
+                       << instr_anchor << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+
+        int t = schedule_table.at(instr_anchor);
+
+        if (time_table[label].find(t) != time_table[label].end()) {
+          llvm::outs() << "Error: time table already has the entry: " << t
+                       << "(" << time_table[label][t]->getName() << ")"
+                       << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+
+        time_table[label][t] = &cop_child_op;
+        instr_count++;
+      } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
+        // DO NOTHING
+      } else {
+        llvm::outs() << "Illegal operation type in CopOp: "
+                     << cop_child_op.getName() << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+    }
+  }
+
   void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
@@ -874,49 +913,15 @@ private:
     // place all COPs
     for (auto it = time_table_cop.begin(); it != time_table_cop.end(); ++it) {
       auto cop_op = llvm::dyn_cast<CopOp>(it->first);
-      int row = cop_op.getRow();
-      int col = cop_op.getCol();
-      std::string label = std::to_string(row) + "_" + std::to_string(col);
-      if (time_table.find(label) == time_table.end()) {
+      std::string label = std::to_string(cop_op.getRow()) + "_" +
+                          std::to_string(cop_op.getCol());
+      if (time_table.find(label) == time_table.end())
         time_table[label] = unordered_map<int, mlir::Operation *>();
-      }
 
-      // get internal instructions
       mlir::Region &copBodyRegion = cop_op.getBody();
       mlir::Block *copEntryBlock =
           getOrCreateEntryBlock(copBodyRegion, rewriter);
-
-      int instr_count = 0;
-      for (mlir::Operation &cop_child_op : *copEntryBlock) {
-        if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
-          if (schedule_table.find(instr_op.getId().str() + "_e" +
-                                  std::to_string(instr_count)) ==
-              schedule_table.end()) {
-            llvm::outs() << "Error: Cannot find the instruction anchor: "
-                         << instr_op.getId().str() + "_e" +
-                                std::to_string(instr_count)
-                         << "\n";
-            std::exit(EXIT_FAILURE);
-          }
-          int t = schedule_table[instr_op.getId().str() + "_e" +
-                                 std::to_string(instr_count)];
-          if (time_table[label].find(t) == time_table[label].end()) {
-            time_table[label][t] = &cop_child_op;
-          } else {
-            llvm::outs() << "Error: time table already has the entry: " << t
-                         << "(" << time_table[label][t]->getName() << ")"
-                         << "\n";
-            std::exit(EXIT_FAILURE);
-          }
-          instr_count++;
-        } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
-          // DO NOTHING
-        } else {
-          llvm::outs() << "Illegal operation type in CopOp: "
-                       << cop_child_op.getName() << "\n";
-          std::exit(EXIT_FAILURE);
-        }
-      }
+      insert_cop_instructions(copEntryBlock, label, schedule_table, time_table);
     }
 
     // place the ACT instruction of all ROPs
