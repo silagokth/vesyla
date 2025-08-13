@@ -5,6 +5,8 @@
 #include "mlir/Support/LLVM.h"
 #include "pasm/Ops.hpp"
 #include "llvm/Support/raw_ostream.h"
+#include <bitset>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <iterator>
@@ -61,7 +63,7 @@ private:
     return block;
   }
 
-  std::optional<std::unordered_map<string, int>>
+  std::optional<std::unordered_map<string, uint64_t>>
   create_act_0_instr(std::vector<int> indices) const {
     int min_index = *std::min_element(indices.begin(), indices.end());
     int max_index = *std::max_element(indices.begin(), indices.end());
@@ -77,11 +79,11 @@ private:
     for (auto index : indices) {
       ports |= (1 << (index - min_slot * 4));
     }
-    return std::make_optional<std::unordered_map<string, int>>(
+    return std::make_optional<std::unordered_map<string, uint64_t>>(
         {{"mode", 0}, {"param", min_slot}, {"ports", ports}});
   }
 
-  std::optional<std::unordered_map<string, int>>
+  std::optional<std::unordered_map<string, uint64_t>>
   create_act_1_instr(std::vector<int> indices) const {
     int ports = 0;
     std::vector<int> param_vec(16, 0);
@@ -114,11 +116,11 @@ private:
     }
     int param = commonPortMask.value_or(0);
 
-    return std::make_optional<std::unordered_map<string, int>>(
+    return std::make_optional<std::unordered_map<string, uint64_t>>(
         {{"mode", 1}, {"param", param}, {"ports", ports}});
   }
 
-  std::optional<std::unordered_map<string, int>>
+  std::optional<std::unordered_map<string, uint64_t>>
   create_act_2_instr(std::vector<int> indices) const {
     uint64_t port_vec = 0;
     for (auto index : indices) {
@@ -128,17 +130,11 @@ private:
     llvm::outs() << "Port vector: " << std::bitset<64>(port_vec).to_string()
                  << "\n";
 
-    // TODO: implement ACT mode 2
-    // - find a suitable address to store the port vector (int address)
-    // return std::make_optional<std::unordered_map<string, int>>(
-    //        {{"mode", 2}, {"param", address}, {"ports", 0}});
-    return std::make_optional<std::unordered_map<string, int>>(
-        {{"mode", 2}, {"param", 0}, {"ports", 0}});
-    // llvm::outs() << "ACT mode 2 failed: not implemented yet.\n";
-    // return std::nullopt;
+    return std::make_optional<std::unordered_map<string, uint64_t>>(
+        {{"mode", 2}, {"param", 0}, {"ports", port_vec}});
   }
 
-  std::unordered_map<string, int>
+  std::unordered_map<string, uint64_t>
   create_act_instr(std::vector<int> indices) const {
     if (indices.size() == 0) {
       llvm::outs() << "Error: No port indices provided.\n";
@@ -685,9 +681,7 @@ private:
 
   void insert_rop_instructions(
       vector<mlir::Operation *> &rop_ops, int t, PatternRewriter &rewriter,
-      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
-          &time_table,
-      std::string &label) const {
+      std::unordered_map<int, mlir::Operation *> &cell_time_table) const {
     for (auto op : rop_ops) {
       auto rop_op = llvm::dyn_cast<RopOp>(op);
       int curr_t = t - 1;
@@ -706,19 +700,38 @@ private:
       std::reverse(rop_child_ops.begin(), rop_child_ops.end());
       for (auto rop_child_op : rop_child_ops) {
         if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
-          while (time_table[label].find(curr_t) != time_table[label].end()) {
+          while (cell_time_table.find(curr_t) != cell_time_table.end()) {
             curr_t--;
           }
-          time_table[label][curr_t] = rop_child_op;
+          cell_time_table[curr_t] = rop_child_op;
           curr_t--;
         }
       }
     }
   }
 
+  void print_time_table(
+      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
+          &time_table) const {
+    // print the time table
+    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
+      auto cell_label = it->first;
+      auto cell_time_table = it->second;
+      llvm::outs() << "Time table: " << cell_label << "\n";
+      for (auto cell_it = cell_time_table.begin();
+           cell_it != cell_time_table.end(); ++cell_it) {
+        auto cycle = cell_it->first;
+        auto op = llvm::dyn_cast<vesyla::pasm::InstrOp>(cell_it->second);
+        llvm::outs() << "  " << cycle << ": ";
+        op.print(llvm::outs());
+        llvm::outs() << "\n";
+      }
+    }
+  }
+
   vesyla::pasm::InstrOp compose_act_mlir_op(
       EpochOp op, PatternRewriter &rewriter,
-      std::unordered_map<string, int> &act_instr_param_map) const {
+      std::unordered_map<string, uint64_t> &act_instr_param_map) const {
     return rewriter.create<vesyla::pasm::InstrOp>(
         op->getLoc(),
         rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8)),
@@ -728,25 +741,54 @@ private:
                                               act_instr_param_map["mode"])),
             rewriter.getNamedAttr("param", rewriter.getI32IntegerAttr(
                                                act_instr_param_map["param"])),
-            rewriter.getNamedAttr("ports", rewriter.getI32IntegerAttr(
+            rewriter.getNamedAttr("ports", rewriter.getI64IntegerAttr(
                                                act_instr_param_map["ports"])),
         }));
   }
 
-  void create_time_table_entry(
-      std::string label,
+  vesyla::pasm::InstrOp compose_calc_mlir_op(
+      EpochOp op, PatternRewriter &rewriter,
+      std::unordered_map<string, int> &calc_instr_param_map) const {
+    return rewriter.create<vesyla::pasm::InstrOp>(
+        op->getLoc(),
+        rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+        rewriter.getStringAttr("calc"),
+        rewriter.getDictionaryAttr({
+            rewriter.getNamedAttr("mode", rewriter.getI32IntegerAttr(
+                                              calc_instr_param_map["mode"])),
+            rewriter.getNamedAttr(
+                "operand1",
+                rewriter.getI32IntegerAttr(calc_instr_param_map["operand1"])),
+            rewriter.getNamedAttr("operand2_sd",
+                                  rewriter.getI32IntegerAttr(
+                                      calc_instr_param_map["operand2_sd"])),
+            rewriter.getNamedAttr(
+                "operand2",
+                rewriter.getI32IntegerAttr(calc_instr_param_map["operand2"])),
+            rewriter.getNamedAttr(
+                "result",
+                rewriter.getI32IntegerAttr(calc_instr_param_map["result"])),
+        }));
+  }
+
+  std::unordered_map<int, mlir::Operation *> &getOrCreateCellTimeTable(
       std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
           &time_table,
-      int t, vesyla::pasm::InstrOp &act_instr) const {
+      const std::string &label) const {
+    if (time_table.find(label) == time_table.end())
+      time_table[label] = std::unordered_map<int, mlir::Operation *>();
+    return time_table[label];
+  }
 
-    if (time_table.find(label) == time_table.end()) {
-      time_table[label] = unordered_map<int, mlir::Operation *>();
-    }
-    if (time_table[label].find(t) == time_table[label].end()) {
-      time_table[label][t] = act_instr.getOperation();
+  void create_time_table_entry(
+      std::unordered_map<int, mlir::Operation *> &cell_time_table, int t,
+      vesyla::pasm::InstrOp &instr_op) const {
+
+    if (cell_time_table.find(t) == cell_time_table.end()) {
+      cell_time_table[t] = instr_op.getOperation();
     } else {
       llvm::outs() << "Error: time table already has the entry: " << t << "("
-                   << time_table[label][t]->getName() << ")"
+                   << cell_time_table[t]->getName() << ")"
                    << "\n";
       std::exit(EXIT_FAILURE);
     }
@@ -790,46 +832,188 @@ private:
     return rop_ops_at_t;
   }
 
-  void compose_act_vectors(
-      int total_latency,
-      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
-          &time_table) const {
-    // start from t-1, insert the necessary instructions for act mode 2
-    auto label = "0_0";
-    llvm::outs() << "label: " << label << ", total_latency: " << total_latency
-                 << "\n";
-    for (int i = total_latency; i >= 0; i--) {
-      if (time_table[label].find(i) == time_table[label].end()) {
-        continue; // if no op is scheduled for this cycle, continue
-      }
-      auto instr = time_table[label][i];
-      auto instr_type = instr->getAttr("type");
-      auto instr_type_str =
-          mlir::dyn_cast_or_null<mlir::StringAttr>(instr_type);
-      if (instr_type_str.getValue() != "act") {
-        llvm::outs() << "instr detected at time " << i << " ("
-                     << instr_type_str.getValue() << ")\n";
-        continue; // if the instruction is not an act, continue
-      }
-
-      auto instr_params = instr->getAttr("param");
-      auto instr_params_dict =
-          mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
-      auto mode_attr = instr_params_dict.get("mode");
-      auto mode_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(mode_attr);
-      if (mode_attr_int.getInt() != 2)
-        continue;
-
-      llvm::outs() << "act mode: " << mode_attr_int.getInt() << " detected!\n";
+  std::unordered_map<int, std::vector<int>> create_reg_alloc_table() const {
+    std::unordered_map<int, std::vector<int>> reg_alloc_table;
+    // TODO: make this value configurable and come from isa.json or arch.json
+    for (int reg_i = 0; reg_i < 16; reg_i++) {
+      reg_alloc_table[reg_i] = std::vector<int>();
     }
+
+    return reg_alloc_table;
+  }
+
+  void allocateAndScheduleActMode2PrepInstructions(
+      std::unordered_map<int, std::vector<int>> &reg_alloc_table,
+      std::unordered_map<int, mlir::Operation *> &cell_time_table,
+      PatternRewriter &rewriter, EpochOp op, int cycle, uint64_t ports) const {
+
+    int potential_first_reg = 4;
+    int num_regs_needed = 4; // TODO: make this configurable
+    int first_reg;
+
+    // check if the first reg is available
+    if (reg_alloc_table[potential_first_reg].empty()) {
+      first_reg = potential_first_reg;
+    } else if (reg_alloc_table[potential_first_reg + num_regs_needed].empty()) {
+      first_reg = potential_first_reg + num_regs_needed;
+    } else {
+      llvm::outs()
+          << "Error: Cannot allocate registers for activation mode 2 at cycle "
+          << cycle
+          << ". [r4->r7] and [r8->r11] are not available in controller.";
+      exit(EXIT_FAILURE);
+    }
+
+    // add act cycle to the register allocation table
+    for (int i = 0; i < num_regs_needed; i++) {
+      reg_alloc_table[first_reg + i].push_back(cycle);
+    }
+
+    // get the list of prep instructions for activation mode 2
+    auto instrs_to_place = get_act_mode2_prep_instrs(first_reg, ports);
+    int num_instrs = instrs_to_place.size();
+    int cycles_needed = num_instrs;
+
+    // find the first empty slot
+    int max_attempts = 1000; // or some reasonable limit
+    int attempts = 0;
+    do {
+      llvm::outs() << "Allocating registers for ACT mode 2 prep "
+                   << "instructions at cycle " << cycle << "\n";
+      cycle--;
+      attempts++;
+      if (attempts > max_attempts) {
+        llvm::outs() << "Error: Too many attempts to allocate registers for "
+                        "ACT mode 2 prep instructions.\n";
+        exit(EXIT_FAILURE);
+      }
+      if (cell_time_table.find(cycle) != cell_time_table.end()) {
+        continue; // skip if there are already operations scheduled at this
+                  // cycle
+      }
+
+      // check if the regs are available
+      bool registers_available = true;
+      for (int i = 0; i < num_regs_needed; i++) {
+        // check if the table contains the cycle for the register
+        if (!reg_alloc_table[first_reg + i].empty() &&
+            std::find(reg_alloc_table[first_reg + i].begin(),
+                      reg_alloc_table[first_reg + i].end(),
+                      cycle) != reg_alloc_table[first_reg + i].end()) {
+          registers_available = false;
+          break;
+        }
+      }
+      if (!registers_available) {
+        continue; // skip if registers are not available
+      }
+      // else allocate them for the current cycle
+      for (int i = 0; i < num_regs_needed; i++) {
+        reg_alloc_table[first_reg + i].push_back(cycle);
+      }
+
+      // place a prep instruction in the time table
+      auto prep_op = compose_calc_mlir_op(
+          op, rewriter, instrs_to_place[num_instrs - cycles_needed]);
+      create_time_table_entry(cell_time_table, cycle, prep_op);
+      cycles_needed--;
+
+    } while (cycles_needed != 0);
+  }
+
+  std::vector<std::unordered_map<string, int>>
+  get_act_mode2_prep_instrs(int first_reg_address, uint64_t ports) const {
+    std::vector<std::unordered_map<string, int>> act_mode2_prep_instrs;
+
+    int num_regs_needed = 4;
+    for (int loop_index = 1; loop_index <= 4; ++loop_index) {
+      int reg_i = first_reg_address + (loop_index - 1);
+
+      // Calculate shift for MSB and LSB
+      int msb_shift = 16 * loop_index - 8;   // 8, 24, 40, 56
+      int lsb_shift = 16 * (loop_index - 1); // 0, 16, 32, 48
+
+      // set reg_i 8 MSB
+      std::unordered_map<std::string, int> load_msb = {
+          {"mode", 1},        // add
+          {"operand1", 0},    // reg 0
+          {"operand2_sd", 0}, // use immediate
+          {"operand2", static_cast<int>((ports >> msb_shift) & 0xFF)}, // 8 MSBs
+          {"result", reg_i} // store in reg_i
+      };
+      act_mode2_prep_instrs.push_back(load_msb);
+
+      // shift reg_i
+      std::unordered_map<std::string, int> shift_reg = {
+          {"mode", 3},         // shift
+          {"operand1", reg_i}, // reg_i
+          {"operand2_sd", 0},  // use immediate
+          {"operand2", 8},     // shift by 8 bits
+          {"result", reg_i}    // store in reg_i
+      };
+      act_mode2_prep_instrs.push_back(shift_reg);
+
+      // set reg_i 8 LSB
+      std::unordered_map<std::string, int> load_lsb = {
+          {"mode", 1},        // add
+          {"operand1", 0},    // reg 0
+          {"operand2_sd", 0}, // use immediate
+          {"operand2", static_cast<int>((ports >> lsb_shift) & 0xFF)}, // 8 LSBs
+          {"result", reg_i} // store in reg_i
+      };
+      act_mode2_prep_instrs.push_back(load_lsb);
+    }
+
+    return act_mode2_prep_instrs;
+  }
+
+  bool op_is_act_mode2(mlir::Operation *op) const {
+    auto instr_type = op->getAttr("type");
+    auto instr_type_str = mlir::dyn_cast_or_null<mlir::StringAttr>(instr_type);
+    if (!instr_type_str || instr_type_str.getValue() != "act") {
+      return false; // not an act operation
+    }
+
+    auto instr_params = op->getAttr("param");
+    auto instr_params_dict =
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
+    if (!instr_params_dict) {
+      return false; // invalid parameters
+    }
+
+    auto mode_attr = instr_params_dict.get("mode");
+    auto mode_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(mode_attr);
+    if (!mode_attr_int || mode_attr_int.getInt() != 2) {
+      return false; // not mode 2
+    }
+
+    return true;
+  }
+
+  uint64_t get_ports_from_act_mode2_instr(mlir::Operation *op) const {
+    auto instr_params = op->getAttr("param");
+    auto instr_params_dict =
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
+    if (!instr_params_dict) {
+      llvm::outs() << "Error: Invalid parameters for act mode 2 instruction.\n";
+      std::exit(EXIT_FAILURE);
+    }
+
+    auto ports_attr = instr_params_dict.get("ports");
+    auto ports_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(ports_attr);
+    if (!ports_attr_int) {
+      llvm::outs() << "Error: Invalid ports attribute for act mode 2 "
+                      "instruction.\n";
+      std::exit(EXIT_FAILURE);
+    }
+
+    return ports_attr_int.getInt();
   }
 
   void insert_cop_instructions(
-      mlir::Block *copEntryBlock, const std::string &label,
+      mlir::Block *copEntryBlock,
       const std::unordered_map<std::string, int> &schedule_table,
-      std::unordered_map<std::string,
-                         std::unordered_map<int, mlir::Operation *>>
-          &time_table) const {
+      std::unordered_map<int, mlir::Operation *> &cell_time_table) const {
     int instr_count = 0;
     for (mlir::Operation &cop_child_op : *copEntryBlock) {
       if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
@@ -844,14 +1028,14 @@ private:
 
         int t = schedule_table.at(instr_anchor);
 
-        if (time_table[label].find(t) != time_table[label].end()) {
+        if (cell_time_table.find(t) != cell_time_table.end()) {
           llvm::outs() << "Error: time table already has the entry: " << t
-                       << "(" << time_table[label][t]->getName() << ")"
+                       << "(" << cell_time_table[t]->getName() << ")"
                        << "\n";
           std::exit(EXIT_FAILURE);
         }
 
-        time_table[label][t] = &cop_child_op;
+        cell_time_table[t] = &cop_child_op;
         instr_count++;
       } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&cop_child_op)) {
         // DO NOTHING
@@ -915,18 +1099,17 @@ private:
       auto cop_op = llvm::dyn_cast<CopOp>(it->first);
       std::string label = std::to_string(cop_op.getRow()) + "_" +
                           std::to_string(cop_op.getCol());
-      if (time_table.find(label) == time_table.end())
-        time_table[label] = unordered_map<int, mlir::Operation *>();
+      auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
 
       mlir::Region &copBodyRegion = cop_op.getBody();
       mlir::Block *copEntryBlock =
           getOrCreateEntryBlock(copBodyRegion, rewriter);
-      insert_cop_instructions(copEntryBlock, label, schedule_table, time_table);
+      insert_cop_instructions(copEntryBlock, schedule_table, cell_time_table);
     }
 
     // place the ACT instruction of all ROPs
     int total_latency = schedule_table["total_latency"];
-
+    std::unordered_map<string, bool> cell_contains_act_mode2;
     for (int t = 0; t < total_latency; t++) {
       std::unordered_map<std::string, std::vector<mlir::Operation *>>
           rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
@@ -935,15 +1118,22 @@ private:
       if (rop_ops_at_t.empty())
         continue;
 
+      // Debug print
       llvm::outs() << "ROPs at t=" << t << ":\n";
 
       // for all rop operations at time t
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
+        cell_contains_act_mode2[label] =
+            cell_contains_act_mode2.find(label) != cell_contains_act_mode2.end()
+                ? cell_contains_act_mode2[label]
+                : false;
+        auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
         std::vector<mlir::Operation *> rop_ops = it->second;
         std::vector<int> slot_port_index_list =
             get_absolute_port_indices(rop_ops);
 
+        // Debug print
         llvm::outs() << "  - cell " << label << ": [";
         for (int rop_i = 0; rop_i < rop_ops.size(); rop_i++) {
           auto rop_op = llvm::dyn_cast<RopOp>(rop_ops[rop_i]);
@@ -954,34 +1144,77 @@ private:
             llvm::outs() << rop_op.getId() << " (" << rop_port << "), ";
         }
 
+        // place act instructions in time table
         auto act_instr_param_map = create_act_instr(slot_port_index_list);
+
+        // if the act instruction mode is 2, compose the act vectors
+        // and place them in the time table
+        if (act_instr_param_map["mode"] == 2)
+          cell_contains_act_mode2[label] = true;
+        //          int vector_address =
+        //              compose_act_vectors(register_allocation_table, t,
+        //              cell_time_table,
+        //                                  act_instr_param_map["ports"]);
+        //          act_instr_param_map["param"] = vector_address;
+        //          print_time_table(time_table);
+        //        }
+
         auto act_instr = compose_act_mlir_op(op, rewriter, act_instr_param_map);
-        create_time_table_entry(label, time_table, t, act_instr);
-        insert_rop_instructions(rop_ops, t, rewriter, time_table, label);
+        create_time_table_entry(cell_time_table, t, act_instr);
       }
     }
 
-    compose_act_vectors(total_latency, time_table);
+    for (auto &cell_entry : time_table) {
+      // go throught the time table in reverse order and allocate registers
+      const std::string &cell_label = cell_entry.first;
+      auto &cell_time_table = cell_entry.second;
+
+      // if the cell does not contain act mode 2, continue
+      if (!cell_contains_act_mode2[cell_label])
+        continue;
+
+      std::vector<std::pair<int, mlir::Operation *>> cycles(
+          cell_time_table.begin(), cell_time_table.end());
+      std::sort(cycles.begin(), cycles.end(),
+                [](const std::pair<int, mlir::Operation *> &a,
+                   const std::pair<int, mlir::Operation *> &b) {
+                  return a.first > b.first; // sort in reverse order
+                });
+
+      std::unordered_map<int, std::vector<int>> register_allocation_table =
+          create_reg_alloc_table();
+      for (const auto &cycle_entry : cycles) {
+        int cycle = cycle_entry.first;
+        mlir::Operation *act_op = cycle_entry.second;
+        if (op_is_act_mode2(act_op)) {
+          uint64_t ports = get_ports_from_act_mode2_instr(act_op);
+          allocateAndScheduleActMode2PrepInstructions(register_allocation_table,
+                                                      cell_time_table, rewriter,
+                                                      op, cycle, ports);
+        }
+      }
+    }
+
+    llvm::outs() << "Time table after placing ACT instructions:\n";
+    print_time_table(time_table);
 
     for (int t = 0; t < total_latency; t++) {
-    }
-
-    // TODO: remove this
-    // exit(EXIT_FAILURE);
-
-    // print the time table
-    for (auto it = time_table.begin(); it != time_table.end(); ++it) {
-      llvm::outs() << "Time table: " << it->first << "\n";
-      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
-        llvm::outs()
-            << "  " << it2->first << ": " << it2->second->getName() << ", "
-            << llvm::dyn_cast<vesyla::pasm::InstrOp>(it2->second).getType()
-            << "\n";
+      std::unordered_map<std::string, std::vector<mlir::Operation *>>
+          rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
+      for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
+        std::string label = it->first;
+        auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
+        std::vector<mlir::Operation *> rop_ops = it->second;
+        insert_rop_instructions(rop_ops, t, rewriter, cell_time_table);
       }
     }
+
+    llvm::outs() << "Time table after placing ROP instructions:\n";
+    print_time_table(time_table);
 
     // find out the time shift amount, so that the first operation is at
     // time 0
+    auto test = time_table;
     int min_shift_time = 0;
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       int min_time = std::numeric_limits<int>::max();
@@ -1006,6 +1239,9 @@ private:
       }
       time_table[it->first] = std::move(new_time_table);
     }
+
+    llvm::outs() << "Time table after shifting:\n";
+    print_time_table(time_table);
 
     // order the operations by time
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
@@ -1087,8 +1323,8 @@ private:
       llvm::outs() << "Ordered time table: " << it->first << "\n";
       for (auto it2 = ordered_time_table[it->first].begin();
            it2 != ordered_time_table[it->first].end(); ++it2) {
-        llvm::outs() << llvm::dyn_cast<vesyla::pasm::InstrOp>(*it2).getType()
-                     << "\n";
+        llvm::dyn_cast<vesyla::pasm::InstrOp>(*it2).print(llvm::outs());
+        llvm::outs() << "\n";
       }
     }
 
