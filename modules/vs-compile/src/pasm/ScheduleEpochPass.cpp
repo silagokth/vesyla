@@ -751,6 +751,32 @@ private:
     return slot_port_index_list;
   }
 
+  std::unordered_map<std::string, std::vector<mlir::Operation *>>
+  get_rop_ops_for_cycle(
+      int currentCycle,
+      std::unordered_map<mlir::Operation *, int> time_table_rop) const {
+    std::unordered_map<std::string, std::vector<mlir::Operation *>>
+        rop_ops_at_t;
+    for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
+      // only keep the rop ops for the current cycle
+      if (it->second != currentCycle)
+        continue;
+
+      auto rop_op = llvm::dyn_cast<RopOp>(it->first);
+      int row = rop_op.getRow();
+      int col = rop_op.getCol();
+      std::string label = std::to_string(row) + "_" + std::to_string(col);
+
+      // if the cell label is not found, create an entry
+      if (rop_ops_at_t.find(label) == rop_ops_at_t.end()) {
+        rop_ops_at_t[label] = std::vector<mlir::Operation *>();
+      }
+      rop_ops_at_t[label].push_back(it->first);
+    }
+
+    return rop_ops_at_t;
+  }
+
   void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
@@ -865,24 +891,9 @@ private:
 
     for (int t = 0; t < total_latency; t++) {
       std::unordered_map<std::string, std::vector<mlir::Operation *>>
-          rop_ops_at_t;
-      for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
-        if (it->second == t) {
-          llvm::outs() << "ROP: " << it->first->getName() << " at time " << t
-                       << "\n";
-          auto rop_op = llvm::dyn_cast<RopOp>(it->first);
-          llvm::outs() << "ROP: " << rop_op.getId() << " at time " << t << "\n";
-          int row = rop_op.getRow();
-          int col = rop_op.getCol();
-          std::string label = std::to_string(row) + "_" + std::to_string(col);
-          if (rop_ops_at_t.find(label) == rop_ops_at_t.end()) {
-            rop_ops_at_t[label] = std::vector<mlir::Operation *>();
-          }
-          rop_ops_at_t[label].push_back(it->first);
-        }
-      }
+          rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
 
-      // for all rop operations
+      // for all rop operations at time t
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
         auto rop_ops = it->second;
