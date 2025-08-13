@@ -37,6 +37,24 @@ public:
         tmp_path(std::move(tmp_path)), _row(row_), _col(col_) {}
 
 private:
+  mlir::Block *getEpochBodyEntryBlock(EpochOp epoch_op,
+                                      PatternRewriter &rewriter) const {
+    // Check if the EpochOp is valid
+    if (!epoch_op) {
+      llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
+      std::exit(EXIT_FAILURE);
+    }
+
+    mlir::Region &epochBodyRegion = epoch_op.getBody();
+    mlir::Block *block;
+    if (epochBodyRegion.empty()) {
+      block = rewriter.createBlock(&epochBodyRegion);
+    } else {
+      block = &epochBodyRegion.front();
+    }
+    return block;
+  }
+
   std::optional<std::unordered_map<string, int>>
   create_act_0_instr(std::vector<int> indices) const {
     int min_index = *std::min_element(indices.begin(), indices.end());
@@ -504,18 +522,7 @@ private:
 
   void reshape_instr(EpochOp &op, PatternRewriter &rewriter) const {
     // Get the block to insert the new operations
-    auto epoch_op = op;
-    if (!epoch_op) {
-      llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(EXIT_FAILURE);
-    }
-    mlir::Region &epochBodyRegion = epoch_op.getBody();
-    mlir::Block *block;
-    if (epochBodyRegion.empty()) {
-      block = rewriter.createBlock(&epochBodyRegion);
-    } else {
-      block = &epochBodyRegion.front();
-    }
+    mlir::Block *block = getEpochBodyEntryBlock(op, rewriter);
 
     std::vector<mlir::Operation *> ops_to_erase;
     std::vector<mlir::Operation *> ops_to_reshape;
@@ -816,18 +823,7 @@ private:
                    PatternRewriter &rewriter) const {
 
     // Get the block to insert the new operations
-    auto epoch_op = op;
-    if (!epoch_op) {
-      llvm::outs() << "Error: Cannot find the EpochOp in the operation.\n";
-      std::exit(EXIT_FAILURE);
-    }
-    mlir::Region &epochBodyRegion = epoch_op.getBody();
-    mlir::Block *block;
-    if (epochBodyRegion.empty()) {
-      block = rewriter.createBlock(&epochBodyRegion);
-    } else {
-      block = &epochBodyRegion.front();
-    }
+    mlir::Block *block = getEpochBodyEntryBlock(op, rewriter);
 
     rewriter.setInsertionPointToEnd(block);
 
@@ -958,6 +954,9 @@ private:
     }
 
     compose_act_vectors(total_latency, time_table);
+
+    for (int t = 0; t < total_latency; t++) {
+    }
 
     // TODO: remove this
     // exit(EXIT_FAILURE);
@@ -1174,13 +1173,7 @@ public:
     tm::Solver solver(tmp_path);
     // Get the EpochOp's ID
     std::string originalIdStr = op.getId().str();
-    mlir::Region &epochBodyRegion = op.getBody();
-    mlir::Block *entryBlock;
-    if (epochBodyRegion.empty()) {
-      entryBlock = rewriter.createBlock(&epochBodyRegion);
-    } else {
-      entryBlock = &epochBodyRegion.front();
-    }
+    mlir::Block *entryBlock = getEpochBodyEntryBlock(op, rewriter);
     std::set<std::string> operation_type_set;
     for (mlir::Operation &child_op : *entryBlock) {
       // cast to the correct type
