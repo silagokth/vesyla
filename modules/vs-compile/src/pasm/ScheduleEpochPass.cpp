@@ -777,6 +777,40 @@ private:
     return rop_ops_at_t;
   }
 
+  void compose_act_vectors(
+      int total_latency,
+      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
+          &time_table) const {
+    // start from t-1, insert the necessary instructions for act mode 2
+    auto label = "0_0";
+    llvm::outs() << "label: " << label << ", total_latency: " << total_latency
+                 << "\n";
+    for (int i = total_latency; i >= 0; i--) {
+      if (time_table[label].find(i) == time_table[label].end()) {
+        continue; // if no op is scheduled for this cycle, continue
+      }
+      auto instr = time_table[label][i];
+      auto instr_type = instr->getAttr("type");
+      auto instr_type_str =
+          mlir::dyn_cast_or_null<mlir::StringAttr>(instr_type);
+      if (instr_type_str.getValue() != "act") {
+        llvm::outs() << "instr detected at time " << i << " ("
+                     << instr_type_str.getValue() << ")\n";
+        continue; // if the instruction is not an act, continue
+      }
+
+      auto instr_params = instr->getAttr("param");
+      auto instr_params_dict =
+          mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
+      auto mode_attr = instr_params_dict.get("mode");
+      auto mode_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(mode_attr);
+      if (mode_attr_int.getInt() != 2)
+        continue;
+
+      llvm::outs() << "act mode: " << mode_attr_int.getInt() << " detected!\n";
+    }
+  }
+
   void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
@@ -923,34 +957,8 @@ private:
       }
     }
 
-    // start from t-1, insert the necessary instructions for act mode 2
-    auto label = "0_0";
-    llvm::outs() << "label: " << label << ", total_latency: " << total_latency
-                 << "\n";
-    for (int i = total_latency; i >= 0; i--) {
-      if (time_table[label].find(i) == time_table[label].end()) {
-        continue; // if no op is scheduled for this cycle, continue
-      }
-      auto instr = time_table[label][i];
-      auto instr_type = instr->getAttr("type");
-      auto instr_type_str =
-          mlir::dyn_cast_or_null<mlir::StringAttr>(instr_type);
-      if (instr_type_str.getValue() != "act") {
-        llvm::outs() << "instr detected at time " << i << " ("
-                     << instr_type_str.getValue() << ")\n";
-        continue; // if the instruction is not an act, continue
-      }
+    compose_act_vectors(total_latency, time_table);
 
-      auto instr_params = instr->getAttr("param");
-      auto instr_params_dict =
-          mlir::dyn_cast_or_null<mlir::DictionaryAttr>(instr_params);
-      auto mode_attr = instr_params_dict.get("mode");
-      auto mode_attr_int = mlir::dyn_cast_or_null<mlir::IntegerAttr>(mode_attr);
-      if (mode_attr_int.getInt() != 2) {
-        continue;
-      }
-      llvm::outs() << "act mode: " << mode_attr_int.getInt() << " detected!\n";
-    }
     // TODO: remove this
     // exit(EXIT_FAILURE);
 
