@@ -893,12 +893,28 @@ private:
       std::unordered_map<std::string, std::vector<mlir::Operation *>>
           rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
 
+      // if no rop ops are schedule at t, continue
+      if (rop_ops_at_t.empty())
+        continue;
+
+      llvm::outs() << "ROPs at t=" << t << ":\n";
+
       // for all rop operations at time t
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
-        auto rop_ops = it->second;
+        std::vector<mlir::Operation *> rop_ops = it->second;
         std::vector<int> slot_port_index_list =
             get_absolute_port_indices(rop_ops);
+
+        llvm::outs() << "  - cell " << label << ": [";
+        for (int rop_i = 0; rop_i < rop_ops.size(); rop_i++) {
+          auto rop_op = llvm::dyn_cast<RopOp>(rop_ops[rop_i]);
+          auto rop_port = slot_port_index_list[rop_i];
+          if (rop_i == rop_ops.size() - 1)
+            llvm::outs() << rop_op.getId() << " (" << rop_port << ")]\n";
+          else
+            llvm::outs() << rop_op.getId() << " (" << rop_port << "), ";
+        }
 
         auto act_instr_param_map = create_act_instr(slot_port_index_list);
         auto act_instr = compose_act_mlir_op(op, rewriter, act_instr_param_map);
