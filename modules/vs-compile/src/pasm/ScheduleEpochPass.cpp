@@ -37,6 +37,17 @@ public:
         tmp_path(std::move(tmp_path)), _row(row_), _col(col_) {}
 
 private:
+  mlir::Block *getOrCreateEntryBlock(mlir::Region &region,
+                                     PatternRewriter &rewriter) const {
+    mlir::Block *block;
+    if (region.empty()) {
+      block = rewriter.createBlock(&region);
+    } else {
+      block = &region.front();
+    }
+    return block;
+  }
+
   mlir::Block *getEpochBodyEntryBlock(EpochOp epoch_op,
                                       PatternRewriter &rewriter) const {
     // Check if the EpochOp is valid
@@ -46,12 +57,7 @@ private:
     }
 
     mlir::Region &epochBodyRegion = epoch_op.getBody();
-    mlir::Block *block;
-    if (epochBodyRegion.empty()) {
-      block = rewriter.createBlock(&epochBodyRegion);
-    } else {
-      block = &epochBodyRegion.front();
-    }
+    mlir::Block *block = getOrCreateEntryBlock(epochBodyRegion, rewriter);
     return block;
   }
 
@@ -827,15 +833,12 @@ private:
 
     rewriter.setInsertionPointToEnd(block);
 
+    // initialize the time_table and ordered_time_table, add the label for
+    // every cell in the fabric
     std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
         time_table;
     std::unordered_map<string, std::vector<mlir::Operation *>>
         ordered_time_table;
-    std::unordered_map<mlir::Operation *, int> time_table_rop;
-    std::unordered_map<mlir::Operation *, int> time_table_cop;
-
-    // initialize the time_table and ordered_time_table, add the label for
-    // every cell in the fabric
     for (int r = 0; r < _row; r++) {
       for (int c = 0; c < _col; c++) {
         std::string label = std::to_string(r) + "_" + std::to_string(c);
@@ -844,6 +847,9 @@ private:
       }
     }
 
+    // initialize the time_tables of rop and cop operations
+    std::unordered_map<mlir::Operation *, int> time_table_rop;
+    std::unordered_map<mlir::Operation *, int> time_table_cop;
     for (mlir::Operation &child_op : *block) {
       if (auto rop_op = llvm::dyn_cast<RopOp>(&child_op)) {
         time_table_rop[&child_op] = schedule_table[rop_op.getId().str()];
@@ -877,12 +883,9 @@ private:
 
       // get internal instructions
       mlir::Region &copBodyRegion = cop_op.getBody();
-      mlir::Block *copEntryBlock;
-      if (copBodyRegion.empty()) {
-        copEntryBlock = rewriter.createBlock(&copBodyRegion);
-      } else {
-        copEntryBlock = &copBodyRegion.front();
-      }
+      mlir::Block *copEntryBlock =
+          getOrCreateEntryBlock(copBodyRegion, rewriter);
+
       int instr_count = 0;
       for (mlir::Operation &cop_child_op : *copEntryBlock) {
         if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
