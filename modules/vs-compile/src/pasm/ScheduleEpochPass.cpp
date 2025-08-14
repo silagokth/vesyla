@@ -681,7 +681,7 @@ private:
 
   void insert_rop_instructions(
       vector<mlir::Operation *> &rop_ops, int t, PatternRewriter &rewriter,
-      std::unordered_map<int, mlir::Operation *> &cell_time_table) const {
+      std::map<int, mlir::Operation *> &cell_time_table) const {
     for (auto op : rop_ops) {
       auto rop_op = llvm::dyn_cast<RopOp>(op);
       int curr_t = t - 1;
@@ -711,12 +711,13 @@ private:
   }
 
   void print_time_table(
-      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
-          &time_table) const {
+      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table)
+      const {
     // print the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       auto cell_label = it->first;
       auto cell_time_table = it->second;
+      sortCellTimeTable(cell_time_table);
       llvm::outs() << "Time table: " << cell_label << "\n";
       for (auto cell_it = cell_time_table.begin();
            cell_it != cell_time_table.end(); ++cell_it) {
@@ -771,18 +772,17 @@ private:
         }));
   }
 
-  std::unordered_map<int, mlir::Operation *> &getOrCreateCellTimeTable(
-      std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
-          &time_table,
+  std::map<int, mlir::Operation *> &getOrCreateCellTimeTable(
+      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table,
       const std::string &label) const {
     if (time_table.find(label) == time_table.end())
-      time_table[label] = std::unordered_map<int, mlir::Operation *>();
+      time_table[label] = std::map<int, mlir::Operation *>();
     return time_table[label];
   }
 
-  void create_time_table_entry(
-      std::unordered_map<int, mlir::Operation *> &cell_time_table, int t,
-      vesyla::pasm::InstrOp &instr_op) const {
+  void
+  create_time_table_entry(std::map<int, mlir::Operation *> &cell_time_table,
+                          int t, vesyla::pasm::InstrOp &instr_op) const {
 
     if (cell_time_table.find(t) == cell_time_table.end()) {
       cell_time_table[t] = instr_op.getOperation();
@@ -832,8 +832,8 @@ private:
     return rop_ops_at_t;
   }
 
-  std::unordered_map<int, std::vector<int>> create_reg_alloc_table() const {
-    std::unordered_map<int, std::vector<int>> reg_alloc_table;
+  std::map<int, std::vector<int>> create_reg_alloc_table() const {
+    std::map<int, std::vector<int>> reg_alloc_table;
     // TODO: make this value configurable and come from isa.json or arch.json
     for (int reg_i = 0; reg_i < 16; reg_i++) {
       reg_alloc_table[reg_i] = std::vector<int>();
@@ -843,8 +843,8 @@ private:
   }
 
   void allocateAndScheduleActMode2PrepInstructions(
-      std::unordered_map<int, std::vector<int>> &reg_alloc_table,
-      std::unordered_map<int, mlir::Operation *> &cell_time_table,
+      std::map<int, std::vector<int>> &reg_alloc_table,
+      std::map<int, mlir::Operation *> &cell_time_table,
       PatternRewriter &rewriter, EpochOp op, int cycle, uint64_t ports) const {
 
     int potential_first_reg = 4;
@@ -1013,7 +1013,7 @@ private:
   void insert_cop_instructions(
       mlir::Block *copEntryBlock,
       const std::unordered_map<std::string, int> &schedule_table,
-      std::unordered_map<int, mlir::Operation *> &cell_time_table) const {
+      std::map<int, mlir::Operation *> &cell_time_table) const {
     int instr_count = 0;
     for (mlir::Operation &cop_child_op : *copEntryBlock) {
       if (auto instr_op = llvm::dyn_cast<InstrOp>(&cop_child_op)) {
@@ -1047,6 +1047,19 @@ private:
     }
   }
 
+  std::vector<std::pair<int, mlir::Operation *>>
+  sortCellTimeTable(std::map<int, mlir::Operation *> &cell_time_table,
+                    bool reverse = false) const {
+    std::vector<std::pair<int, mlir::Operation *>> cycles(
+        cell_time_table.begin(), cell_time_table.end());
+    std::sort(cycles.begin(), cycles.end(),
+              [reverse](const std::pair<int, mlir::Operation *> &a,
+                        const std::pair<int, mlir::Operation *> &b) {
+                return reverse ? (a.first > b.first) : (a.first < b.first);
+              });
+    return cycles;
+  }
+
   void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
                    PatternRewriter &rewriter) const {
@@ -1058,14 +1071,13 @@ private:
 
     // initialize the time_table and ordered_time_table, add the label for
     // every cell in the fabric
-    std::unordered_map<string, std::unordered_map<int, mlir::Operation *>>
-        time_table;
+    std::unordered_map<string, std::map<int, mlir::Operation *>> time_table;
     std::unordered_map<string, std::vector<mlir::Operation *>>
         ordered_time_table;
     for (int r = 0; r < _row; r++) {
       for (int c = 0; c < _col; c++) {
         std::string label = std::to_string(r) + "_" + std::to_string(c);
-        time_table[label] = std::unordered_map<int, mlir::Operation *>();
+        time_table[label] = std::map<int, mlir::Operation *>();
         ordered_time_table[label] = std::vector<mlir::Operation *>();
       }
     }
@@ -1175,13 +1187,10 @@ private:
 
       std::vector<std::pair<int, mlir::Operation *>> cycles(
           cell_time_table.begin(), cell_time_table.end());
-      std::sort(cycles.begin(), cycles.end(),
-                [](const std::pair<int, mlir::Operation *> &a,
-                   const std::pair<int, mlir::Operation *> &b) {
-                  return a.first > b.first; // sort in reverse order
-                });
 
-      std::unordered_map<int, std::vector<int>> register_allocation_table =
+      print_time_table(time_table);
+
+      std::map<int, std::vector<int>> register_allocation_table =
           create_reg_alloc_table();
       for (const auto &cycle_entry : cycles) {
         int cycle = cycle_entry.first;
@@ -1197,6 +1206,7 @@ private:
 
     llvm::outs() << "Time table after placing ACT instructions:\n";
     print_time_table(time_table);
+    // std::exit(EXIT_FAILURE);
 
     for (int t = 0; t < total_latency; t++) {
       std::unordered_map<std::string, std::vector<mlir::Operation *>>
@@ -1233,7 +1243,7 @@ private:
 
     // shift the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
-      std::unordered_map<int, mlir::Operation *> new_time_table;
+      std::map<int, mlir::Operation *> new_time_table;
       for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
         new_time_table[it2->first + min_shift_time] = it2->second;
       }
