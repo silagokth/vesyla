@@ -717,7 +717,6 @@ private:
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       auto cell_label = it->first;
       auto cell_time_table = it->second;
-      sortCellTimeTable(cell_time_table);
       llvm::outs() << "Time table: " << cell_label << "\n";
       for (auto cell_it = cell_time_table.begin();
            cell_it != cell_time_table.end(); ++cell_it) {
@@ -1045,19 +1044,6 @@ private:
         std::exit(EXIT_FAILURE);
       }
     }
-  }
-
-  std::vector<std::pair<int, mlir::Operation *>>
-  sortCellTimeTable(std::map<int, mlir::Operation *> &cell_time_table,
-                    bool reverse = false) const {
-    std::vector<std::pair<int, mlir::Operation *>> cycles(
-        cell_time_table.begin(), cell_time_table.end());
-    std::sort(cycles.begin(), cycles.end(),
-              [reverse](const std::pair<int, mlir::Operation *> &a,
-                        const std::pair<int, mlir::Operation *> &b) {
-                return reverse ? (a.first > b.first) : (a.first < b.first);
-              });
-    return cycles;
   }
 
   void synchronize(EpochOp &op,
