@@ -841,7 +841,18 @@ private:
     return reg_alloc_table;
   }
 
-  void allocateAndScheduleActMode2PrepInstructions(
+  void changeActMode2Param(mlir::Operation *act_op, int first_reg_address,
+                           PatternRewriter &rewriter) const {
+    mlir::DictionaryAttr new_instr_params = rewriter.getDictionaryAttr({
+        rewriter.getNamedAttr("mode", rewriter.getI32IntegerAttr(2)),
+        rewriter.getNamedAttr("param",
+                              rewriter.getI32IntegerAttr(first_reg_address)),
+        rewriter.getNamedAttr("ports", rewriter.getI64IntegerAttr(0)),
+    });
+    act_op->setAttr("param", new_instr_params);
+  }
+
+  int allocateAndScheduleActMode2PrepInstructions(
       std::map<int, std::vector<int>> &reg_alloc_table,
       std::map<int, mlir::Operation *> &cell_time_table,
       PatternRewriter &rewriter, EpochOp op, int cycle, uint64_t ports) const {
@@ -877,8 +888,6 @@ private:
     int max_attempts = 1000; // or some reasonable limit
     int attempts = 0;
     do {
-      llvm::outs() << "Allocating registers for ACT mode 2 prep "
-                   << "instructions at cycle " << cycle << "\n";
       cycle--;
       attempts++;
       if (attempts > max_attempts) {
@@ -910,14 +919,22 @@ private:
       for (int i = 0; i < num_regs_needed; i++) {
         reg_alloc_table[first_reg + i].push_back(cycle);
       }
+      llvm::outs() << "Allocating registers r" << first_reg << " to r"
+                   << (first_reg + num_regs_needed - 1)
+                   << " for ACT mode 2 prep "
+                   << "instructions for ports "
+                   << std::bitset<64>(ports).to_string() << " at cycle "
+                   << cycle << "\n";
 
       // place a prep instruction in the time table
-      auto prep_op = compose_calc_mlir_op(
-          op, rewriter, instrs_to_place[num_instrs - cycles_needed]);
+      auto prep_op = compose_calc_mlir_op(op, rewriter,
+                                          instrs_to_place[cycles_needed - 1]);
       create_time_table_entry(cell_time_table, cycle, prep_op);
       cycles_needed--;
 
     } while (cycles_needed != 0);
+
+    return first_reg; // return the first register address
   }
 
   std::vector<std::unordered_map<string, int>>
@@ -926,41 +943,52 @@ private:
 
     int num_regs_needed = 4;
     for (int loop_index = 1; loop_index <= 4; ++loop_index) {
+      uint64_t regValueShouldBe = ports >> (16 * (loop_index - 1)) & 0xFFFF;
       int reg_i = first_reg_address + (loop_index - 1);
 
+      llvm::outs() << "r" << reg_i << " should be: "
+                   << std::bitset<16>(regValueShouldBe).to_string() << "\n";
+
       // Calculate shift for MSB and LSB
-      int msb_shift = 16 * loop_index - 8;   // 8, 24, 40, 56
-      int lsb_shift = 16 * (loop_index - 1); // 0, 16, 32, 48
+      int msb_shift = ((16 * loop_index) - 8); // 8, 24, 40, 56
+      int lsb_shift = (16 * (loop_index - 1)); // 0, 16, 32, 48
 
-      // set reg_i 8 MSB
-      std::unordered_map<std::string, int> load_msb = {
-          {"mode", 1},        // add
-          {"operand1", 0},    // reg 0
-          {"operand2_sd", 0}, // use immediate
-          {"operand2", static_cast<int>((ports >> msb_shift) & 0xFF)}, // 8 MSBs
-          {"result", reg_i} // store in reg_i
-      };
-      act_mode2_prep_instrs.push_back(load_msb);
+      llvm::outs() << "reg_i = " << reg_i << ", msb_shift = " << msb_shift
+                   << ", lsb_shift = " << lsb_shift << "\n";
 
-      // shift reg_i
-      std::unordered_map<std::string, int> shift_reg = {
-          {"mode", 3},         // shift
-          {"operand1", reg_i}, // reg_i
-          {"operand2_sd", 0},  // use immediate
-          {"operand2", 8},     // shift by 8 bits
-          {"result", reg_i}    // store in reg_i
-      };
-      act_mode2_prep_instrs.push_back(shift_reg);
+      llvm::outs() << "operand2: "
+                   << static_cast<int>((ports >> msb_shift) & 0xFF) << ", "
+                   << static_cast<int>((ports >> lsb_shift) & 0xFF) << "\n";
 
-      // set reg_i 8 LSB
-      std::unordered_map<std::string, int> load_lsb = {
-          {"mode", 1},        // add
-          {"operand1", 0},    // reg 0
-          {"operand2_sd", 0}, // use immediate
-          {"operand2", static_cast<int>((ports >> lsb_shift) & 0xFF)}, // 8 LSBs
-          {"result", reg_i} // store in reg_i
-      };
-      act_mode2_prep_instrs.push_back(load_lsb);
+      uint64_t msb_value = static_cast<uint64_t>((ports >> msb_shift) & 0xFF);
+      uint64_t lsb_value = static_cast<uint64_t>((ports >> lsb_shift) & 0xFF);
+
+      int add_lsb_reg_address = reg_i;
+      if (msb_value != 0) {
+        // set reg_i 8 MSB
+        std::unordered_map<std::string, int> load_msb = {
+            {"mode", 23},            // addh
+            {"operand1", 0},         // reg 0
+            {"operand2_sd", 0},      // use immediate
+            {"operand2", msb_value}, // 8 MSBs
+            {"result", reg_i}        // store in reg_i
+        };
+        act_mode2_prep_instrs.push_back(load_msb);
+      } else {
+        add_lsb_reg_address = 0; // r0 is always 0
+      }
+
+      if (lsb_value != 0) {
+        // set reg_i 8 LSB
+        std::unordered_map<std::string, int> load_lsb = {
+            {"mode", 1},                       // add
+            {"operand1", add_lsb_reg_address}, // reg_i if msb is not 0, else r0
+            {"operand2_sd", 0},                // use immediate
+            {"operand2", lsb_value},           // 8 LSBs
+            {"result", reg_i}                  // store in reg_i
+        };
+        act_mode2_prep_instrs.push_back(load_lsb);
+      }
     }
 
     return act_mode2_prep_instrs;
@@ -1183,16 +1211,16 @@ private:
         mlir::Operation *act_op = cycle_entry.second;
         if (op_is_act_mode2(act_op)) {
           uint64_t ports = get_ports_from_act_mode2_instr(act_op);
-          allocateAndScheduleActMode2PrepInstructions(register_allocation_table,
-                                                      cell_time_table, rewriter,
-                                                      op, cycle, ports);
+          int first_reg_address = allocateAndScheduleActMode2PrepInstructions(
+              register_allocation_table, cell_time_table, rewriter, op, cycle,
+              ports);
+          changeActMode2Param(act_op, first_reg_address, rewriter);
         }
       }
     }
 
     llvm::outs() << "Time table after placing ACT instructions:\n";
     print_time_table(time_table);
-    // std::exit(EXIT_FAILURE);
 
     for (int t = 0; t < total_latency; t++) {
       std::unordered_map<std::string, std::vector<mlir::Operation *>>
@@ -1321,6 +1349,7 @@ private:
            it2 != ordered_time_table[it->first].end(); ++it2) {
         llvm::dyn_cast<vesyla::pasm::InstrOp>(*it2).print(llvm::outs());
         llvm::outs() << "\n";
+        llvm::outs().flush();
       }
     }
 
