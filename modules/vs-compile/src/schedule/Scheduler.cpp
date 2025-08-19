@@ -52,14 +52,14 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   save_mlir(module, module_debug_path + "/0.mlir");
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createAddSlotPortPass failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
   save_mlir(module, module_debug_path + "/1.mlir");
   pm.addPass(vesyla::pasm::createAddDefaultValuePass());
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createAddDefaultValuePass failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
@@ -69,7 +69,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
   pm.addPass(vesyla::pasm::createScheduleEpochPass(
       {VESYLA_SUITE_PATH_COMPONENTS, temp_dir}));
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createScheduleEpochPass failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
@@ -77,7 +77,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
 
   pm.addPass(vesyla::pasm::createReplaceLoopOp());
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createReplaceLoopOp failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
@@ -85,7 +85,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
 
   pm.addPass(vesyla::pasm::createMergeRawOp());
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createMergeRawOp failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
@@ -93,7 +93,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
 
   pm.addPass(vesyla::pasm::createAddHaltPass());
   if (mlir::failed(pm.run(module))) {
-    LOG_FATAL << "Error: Pass pipeline failed.\n";
+    LOG_FATAL << "Error: createAddHaltPass failed.\n";
     std::exit(EXIT_FAILURE);
   }
   pm.clear();
