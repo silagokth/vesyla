@@ -39,23 +39,24 @@ fi
 
 # create an archive directory if it does not exist
 if [ ! -d "${workspace_path}/archive" ]; then
-  mkdir -p ${workspace_path}/archive
+  mkdir -p "${workspace_path}/archive"
 fi
 
 # create folders to store the results
-mkdir -p ${workspace_path}/system/metric
-mkdir -p ${workspace_path}/system/state
-mkdir -p ${workspace_path}/temp
-mkdir -p ${workspace_path}/archive/instr_sim_${id}
+mkdir -p "${workspace_path}/system/metric"
+mkdir -p "${workspace_path}/system/state"
+mkdir -p "${workspace_path}/temp"
+mkdir -p "${workspace_path}/archive/instr_sim_${id}"
 
 # create the output file
-touch ${workspace_path}/mem/sram_image_m2.bin
+touch "${workspace_path}/mem/sram_image_m2.bin"
 
 # simulate the code segment
-sst ${workspace_path}/system/sst/sst_sim_conf.py -- \
-  --io_input_buffer_filepath ${workspace_path}/mem/sram_image_in.bin \
-  --io_output_buffer_filepath ${workspace_path}/mem/sram_image_m2.bin \
-  --assembly_program_path ${workspace_path}/system/instr/${id}/instr.bin
+sst "${workspace_path}/system/sst/sst_sim_conf.py" \
+  --output-dot "${workspace_path}/system/sst/sst_sim_conf.dot" -- \
+  --io_input_buffer_filepath "${workspace_path}/mem/sram_image_in.bin" \
+  --io_output_buffer_filepath "${workspace_path}/mem/sram_image_m2.bin" \
+  --assembly_program_path "${workspace_path}/system/instr/${id}/instr.bin"
 
 # archive everything
-mv ${workspace_path}/temp ${workspace_path}/archive/instr_sim_${id}
+mv "${workspace_path}/temp" "${workspace_path}/archive/instr_sim_${id}"
