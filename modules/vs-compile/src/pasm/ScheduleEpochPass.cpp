@@ -872,7 +872,7 @@ private:
       llvm::outs()
           << "Error: Cannot allocate registers for activation mode 2 at cycle "
           << cycle
-          << ". [r4->r7] and [r8->r11] are not available in controller.";
+          << ". [r4->r7] and [r8->r11] are not available in controller.\n";
       exit(EXIT_FAILURE);
     }
 
