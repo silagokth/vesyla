@@ -388,17 +388,27 @@ pub fn generate_rtl_for_component(
             comment_prefix
         );
 
-        // Check if file exists with .j2 extension
-        let rtl_template_str = rtl_file.clone() + ".j2";
-        let rtl_template_path = Path::new(&rtl_template_str);
-        if rtl_template_path.exists() {
+        // Check if file exists with .jinja or .j2 extension
+        let template_extensions = [".jinja", ".j2"];
+        let mut rtl_template_path = None;
+
+        for ext in &template_extensions {
+            let rtl_template_str = rtl_file.clone() + ext;
+            let candidate_path = Path::new(&rtl_template_str);
+            if candidate_path.exists() {
+                rtl_template_path = Some(candidate_path.to_path_buf());
+                break;
+            }
+        }
+
+        if let Some(template_path) = rtl_template_path {
             let mut mj_env = minijinja::Environment::new();
             let template_dir = get_library_path()?.join("common/jinja");
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
             let rtl_template_content =
-                fs::read_to_string(rtl_template_path).expect("Failed to read template file");
+                fs::read_to_string(&template_path).expect("Failed to read template file");
             mj_env
                 .add_template("rtl_template", rtl_template_content.as_str())
                 .expect("Failed to add template");

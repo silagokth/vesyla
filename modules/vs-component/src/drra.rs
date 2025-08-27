@@ -1075,6 +1075,27 @@ impl Serialize for Cell {
         }
         if let Some(resources) = &self.resources {
             state.serialize_entry("resources_list", resources)?;
+            let mut used_slots: Vec<u64> = Vec::new();
+            let controller_size = if let Some(controller) = &self.controller {
+                controller.size.unwrap_or(0)
+            } else {
+                0
+            };
+            let mut unused_slots: Vec<u64> = (0..controller_size).collect();
+            for resource in resources.iter() {
+                let slot = resource.slot;
+                let size = resource.size;
+                if slot.is_some() && size.is_some() {
+                    let slot = slot.unwrap();
+                    let size = size.unwrap();
+                    for slot_number in slot..(slot + size) {
+                        used_slots.push(slot_number);
+                        unused_slots.retain(|&x| x != slot_number);
+                    }
+                }
+            }
+            state.serialize_entry("used_slots", &used_slots)?;
+            state.serialize_entry("unused_slots", &unused_slots)?;
         }
         if let Some(isa) = &self.isa {
             state.serialize_entry("isa", isa)?;
