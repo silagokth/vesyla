@@ -894,7 +894,7 @@ private:
       attempts++;
       if (attempts > max_attempts) {
         llvm::outs() << "Error: Too many attempts to allocate registers for "
-                        "ACT mode 2 prep instructions.\n";
+                        "ACT mode 2 prep instructions at cycle " << cycle << ".\n";
         exit(EXIT_FAILURE);
       }
       if (cell_time_table.find(cycle) != cell_time_table.end()) {
