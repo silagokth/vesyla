@@ -132,6 +132,7 @@ private:
     llvm::outs() << "Port vector: " << std::bitset<64>(port_vec).to_string()
                  << "\n";
 
+    // return param = 0 as it will be replaced when allocating registers
     return std::make_optional<std::unordered_map<string, uint64_t>>(
         {{"mode", 2}, {"param", 0}, {"ports", port_vec}});
   }
