@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#define SCALAR_REGISTER_COUNT 16
+
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_SCHEDULEEPOCHPASS
 #include "pasm/Passes.hpp.inc"
@@ -833,8 +835,7 @@ private:
 
   std::map<int, std::vector<int>> create_reg_alloc_table() const {
     std::map<int, std::vector<int>> reg_alloc_table;
-    // TODO: make this value configurable and come from isa.json or arch.json
-    for (int reg_i = 0; reg_i < 16; reg_i++) {
+    for (int reg_i = 0; reg_i < SCALAR_REGISTER_COUNT; reg_i++) {
       reg_alloc_table[reg_i] = std::vector<int>();
     }
 
