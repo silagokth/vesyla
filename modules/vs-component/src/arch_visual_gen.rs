@@ -2,18 +2,18 @@ use crate::models::drra::Fabric;
 use crate::utils;
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use svg::node::element::{Group, Line, Rectangle, Text};
 use svg::Document;
 
-pub fn generate(arch_file: &String, output_dir: &String) {
+pub fn generate(arch_file: &Path, output_dir: &Path) {
     gen_picture(arch_file, output_dir);
 }
 
-fn gen_picture(arch_file: &String, output_dir: &String) {
+fn gen_picture(arch_file: &Path, output_dir: &Path) {
     // if the output directory does not exist, create it
-    let output_dir_path = std::path::Path::new(output_dir);
-    if !output_dir_path.exists() {
-        fs::create_dir_all(output_dir_path).expect("Failed to create output directory");
+    if !output_dir.exists() {
+        fs::create_dir_all(output_dir).expect("Failed to create output directory");
     }
 
     // read the json file
@@ -53,10 +53,10 @@ fn gen_picture(arch_file: &String, output_dir: &String) {
     save_doc_to_files(doc, output_dir);
 }
 
-fn save_doc_to_files(doc: Document, output_dir: &String) {
+fn save_doc_to_files(doc: Document, output_dir: &Path) {
     // write to file as svg
-    let file_name = format!("{}/arch.svg", output_dir);
-    svg::save(file_name, &doc).unwrap();
+    let file_path = Path::new(output_dir).join("fabric.svg");
+    svg::save(file_path, &doc).unwrap();
 }
 
 fn draw_fabric(

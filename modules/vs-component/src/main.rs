@@ -1,7 +1,7 @@
 mod arch_visual_gen;
-mod models;
 mod isa;
 mod isa_gen;
+mod models;
 mod rtl_code_gen;
 mod sst_sim_gen;
 mod utils;
@@ -149,24 +149,24 @@ fn assemble(arch_json_path_str: &String, output: &String) {
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
     fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
     fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
-    match rtl_code_gen::gen_rtl(arch_json_path_str, output, &format!("{}/arch/arch.json", output)) {
+    match rtl_code_gen::gen_rtl(
+        arch_json_path_str,
+        output,
+        &format!("{}/arch/arch.json", output),
+    ) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }
 
     // Generate ISA (doc and json) from architecture JSON file
     let arch_json_path = Path::new(output).join("arch/arch.json");
-    let doc_path = Path::new(output).join("isa/");
-    isa_gen::generate(&arch_json_path, &doc_path);
+    let arch_output_path = Path::new(output).join("arch");
+    let sst_output_path = Path::new(output).join("sst");
+    let doc_output_path = Path::new(output).join("isa/");
 
-    arch_visual_gen::generate(
-        &format!("{}/arch/arch.json", output),
-        &format!("{}/arch", output),
-    );
-    sst_sim_gen::generate(
-        &format!("{}/arch/arch.json", output),
-        &format!("{}/sst", output),
-    );
+    isa_gen::generate(&arch_json_path, &doc_output_path);
+    arch_visual_gen::generate(&arch_json_path, &arch_output_path);
+    sst_sim_gen::generate(&arch_json_path, &sst_output_path);
 
     // Remove write permissions from the output directory
     info!("Removing write permissions from output directory...");
@@ -174,5 +174,4 @@ fn assemble(arch_json_path_str: &String, output: &String) {
         Ok(_) => info!("Output directory is now read-only"),
         Err(e) => error!("Failed to remove write permissions: {}", e),
     }
-
 }
