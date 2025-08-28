@@ -1,7 +1,7 @@
 use crate::isa::InstructionSet;
-use crate::models::drra::controller::Controller;
-use crate::models::drra::resource::Resource;
-use crate::models::drra::{Error, ParameterList, RTLComponent};
+use crate::models::controller::Controller;
+use crate::models::drra::{DRRAError, ParameterList, RTLComponent};
+use crate::models::resource::Resource;
 use crate::utils::{
     generate_hash, generate_rtl_for_component, get_isa_from_library, get_path_from_library,
     merge_parameters,
@@ -46,23 +46,23 @@ impl Cell {
         }
     }
 
-    pub fn is_valid(&self) -> Result<(), Error> {
+    pub fn is_valid(&self) -> Result<(), DRRAError> {
         if self.name.is_empty() || self.kind.is_none() {
-            return Err(Error::ComponentWithoutNameOrKind);
+            return Err(DRRAError::ComponentWithoutNameOrKind);
         }
         if self.controller.is_none() {
-            return Err(Error::CellWithoutController);
+            return Err(DRRAError::CellWithoutController);
         }
         if self.isa.is_none() {
-            return Err(Error::ComponentWithoutISA);
+            return Err(DRRAError::ComponentWithoutISA);
         }
         if self.resources.is_none() || self.resources.as_ref().unwrap().is_empty() {
-            return Err(Error::CellWithoutResources);
+            return Err(DRRAError::CellWithoutResources);
         }
         Ok(())
     }
 
-    pub fn from_json(json_str: &str) -> Result<Self, Error> {
+    pub fn from_json(json_str: &str) -> Result<Self, DRRAError> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
         let name: String;
@@ -105,7 +105,7 @@ impl Cell {
         if let Some(cell_kind) = cell_kind {
             cell.kind = Some(cell_kind.as_str().unwrap().to_string());
         } else if cell.name.is_empty() {
-            return Err(Error::ComponentWithoutNameOrKind);
+            return Err(DRRAError::ComponentWithoutNameOrKind);
         }
 
         // Parameters
@@ -140,7 +140,7 @@ impl Cell {
             if let Ok(controller) = controller_result {
                 cell.controller = Some(controller);
             } else {
-                warn!("Error parsing controller: {:?}", controller.to_string());
+                warn!("DRRAError parsing controller: {:?}", controller.to_string());
             }
         }
         // Resources (optional)
@@ -152,7 +152,7 @@ impl Cell {
                 if let Ok(resource_result) = resource_result {
                     resources_vec.push(resource_result);
                 } else {
-                    warn!("Error parsing resource: {:?}", resource.to_string());
+                    warn!("DRRAError parsing resource: {:?}", resource.to_string());
                 }
             }
             cell.resources = Some(resources_vec);
@@ -165,14 +165,14 @@ impl Cell {
             if let Ok(isa) = isa_result {
                 cell.isa = Some(isa);
             } else {
-                panic!("Error parsing ISA: {:?}", isa.to_string());
+                panic!("DRRAError parsing ISA: {:?}", isa.to_string());
             }
         } else if let Some(kind) = &cell.kind {
             let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
             let isa = InstructionSet::from_json(lib_isa_json);
             if isa.is_err() {
                 panic!(
-                    "Error with ISA for cell {} (kind: {}) cannot be found in library -> {}",
+                    "DRRAError with ISA for cell {} (kind: {}) cannot be found in library -> {}",
                     &cell.name,
                     kind,
                     isa.err().unwrap()
@@ -192,7 +192,7 @@ impl Cell {
         &mut self,
         json_str: &str,
         overwrite: bool,
-    ) -> Result<Vec<(String, u64, u64)>, Error> {
+    ) -> Result<Vec<(String, u64, u64)>, DRRAError> {
         if let Ok(cell_from_pool) = Cell::from_json(json_str) {
             // If cell controller was not provided in "fabric" get from cell_from_pool
             if (cell_from_pool.controller.is_some() && self.controller.is_none()) || overwrite {
@@ -236,7 +236,7 @@ impl Cell {
                 merge_parameters(&mut self.parameters, &cell_from_pool.parameters)?;
             return Ok(overwritten_params);
         }
-        Err(Error::Io(std::io::Error::new(
+        Err(DRRAError::Io(std::io::Error::new(
             std::io::ErrorKind::Other,
             "Not implemented",
         )))
@@ -274,7 +274,7 @@ impl RTLComponent for Cell {
         )
     }
 
-    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
 

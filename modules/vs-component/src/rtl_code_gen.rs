@@ -1,8 +1,7 @@
-use crate::models::drra;
-use crate::models::drra::cell::Cell;
-use crate::models::drra::controller::Controller;
-use crate::models::drra::resource::Resource;
-use crate::models::drra::{Fabric, ParameterList, RTLComponent};
+use crate::models::cell::Cell;
+use crate::models::controller::Controller;
+use crate::models::drra::{DRRAError, Fabric, ParameterList, RTLComponent};
+use crate::models::resource::Resource;
 use crate::utils::*;
 
 use log::{debug, info, warn};
@@ -138,7 +137,7 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
     for cell in cell_list.as_array().unwrap() {
         let mut cell_object = match Cell::from_json(&cell.to_string()) {
             Ok(cell) => cell,
-            Err(drra::Error::ComponentWithoutNameOrKind) => {
+            Err(DRRAError::ComponentWithoutNameOrKind) => {
                 panic!("Cell without name or kind found in fabric description");
             }
             Err(e) => {

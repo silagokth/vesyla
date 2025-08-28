@@ -1,5 +1,5 @@
 use crate::isa::InstructionSet;
-use crate::models::drra::{Error, ParameterList, RTLComponent};
+use crate::models::drra::{DRRAError, ParameterList, RTLComponent};
 use crate::utils::{
     generate_hash, generate_rtl_for_component, get_isa_from_library, get_path_from_library,
     merge_parameters,
@@ -45,13 +45,13 @@ impl Resource {
         }
     }
 
-    pub fn is_valid(&self) -> Result<(), Error> {
+    pub fn is_valid(&self) -> Result<(), DRRAError> {
         if self.name.is_empty() || self.kind.is_none() || self.size.is_none() || self.slot.is_none()
         {
-            return Err(Error::ComponentWithoutNameOrKind);
+            return Err(DRRAError::ComponentWithoutNameOrKind);
         }
         if self.isa.is_none() {
-            return Err(Error::ComponentWithoutISA);
+            return Err(DRRAError::ComponentWithoutISA);
         }
         if self.required_parameters.is_empty() {
             warn!("Resource {} has no required parameters", self.name);
@@ -60,7 +60,7 @@ impl Resource {
         Ok(())
     }
 
-    pub fn from_json(json_str: &str) -> Result<Self, Error> {
+    pub fn from_json(json_str: &str) -> Result<Self, DRRAError> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).unwrap();
         // Name
         if json_value.is_string() {
@@ -89,7 +89,7 @@ impl Resource {
         if let Some(resource_kind) = resource_kind {
             resource.kind = Some(resource_kind.as_str().unwrap().to_string());
         } else if resource.name.is_empty() {
-            return Err(Error::ComponentWithoutNameOrKind);
+            return Err(DRRAError::ComponentWithoutNameOrKind);
         }
 
         // IO input (optional)
@@ -110,9 +110,9 @@ impl Resource {
                 && !component_type.as_str().unwrap().is_empty()
             {
                 if component_type.as_str().unwrap() == "controller" {
-                    return Err(Error::ResourceDeclaredAsController);
+                    return Err(DRRAError::ResourceDeclaredAsController);
                 } else {
-                    return Err(Error::UnknownComponentType);
+                    return Err(DRRAError::UnknownComponentType);
                 }
             }
         }
@@ -150,14 +150,14 @@ impl Resource {
             if let Ok(isa) = isa_result {
                 resource.isa = Some(isa);
             } else {
-                panic!("Error parsing ISA: {:?}", isa.to_string());
+                panic!("DRRAError parsing ISA: {:?}", isa.to_string());
             }
         } else if let Some(kind) = &resource.kind {
             let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
             let isa = InstructionSet::from_json(lib_isa_json);
             if isa.is_err() {
                 panic!(
-                    "Error with ISA for resource {} (kind: {}) cannot be found in library -> {}",
+                    "DRRAError with ISA for resource {} (kind: {}) cannot be found in library -> {}",
                     &resource.name,
                     kind,
                     isa.err().unwrap()
@@ -173,7 +173,7 @@ impl Resource {
         &mut self,
         json_str: &str,
         overwrite: bool,
-    ) -> Result<Vec<(String, u64, u64)>, Error> {
+    ) -> Result<Vec<(String, u64, u64)>, DRRAError> {
         if let Ok(resource_from_pool) = Resource::from_json(json_str) {
             // Check slot
             if (self.slot.is_none() && resource_from_pool.slot.is_some()) || overwrite {
@@ -219,7 +219,7 @@ impl Resource {
                 merge_parameters(&mut self.parameters, &resource_from_pool.parameters)?;
             return Ok(overwritten_params);
         }
-        Err(Error::Io(std::io::Error::new(
+        Err(DRRAError::Io(std::io::Error::new(
             std::io::ErrorKind::Other,
             "Not implemented",
         )))
@@ -240,7 +240,7 @@ impl RTLComponent for Resource {
         )
     }
 
-    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         let component_with_hash: String =

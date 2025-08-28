@@ -1,8 +1,4 @@
-pub mod cell;
-pub mod controller;
-pub mod resource;
-
-use crate::models::drra::cell::{Cell, CellWithCoordinates};
+use crate::models::cell::{Cell, CellWithCoordinates};
 use crate::utils::{generate_hash, generate_rtl_for_component, get_path_from_library};
 
 use core::panic;
@@ -17,7 +13,7 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 pub type ParameterList = BTreeMap<String, u64>;
 
 #[derive(Debug)]
-pub enum Error {
+pub enum DRRAError {
     Io(std::io::Error),
     ResourceDeclaredAsController,
     ControllerDeclaredAsResource,
@@ -28,30 +24,30 @@ pub enum Error {
     CellWithoutResources,
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for DRRAError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::ResourceDeclaredAsController => write!(f, "Resource declared as controller"),
-            Error::ControllerDeclaredAsResource => write!(f, "Controller declared as resource"),
-            Error::ComponentWithoutNameOrKind => write!(f, "Component without name or kind"),
-            Error::ComponentWithoutISA => write!(f, "Component without ISA"),
-            Error::UnknownComponentType => write!(f, "Unknown component type"),
-            Error::Io(err) => write!(f, "IO error: {}", err),
-            Error::CellWithoutController => write!(f, "Cell without controller"),
-            Error::CellWithoutResources => write!(f, "Cell without resources"),
+            DRRAError::ResourceDeclaredAsController => write!(f, "Resource declared as controller"),
+            DRRAError::ControllerDeclaredAsResource => write!(f, "Controller declared as resource"),
+            DRRAError::ComponentWithoutNameOrKind => write!(f, "Component without name or kind"),
+            DRRAError::ComponentWithoutISA => write!(f, "Component without ISA"),
+            DRRAError::UnknownComponentType => write!(f, "Unknown component type"),
+            DRRAError::Io(err) => write!(f, "IO error: {}", err),
+            DRRAError::CellWithoutController => write!(f, "Cell without controller"),
+            DRRAError::CellWithoutResources => write!(f, "Cell without resources"),
         }
     }
 }
 
-impl std::convert::From<std::io::Error> for Error {
+impl std::convert::From<std::io::Error> for DRRAError {
     fn from(_error: std::io::Error) -> Self {
-        Error::Io(_error)
+        DRRAError::Io(_error)
     }
 }
 
 pub trait RTLComponent {
     fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()>;
-    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error>;
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError>;
     fn generate_hash(&mut self) -> String;
     fn get_fingerprint(&mut self) -> String;
 }
@@ -129,7 +125,7 @@ impl RTLComponent for Fabric {
         generate_rtl_for_component("fabric", "fabric", output_folder, &self)
     }
 
-    fn generate_bender(&self, output_folder: &Path) -> Result<(), Error> {
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(&"fabric".to_string(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         if !bender_filepath.exists() {
