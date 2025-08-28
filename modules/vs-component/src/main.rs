@@ -138,6 +138,9 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
         info!("JSON file is valid");
         Ok(())
     } else {
+        for error in validator.iter_errors(&json_file) {
+            error!("Validation error: {}", error);
+        }
         panic!("JSON file is not valid");
     }
 }
