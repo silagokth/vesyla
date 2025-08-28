@@ -1,10 +1,14 @@
 use crate::models::drra::Fabric;
 use crate::utils;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use svg::node::element::{Group, Line, Rectangle, Text};
-use svg::Document;
+
+use svg::{
+    node::element::{Group, Line, Rectangle, Text},
+    Document,
+};
 
 pub fn generate(arch_file: &Path, output_dir: &Path) {
     gen_picture(arch_file, output_dir);

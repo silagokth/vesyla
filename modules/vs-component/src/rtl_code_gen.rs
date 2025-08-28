@@ -1,11 +1,17 @@
 use crate::models::drra;
-use crate::models::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
+use crate::models::drra::cell::Cell;
+use crate::models::drra::controller::Controller;
+use crate::models::drra::resource::Resource;
+use crate::models::drra::{Fabric, ParameterList, RTLComponent};
 use crate::utils::*;
+
 use log::{debug, info, warn};
-use std::collections::HashMap;
-use std::fs;
-use std::io::{Error, Result};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{Error, Result},
+    path::{Path, PathBuf},
+};
 
 pub fn get_rtl_output_dir(build_dir: &String) -> Result<PathBuf> {
     let rtl_output_dir = Path::new(&build_dir).join("rtl");

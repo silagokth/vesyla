@@ -1,6 +1,7 @@
 use core::panic;
-use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::io::Error;
+
+use serde::ser::{Serialize, SerializeMap, Serializer};
 
 #[derive(Clone)]
 pub struct InstructionSet {

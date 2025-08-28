@@ -1,6 +1,4 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
+use std::{collections::HashSet, fs, path::Path};
 
 pub fn generate(arch_file_path: &Path, output_dir_path: &Path) {
     let isa_file = Path::new(&output_dir_path).join("isa.json");

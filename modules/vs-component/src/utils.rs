@@ -1,11 +1,15 @@
 use crate::models::drra::ParameterList;
-use bs58::encode;
+
 use log::{debug, warn};
+use std::{
+    env, fs,
+    hash::{DefaultHasher, Hasher},
+    io::{Error, Result},
+    path::{Path, PathBuf},
+};
+
+use bs58::encode;
 use serde::Serialize;
-use std::hash::{DefaultHasher, Hasher};
-use std::io::{Error, Result};
-use std::path::{Path, PathBuf};
-use std::{env, fs};
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -540,9 +544,7 @@ pub fn remove_write_permissions(dir_path: &str) -> Result<()> {
                 if let Some(ext_str) = extension.to_str() {
                     let ext_lower = ext_str.to_lowercase();
                     // Only set read-only for json, systemverilog, vhdl and yaml files
-                    if ["json", "sv", "vhdl", "vhd", "yaml", "yml"]
-                        .contains(&ext_lower.as_str())
-                    {
+                    if ["json", "sv", "vhdl", "vhd", "yaml", "yml"].contains(&ext_lower.as_str()) {
                         perms.set_readonly(true);
                         fs::set_permissions(path, perms)?;
                     }

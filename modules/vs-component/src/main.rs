@@ -8,11 +8,10 @@ mod utils;
 
 use crate::utils::remove_write_permissions;
 
-use clap::{error::ErrorKind, Parser, Subcommand};
 use log::{error, info};
-use std::fs;
-use std::io::Result;
-use std::path::Path;
+use std::{fs, io::Result, path::Path};
+
+use clap::{error::ErrorKind, Parser, Subcommand};
 
 #[derive(Subcommand)]
 enum Command {
