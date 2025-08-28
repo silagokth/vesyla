@@ -265,15 +265,6 @@ impl Cell {
 }
 
 impl RTLComponent for Cell {
-    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
-        generate_rtl_for_component(
-            self.kind.as_ref().unwrap(),
-            self.name.as_str(),
-            output_folder,
-            &self,
-        )
-    }
-
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(self.kind.as_ref().unwrap(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
@@ -370,6 +361,14 @@ impl RTLComponent for Cell {
         } else {
             self.fingerprint.clone().unwrap()
         }
+    }
+
+    fn kind(&self) -> &str {
+        self.kind.as_ref().unwrap()
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 

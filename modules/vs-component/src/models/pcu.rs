@@ -22,8 +22,11 @@ impl Pcu {
 }
 
 impl RTLComponent for Pcu {
-    fn generate_rtl(&self, output_folder: &std::path::Path) -> std::io::Result<()> {
-        generate_rtl_for_component(&self.name, &self.name, output_folder, &self)
+    fn kind(&self) -> &str {
+        "pcu"
+    }
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn generate_bender(

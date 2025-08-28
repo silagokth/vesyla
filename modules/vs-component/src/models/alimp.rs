@@ -30,8 +30,11 @@ impl ALImp {
 }
 
 impl RTLComponent for ALImp {
-    fn generate_rtl(&self, output_folder: &std::path::Path) -> std::io::Result<()> {
-        generate_rtl_for_component(&self.name, &self.name, output_folder, &self)
+    fn kind(&self) -> &str {
+        "alimp"
+    }
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn generate_bender(

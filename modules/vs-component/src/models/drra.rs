@@ -46,7 +46,14 @@ impl std::convert::From<std::io::Error> for DRRAError {
 }
 
 pub trait RTLComponent {
-    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()>;
+    fn kind(&self) -> &str;
+    fn name(&self) -> &str;
+    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()>
+    where
+        Self: serde::Serialize,
+    {
+        generate_rtl_for_component(self.kind(), self.name(), output_folder, &self)
+    }
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError>;
     fn generate_hash(&mut self) -> String;
     fn get_fingerprint(&mut self) -> String;
@@ -121,10 +128,6 @@ impl Fabric {
 }
 
 impl RTLComponent for Fabric {
-    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
-        generate_rtl_for_component("fabric", "fabric", output_folder, &self)
-    }
-
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(&"fabric".to_string(), None).unwrap();
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
@@ -186,6 +189,14 @@ impl RTLComponent for Fabric {
 
     fn get_fingerprint(&mut self) -> String {
         self.generate_hash()
+    }
+
+    fn kind(&self) -> &str {
+        "fabric"
+    }
+
+    fn name(&self) -> &str {
+        "fabric"
     }
 }
 

@@ -231,13 +231,11 @@ impl Resource {
 }
 
 impl RTLComponent for Resource {
-    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()> {
-        generate_rtl_for_component(
-            self.kind.as_ref().unwrap(),
-            self.name.as_str(),
-            output_folder,
-            &self,
-        )
+    fn kind(&self) -> &str {
+        self.kind.as_ref().unwrap()
+    }
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
