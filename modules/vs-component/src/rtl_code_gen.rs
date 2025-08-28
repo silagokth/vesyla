@@ -1,5 +1,5 @@
-use crate::drra;
-use crate::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
+use crate::models::drra;
+use crate::models::drra::{Cell, Controller, Fabric, ParameterList, RTLComponent, Resource};
 use crate::utils::*;
 use log::{debug, info, warn};
 use std::collections::HashMap;

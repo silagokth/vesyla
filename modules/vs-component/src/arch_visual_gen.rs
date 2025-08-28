@@ -1,4 +1,4 @@
-use crate::drra::Fabric;
+use crate::models::drra::Fabric;
 use crate::utils;
 use std::collections::HashMap;
 use std::fs;

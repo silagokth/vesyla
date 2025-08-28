@@ -1,5 +1,5 @@
 mod arch_visual_gen;
-mod drra;
+mod models;
 mod isa;
 mod isa_gen;
 mod rtl_code_gen;
