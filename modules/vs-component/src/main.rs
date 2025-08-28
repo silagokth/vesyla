@@ -146,29 +146,27 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
 }
 
 fn assemble(arch_json_path_str: &String, output: &String) {
+    let arch_output_path = Path::new(output).join("arch");
+    let sst_output_path = Path::new(output).join("sst");
+    let doc_output_path = Path::new(output).join("isa/");
+    let rtl_output_path = Path::new(output).join("rtl/");
     fs::create_dir_all(output).expect("Failed to create output directory");
-    fs::create_dir_all(Path::new(output).join("arch")).expect("Failed to create arch directory");
-    fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
-    fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
-    fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
-    match rtl_code_gen::gen_rtl(
-        arch_json_path_str,
-        output,
-        &format!("{}/arch/arch.json", output),
-    ) {
+    fs::create_dir_all(&arch_output_path).expect("Failed to create arch directory");
+    fs::create_dir_all(&doc_output_path).expect("Failed to create isa directory");
+    fs::create_dir_all(&rtl_output_path).expect("Failed to create rtl directory");
+    fs::create_dir_all(&sst_output_path).expect("Failed to create sst directory");
+
+    let arch_json_path = Path::new(arch_json_path_str);
+    let arch_output_file = Path::new(&arch_output_path).join("arch.json");
+    match rtl_code_gen::gen_rtl(arch_json_path, output, Some(&arch_output_file)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }
 
     // Generate ISA (doc and json) from architecture JSON file
-    let arch_json_path = Path::new(output).join("arch/arch.json");
-    let arch_output_path = Path::new(output).join("arch");
-    let sst_output_path = Path::new(output).join("sst");
-    let doc_output_path = Path::new(output).join("isa/");
-
-    isa_gen::generate(&arch_json_path, &doc_output_path);
-    arch_visual_gen::generate(&arch_json_path, &arch_output_path);
-    sst_sim_gen::generate(&arch_json_path, &sst_output_path);
+    isa_gen::generate(arch_json_path, &doc_output_path);
+    arch_visual_gen::generate(arch_json_path, &arch_output_path);
+    sst_sim_gen::generate(arch_json_path, &sst_output_path);
 
     // Remove write permissions from the output directory
     info!("Removing write permissions from output directory...");

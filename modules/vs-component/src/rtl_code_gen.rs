@@ -72,7 +72,11 @@ fn remove_parameters(parameters: &ParameterList, parameter_list: &mut ParameterL
     Ok(())
 }
 
-pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &String) -> Result<()> {
+pub fn gen_rtl(
+    fabric_filepath: &Path,
+    build_dir: &String,
+    output_json: Option<&Path>,
+) -> Result<()> {
     // Clean build directory
     let rtl_output_dir = get_rtl_output_dir(build_dir)?;
 
@@ -573,11 +577,11 @@ pub fn gen_rtl(fabric_filepath: &String, build_dir: &String, output_json: &Strin
         serde_json::to_string_pretty(&fabric_object).unwrap()
     );
     // Output the fabric object to a JSON file
-    if !output_json.is_empty() {
+    if output_json.is_some() {
         // create output directory if it does not exist
-        let output_dir = Path::new(output_json).parent().unwrap();
+        let output_dir = output_json.unwrap().parent().unwrap();
+        let fabric_output_file = output_json.unwrap();
         fs::create_dir_all(output_dir).expect("Failed to create output directory");
-        let fabric_output_file = Path::new(&output_json);
         let fabric_output = fs::File::create(fabric_output_file).expect("Failed to create file");
         serde_json::to_writer_pretty(fabric_output, &fabric_object).expect("Failed to write JSON");
         info!(
