@@ -2,11 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "platform": {
-      "type": "string",
-      "enum": [
-        "drra"
-      ]
+    "pcu": {
+      "$ref": "#/definitions/pcu"
     },
     "resources": {
       "type": "array",
@@ -33,16 +30,45 @@
       "$ref": "#/definitions/interface"
     }
   },
-  "required": [
-    "platform",
-    "resources",
-    "controllers",
-    "cells",
-    "fabric",
-    "interface"
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "pcu": {
+            "properties": {
+              "has_vpi": {
+                "const": true
+              }
+            },
+            "required": [
+              "has_vpi"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "resources",
+          "controllers",
+          "cells",
+          "fabric"
+        ]
+      }
+    }
   ],
   "additionalProperties": false,
   "definitions": {
+    "pcu": {
+      "type": "object",
+      "properties": {
+        "has_vpi": {
+          "type": "boolean"
+        },
+        "has_io": {
+          "type": "boolean"
+        }
+      }
+    },
     "resource": {
       "type": "object",
       "properties": {
@@ -74,25 +100,24 @@
           "items": {
             "type": "object",
             "properties": {
-              "key": {
+              "name": {
                 "type": "string"
               },
-              "val": {
+              "value": {
                 "type": "integer",
                 "minimum": 0
               }
             },
             "required": [
-              "key",
-              "val"
+              "name",
+              "value"
             ],
             "additionalProperties": false
           }
         }
       },
       "required": [
-        "name",
-        "size"
+        "name"
       ]
     },
     "controller": {
@@ -111,8 +136,7 @@
         }
       },
       "required": [
-        "name",
-        "size"
+        "name"
       ]
     },
     "cell": {
@@ -140,7 +164,13 @@
     "fabric": {
       "type": "object",
       "properties": {
-        "cell_lists": {
+        "height": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "cells_list": {
           "type": "array",
           "items": {
             "type": "object",
@@ -180,23 +210,25 @@
           "items": {
             "type": "object",
             "properties": {
-              "key": {
+              "name": {
                 "type": "string"
               },
-              "val": {
+              "value": {
                 "type": "integer"
               }
             },
             "required": [
-              "key",
-              "val"
+              "name",
+              "value"
             ],
             "additionalProperties": false
           }
         }
       },
       "required": [
-        "cell_lists"
+        "height",
+        "width",
+        "cells_list"
       ]
     },
     "interface": {
