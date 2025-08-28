@@ -20,7 +20,7 @@ enum Command {
     Assemble {
         /// Architecture JSON file path
         #[arg(short, long)]
-        arch: String,
+        arch_json: String,
         /// Output directory path
         #[arg(short, long)]
         output: String,
@@ -76,7 +76,7 @@ fn main() {
 
     match &cli_args.command {
         Command::Assemble {
-            arch,
+            arch_json,
             output,
             debug,
         } => {
@@ -87,7 +87,7 @@ fn main() {
             };
             env_logger::builder().filter_level(_debug_level);
             info!("Assembling ...");
-            assemble(arch, output);
+            assemble(arch_json, output);
             info!("Done!");
         }
         Command::ValidateJson {
@@ -143,13 +143,13 @@ fn validate_json(json_file: String, schema_file: String) -> Result<()> {
     }
 }
 
-fn assemble(arch: &String, output: &String) {
+fn assemble(arch_json_path_str: &String, output: &String) {
     fs::create_dir_all(output).expect("Failed to create output directory");
     fs::create_dir_all(Path::new(output).join("arch")).expect("Failed to create arch directory");
     fs::create_dir_all(Path::new(output).join("isa")).expect("Failed to create isa directory");
     fs::create_dir_all(Path::new(output).join("rtl")).expect("Failed to create rtl directory");
     fs::create_dir_all(Path::new(output).join("sst")).expect("Failed to create sst directory");
-    match rtl_code_gen::gen_rtl(arch, output, &format!("{}/arch/arch.json", output)) {
+    match rtl_code_gen::gen_rtl(arch_json_path_str, output, &format!("{}/arch/arch.json", output)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
     }
