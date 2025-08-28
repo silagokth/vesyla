@@ -528,6 +528,48 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn remove_write_permissions(dir_path: &str) -> Result<()> {
+    fn set_readonly_recursive(path: &Path) -> Result<()> {
+        let metadata = fs::metadata(path)?;
+        let mut perms = metadata.permissions();
+
+        // Make read-only
+        // Only make specific file types read-only
+        if path.is_file() {
+            if let Some(extension) = path.extension() {
+                if let Some(ext_str) = extension.to_str() {
+                    let ext_lower = ext_str.to_lowercase();
+                    // Only set read-only for json, systemverilog, vhdl and yaml files
+                    if ["json", "sv", "vhdl", "vhd", "yaml", "yml"]
+                        .contains(&ext_lower.as_str())
+                    {
+                        perms.set_readonly(true);
+                        fs::set_permissions(path, perms)?;
+                    }
+                }
+            }
+        }
+
+        if metadata.is_dir() {
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                set_readonly_recursive(&entry.path())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    // Only change permissions of contents, not the directory itself
+    let path = Path::new(dir_path);
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        set_readonly_recursive(&entry.path())?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
