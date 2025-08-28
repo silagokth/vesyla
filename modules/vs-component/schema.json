@@ -64,7 +64,7 @@
         "has_vpi": {
           "type": "boolean"
         },
-        "has_io": {
+        "has_ssm": {
           "type": "boolean"
         }
       }
