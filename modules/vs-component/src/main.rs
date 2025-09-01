@@ -157,7 +157,7 @@ fn assemble(arch_json_path_str: &String, output: &String) {
     fs::create_dir_all(&sst_output_path).expect("Failed to create sst directory");
 
     let arch_json_path = Path::new(arch_json_path_str);
-    let arch_output_file = Path::new(&arch_output_path).join("arch.generated.json");
+    let arch_output_file = Path::new(&arch_output_path).join("arch.json");
     match rtl_code_gen::gen_rtl(arch_json_path, output, Some(&arch_output_file)) {
         Ok(_) => (),
         Err(e) => panic!("Error: {}", e),
