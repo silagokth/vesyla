@@ -74,6 +74,7 @@ pub enum DRRAError {
     UnknownComponentType,
     CellWithoutController,
     CellWithoutResources,
+    FailedToParseFile(String),
 }
 
 impl std::fmt::Display for DRRAError {
@@ -87,6 +88,9 @@ impl std::fmt::Display for DRRAError {
             DRRAError::Io(err) => write!(f, "IO error: {}", err),
             DRRAError::CellWithoutController => write!(f, "Cell without controller"),
             DRRAError::CellWithoutResources => write!(f, "Cell without resources"),
+            DRRAError::FailedToParseFile(filename) => {
+                write!(f, "Failed to parse file: {}", filename)
+            }
         }
     }
 }
