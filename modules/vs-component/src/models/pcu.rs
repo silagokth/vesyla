@@ -1,5 +1,5 @@
-use crate::models::drra::{ParameterList, RTLComponent};
-use crate::utils::{generate_hash, generate_rtl_for_component, get_path_from_library};
+use crate::models::types::{DRRAError, ParameterList, RTLComponent};
+use crate::utils::{generate_hash, get_path_from_library};
 
 use std::fs;
 
@@ -29,10 +29,7 @@ impl RTLComponent for Pcu {
         &self.name
     }
 
-    fn generate_bender(
-        &self,
-        output_folder: &std::path::Path,
-    ) -> Result<(), crate::models::drra::DRRAError> {
+    fn generate_bender(&self, output_folder: &std::path::Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(&self.name, None).unwrap();
         let bender_filepath = std::path::Path::new(&component_path).join("Bender.yml");
 

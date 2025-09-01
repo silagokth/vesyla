@@ -1,63 +1,11 @@
 use crate::models::cell::{Cell, CellWithCoordinates};
-use crate::utils::{generate_hash, generate_rtl_for_component, get_path_from_library};
+use crate::models::types::{DRRAError, ParameterList, RTLComponent};
+use crate::utils::{generate_hash, get_path_from_library};
 
 use core::panic;
-use std::{
-    collections::{BTreeMap, HashMap},
-    fs,
-    path::Path,
-};
+use std::{collections::HashMap, fs, path::Path};
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
-
-pub type ParameterList = BTreeMap<String, u64>;
-
-#[derive(Debug)]
-pub enum DRRAError {
-    Io(std::io::Error),
-    ResourceDeclaredAsController,
-    ControllerDeclaredAsResource,
-    ComponentWithoutNameOrKind,
-    ComponentWithoutISA,
-    UnknownComponentType,
-    CellWithoutController,
-    CellWithoutResources,
-}
-
-impl std::fmt::Display for DRRAError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DRRAError::ResourceDeclaredAsController => write!(f, "Resource declared as controller"),
-            DRRAError::ControllerDeclaredAsResource => write!(f, "Controller declared as resource"),
-            DRRAError::ComponentWithoutNameOrKind => write!(f, "Component without name or kind"),
-            DRRAError::ComponentWithoutISA => write!(f, "Component without ISA"),
-            DRRAError::UnknownComponentType => write!(f, "Unknown component type"),
-            DRRAError::Io(err) => write!(f, "IO error: {}", err),
-            DRRAError::CellWithoutController => write!(f, "Cell without controller"),
-            DRRAError::CellWithoutResources => write!(f, "Cell without resources"),
-        }
-    }
-}
-
-impl std::convert::From<std::io::Error> for DRRAError {
-    fn from(_error: std::io::Error) -> Self {
-        DRRAError::Io(_error)
-    }
-}
-
-pub trait RTLComponent {
-    fn kind(&self) -> &str;
-    fn name(&self) -> &str;
-    fn generate_rtl(&self, output_folder: &Path) -> std::io::Result<()>
-    where
-        Self: serde::Serialize,
-    {
-        generate_rtl_for_component(self.kind(), self.name(), output_folder, &self)
-    }
-    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError>;
-    fn generate_hash(&mut self) -> String;
-    fn get_fingerprint(&mut self) -> String;
-}
 
 pub struct Fabric {
     pub cells: Vec<Vec<Cell>>,

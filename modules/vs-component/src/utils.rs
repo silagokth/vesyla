@@ -1,4 +1,4 @@
-use crate::models::drra::ParameterList;
+use crate::models::types::ParameterList;
 
 use log::{debug, warn};
 use std::{

@@ -1,11 +1,8 @@
 use crate::isa::InstructionSet;
 use crate::models::controller::Controller;
-use crate::models::drra::{DRRAError, ParameterList, RTLComponent};
 use crate::models::resource::Resource;
-use crate::utils::{
-    generate_hash, generate_rtl_for_component, get_isa_from_library, get_path_from_library,
-    merge_parameters,
-};
+use crate::models::types::{DRRAError, ParameterList, RTLComponent};
+use crate::utils::{generate_hash, get_isa_from_library, get_path_from_library, merge_parameters};
 
 use log::warn;
 use std::{collections::HashMap, fs, path::Path};

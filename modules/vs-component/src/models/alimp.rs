@@ -1,8 +1,9 @@
-use crate::utils::{generate_rtl_for_component, get_path_from_library};
+use crate::utils::get_path_from_library;
 use crate::{
     models::{
-        drra::{Fabric, RTLComponent},
+        drra::Fabric,
         pcu::Pcu,
+        types::{DRRAError, ParameterList, RTLComponent},
     },
     utils::generate_hash,
 };
@@ -10,8 +11,6 @@ use crate::{
 use std::fs;
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
-
-use super::drra::ParameterList;
 
 pub struct ALImp {
     name: String,
@@ -37,10 +36,7 @@ impl RTLComponent for ALImp {
         &self.name
     }
 
-    fn generate_bender(
-        &self,
-        output_folder: &std::path::Path,
-    ) -> Result<(), super::drra::DRRAError> {
+    fn generate_bender(&self, output_folder: &std::path::Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(&self.name, None).unwrap();
         let bender_filepath = std::path::Path::new(&component_path).join("Bender.yml");
         if !bender_filepath.exists() {

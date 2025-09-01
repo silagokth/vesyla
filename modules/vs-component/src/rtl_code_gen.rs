@@ -1,8 +1,11 @@
-use crate::models::cell::Cell;
-use crate::models::controller::Controller;
-use crate::models::drra::{DRRAError, Fabric, ParameterList, RTLComponent};
-use crate::models::resource::Resource;
-use crate::utils::*;
+use crate::models::{
+    cell::Cell,
+    controller::Controller,
+    drra::Fabric,
+    resource::Resource,
+    types::{DRRAError, ParameterList, RTLComponent},
+};
+use crate::utils::{copy_rtl_dir, get_arch_from_library, get_parameters, get_path_from_library};
 
 use log::{debug, info, warn};
 use std::{
