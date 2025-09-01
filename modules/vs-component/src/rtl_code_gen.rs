@@ -3,7 +3,7 @@ use crate::models::{
     controller::Controller,
     drra::Fabric,
     resource::Resource,
-    types::{DRRAError, ParameterList, RTLComponent},
+    types::{DRRAError, ParameterList, ParameterListExt, RTLComponent},
 };
 use crate::utils::{copy_rtl_dir, get_arch_from_library, get_parameters, get_path_from_library};
 
@@ -11,7 +11,7 @@ use log::{debug, info, warn};
 use std::{
     collections::HashMap,
     fs,
-    io::{Error, Result},
+    io::Result,
     path::{Path, PathBuf},
 };
 
@@ -19,60 +19,6 @@ pub fn get_rtl_output_dir(build_dir: &String) -> Result<PathBuf> {
     let rtl_output_dir = Path::new(&build_dir).join("rtl");
     fs::create_dir_all(&rtl_output_dir)?;
     Ok(rtl_output_dir)
-}
-
-fn add_parameters(
-    parameters_to_add: &ParameterList,
-    parameter_list_destination: &mut ParameterList,
-) -> Result<ParameterList> {
-    let mut added_params = ParameterList::new();
-    for (param_name, param_value) in parameters_to_add.iter() {
-        match add_parameter(
-            param_name.to_string(),
-            *param_value,
-            parameter_list_destination,
-        ) {
-            Ok(true) => {
-                added_params.insert(param_name.to_string(), *param_value);
-            }
-            Ok(false) => (),
-            Err(_) => {
-                return Err(Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    format!("Duplicate parameter: {}", param_name),
-                ));
-            }
-        }
-    }
-    Ok(added_params)
-}
-
-fn add_parameter(key: String, value: u64, parameter_list: &mut ParameterList) -> Result<bool> {
-    if parameter_list.contains_key(key.as_str()) {
-        if parameter_list.get(key.as_str()).unwrap() != &value {
-            return Err(Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "Duplicate parameter with different value: {} ({} vs. {})",
-                    key,
-                    parameter_list.get(key.as_str()).unwrap(),
-                    value
-                ),
-            ));
-        } else {
-            return Ok(false);
-        }
-    }
-
-    parameter_list.insert(key, value);
-    Ok(true)
-}
-
-fn remove_parameters(parameters: &ParameterList, parameter_list: &mut ParameterList) -> Result<()> {
-    for (param_name, _) in parameters.iter() {
-        parameter_list.remove(param_name);
-    }
-    Ok(())
 }
 
 pub fn gen_rtl(
@@ -131,7 +77,7 @@ pub fn gen_rtl(
     if fabric_object.parameters.is_empty() {
         warn!("No fabric parameters found in {:?}", fabric_filepath);
     } else {
-        match add_parameters(&fabric_object.parameters, &mut parameter_list) {
+        match parameter_list.add_parameters(&fabric_object.parameters) {
             Ok(_) => (),
             Err(e) => {
                 panic!("Error with fabric.json parameters: ({})", e);
@@ -227,7 +173,7 @@ pub fn gen_rtl(
             }
             cell_object.parameters = filtered_parameters.clone();
             // Add cell parameters to the registry
-            match add_parameters(&cell_object.parameters, &mut parameter_list) {
+            match parameter_list.add_parameters(&cell_object.parameters) {
                 Ok(added_params) => {
                     cell_added_parameters = added_params;
                 }
@@ -329,7 +275,7 @@ pub fn gen_rtl(
                 }
             }
             controller_object.parameters = filtered_parameters.clone();
-            match add_parameters(&filtered_parameters, &mut parameter_list) {
+            match parameter_list.add_parameters(&filtered_parameters) {
                 Ok(added_params) => {
                     controller_added_parameters = added_params;
                 }
@@ -381,7 +327,9 @@ pub fn gen_rtl(
             .unwrap();
 
         // Remove the controller parameters from the registry
-        remove_parameters(&controller_added_parameters, &mut parameter_list).unwrap();
+        parameter_list
+            .remove_parameters(&controller_added_parameters)
+            .expect("Error removing controller parameters from registry");
 
         // RESOURCES
         let mut current_slot = 0;
@@ -484,7 +432,7 @@ pub fn gen_rtl(
                     }
                 }
                 resource_object.parameters = filtered_parameters.clone();
-                match add_parameters(&filtered_parameters, &mut parameter_list) {
+                match parameter_list.add_parameters(&filtered_parameters) {
                     Ok(added_params) => {
                         resource_added_parameters = added_params;
                     }
@@ -540,7 +488,9 @@ pub fn gen_rtl(
                 .unwrap();
 
             // Remove the resource parameters from the registry
-            remove_parameters(&resource_added_parameters, &mut parameter_list).unwrap();
+            parameter_list
+                .remove_parameters(&resource_added_parameters)
+                .expect("Error removing resource parameters from registry");
         }
 
         let cell_hash = cell_object.get_fingerprint();
@@ -572,7 +522,9 @@ pub fn gen_rtl(
         cell_object.generate_bender(&bender_output_folder).unwrap();
 
         // remove cell parameters from the registry
-        remove_parameters(&cell_added_parameters, &mut parameter_list).unwrap();
+        parameter_list
+            .remove_parameters(&cell_added_parameters)
+            .expect("Error removing cell parameters from registry");
     }
 
     debug!(

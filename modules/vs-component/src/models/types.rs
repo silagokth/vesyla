@@ -1,8 +1,68 @@
 use crate::utils::generate_rtl_for_component;
 
+use std::io::Error;
 use std::{collections::BTreeMap, path::Path};
 
 pub type ParameterList = BTreeMap<String, u64>;
+
+pub trait ParameterListExt {
+    fn add_parameter(&mut self, key: String, value: u64) -> Result<bool, Error>;
+    fn add_parameters(&mut self, parameters_to_add: &ParameterList)
+        -> Result<ParameterList, Error>;
+    fn remove_parameters(&mut self, parameters: &ParameterList) -> Result<(), Error>;
+}
+
+impl ParameterListExt for ParameterList {
+    fn add_parameter(&mut self, key: String, value: u64) -> Result<bool, Error> {
+        if self.contains_key(key.as_str()) {
+            if self.get(key.as_str()).unwrap() != &value {
+                return Err(Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "Duplicate parameter with different value: {} ({} vs. {})",
+                        key,
+                        self.get(key.as_str()).unwrap(),
+                        value
+                    ),
+                ));
+            } else {
+                return Ok(false);
+            }
+        }
+
+        self.insert(key, value);
+        Ok(true)
+    }
+
+    fn add_parameters(
+        &mut self,
+        parameters_to_add: &ParameterList,
+    ) -> Result<ParameterList, Error> {
+        let mut added_params = ParameterList::new();
+        for (param_name, param_value) in parameters_to_add.iter() {
+            match self.add_parameter(param_name.to_string(), *param_value) {
+                Ok(true) => {
+                    added_params.insert(param_name.to_string(), *param_value);
+                }
+                Ok(false) => (),
+                Err(_) => {
+                    return Err(Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        format!("Duplicate parameter: {}", param_name),
+                    ));
+                }
+            }
+        }
+        Ok(added_params)
+    }
+
+    fn remove_parameters(&mut self, parameters: &ParameterList) -> Result<(), Error> {
+        for (param_name, _) in parameters.iter() {
+            self.remove(param_name);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub enum DRRAError {
