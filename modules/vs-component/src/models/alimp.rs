@@ -8,7 +8,7 @@ use crate::{
     utils::generate_hash,
 };
 
-use std::fs;
+use std::{fs, path::Path};
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
@@ -36,9 +36,9 @@ impl RTLComponent for ALImp {
         &self.name
     }
 
-    fn generate_bender(&self, output_folder: &std::path::Path) -> Result<(), DRRAError> {
+    fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let component_path = get_path_from_library(&self.name, None).unwrap();
-        let bender_filepath = std::path::Path::new(&component_path).join("Bender.yml");
+        let bender_filepath = Path::new(&component_path).join("Bender.yml");
         if !bender_filepath.exists() {
             panic!(
                 "Bender file not found for {} (looking for {:?})",
