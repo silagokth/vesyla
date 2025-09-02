@@ -1,4 +1,4 @@
-use crate::models::{drra::Fabric, types::RTLComponent};
+use crate::models::drra::Fabric;
 use crate::resolver::HierarchicalResolver;
 use crate::rtl_generator::RTLGenerator;
 use crate::utils::{copy_rtl_dir, get_path_from_library, remove_write_permissions};
@@ -75,34 +75,12 @@ impl AssemblyManager {
         let mut rtl_generator = RTLGenerator::new(&self.rtl_output_dir);
         rtl_generator.generate(&mut resolved_alimp)?;
 
-        self.generate_fabric_rtl(resolved_alimp.alimp.drra.as_mut().unwrap())?;
         if let Some(output_path) = output_json {
             self.write_fabric_json(resolved_alimp.alimp.drra.as_mut().unwrap(), output_path)?;
         }
 
         // Phase 4: Copy shared infrastructure
         self.copy_shared_artifacts()?;
-
-        Ok(())
-    }
-
-    fn generate_fabric_rtl(&self, fabric: &Fabric) -> Result<(), Error> {
-        let output_folder = self.rtl_output_dir.join("fabric");
-
-        // Remove existing fabric RTL
-        if output_folder.exists() {
-            fs::remove_dir_all(&output_folder)?;
-        }
-
-        let rtl_output_folder = output_folder.join("rtl");
-
-        fabric.generate_rtl(&rtl_output_folder)?;
-        fabric.generate_bender(&output_folder).map_err(|e| {
-            Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to generate Bender file for fabric: {}", e),
-            )
-        })?;
 
         Ok(())
     }
