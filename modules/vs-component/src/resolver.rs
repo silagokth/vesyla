@@ -1,5 +1,5 @@
 use crate::models::{
-    //alimp::ALImp,
+    alimp::Alimp,
     cell::Cell,
     controller::Controller,
     drra::Fabric,
@@ -11,8 +11,7 @@ use crate::utils::*;
 use std::{collections::HashMap, fs, io::Error, path::Path};
 
 pub struct ResolvedAlimp {
-    //pub alimp: ALImp,
-    pub fabric: Fabric,
+    pub alimp: Alimp,
     pub resolved_cells: Vec<Cell>,
 }
 
@@ -40,23 +39,23 @@ impl HierarchicalResolver {
         self.build_resource_templates(&input["resources"])?;
         self.build_cell_templates(&input["cells"])?;
 
-        let mut fabric = self.build_base_fabric(&input["fabric"])?;
+        let mut alimp = Alimp::new();
+        alimp.drra = self.build_base_fabric(&input["fabric"]).ok();
 
-        let resolved_cells = self.resolve_cells(&input["fabric"]["cells_list"], &fabric)?;
+        let resolved_cells =
+            self.resolve_cells(&input["fabric"]["cells_list"], alimp.drra.as_mut().unwrap())?;
 
         for cell in &resolved_cells {
             for (row, col) in &cell.coordinates_list {
-                fabric.add_cell(cell, *row, *col);
+                alimp.drra.as_mut().unwrap().add_cell(cell, *row, *col);
             }
         }
 
-        fabric.generate_fingerprints()?;
-
-        fabric.validate()?;
+        alimp.drra.as_mut().unwrap().generate_fingerprints()?;
+        alimp.validate()?;
 
         Ok(ResolvedAlimp {
-            //alimp: serde_json::from_value(input)?,
-            fabric,
+            alimp,
             resolved_cells,
         })
     }

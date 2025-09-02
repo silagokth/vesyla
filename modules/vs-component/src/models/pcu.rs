@@ -19,6 +19,16 @@ impl Pcu {
             has_vpi: false,
         }
     }
+
+    pub fn validate(&self) -> Result<(), DRRAError> {
+        if self.has_vpi && !self.has_ssm {
+            return Err(DRRAError::ParameterNotFound(
+                "PCU cannot have VPI without SSM".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl RTLComponent for Pcu {

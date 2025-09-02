@@ -29,7 +29,7 @@ impl RTLGenerator {
             self.process_resolved_cell(cell)?;
         }
 
-        self.generate_fabric_rtl(&resolved_alimp.fabric)?;
+        self.generate_fabric_rtl(resolved_alimp.alimp.drra.as_mut().unwrap())?;
 
         Ok(())
     }

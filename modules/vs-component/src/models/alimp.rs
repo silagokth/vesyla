@@ -12,13 +12,13 @@ use std::{fs, path::Path};
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
-pub struct ALImp {
+pub struct Alimp {
     name: String,
     pub pcu: Pcu,
     pub drra: Option<Fabric>,
 }
 
-impl ALImp {
+impl Alimp {
     pub fn new() -> Self {
         Self {
             name: "alimp".to_string(),
@@ -26,9 +26,18 @@ impl ALImp {
             drra: None,
         }
     }
+
+    pub fn validate(&self) -> Result<(), DRRAError> {
+        self.pcu.validate()?;
+        if self.drra.is_some() {
+            self.drra.as_ref().unwrap().validate()?;
+        }
+
+        Ok(())
+    }
 }
 
-impl RTLComponent for ALImp {
+impl RTLComponent for Alimp {
     fn kind(&self) -> &str {
         "alimp"
     }
@@ -79,7 +88,7 @@ impl RTLComponent for ALImp {
     }
 }
 
-impl Serialize for ALImp {
+impl Serialize for Alimp {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

@@ -75,9 +75,9 @@ impl AssemblyManager {
         let mut rtl_generator = RTLGenerator::new(&self.rtl_output_dir);
         rtl_generator.generate(&mut resolved_alimp)?;
 
-        self.generate_fabric_rtl(&resolved_alimp.fabric)?;
+        self.generate_fabric_rtl(resolved_alimp.alimp.drra.as_mut().unwrap())?;
         if let Some(output_path) = output_json {
-            self.write_fabric_json(&resolved_alimp.fabric, output_path)?;
+            self.write_fabric_json(resolved_alimp.alimp.drra.as_mut().unwrap(), output_path)?;
         }
 
         // Phase 4: Copy shared infrastructure
