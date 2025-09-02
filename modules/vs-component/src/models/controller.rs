@@ -39,8 +39,14 @@ impl Controller {
         }
     }
 
-    pub fn is_valid(&self) -> Result<(), DRRAError> {
+    pub fn validate(&self) -> Result<(), DRRAError> {
         if self.name.is_empty() || self.kind.is_none() || self.size.is_none() {
+            log::debug!(
+                "Controller validation failed: name='{}', kind={:?}, size={:?}",
+                self.name,
+                self.kind,
+                self.size
+            );
             return Err(DRRAError::ComponentWithoutNameOrKind);
         }
         if self.isa.is_none() {

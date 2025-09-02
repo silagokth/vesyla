@@ -42,9 +42,16 @@ impl Resource {
         }
     }
 
-    pub fn is_valid(&self) -> Result<(), DRRAError> {
+    pub fn validate(&self) -> Result<(), DRRAError> {
         if self.name.is_empty() || self.kind.is_none() || self.size.is_none() || self.slot.is_none()
         {
+            log::debug!(
+                "Resource validation failed: name='{}', kind={:?}, size={:?}, slot={:?}",
+                self.name,
+                self.kind,
+                self.size,
+                self.slot
+            );
             return Err(DRRAError::ComponentWithoutNameOrKind);
         }
         if self.isa.is_none() {

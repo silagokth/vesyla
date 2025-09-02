@@ -1,0 +1,235 @@
+use crate::models::{drra::Fabric, types::RTLComponent};
+use crate::resolver::HierarchicalResolver;
+use crate::rtl_generator::RTLGenerator;
+use crate::utils::{copy_rtl_dir, get_path_from_library, remove_write_permissions};
+use crate::{arch_visual_gen, isa_gen, sst_sim_gen};
+
+use log::{debug, error, info};
+use std::{
+    fs,
+    io::Error,
+    path::{Path, PathBuf},
+};
+
+pub struct AssemblyManager {
+    pub output_dir: PathBuf,
+    pub arch_output_dir: PathBuf,
+    pub rtl_output_dir: PathBuf,
+    pub isa_output_dir: PathBuf,
+    pub sst_output_dir: PathBuf,
+}
+
+impl AssemblyManager {
+    pub fn new(output_dir: &str) -> Result<Self, Error> {
+        let output_path = Path::new(output_dir);
+        let arch_output_dir = output_path.join("arch");
+        let rtl_output_dir = output_path.join("rtl");
+        let isa_output_dir = output_path.join("isa");
+        let sst_output_dir = output_path.join("sst");
+
+        // Create all output directories
+        fs::create_dir_all(output_path)?;
+        fs::create_dir_all(&arch_output_dir)?;
+        fs::create_dir_all(&rtl_output_dir)?;
+        fs::create_dir_all(&isa_output_dir)?;
+        fs::create_dir_all(&sst_output_dir)?;
+
+        Ok(Self {
+            output_dir: output_path.to_path_buf(),
+            arch_output_dir,
+            rtl_output_dir,
+            isa_output_dir,
+            sst_output_dir,
+        })
+    }
+
+    pub fn assemble(&self, arch_json_path: &Path) -> Result<(), Error> {
+        info!("Starting assembly process...");
+
+        // Step 1: Generate RTL and resolved architecture JSON
+        let arch_output_file = self.arch_output_dir.join("arch.json");
+        self.generate_rtl(arch_json_path, Some(&arch_output_file))?;
+
+        // Step 2: Generate other artifacts from the resolved architecture
+        self.generate_isa(&arch_output_file)?;
+        self.generate_architecture_visualization(&arch_output_file)?;
+        self.generate_sst_simulation(&arch_output_file)?;
+
+        // Step 3: Finalize build
+        self.finalize_build()?;
+
+        info!("Assembly complete!");
+        Ok(())
+    }
+
+    fn generate_rtl(&self, arch_json_path: &Path, output_json: Option<&Path>) -> Result<(), Error> {
+        info!("Generating RTL...");
+        let mut resolver = HierarchicalResolver::new();
+        let mut resolved_alimp = resolver.resolve_alimp(arch_json_path).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Resolution failed: {}", e),
+            )
+        })?;
+
+        let mut rtl_generator = RTLGenerator::new(&self.rtl_output_dir);
+        rtl_generator.generate(&mut resolved_alimp)?;
+
+        self.generate_fabric_rtl(&resolved_alimp.fabric)?;
+        if let Some(output_path) = output_json {
+            self.write_fabric_json(&resolved_alimp.fabric, output_path)?;
+        }
+
+        // Phase 4: Copy shared infrastructure
+        self.copy_shared_artifacts()?;
+
+        Ok(())
+    }
+
+    fn generate_fabric_rtl(&self, fabric: &Fabric) -> Result<(), Error> {
+        let output_folder = self.rtl_output_dir.join("fabric");
+
+        // Remove existing fabric RTL
+        if output_folder.exists() {
+            fs::remove_dir_all(&output_folder)?;
+        }
+
+        let rtl_output_folder = output_folder.join("rtl");
+
+        fabric.generate_rtl(&rtl_output_folder)?;
+        fabric.generate_bender(&output_folder).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to generate Bender file for fabric: {}", e),
+            )
+        })?;
+
+        Ok(())
+    }
+
+    fn copy_shared_artifacts(&self) -> Result<(), Error> {
+        info!("Copying shared artifacts...");
+        self.copy_common_files()?;
+        self.copy_testbench_files()?;
+        Ok(())
+    }
+
+    fn copy_common_files(&self) -> Result<(), Error> {
+        let common_dir = get_path_from_library(&"common".to_string(), None).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Common library not found: {}", e),
+            )
+        })?;
+
+        for entry in fs::read_dir(common_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                let rtl_path = path.join("rtl");
+                let bender_yml = path.join("Bender.yml");
+
+                if bender_yml.exists() {
+                    debug!("Found Bender.yml in directory: {:?}", path);
+
+                    // Create output directory structure
+                    let component_output_dir = self
+                        .rtl_output_dir
+                        .join("common")
+                        .join(path.file_name().unwrap());
+                    fs::create_dir_all(&component_output_dir)?;
+
+                    // Copy Bender file with header
+                    let bender_output = component_output_dir.join("Bender.yml");
+                    let header =
+                        "# This file was automatically generated by Vesyla. DO NOT EDIT.\n\n";
+                    let content = header.to_string() + &fs::read_to_string(&bender_yml)?;
+                    fs::write(&bender_output, content)?;
+
+                    // Copy RTL files
+                    let rtl_output_dir = component_output_dir.join("rtl");
+                    copy_rtl_dir(&rtl_path, &rtl_output_dir)?;
+
+                    debug!("Copied common component: {:?}", path.file_name().unwrap());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn copy_testbench_files(&self) -> Result<(), Error> {
+        let testbench_dir = get_path_from_library(&"tb".to_string(), None)?;
+        let tb_output_dir = self.rtl_output_dir.join("tb");
+
+        fs::create_dir_all(&tb_output_dir)?;
+        copy_rtl_dir(&testbench_dir, &tb_output_dir)?;
+
+        debug!("Copied testbench files");
+        Ok(())
+    }
+
+    fn write_fabric_json(&self, fabric: &Fabric, output_path: &Path) -> Result<(), Error> {
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let file = fs::File::create(output_path)?;
+        serde_json::to_writer_pretty(file, fabric)?;
+
+        info!("Generated architecture JSON: {}", output_path.display());
+        Ok(())
+    }
+
+    fn generate_isa(&self, arch_json_path: &Path) -> Result<(), Error> {
+        info!("Generating ISA documentation...");
+        isa_gen::generate(arch_json_path, &self.isa_output_dir);
+        Ok(())
+    }
+
+    fn generate_architecture_visualization(&self, arch_json_path: &Path) -> Result<(), Error> {
+        info!("Generating architecture visualization...");
+        arch_visual_gen::generate(arch_json_path, &self.arch_output_dir);
+        Ok(())
+    }
+
+    fn generate_sst_simulation(&self, arch_json_path: &Path) -> Result<(), Error> {
+        info!("Generating SST simulation files...");
+        sst_sim_gen::generate(arch_json_path, &self.sst_output_dir);
+        Ok(())
+    }
+
+    fn finalize_build(&self) -> Result<(), Error> {
+        info!("Finalizing build - removing write permissions...");
+        remove_write_permissions(&self.output_dir.to_string_lossy()).map_err(|e| {
+            error!("Failed to remove write permissions: {}", e);
+            Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Failed to finalize build: {}", e),
+            )
+        })?;
+
+        info!("Build finalized - output directory is now read-only");
+        Ok(())
+    }
+
+    // Utility function for clean command
+    pub fn clean(build_dir: &str) -> Result<(), Error> {
+        let build_path = Path::new(build_dir);
+        if build_path.exists() {
+            info!("Cleaning build directory: {}", build_dir);
+            fs::remove_dir_all(build_path)?;
+            info!("Build directory cleaned");
+        } else {
+            info!("Build directory does not exist: {}", build_dir);
+        }
+        Ok(())
+    }
+}
+
+// Clean entry point to replace rtl_code_gen::gen_rtl
+pub fn assemble_project(arch_json_path: &str, output_dir: &str) -> Result<(), Error> {
+    let manager = AssemblyManager::new(output_dir)?;
+    manager.assemble(Path::new(arch_json_path))
+}

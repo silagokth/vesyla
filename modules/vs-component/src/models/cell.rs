@@ -43,7 +43,7 @@ impl Cell {
         }
     }
 
-    pub fn is_valid(&self) -> Result<(), DRRAError> {
+    pub fn validate(&self) -> Result<(), DRRAError> {
         if self.name.is_empty() || self.kind.is_none() {
             return Err(DRRAError::ComponentWithoutNameOrKind);
         }
@@ -56,6 +56,12 @@ impl Cell {
         if self.resources.is_none() || self.resources.as_ref().unwrap().is_empty() {
             return Err(DRRAError::CellWithoutResources);
         }
+
+        self.controller.as_ref().unwrap().validate()?;
+        for resource in self.resources.as_ref().unwrap().iter() {
+            resource.validate()?;
+        }
+
         Ok(())
     }
 
@@ -183,6 +189,25 @@ impl Cell {
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
         self.parameters.insert(name, value);
+    }
+
+    pub fn generate_fingerprints(&mut self) -> Result<(), DRRAError> {
+        if let Some(controller) = &mut self.controller {
+            controller.generate_hash();
+        } else {
+            return Err(DRRAError::CellWithoutController);
+        }
+
+        if let Some(resources) = &mut self.resources {
+            for resource in resources.iter_mut() {
+                resource.generate_hash();
+            }
+        } else {
+            return Err(DRRAError::CellWithoutResources);
+        }
+
+        self.generate_hash();
+        Ok(())
     }
 
     pub fn update_from_json(
@@ -332,13 +357,9 @@ impl RTLComponent for Cell {
     }
 
     fn generate_hash(&mut self) -> String {
-        let controller_fingerprint = self
-            .controller
-            .as_ref()
-            .unwrap()
-            .fingerprint
-            .clone()
-            .unwrap();
+        let controller = self.controller.as_ref().unwrap();
+        let controller_fingerprint = controller.fingerprint.clone().unwrap();
+
         let resources_fingerprints = self
             .resources
             .as_ref()

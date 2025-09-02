@@ -39,6 +39,28 @@ impl Fabric {
         self.parameters.get(name).cloned()
     }
 
+    pub fn generate_fingerprints(&mut self) -> Result<(), DRRAError> {
+        for row in self.cells.iter_mut() {
+            for cell in row.iter_mut() {
+                cell.generate_fingerprints()?;
+            }
+        }
+
+        self.generate_hash();
+
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), DRRAError> {
+        for row in self.cells.iter() {
+            for cell in row.iter() {
+                cell.validate()?;
+            }
+        }
+
+        Ok(())
+    }
+
     fn get_fingerprint_table(&self) -> HashMap<String, String> {
         let mut fingerprint_table = HashMap::new();
         for row in self.cells.iter() {
