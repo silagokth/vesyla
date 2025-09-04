@@ -894,7 +894,8 @@ private:
       attempts++;
       if (attempts > max_attempts) {
         llvm::outs() << "Error: Too many attempts to allocate registers for "
-                        "ACT mode 2 prep instructions at cycle " << cycle << ".\n";
+                        "ACT mode 2 prep instructions at cycle "
+                     << cycle << ".\n";
         exit(EXIT_FAILURE);
       }
       if (cell_time_table.find(cycle) != cell_time_table.end()) {
@@ -1256,6 +1257,7 @@ private:
     min_shift_time = -min_shift_time;
     llvm::outs() << "Min shift time: " << min_shift_time << "\n";
     total_latency = total_latency + min_shift_time;
+    llvm::outs() << "Total latency after shifting: " << total_latency << "\n";
 
     // shift the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
@@ -1281,7 +1283,7 @@ private:
                   return a.first < b.first;
                 });
 
-      int prev_t = 0;
+      int prev_t = -1;
       std::vector<std::pair<int, mlir::Operation *>> new_time_op_vec;
       if (time_op_vec.size() > 0) {
         // start from the smallest time, insert the WAIT instructions if
@@ -1291,7 +1293,7 @@ private:
           if (curr_t - prev_t > 1) {
             // create a WAIT instruction
             rewriter.setInsertionPointToEnd(block);
-            auto wait_instr_param_map = create_wait_instr(curr_t - prev_t - 1);
+            auto wait_instr_param_map = create_wait_instr(curr_t - prev_t - 2);
             mlir::StringAttr id = rewriter.getStringAttr(
                 vesyla::util::Common::gen_random_string(8));
             mlir::StringAttr type = rewriter.getStringAttr("wait");
