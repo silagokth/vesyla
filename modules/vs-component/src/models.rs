@@ -6,3 +6,5 @@ pub mod pcu;
 pub mod resource;
 
 pub mod types;
+
+pub mod isa;

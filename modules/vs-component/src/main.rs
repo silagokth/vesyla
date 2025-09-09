@@ -1,5 +1,4 @@
 mod arch_visual_gen;
-mod isa;
 mod isa_gen;
 mod models;
 mod sst_sim_gen;

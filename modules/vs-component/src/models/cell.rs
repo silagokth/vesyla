@@ -1,7 +1,9 @@
-use crate::isa::InstructionSet;
-use crate::models::controller::Controller;
-use crate::models::resource::Resource;
-use crate::models::types::{DRRAError, ParameterList, RTLComponent};
+use crate::models::{
+    controller::Controller,
+    isa::InstructionSet,
+    resource::Resource,
+    types::{DRRAError, ParameterList, RTLComponent},
+};
 use crate::utils::{generate_hash, get_isa_from_library, get_path_from_library, merge_parameters};
 
 use log::warn;
