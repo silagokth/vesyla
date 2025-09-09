@@ -15,7 +15,11 @@ Test Template     Autotest Template
 Autotest Template
     [Arguments]    ${testcase_path}
     ${random_string} =    Generate Random String    12    [LOWER]
-    Create Directory    work/${random_string}
-    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=work/${random_string}
+    ${testcase_name} =    Set Variable    ${TEST_NAME}
+    # Clean testcase name for directory usage (remove special characters)
+    ${clean_testcase_name} =    Replace String Using Regexp    ${testcase_name}    [^a-zA-Z0-9_-]    _
+    ${output_dir} =    Set Variable    work/${clean_testcase_name}_${random_string}
+    Create Directory    ${output_dir}
+    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
     Should Be Equal As Integers    ${result.rc}    0
-    Remove Directory    work/${random_string}    recursive=True
+    Remove Directory    ${output_dir}    recursive=True
