@@ -1,6 +1,7 @@
 use log::{info, warn};
 use std::fs;
 use std::io::Error;
+use std::path::Path;
 
 fn register_drra_library() -> Result<(), Error> {
     // Get the VESYLA_SUITE_PATH_COMPONENTS environment variable
@@ -35,7 +36,7 @@ fn register_drra_library() -> Result<(), Error> {
     Ok(())
 }
 
-fn gen_sst_config(arch_file: &String, output_dir: &String) {
+fn gen_sst_config(arch_file: &Path, output_dir: &Path) {
     let output_dir = std::path::Path::new(output_dir);
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).expect("Failed to create output directory");
@@ -65,7 +66,7 @@ fn gen_sst_config(arch_file: &String, output_dir: &String) {
     );
 }
 
-pub fn generate(arch_file: &String, output_dir: &String) {
+pub fn generate(arch_file: &Path, output_dir: &Path) {
     if register_drra_library().is_ok() {
         gen_sst_config(arch_file, output_dir);
     } else {

@@ -33,6 +33,7 @@ jobs:
 
       - name: Extract library
         run: |
+          rm -rf library
           tar -xzf library.tar.gz
           rm library.tar.gz
 
