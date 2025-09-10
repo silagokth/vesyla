@@ -421,8 +421,33 @@ pub fn generate_rtl_for_component(
             let result = mj_env
                 .get_template("rtl_template")
                 .expect("Failed to get template")
-                .render(component);
-            let output_str = result.expect("Failed to render template");
+                .render(serde_json::to_value(component).unwrap())
+                .map_err(|e| {
+                    log::error!(
+                        "Failed to render template for file {}: {}",
+                        output_file.to_str().unwrap(),
+                        e
+                    );
+                    fs::write(
+                        output_file.with_extension("template.jinja"),
+                        rtl_template_content,
+                    )
+                    .expect("Failed to write template file");
+                    fs::write(
+                        output_file.with_extension("error.txt"),
+                        serde_json::to_string_pretty(component).unwrap(),
+                    )
+                    .expect("Failed to write error file");
+                    Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Failed to render template for file {}: {}",
+                            output_file.to_str().unwrap(),
+                            e
+                        ),
+                    )
+                });
+            let output_str = result?;
             fs::write(&output_file, file_comment + &output_str).expect("Failed to write file");
         } else {
             // Copy the file with added comment

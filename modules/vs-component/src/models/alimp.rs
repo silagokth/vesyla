@@ -12,6 +12,8 @@ use std::{fs, path::Path};
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
+use super::isa::InstructionSet;
+
 pub struct Alimp {
     name: String,
     pub pcu: Pcu,
@@ -34,6 +36,16 @@ impl Alimp {
         }
 
         Ok(())
+    }
+
+    pub fn get_isa(&self) -> Result<InstructionSet, DRRAError> {
+        if let Some(drra) = self.drra.as_ref() {
+            drra.get_isa()
+        } else {
+            Err(DRRAError::ParameterNotFound(
+                "Alimp without DRRA fabrics do not have ISA".to_string(),
+            ))
+        }
     }
 }
 

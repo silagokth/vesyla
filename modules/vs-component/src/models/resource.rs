@@ -1,14 +1,16 @@
 use crate::models::{
-    isa::InstructionSet,
+    isa::ComponentInstructionSet,
     types::{DRRAError, ParameterList, RTLComponent},
 };
-use crate::utils::{generate_hash, get_isa_from_library, get_path_from_library, merge_parameters};
+use crate::utils::{generate_hash, get_path_from_library, merge_parameters};
 
 use log::warn;
 use std::fs;
 use std::path::Path;
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
+
+use super::isa::InstructionType;
 
 #[derive(Clone)]
 pub struct Resource {
@@ -23,7 +25,7 @@ pub struct Resource {
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
-    pub isa: Option<InstructionSet>,
+    pub isa: Option<ComponentInstructionSet>,
 }
 
 impl Resource {
@@ -61,6 +63,55 @@ impl Resource {
         }
         if self.required_parameters.is_empty() {
             warn!("Resource {} has no required parameters", self.name);
+        }
+
+        Ok(())
+    }
+
+    pub fn overwrite(&mut self, other: &Resource) -> Result<(), DRRAError> {
+        if self.name.is_empty() && !other.name.is_empty() {
+            self.name = other.name.clone();
+        }
+        if other.fingerprint.is_some() {
+            self.fingerprint = other.fingerprint.clone();
+        }
+        if other.kind.is_some() {
+            self.kind = other.kind.clone();
+        }
+        if other.slot.is_some() {
+            self.slot = other.slot;
+        }
+        if other.size.is_some() {
+            self.size = other.size;
+        }
+        if other.io_input.is_some() {
+            self.io_input = other.io_input;
+        }
+        if other.io_output.is_some() {
+            self.io_output = other.io_output;
+        }
+        if other.isa.is_some() {
+            if self.isa.is_none() {
+                self.isa = other.isa.clone();
+                self.isa.as_mut().unwrap().component_kind = self.kind.clone();
+            } else {
+                self.isa.as_mut().unwrap().component_kind = self.kind.clone();
+                self.isa
+                    .as_mut()
+                    .unwrap()
+                    .overwrite(other.isa.clone().unwrap())?;
+            }
+        }
+        if other.component_type != self.component_type {
+            return Err(DRRAError::UnknownComponentType);
+        }
+        for (key, value) in &other.parameters {
+            self.parameters.insert(key.clone(), *value);
+        }
+        for param in &other.required_parameters {
+            if !self.required_parameters.contains(param) {
+                self.required_parameters.push(param.clone());
+            }
         }
 
         Ok(())
@@ -151,27 +202,41 @@ impl Resource {
         // ISA (optional)
         let isa = json_value.get("isa");
         if let Some(isa) = isa {
-            let isa_result =
-                InstructionSet::from_json(serde_json::from_str(isa.to_string().as_str()).unwrap());
-            if let Ok(isa) = isa_result {
-                resource.isa = Some(isa);
-            } else {
-                panic!("DRRAError parsing ISA: {:?}", isa.to_string());
+            let comp_isa = ComponentInstructionSet::from_json(isa.clone())?;
+            if let Some(ctype) = &comp_isa.component_type {
+                if ctype != &InstructionType::ResourceInstruction {
+                    return Err(DRRAError::ResourceDeclaredAsController);
+                }
             }
-        } else if let Some(kind) = &resource.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
-            let isa = InstructionSet::from_json(lib_isa_json);
-            if isa.is_err() {
-                panic!(
-                    "DRRAError with ISA for resource {} (kind: {}) cannot be found in library -> {}",
-                    &resource.name,
-                    kind,
-                    isa.err().unwrap()
-                );
+            if comp_isa.component_kind.is_none() && resource.kind.is_some() {
+                let mut isa_with_kind = comp_isa.clone();
+                isa_with_kind.component_kind = resource.kind.clone();
+                resource.isa = Some(isa_with_kind);
+            } else if comp_isa.component_kind.is_some()
+                && resource.kind.is_some()
+                && comp_isa.component_kind.as_ref().unwrap() != resource.kind.as_ref().unwrap()
+            {
+                return Err(DRRAError::ISAKindMismatch);
             } else {
-                resource.isa = Some(isa.unwrap());
+                resource.isa = Some(comp_isa);
             }
         }
+        //else if let Some(kind) = &resource.kind {
+        //    let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
+        //    let isa = ComponentInstructionSet::from_json(lib_isa_json);
+        //    if isa.is_err() {
+        //        panic!(
+        //            "DRRAError with ISA for resource {} (kind: {}) cannot be found in library -> {}",
+        //            &resource.name,
+        //            kind,
+        //            isa.err().unwrap()
+        //        );
+        //    } else {
+        //        let mut isa_with_kind = isa.as_ref().unwrap().clone();
+        //        isa_with_kind.component_kind = Some(kind.clone());
+        //        resource.isa = Some(isa_with_kind);
+        //    }
+        //}
         Ok(resource)
     }
 

@@ -7,6 +7,8 @@ use std::{collections::HashMap, fs, path::Path};
 
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
+use crate::models::isa::InstructionSet;
+
 pub struct Fabric {
     pub cells: Vec<Vec<Cell>>,
     pub parameters: ParameterList,
@@ -37,6 +39,21 @@ impl Fabric {
 
     pub fn get_parameter(&self, name: &str) -> Option<u64> {
         self.parameters.get(name).cloned()
+    }
+
+    pub fn get_isa(&self) -> Result<InstructionSet, DRRAError> {
+        let mut instruction_set = InstructionSet::new();
+
+        for row in self.cells.iter() {
+            for cell in row.iter() {
+                let mut cell = cell.clone();
+                let cell_isa = cell.get_isa()?;
+                instruction_set.add_format(cell_isa.format.clone())?;
+                instruction_set.add_component_isas(cell_isa.component_instructions.clone())?;
+            }
+        }
+
+        Ok(instruction_set)
     }
 
     pub fn generate_fingerprints(&mut self) -> Result<(), DRRAError> {

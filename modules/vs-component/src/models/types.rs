@@ -15,6 +15,8 @@ pub enum DRRAError {
     CellWithoutController,
     CellWithoutResources,
     ParameterNotFound(String),
+    IncompatibleISAFormat,
+    ISAKindMismatch,
 }
 
 impl std::fmt::Display for DRRAError {
@@ -30,6 +32,12 @@ impl std::fmt::Display for DRRAError {
             DRRAError::CellWithoutResources => write!(f, "Cell without resources"),
             DRRAError::ParameterNotFound(param) => {
                 write!(f, "Parameter not found: {}", param)
+            }
+            DRRAError::IncompatibleISAFormat => {
+                write!(f, "Incompatible ISA formats among components")
+            }
+            DRRAError::ISAKindMismatch => {
+                write!(f, "ISA kind mismatch among components")
             }
         }
     }

@@ -4,7 +4,7 @@ use crate::models::{
     resource::Resource,
     types::{DRRAError, ParameterList, RTLComponent},
 };
-use crate::utils::{generate_hash, get_isa_from_library, get_path_from_library, merge_parameters};
+use crate::utils::{generate_hash, get_path_from_library, merge_parameters};
 
 use log::warn;
 use std::{collections::HashMap, fs, path::Path};
@@ -43,6 +43,50 @@ impl Cell {
             required_parameters: Vec::new(),
             isa: None,
         }
+    }
+
+    pub fn overwrite(&mut self, other: &Cell) -> Result<(), DRRAError> {
+        if self.name.is_empty() && !other.name.is_empty() {
+            self.name = other.name.clone();
+        }
+        if other.fingerprint.is_some() {
+            self.fingerprint = other.fingerprint.clone();
+        }
+        if !other.coordinates_list.is_empty() {
+            self.coordinates_list = other.coordinates_list.clone();
+        }
+        if other.io_input.is_some() {
+            self.io_input = other.io_input;
+        }
+        if other.io_output.is_some() {
+            self.io_output = other.io_output;
+        }
+        if other.kind.is_some() {
+            self.kind = other.kind.clone();
+        }
+        if other.controller.is_some() {
+            self.controller = other.controller.clone();
+        }
+        if other.resources.is_some() {
+            self.resources = other.resources.clone();
+        }
+        for (key, value) in &other.parameters {
+            self.parameters.insert(key.clone(), *value);
+        }
+        for param in &other.required_parameters {
+            if !self.required_parameters.contains(param) {
+                self.required_parameters.push(param.clone());
+            }
+        }
+        if other.isa.is_some() {
+            if let Some(self_isa) = &mut self.isa {
+                if let Some(other_isa) = &other.isa {
+                    self_isa.overwrite(other_isa.clone())?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), DRRAError> {
@@ -162,31 +206,67 @@ impl Cell {
             }
             cell.resources = Some(resources_vec);
         }
-        // ISA (optional)
-        let isa = json_value.get("isa");
-        if let Some(isa) = isa {
-            let isa_result =
-                InstructionSet::from_json(serde_json::from_str(isa.to_string().as_str()).unwrap());
-            if let Ok(isa) = isa_result {
-                cell.isa = Some(isa);
-            } else {
-                panic!("DRRAError parsing ISA: {:?}", isa.to_string());
-            }
-        } else if let Some(kind) = &cell.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
-            let isa = InstructionSet::from_json(lib_isa_json);
-            if isa.is_err() {
-                panic!(
-                    "DRRAError with ISA for cell {} (kind: {}) cannot be found in library -> {}",
-                    &cell.name,
-                    kind,
-                    isa.err().unwrap()
+
+        Ok(cell)
+    }
+
+    pub fn compose_isa(&self) -> Result<InstructionSet, DRRAError> {
+        let mut cell_isa = InstructionSet::new();
+
+        // Controller ISA
+        let mut controller = self.controller.clone().unwrap();
+        if controller.isa.is_none() {
+            return Err(DRRAError::ComponentWithoutISA);
+        }
+        if let Some(controller_isa) = controller.isa.as_mut() {
+            if cell_isa.format.is_none() {
+                cell_isa.format = controller_isa.format.clone();
+            } else if controller_isa.format != cell_isa.format {
+                log::error!(
+                    "Controller ISA format: {:?}, Cell ISA format: {:?}",
+                    controller_isa.format,
+                    cell_isa.format
                 );
-            } else {
-                cell.isa = Some(isa.unwrap());
+                return Err(DRRAError::IncompatibleISAFormat);
+            }
+            controller_isa.validate().map_err(|e| {
+                log::error!("Controller ISA validation error: {:?}", e);
+                e
+            })?;
+            cell_isa.add_component_isa(controller_isa.clone())?;
+        }
+
+        // Resources ISA
+        for resource in self.resources.as_ref().unwrap().iter() {
+            let resource = &mut resource.clone();
+            if resource.isa.is_none() {
+                return Err(DRRAError::ComponentWithoutISA);
+            }
+            if let Some(resource_isa) = resource.isa.as_mut() {
+                if cell_isa.format != resource_isa.format {
+                    log::error!(
+                        "Resource ISA format: {:?}, Cell ISA format: {:?}",
+                        resource_isa.format,
+                        cell_isa.format
+                    );
+                    return Err(DRRAError::IncompatibleISAFormat);
+                }
+                resource_isa.validate().map_err(|e| {
+                    log::error!("Resource ISA validation error: {:?}", e);
+                    e
+                })?;
+                cell_isa.add_component_isa(resource_isa.clone())?;
             }
         }
-        Ok(cell)
+
+        Ok(cell_isa)
+    }
+
+    pub fn get_isa(&mut self) -> Result<InstructionSet, DRRAError> {
+        if self.isa.is_none() {
+            self.isa = Some(self.compose_isa()?);
+        }
+        Ok(self.isa.clone().unwrap())
     }
 
     pub fn add_parameter(&mut self, name: String, value: u64) {

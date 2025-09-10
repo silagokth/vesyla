@@ -1,8 +1,8 @@
 use crate::models::{
-    isa::InstructionSet,
+    isa::{ComponentInstructionSet, InstructionType},
     types::{DRRAError, ParameterList, RTLComponent},
 };
-use crate::utils::{generate_hash, get_isa_from_library, get_path_from_library, merge_parameters};
+use crate::utils::{generate_hash, get_path_from_library, merge_parameters};
 
 use log::warn;
 use std::{fs, path::Path};
@@ -21,7 +21,7 @@ pub struct Controller {
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
-    pub isa: Option<InstructionSet>,
+    pub isa: Option<ComponentInstructionSet>,
 }
 
 impl Controller {
@@ -57,6 +57,52 @@ impl Controller {
         if self.required_parameters.is_empty() {
             warn!("Controller {} has no required parameters", self.name);
         }
+        Ok(())
+    }
+
+    pub fn overwrite(&mut self, other: &Controller) -> Result<(), DRRAError> {
+        if self.name.is_empty() && !other.name.is_empty() {
+            self.name = other.name.clone();
+        }
+        if other.fingerprint.is_some() {
+            self.fingerprint = other.fingerprint.clone();
+        }
+        if other.kind.is_some() {
+            self.kind = other.kind.clone();
+        }
+        if other.size.is_some() {
+            self.size = other.size;
+        }
+        if other.io_input.is_some() {
+            self.io_input = other.io_input;
+        }
+        if other.io_output.is_some() {
+            self.io_output = other.io_output;
+        }
+        if other.component_type != self.component_type {
+            return Err(DRRAError::UnknownComponentType);
+        }
+        if other.isa.is_some() {
+            if self.isa.is_none() {
+                self.isa = other.isa.clone();
+                self.isa.as_mut().unwrap().component_kind = self.kind.clone();
+            } else {
+                self.isa.as_mut().unwrap().component_kind = self.kind.clone();
+                self.isa
+                    .as_mut()
+                    .unwrap()
+                    .overwrite(other.isa.clone().unwrap())?;
+            }
+        }
+        for (key, value) in &other.parameters {
+            self.parameters.insert(key.clone(), *value);
+        }
+        for param in &other.required_parameters {
+            if !self.required_parameters.contains(param) {
+                self.required_parameters.push(param.clone());
+            }
+        }
+
         Ok(())
     }
 
@@ -140,29 +186,45 @@ impl Controller {
                     .push(required_parameter.as_str().unwrap().to_string());
             }
         }
+
         // ISA (optional)
         let isa = json_value.get("isa");
         if let Some(isa) = isa {
-            let isa_result = InstructionSet::from_json(isa.clone());
-            if let Err(isa) = isa_result {
-                panic!("DRRAError parsing ISA for controller: {:?}", isa);
-            } else {
-                controller.isa = Some(isa_result.unwrap());
+            let comp_isa = ComponentInstructionSet::from_json(isa.clone())?;
+            if let Some(ctype) = &comp_isa.component_type {
+                if ctype != &InstructionType::ControlInstruction {
+                    return Err(DRRAError::ControllerDeclaredAsResource);
+                }
             }
-        } else if let Some(kind) = &controller.kind {
-            let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
-            let isa = InstructionSet::from_json(lib_isa_json);
-            if isa.is_err() {
-                panic!(
-                    "DRRAError with ISA for controller {} (kind: {}) cannot be found in library -> {}",
-                    &controller.name,
-                    kind,
-                    isa.err().unwrap()
-                );
+            if comp_isa.component_kind.is_none() && controller.kind.is_some() {
+                let mut isa_with_kind = comp_isa.clone();
+                isa_with_kind.component_kind = controller.kind.clone();
+                controller.isa = Some(isa_with_kind);
+            } else if comp_isa.component_kind.is_some()
+                && controller.kind.is_some()
+                && comp_isa.component_kind.as_ref().unwrap() != controller.kind.as_ref().unwrap()
+            {
+                return Err(DRRAError::ISAKindMismatch);
             } else {
-                controller.isa = Some(isa.unwrap());
+                controller.isa = Some(comp_isa);
             }
         }
+        //else if let Some(kind) = &controller.kind {
+        //    let lib_isa_json = get_isa_from_library(&kind.clone(), None).unwrap();
+        //    let isa = ComponentInstructionSet::from_json(lib_isa_json);
+        //    if isa.is_err() {
+        //        panic!(
+        //            "DRRAError with ISA for controller {} (kind: {}) cannot be found in library -> {}",
+        //            &controller.name,
+        //            kind,
+        //            isa.err().unwrap()
+        //        );
+        //    } else {
+        //        let mut isa_with_kind = isa.as_ref().unwrap().clone();
+        //        isa_with_kind.component_kind = Some(kind.clone());
+        //        controller.isa = Some(isa_with_kind);
+        //    }
+        //}
         Ok(controller)
     }
 
@@ -288,7 +350,7 @@ impl Serialize for Controller {
         // - component_type
         // - custom_properties
         // - required_parameters
-        let mut state = serializer.serialize_map(Some(8))?;
+        let mut state = serializer.serialize_map(Some(10))?;
         state.serialize_entry("name", &self.name)?;
         if let Some(fingerprint) = &self.fingerprint {
             state.serialize_entry("fingerprint", fingerprint)?;

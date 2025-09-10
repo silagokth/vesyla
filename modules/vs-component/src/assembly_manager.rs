@@ -1,8 +1,9 @@
+use crate::isa_gen::ISAGenerator;
 use crate::models::drra::Fabric;
-use crate::resolver::HierarchicalResolver;
+use crate::resolver::{HierarchicalResolver, ResolvedAlimp};
 use crate::rtl_generator::RTLGenerator;
 use crate::utils::{copy_rtl_dir, get_path_from_library, remove_write_permissions};
-use crate::{arch_visual_gen, isa_gen, sst_sim_gen};
+use crate::{arch_visual_gen, sst_sim_gen};
 
 use log::{debug, error, info};
 use std::{
@@ -46,12 +47,20 @@ impl AssemblyManager {
     pub fn assemble(&self, arch_json_path: &Path) -> Result<(), Error> {
         info!("Starting assembly process...");
 
-        // Step 1: Generate RTL and resolved architecture JSON
+        // Resolve Alimp and generate RTL
         let arch_output_file = self.arch_output_dir.join("arch.json");
-        self.generate_rtl(arch_json_path, Some(&arch_output_file))?;
+        let resolved_alimp = self.generate_rtl(arch_json_path, Some(&arch_output_file))?;
 
-        // Step 2: Generate other artifacts from the resolved architecture
-        self.generate_isa(&arch_output_file)?;
+        // Generate ISA for the complete Alimp
+        let isa = &resolved_alimp.alimp.get_isa().map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Failed to get ISA: {}", e),
+            )
+        })?;
+        isa.generate_json(&self.isa_output_dir)?;
+        isa.generate_markdown(&self.isa_output_dir)?;
+
         self.generate_architecture_visualization(&arch_output_file)?;
         self.generate_sst_simulation(&arch_output_file)?;
 
@@ -62,7 +71,11 @@ impl AssemblyManager {
         Ok(())
     }
 
-    fn generate_rtl(&self, arch_json_path: &Path, output_json: Option<&Path>) -> Result<(), Error> {
+    fn generate_rtl(
+        &self,
+        arch_json_path: &Path,
+        output_json: Option<&Path>,
+    ) -> Result<ResolvedAlimp, Error> {
         info!("Generating RTL...");
         let mut resolver = HierarchicalResolver::new();
         let mut resolved_alimp = resolver.resolve_alimp(arch_json_path).map_err(|e| {
@@ -82,7 +95,7 @@ impl AssemblyManager {
         // Phase 4: Copy shared infrastructure
         self.copy_shared_artifacts()?;
 
-        Ok(())
+        Ok(resolved_alimp)
     }
 
     fn copy_shared_artifacts(&self) -> Result<(), Error> {
@@ -157,12 +170,6 @@ impl AssemblyManager {
         serde_json::to_writer_pretty(file, fabric)?;
 
         info!("Generated architecture JSON: {}", output_path.display());
-        Ok(())
-    }
-
-    fn generate_isa(&self, arch_json_path: &Path) -> Result<(), Error> {
-        info!("Generating ISA documentation...");
-        isa_gen::generate(arch_json_path, &self.isa_output_dir);
         Ok(())
     }
 
