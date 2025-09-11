@@ -5,10 +5,12 @@ mod sst_sim_gen;
 mod utils;
 
 mod assembly_manager;
+mod component_generator;
 mod resolver;
 mod rtl_generator;
 
 use crate::assembly_manager::{assemble_project, AssemblyManager};
+use crate::component_generator::ComponentGenerator;
 
 use log::{error, info};
 use std::{fs, io::Result, path::Path};
@@ -17,6 +19,18 @@ use clap::{error::ErrorKind, Parser, Subcommand};
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(about = "Create a new component", name = "create")]
+    Create {
+        /// Architecture JSON file path
+        #[arg(short, long)]
+        arch_json: String,
+        /// Instruction Set JSON file path
+        #[arg(short, long)]
+        isa_json: String,
+        // Output directory path for the new component
+        #[arg(short, long)]
+        output_dir: String,
+    },
     #[command(about = "Assemble the system", name = "assemble")]
     Assemble {
         /// Architecture JSON file path
@@ -76,6 +90,23 @@ fn main() {
     };
 
     match &cli_args.command {
+        Command::Create {
+            arch_json,
+            isa_json,
+            output_dir,
+        } => {
+            info!(
+                "Creating new component with arch: {}, isa: {}, output: {}",
+                arch_json, isa_json, output_dir
+            );
+            match ComponentGenerator::create(arch_json, isa_json, output_dir) {
+                Ok(_) => info!("Component creation completed successfully!"),
+                Err(e) => {
+                    error!("Component creation failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
         Command::Assemble {
             arch_json,
             output,
