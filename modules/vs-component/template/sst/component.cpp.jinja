@@ -1,0 +1,25 @@
+#include "{{ kind }}.hpp"
+
+using namespace SST;
+
+{{ kind | upper }}:{{ kind | upper }}(SST::ComponentId_t id, SST::Params &params)
+    : DRRA{{ type | capitalize }}(id, params) {
+  instructionHandlers = {
+      {% for instruction in isa.instructions %}
+      { {{ kind | upper }}::OpCode::{{ instruction.name | upper }},
+       [this](uint32_t instr) { {{ kind | upper }}::handle{{ instruction.name | capitalize }}(instr); }
+      },
+      {% endfor %}
+  };
+}
+
+{% for instruction in isa.instructions %}
+void {{ kind | upper }}::handle{{ instruction.name | capitalize }}(uint32_t instr) {
+  {% set current_bit = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth %}
+  {% for segment in instruction.segments %}
+  uint32_t {{ segment.name }} = getInstrField(instr, {{ segment.bitwidth }}, {{ current_bit - segment.bitwidth }});
+  {% set current_bit = current_bit - segment.bitwidth %}
+  {% endfor %}
+}
+
+{% endfor %}
