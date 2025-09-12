@@ -1,25 +1,29 @@
-#include "{{ kind }}.hpp"
+#include "{{ kind | lower }}.h"
 
 using namespace SST;
 
-{{ kind | upper }}:{{ kind | upper }}(SST::ComponentId_t id, SST::Params &params)
+{% set class_name = kind | capitalize %}
+{{ class_name }}:{{ class_name }}(SST::ComponentId_t id, SST::Params &params)
     : DRRA{{ type | capitalize }}(id, params) {
-  instructionHandlers = {
-      {% for instruction in isa.instructions %}
-      { {{ kind | upper }}::OpCode::{{ instruction.name | upper }},
-       [this](uint32_t instr) { {{ kind | upper }}::handle{{ instruction.name | capitalize }}(instr); }
-      },
-      {% endfor %}
+      instructionHandlers = {{ kind | upper }}_PKG::createInstructionHandlers(this);
   };
 }
 
+bool {{ class_name }}::clockTick(SST::Cycle_t currentCycle) {
+  return DRRA{{ type | capitalize }}::clockTick(currentCycle);
+}
+
 {% for instruction in isa.instructions %}
-void {{ kind | upper }}::handle{{ instruction.name | capitalize }}(uint32_t instr) {
-  {% set current_bit = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth %}
-  {% for segment in instruction.segments %}
-  uint32_t {{ segment.name }} = getInstrField(instr, {{ segment.bitwidth }}, {{ current_bit - segment.bitwidth }});
-  {% set current_bit = current_bit - segment.bitwidth %}
-  {% endfor %}
+void {{ class_name }}::handle{{ instruction.name | capitalize }}(const {{ kind | upper }}_PKG::{{ instruction.name | upper }}Instruction &instr) {
+  out.output(
+    "{{ instruction.name | lower }} (slot=%d, {% for segment in instruction.segments %}{{ segment.name }}=%d{% if not loop.last %}, {% endif %}{% endfor %})\n",
+    instr.slot
+    {% for segment in instruction.segments %}
+    , instr.{{ segment.name }}
+    {% endfor %}
+  );
+
+  // TODO: implement instruction behavior
 }
 
 {% endfor %}

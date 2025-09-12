@@ -2,18 +2,19 @@
 #define _{{ kind | upper }}_H
 
 #include "drra.h"
-#include "dataEvent.h"
+#include "{{ kind }}_pkg.h"
 
-class {{ kind | capitalize }} : public DRRA{{ type | capitalize }} {
+{% set class_name = kind | capitalize %}
+class {{ class_name }} : public DRRA{{ type | capitalize }} {
 public:
   /* Element Library Info */
   SST_ELI_REGISTER_COMPONENT(
-    {{ kind | capitalize }},
+    {{ class_name }},
     "drra",
     "{{ kind }}",
     SST_ELI_ELEMENT_VERSION(1, 0, 0),
-    "{{ kind | capitalize }} component",
-    COMPONENT_CATEGORY_UNCATEGORIZED
+    "{{ class_name }} component",
+    COMPONENT_CATEGORY_{{ category | upper }}
   )
 
   /* Element Library Params */
@@ -41,22 +42,24 @@ public:
   SST_ELI_DOCUMENT_STATISTICS(getComponentStatistics())
 
   /* Constructor */
-  {{ kind | capitalize }}(SST::ComponentId_t id, SST::Params &params) {};
+  {{ class_name }}(SST::ComponentId_t id, SST::Params &params);
 
   /* Destructor */
-  ~{{ kind | capitalize }}() {};
+  ~{{ class_name }}() {};
 
   bool clockTick(SST::Cycle_t currentCycle) override;
 
-private:
-  // ISA
-  enum OpCode {
-    {% for instruction in isa.instructions %}
-    {{ instruction.name | upper }} = {{ instruction.opcode }},
-    {% endfor %}
-  };
+  // Instruction format
+  using DRRA{{ type | capitalize }}::format;
   {% for instruction in isa.instructions %}
-  void handle{{ instruction.name | capitalize }}(uint32_t instr);
+  {% set instr_name = instruction.name | upper %}
+  void handle{{ instr_name }}(const {{ kind | upper }}_PKG::{{ instr_name }}Instruction &instr);
   {% endfor %}
+
+  using DRRA{{ type | capitalize }}::out;
+
+private:
+  // Define private members here
+};
 
 #endif // _{{ kind | upper }}_H
