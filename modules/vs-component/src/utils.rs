@@ -598,6 +598,10 @@ pub fn remove_write_permissions(dir_path: &str) -> Result<()> {
 }
 
 pub fn get_component_template_path() -> Result<PathBuf> {
+    if let Ok(test_path) = env::var("VESYLA_COMPONENT_TEMPLATE_PATH") {
+        return Ok(PathBuf::from(test_path));
+    }
+
     let current_exe = env::current_exe()?;
     let current_exe_dir = current_exe.parent().ok_or_else(|| {
         Error::new(

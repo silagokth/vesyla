@@ -1,4 +1,3 @@
-use serde_json::json;
 use std::{
     fs::{read_to_string, File},
     io::{Error, Result, Write},
@@ -11,8 +10,8 @@ pub struct ComponentGenerator {}
 
 impl ComponentGenerator {
     pub fn create(arch_json: &Path, isa_json: &Path, output_dir: &Path, force: bool) -> Result<()> {
-        let arch_json_value = json!(&read_to_string(arch_json)?);
-        let isa_json_value = json!(&read_to_string(isa_json)?);
+        let arch_json_value: serde_json::Value = serde_json::from_str(&read_to_string(arch_json)?)?;
+        let isa_json_value: serde_json::Value = serde_json::from_str(&read_to_string(isa_json)?)?;
 
         Self::validate_arch_json(&arch_json_value)?;
         Self::validate_isa_json(&isa_json_value)?;
@@ -27,22 +26,30 @@ impl ComponentGenerator {
     }
 
     fn validate_arch_json(arch_json: &serde_json::Value) -> Result<()> {
-        let schema_str = include_str!("../assets/component_arch_schema.json");
-        Self::validate_json(arch_json, &json!(schema_str.as_bytes()))
+        let arch_schema_str = include_str!("../assets/component_arch_schema.json");
+        Self::validate_json(arch_json, &serde_json::from_str(arch_schema_str)?)
     }
 
     fn validate_isa_json(isa_json: &serde_json::Value) -> Result<()> {
-        let schema_str = include_str!("../assets/component_isa_schema.json");
-        Self::validate_json(isa_json, &json!(schema_str.as_bytes()))
+        let isa_schema_str = include_str!("../assets/component_isa_schema.json");
+        Self::validate_json(isa_json, &serde_json::from_str(isa_schema_str)?)
     }
 
     fn validate_json(instance: &serde_json::Value, schema: &serde_json::Value) -> Result<()> {
-        jsonschema::validate(schema, instance).map_err(|e| {
+        let validator = jsonschema::validator_for(schema).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to create JSON schema validator: {}", e),
+            )
+        })?;
+        validator.validate(instance).map_err(|e| {
             Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("JSON validation error: {}", e),
             )
-        })
+        })?;
+
+        Ok(())
     }
 
     fn get_component_kind(arch_json: &serde_json::Value) -> Result<String> {
@@ -91,7 +98,17 @@ impl ComponentGenerator {
             ));
         }
 
-        for entry in std::fs::read_dir(template_path)? {
+        let template_folder = std::fs::read_dir(template_path).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Failed to read template directory '{}': {}",
+                    template_path.display(),
+                    e
+                ),
+            )
+        })?;
+        for entry in template_folder {
             let entry = entry?;
             let path = entry.path();
             let file_name = entry.file_name();
@@ -119,7 +136,7 @@ impl ComponentGenerator {
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Failed to add template: {}", e),
+                    format!("Failed to add template {}: {}", src.display(), e),
                 )
             })?;
         let jinja_template = environment.get_template("template").map_err(|e| {
@@ -151,7 +168,7 @@ impl ComponentGenerator {
         let result_string = result.map_err(|e| {
             Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Failed to render template: {}", e),
+                format!("Failed to render template {}: {}", src.display(), e),
             )
         })?;
         let output = comment + result_string.as_str();
@@ -173,5 +190,59 @@ impl ComponentGenerator {
         }
 
         Ok(comment)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_create_component() {
+        env::set_var("RUST_LOG", "debug");
+        env::set_var("VESYLA_COMPONENT_TEMPLATE_PATH", "./template");
+
+        let arch_json = include_str!("../tests/component_arch.json");
+        let isa_json = include_str!("../tests/component_isa.json");
+
+        let temp_dir = tempdir().unwrap();
+        let arch_path = temp_dir.path().join("arch.json");
+        let isa_path = temp_dir.path().join("isa.json");
+        let output_dir = temp_dir.path().join("output");
+
+        std::fs::write(&arch_path, arch_json).unwrap();
+        std::fs::write(&isa_path, isa_json).unwrap();
+
+        ComponentGenerator::create(&arch_path, &isa_path, &output_dir, true).unwrap();
+
+        assert!(output_dir.exists());
+
+        let rtl_output_path = output_dir.join("rtl");
+        let sst_output_path = output_dir.join("sst");
+        let compile_output_path = output_dir.join("compile_util");
+
+        // Check the j2 files were not changed
+        assert!(rtl_output_path.join("component.sv.j2").exists());
+        assert!(rtl_output_path.join("component_pkg.sv.j2").exists());
+
+        // Check the sst headers were generated
+        assert!(sst_output_path.join("dpu.h").exists());
+        assert!(sst_output_path.join("dpu.cpp").exists());
+        assert!(sst_output_path.join("dpu_pkg.h").exists());
+        assert!(sst_output_path.join("dpu_pkg.cpp").exists());
+
+        // Check the compile_util files were generated
+        assert!(compile_output_path.join("src").join("main.rs").exists());
+
+        // Check Bender file was generated
+        assert!(output_dir.join("Bender.yml").exists());
+
+        env::remove_var("VESYLA_COMPONENT_TEMPLATE_PATH");
+        let var = env::var("VESYLA_COMPONENT_TEMPLATE_PATH");
+        assert!(var.is_err());
+
+        assert!(temp_dir.close().is_ok());
     }
 }

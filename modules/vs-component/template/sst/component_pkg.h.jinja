@@ -12,7 +12,7 @@ namespace {{ kind | upper}}_PKG {
 enum Opcode {
 {% for instruction in isa.instructions %}
     {% set instr_name = instruction.name | upper %}
-    {{ instr_name }} = 0x{{ "%02x"|format(instruction.opcode) }}{% if not loop.last %},{% endif %}
+    {{ instr_name }} = {{ instruction.opcode }}{% if not loop.last %},{% endif %}
 {% endfor %}
 };
 
@@ -48,7 +48,7 @@ enum {{ instruction.name | upper }}_{{ segment.name | upper }} {
 // Instruction formats
 {% for instruction in isa.instructions %}
 struct {{ instruction.name | upper }}Instruction {
-  uint32_t {% for segment in instruction.segments %}{% segment.name | lower %}{% if not loop.last %}, {% endif %}{% endfor %};
+  uint32_t {% for segment in instruction.segments %}{{ segment.name | lower }}{% if not loop.last %}, {% endif %}{% endfor %};
 
   {{ instruction.name | upper }}Instruction(const Instruction &instr) {
     {% for segment in instruction.segments %}
