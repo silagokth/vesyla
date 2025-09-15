@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "io_input": {
+      "type": "boolean",
+      "default": false
+    },
+    "io_output": {
+      "type": "boolean",
+      "default": false
+    },
+    "custom_properties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "val": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "key",
+          "val"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "required_parameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "kind"
+  ]
+}
