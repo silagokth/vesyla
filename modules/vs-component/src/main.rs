@@ -33,6 +33,9 @@ enum Command {
         // Force overwrite if the output directory exists
         #[arg(short, long, default_value_t = false)]
         force: bool,
+        // Non interactive mode
+        #[arg(short, long, default_value_t = false)]
+        non_interactive: bool,
     },
     #[command(about = "Assemble the system", name = "assemble")]
     Assemble {
@@ -98,6 +101,7 @@ fn main() {
             isa_json,
             output_dir,
             force,
+            non_interactive,
         } => {
             info!(
                 "Creating new component with arch: {}, isa: {}, output: {}",
@@ -108,6 +112,7 @@ fn main() {
                 Path::new(isa_json),
                 Path::new(output_dir),
                 *force,
+                *non_interactive,
             ) {
                 Ok(_) => info!("Component creation completed successfully!"),
                 Err(e) => {

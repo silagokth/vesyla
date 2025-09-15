@@ -5,6 +5,24 @@
     "kind": {
       "type": "string"
     },
+    "type": {
+      "type": "string",
+      "enum": [
+        "resource",
+        "controller"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "uncategorized",
+        "processor",
+        "memory",
+        "network",
+        "system"
+      ],
+      "default": "uncategorized"
+    },
     "size": {
       "type": "integer",
       "minimum": 1,

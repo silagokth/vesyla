@@ -1,4 +1,5 @@
 use serde_json::json;
+use std::ops::{Deref, DerefMut};
 /**
  * This is the main file for the Rust implementation of the compile_util program.
  *
@@ -47,15 +48,19 @@ fn get_timing_model(op: Op) -> String {
 
   for instr in op.body {
     let instr_segments = instr.params;
-    match instr {
+    match instr.kind.as_str() {
     {% for instruction in isa.instructions %}
       "{{ instruction.name }}" => {
         {% for segment in instruction.segments %}
-        let mut {{ segment.name }} = instr_fields.get_value("{{ segment.name }}");
+        let mut {{ segment.name }} = instr_segments.get_value("{{ segment.name }}");
         {% endfor %}
         todo!("Implement timing model for instruction {{ instruction.name }}");
       },
     {% endfor %}
+      _ => {
+        panic!("Unknown instruction kind: {}", instr.kind);
+      }
+
     }
   }
 
@@ -91,7 +96,7 @@ fn reshape_instr(op: Op) -> Op {
   let mut new_body = Vec::new();
   for instr in op.body {
     let new_instr = instr.clone();
-    match instr {
+    match instr.king.as_str() {
       {% for instruction in isa.instructions %}
       "{{ instruction.name }}" => {
         {% for segment in instruction.segments %}

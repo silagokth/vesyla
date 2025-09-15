@@ -1,8 +1,8 @@
 #ifndef _{{ kind | upper }}_H
 #define _{{ kind | upper }}_H
 
-#include "drra.h"
 #include "{{ kind }}_pkg.h"
+#include "drra_{{ type | lower }}.h"
 
 {% set class_name = kind | capitalize %}
 class {{ class_name }} : public DRRA{{ type | capitalize }} {

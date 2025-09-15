@@ -1,6 +1,6 @@
 use std::{
     fs::{read_to_string, File},
-    io::{Error, Result, Write},
+    io::{stdin, stdout, Error, Result, Write},
     path::Path,
 };
 
@@ -9,14 +9,21 @@ use crate::utils::get_component_template_path;
 pub struct ComponentGenerator {}
 
 impl ComponentGenerator {
-    pub fn create(arch_json: &Path, isa_json: &Path, output_dir: &Path, force: bool) -> Result<()> {
+    pub fn create(
+        arch_json: &Path,
+        isa_json: &Path,
+        output_dir: &Path,
+        force: bool,
+        non_interactive: bool,
+    ) -> Result<()> {
         let arch_json_value: serde_json::Value = serde_json::from_str(&read_to_string(arch_json)?)?;
         let isa_json_value: serde_json::Value = serde_json::from_str(&read_to_string(isa_json)?)?;
 
         Self::validate_arch_json(&arch_json_value)?;
         Self::validate_isa_json(&isa_json_value)?;
 
-        let combined_json = Self::get_combined_json(&arch_json_value, &isa_json_value)?;
+        let combined_json =
+            Self::get_combined_json(&arch_json_value, &isa_json_value, non_interactive)?;
 
         let template_path = get_component_template_path()?;
 
@@ -67,10 +74,103 @@ impl ComponentGenerator {
     fn get_combined_json(
         arch_json: &serde_json::Value,
         isa_json: &serde_json::Value,
+        non_interactive: bool,
     ) -> Result<serde_json::Value> {
         let mut combined_json = arch_json.clone();
         if let Some(obj) = combined_json.as_object_mut() {
             obj.insert("isa".to_string(), isa_json.clone());
+            if obj.get("category").is_none() {
+                if non_interactive {
+                    return Err(Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Component category is not specified in architecture JSON. In non-interactive mode, please specify 'category'.",
+                    ));
+                }
+                let mut user_input = String::new();
+                print!("Specify the component type: '0: uncategorized', '1: processor', '2: memory', '3: network' or '4: system': ");
+                stdout().flush().unwrap();
+                stdin().read_line(&mut user_input).map_err(|e| {
+                    Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to read user input: {}", e),
+                    )
+                })?;
+                match user_input.trim().to_lowercase().as_str() {
+                    "0" | "uncategorized" => {
+                        obj.insert(
+                            "category".to_string(),
+                            serde_json::Value::String("uncategorized".to_string()),
+                        );
+                    }
+                    "1" | "processor" => {
+                        obj.insert(
+                            "category".to_string(),
+                            serde_json::Value::String("processor".to_string()),
+                        );
+                    }
+                    "2" | "memory" => {
+                        obj.insert(
+                            "category".to_string(),
+                            serde_json::Value::String("memory".to_string()),
+                        );
+                    }
+                    "3" | "network" => {
+                        obj.insert(
+                            "category".to_string(),
+                            serde_json::Value::String("network".to_string()),
+                        );
+                    }
+                    "4" | "system" => {
+                        obj.insert(
+                            "category".to_string(),
+                            serde_json::Value::String("system".to_string()),
+                        );
+                    }
+                    _ => {
+                        return Err(Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Invalid component category. Please enter 0: 'uncategorized', 1: 'processor', 2: 'memory', 3: 'network' or 4: 'system'.",
+                        ));
+                    }
+                }
+            }
+            if obj.get("type").is_none() {
+                if non_interactive {
+                    return Err(Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Component type is not specified in architecture JSON. In non-interactive mode, please specify 'type' as 'controller' or 'resource'.",
+                    ));
+                }
+                let mut user_input = String::new();
+                print!("Specify the component type: '0: controller' or '1: resource': ");
+                stdout().flush().unwrap();
+                stdin().read_line(&mut user_input).map_err(|e| {
+                    Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to read user input: {}", e),
+                    )
+                })?;
+                match user_input.trim().to_lowercase().as_str() {
+                    "1" | "resource" => {
+                        obj.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("resource".to_string()),
+                        );
+                    }
+                    "0" | "controller" => {
+                        obj.insert(
+                            "type".to_string(),
+                            serde_json::Value::String("controller".to_string()),
+                        );
+                    }
+                    _ => {
+                        return Err(Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Invalid component type. Please enter 0: 'resource' or 1: 'controller'.",
+                        ));
+                    }
+                }
+            }
         } else {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -131,6 +231,8 @@ impl ComponentGenerator {
     fn copy_and_render_file(src: &Path, dest: &Path, context: &serde_json::Value) -> Result<()> {
         let template = read_to_string(src)?;
         let mut environment = minijinja::Environment::new();
+        environment.set_trim_blocks(true);
+        environment.set_lstrip_blocks(true);
         environment
             .add_template("template", template.as_str())
             .map_err(|e| {
@@ -204,7 +306,19 @@ mod tests {
         env::set_var("RUST_LOG", "debug");
         env::set_var("VESYLA_COMPONENT_TEMPLATE_PATH", "./template");
 
-        let arch_json = include_str!("../tests/component_arch.json");
+        let mut arch_json =
+            serde_json::from_str::<serde_json::Value>(include_str!("../tests/component_arch.json"))
+                .unwrap();
+        arch_json.as_object_mut().unwrap().insert(
+            "category".to_string(),
+            serde_json::Value::String("processor".to_string()),
+        );
+        arch_json.as_object_mut().unwrap().insert(
+            "type".to_string(),
+            serde_json::Value::String("resource".to_string()),
+        );
+
+        let arch_json = serde_json::to_string_pretty(&arch_json).unwrap();
         let isa_json = include_str!("../tests/component_isa.json");
 
         let temp_dir = tempdir().unwrap();
@@ -215,7 +329,7 @@ mod tests {
         std::fs::write(&arch_path, arch_json).unwrap();
         std::fs::write(&isa_path, isa_json).unwrap();
 
-        ComponentGenerator::create(&arch_path, &isa_path, &output_dir, true).unwrap();
+        ComponentGenerator::create(&arch_path, &isa_path, &output_dir, true, true).unwrap();
 
         assert!(output_dir.exists());
 
