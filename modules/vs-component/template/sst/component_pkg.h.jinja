@@ -1,0 +1,66 @@
+#ifndef _{{ kind | upper }}_H
+#define _{{ kind | upper }}_H
+
+#include "instruction.h"
+
+{% set class_name = kind | capitalize %}
+class {{ class_name }};
+
+namespace {{ kind | upper}}_PKG {
+
+// Supported opcodes from ISA
+enum Opcode {
+{% for instruction in isa.instructions %}
+    {% set instr_name = instruction.name | upper %}
+    {{ instr_name }} = 0x{{ "%02x"|format(instruction.opcode) }}{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+
+// ISA segment definitions
+inline const std::unordered_map<OpCode, std::vector<SegmentRange>> &getIsaDefinitions() {
+  static const std::unordered_map<OpCode, std::vector<SegmentRange>> segmentsDef = {
+    {% for instruction in isa.instructions %}
+    {OpCode::{{ instruction.name | upper }}, {
+      {% set current_lsb = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth %}
+      {% for segment in instruction.segments %}
+      {% set current_lsb = current_lsb - segment.bitwidth %}
+      SegmentRange("{{ segment.name | lower }}", {{ segment.bitwidth }}, {{ current_lsb }}){% if not loop.last %},{% endif %}
+      {% endfor %}
+    }}{% if not loop.last %},{% endif %}
+    {% endfor %}
+  };
+  return segmentsDef;
+}
+
+// ISA verbo mappings
+{% for instruction in isa.instructions %}
+{% for segment in instruction.segments %}
+{% if segment.verbo_map %}
+enum {{ instruction.name | upper }}_{{ segment.name | upper }} {
+{% for map in segment.verbo_map %}
+  {{ map.val | replace(' ', '_') | upper }} = {{ map.key }}{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+// Instruction formats
+{% for instruction in isa.instructions %}
+struct {{ instruction.name | upper }}Instruction {
+  uint32_t {% for segment in instruction.segments %}{% segment.name | lower %}{% if not loop.last %}, {% endif %}{% endfor %};
+
+  {{ instruction.name | upper }}Instruction(const Instruction &instr) {
+    {% for segment in instruction.segments %}
+    {{ segment.name | lower }} = instr.get("{{ segment.name | lower }}").value;
+    {% endfor %}
+  }
+};
+{% endfor %}
+
+std::unordered_map<uint32_t, std::function<void(uint32_t)>>
+createInstructionHandlers({{ class_name }} *{{ kind | lower }}_obj);
+
+} // namespace {{ kind | upper}}_PKG
+
+#endif // _{{ kind | upper }}_H
