@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::{
     fs::{read_to_string, File},
     io::{Error, Result, Write},
@@ -10,13 +11,38 @@ pub struct ComponentGenerator {}
 
 impl ComponentGenerator {
     pub fn create(arch_json: &Path, isa_json: &Path, output_dir: &Path, force: bool) -> Result<()> {
-        let combined_json = Self::get_combined_json(arch_json, isa_json)?;
+        let arch_json_value = json!(&read_to_string(arch_json)?);
+        let isa_json_value = json!(&read_to_string(isa_json)?);
+
+        Self::validate_arch_json(&arch_json_value)?;
+        Self::validate_isa_json(&isa_json_value)?;
+
+        let combined_json = Self::get_combined_json(&arch_json_value, &isa_json_value)?;
 
         let template_path = get_component_template_path()?;
 
         Self::copy_and_render_files(template_path.as_path(), &combined_json, output_dir, force)?;
 
         Ok(())
+    }
+
+    fn validate_arch_json(arch_json: &serde_json::Value) -> Result<()> {
+        let schema_str = include_str!("../assets/component_arch_schema.json");
+        Self::validate_json(arch_json, &json!(schema_str.as_bytes()))
+    }
+
+    fn validate_isa_json(isa_json: &serde_json::Value) -> Result<()> {
+        let schema_str = include_str!("../assets/component_isa_schema.json");
+        Self::validate_json(isa_json, &json!(schema_str.as_bytes()))
+    }
+
+    fn validate_json(instance: &serde_json::Value, schema: &serde_json::Value) -> Result<()> {
+        jsonschema::validate(schema, instance).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("JSON validation error: {}", e),
+            )
+        })
     }
 
     fn get_component_kind(arch_json: &serde_json::Value) -> Result<String> {
@@ -31,22 +57,20 @@ impl ComponentGenerator {
         ))
     }
 
-    fn get_combined_json(arch_json: &Path, isa_json: &Path) -> Result<serde_json::Value> {
-        let arch_json_file = File::open(arch_json)?;
-        let isa_json_file = File::open(isa_json)?;
-        let arch_json: serde_json::Value = serde_json::from_reader(arch_json_file)?;
-        let isa_json: serde_json::Value = serde_json::from_reader(isa_json_file)?;
-
-        let mut combined_json = arch_json;
+    fn get_combined_json(
+        arch_json: &serde_json::Value,
+        isa_json: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let mut combined_json = arch_json.clone();
         if let Some(obj) = combined_json.as_object_mut() {
-            obj.insert("isa".to_string(), isa_json);
+            obj.insert("isa".to_string(), isa_json.clone());
         } else {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Architecture JSON is not an object",
             ));
         }
-        Ok(combined_json)
+        Ok(combined_json.clone())
     }
 
     fn copy_and_render_files(
