@@ -1,7 +1,10 @@
-#ifndef _{{ kind | upper }}_H
-#define _{{ kind | upper }}_H
+#ifndef _{{ kind | upper }}_PKG_H
+#define _{{ kind | upper }}_PKG_H
 
 #include "instruction.h"
+#include <cstdint>
+#include <functional>
+#include <unordered_map>
 
 {% set class_name = kind | capitalize %}
 class {{ class_name }};
@@ -9,7 +12,7 @@ class {{ class_name }};
 namespace {{ kind | upper}}_PKG {
 
 // Supported opcodes from ISA
-enum Opcode {
+enum OpCode {
 {% for instruction in isa.instructions %}
     {% set instr_name = instruction.name | upper %}
     {{ instr_name }} = {{ instruction.opcode }}{% if not loop.last %},{% endif %}
@@ -38,7 +41,7 @@ inline const std::unordered_map<OpCode, std::vector<SegmentRange>> &getIsaDefini
 {% if segment.verbo_map %}
 enum {{ instruction.name | upper }}_{{ segment.name | upper }} {
 {% for map in segment.verbo_map %}
-  {{ map.val | replace(' ', '_') | upper }} = {{ map.key }}{% if not loop.last %},{% endif %}
+  {{ instruction.name | upper }}_{{ segment.name | upper }}_{{ map.val | replace(' ', '_') | upper }} = {{ map.key }}{% if not loop.last %},{% endif %}
 {% endfor %}
 };
 {% endif %}
@@ -48,9 +51,10 @@ enum {{ instruction.name | upper }}_{{ segment.name | upper }} {
 // Instruction formats
 {% for instruction in isa.instructions %}
 struct {{ instruction.name | upper }}Instruction {
-  uint32_t {% for segment in instruction.segments %}{{ segment.name | lower }}{% if not loop.last %}, {% endif %}{% endfor %};
+  uint32_t slot, {% for segment in instruction.segments %}{{ segment.name | lower }}{% if not loop.last %}, {% endif %}{% endfor %};
 
   {{ instruction.name | upper }}Instruction(const Instruction &instr) {
+    slot = instr.slot;
     {% for segment in instruction.segments %}
     {{ segment.name | lower }} = instr.get("{{ segment.name | lower }}").value;
     {% endfor %}
@@ -63,4 +67,4 @@ createInstructionHandlers({{ class_name }} *{{ kind | lower }}_obj);
 
 } // namespace {{ kind | upper}}_PKG
 
-#endif // _{{ kind | upper }}_H
+#endif // _{{ kind | upper }}_PKG_H

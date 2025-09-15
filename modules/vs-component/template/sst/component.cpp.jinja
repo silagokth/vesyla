@@ -3,7 +3,7 @@
 using namespace SST;
 
 {% set class_name = kind | capitalize %}
-{{ class_name }}:{{ class_name }}(SST::ComponentId_t id, SST::Params &params)
+{{ class_name }}::{{ class_name }}(SST::ComponentId_t id, SST::Params &params)
     : DRRA{{ type | capitalize }}(id, params) {
       instructionHandlers = {{ kind | upper }}_PKG::createInstructionHandlers(this);
 }
@@ -13,7 +13,7 @@ bool {{ class_name }}::clockTick(SST::Cycle_t currentCycle) {
 }
 
 {% for instruction in isa.instructions %}
-void {{ class_name }}::handle{{ instruction.name | capitalize }}(const {{ kind | upper }}_PKG::{{ instruction.name | upper }}Instruction &instr) {
+void {{ class_name }}::handle{{ instruction.name | upper }}(const {{ kind | upper }}_PKG::{{ instruction.name | upper }}Instruction &instr) {
   out.output(
     "{{ instruction.name | lower }} (slot=%d, {% for segment in instruction.segments %}{{ segment.name }}=%d{% if not loop.last %}, {% endif %}{% endfor %})\n",
     instr.slot{% for segment in instruction.segments %}, instr.{{ segment.name }}{% endfor %});
