@@ -218,6 +218,24 @@ impl ComponentGenerator {
                 if path.extension().and_then(|s| s.to_str()) == Some("jinja") {
                     let dest_path = dest_path.with_extension("");
                     Self::copy_and_render_file(&path, &dest_path, context)?;
+                } else if path.extension().and_then(|s| s.to_str()) == Some("j2") {
+                    let mut new_filename = dest_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("output")
+                        .to_string();
+                    let component_kind = Self::get_component_kind(context)?;
+                    if component_kind.contains("component") {
+                        return Err(Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "component_kind contains 'component', which is reserved. Please specify a different kind.",
+                        ));
+                    }
+                    new_filename = new_filename.replace("component", component_kind.as_str());
+                    let dest_path = dest_path
+                        .with_file_name(new_filename)
+                        .with_extension("sv.j2");
+                    std::fs::copy(&path, &dest_path)?;
                 } else {
                     std::fs::copy(&path, &dest_path)?;
                 }
@@ -338,8 +356,8 @@ mod tests {
         let compile_output_path = output_dir.join("compile_util");
 
         // Check the j2 files were not changed
-        assert!(rtl_output_path.join("component.sv.j2").exists());
-        assert!(rtl_output_path.join("component_pkg.sv.j2").exists());
+        assert!(rtl_output_path.join("dpu.sv.j2").exists());
+        assert!(rtl_output_path.join("dpu_pkg.sv.j2").exists());
 
         // Check the sst headers were generated
         assert!(sst_output_path.join("dpu.h").exists());
