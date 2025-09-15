@@ -597,6 +597,24 @@ pub fn remove_write_permissions(dir_path: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn get_component_template_path() -> Result<PathBuf> {
+    let current_exe = env::current_exe()?;
+    let current_exe_dir = current_exe.parent().ok_or_else(|| {
+        Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to get parent directory of the executable",
+        )
+    })?;
+    let usr_dir = current_exe_dir.parent().ok_or_else(|| {
+        Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to get parent directory of the executable directory",
+        )
+    })?;
+    let template_path = Path::new(usr_dir).join("share/vesyla/component_template");
+    Ok(template_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

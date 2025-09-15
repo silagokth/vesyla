@@ -30,6 +30,9 @@ enum Command {
         // Output directory path for the new component
         #[arg(short, long)]
         output_dir: String,
+        // Force overwrite if the output directory exists
+        #[arg(short, long, default_value_t = false)]
+        force: bool,
     },
     #[command(about = "Assemble the system", name = "assemble")]
     Assemble {
@@ -94,12 +97,18 @@ fn main() {
             arch_json,
             isa_json,
             output_dir,
+            force,
         } => {
             info!(
                 "Creating new component with arch: {}, isa: {}, output: {}",
                 arch_json, isa_json, output_dir
             );
-            match ComponentGenerator::create(arch_json, isa_json, output_dir) {
+            match ComponentGenerator::create(
+                Path::new(arch_json),
+                Path::new(isa_json),
+                Path::new(output_dir),
+                *force,
+            ) {
                 Ok(_) => info!("Component creation completed successfully!"),
                 Err(e) => {
                     error!("Component creation failed: {}", e);
