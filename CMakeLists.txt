@@ -53,6 +53,7 @@ corrosion_import_crate(
 
 add_subdirectory("modules/vs-testcase")
 add_subdirectory("modules/vs-compile")
+add_subdirectory("modules/vs-component")
 
 install(PROGRAMS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vesyla DESTINATION bin)
 install(
