@@ -41,17 +41,16 @@
       "items": {
         "type": "object",
         "properties": {
-          "key": {
+          "name": {
             "type": "string"
           },
-          "val": {
-            "type": "integer",
-            "minimum": 0
+          "value": {
+            "type": "number"
           }
         },
         "required": [
-          "key",
-          "val"
+          "name",
+          "value"
         ],
         "additionalProperties": false
       },

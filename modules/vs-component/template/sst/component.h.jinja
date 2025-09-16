@@ -21,7 +21,7 @@ public:
   static std::vector<SST::ElementInfoParam> getComponentParams() {
     auto params = DRRA{{ type | capitalize }}::getBaseParams();
     {% for property in custom_properties %}
-    params.push_back({"{{ property.name }}", "", "{{ param.value }}"});
+    params.push_back({"{{ property.name }}", "", "{{ property.value }}"});
     {% endfor %}
     return params;
   }

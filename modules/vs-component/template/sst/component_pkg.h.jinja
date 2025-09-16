@@ -41,7 +41,7 @@ inline const std::unordered_map<OpCode, std::vector<SegmentRange>> &getIsaDefini
 {% if segment.verbo_map %}
 enum {{ instruction.name | upper }}_{{ segment.name | upper }} {
 {% for map in segment.verbo_map %}
-  {{ instruction.name | upper }}_{{ segment.name | upper }}_{{ map.val | replace(' ', '_') | upper }} = {{ map.key }}{% if not loop.last %},{% endif %}
+  {{ instruction.name | upper }}_{{ segment.name | upper }}_{{ map.val | replace(' ', '_') | replace('(', '') | replace(')', '') | upper }} = {{ map.key }}{% if not loop.last %},{% endif %}
 {% endfor %}
 };
 {% endif %}
