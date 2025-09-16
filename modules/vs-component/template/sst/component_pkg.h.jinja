@@ -24,7 +24,11 @@ inline const std::unordered_map<OpCode, std::vector<SegmentRange>> &getIsaDefini
   static const std::unordered_map<OpCode, std::vector<SegmentRange>> segmentsDef = {
     {% for instruction in isa.instructions %}
     {OpCode::{{ instruction.name | upper }}, {
+      {% if type == 'resource' %}
       {% set current_lsb = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth - isa.format.instr_slot_bitwidth %}
+      {% else %}
+      {% set current_lsb = isa.format.instr_bitwidth - isa.format.instr_type_bitwidth - isa.format.instr_opcode_bitwidth %}
+      {% endif %}
       {% for segment in instruction.segments %}
       {% set current_lsb = current_lsb - segment.bitwidth %}
       SegmentRange("{{ segment.name | lower }}", {{ segment.bitwidth }}, {{ current_lsb }}){% if not loop.last %},{% endif %}
