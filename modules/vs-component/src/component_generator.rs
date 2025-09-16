@@ -77,6 +77,18 @@ impl ComponentGenerator {
         ))
     }
 
+    fn get_component_type(arch_json: &serde_json::Value) -> Result<String> {
+        if let Some(comp_type) = arch_json.get("type") {
+            if let Some(type_str) = comp_type.as_str() {
+                return Ok(type_str.to_string());
+            }
+        }
+        Err(Error::new(
+            std::io::ErrorKind::InvalidData,
+            "component type not found in architecture JSON",
+        ))
+    }
+
     fn get_combined_json(
         arch_json: &serde_json::Value,
         isa_json: &serde_json::Value,
@@ -246,7 +258,14 @@ impl ComponentGenerator {
                     std::fs::copy(&path, &dest_path)?;
                 }
             } else if path.is_dir() {
-                Self::copy_and_render_files(&path, context, &dest_path, force)?;
+                let component_type = Self::get_component_type(context)?;
+                if component_type == "controller"
+                    && path.file_name().and_then(|s| s.to_str()) == Some("compile_util")
+                {
+                    continue;
+                } else {
+                    Self::copy_and_render_files(&path, context, &dest_path, force)?;
+                }
             }
         }
         Ok(())
