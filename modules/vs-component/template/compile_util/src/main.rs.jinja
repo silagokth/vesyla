@@ -96,7 +96,7 @@ fn reshape_instr(op: Op) -> Op {
   let mut new_body = Vec::new();
   for instr in op.body {
     let new_instr = instr.clone();
-    match instr.king.as_str() {
+    match instr.kind.as_str() {
       {% for instruction in isa.instructions %}
       "{{ instruction.name }}" => {
         {% for segment in instruction.segments %}
