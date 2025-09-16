@@ -20,7 +20,9 @@ impl ComponentGenerator {
         let isa_json_value: serde_json::Value = serde_json::from_str(&read_to_string(isa_json)?)?;
 
         Self::validate_arch_json(&arch_json_value)?;
+        log::info!("Validated architecture JSON file: {}", arch_json.display());
         Self::validate_isa_json(&isa_json_value)?;
+        log::info!("Validated ISA JSON file: {}", isa_json.display());
 
         let combined_json =
             Self::get_combined_json(&arch_json_value, &isa_json_value, non_interactive)?;
@@ -28,6 +30,10 @@ impl ComponentGenerator {
         let template_path = get_component_template_path()?;
 
         Self::copy_and_render_files(template_path.as_path(), &combined_json, output_dir, force)?;
+        log::info!(
+            "Generated component files in output directory: {}",
+            output_dir.display()
+        );
 
         Ok(())
     }
