@@ -81,10 +81,10 @@ impl ComponentGenerator {
             obj.insert("isa".to_string(), isa_json.clone());
             if obj.get("category").is_none() {
                 if non_interactive {
-                    return Err(Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Component category is not specified in architecture JSON. In non-interactive mode, please specify 'category'.",
-                    ));
+                    obj.insert(
+                        "category".to_string(),
+                        serde_json::Value::String("uncategorized".to_string()),
+                    );
                 }
                 let mut user_input = String::new();
                 print!("Specify the component type: '0: uncategorized', '1: processor', '2: memory', '3: network' or '4: system': ");
