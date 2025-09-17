@@ -1,11 +1,15 @@
-use crate::drra::ParameterList;
-use bs58::encode;
+use crate::models::types::ParameterList;
+
 use log::{debug, warn};
+use std::{
+    env, fs,
+    hash::{DefaultHasher, Hasher},
+    io::{Error, Result},
+    path::{Path, PathBuf},
+};
+
+use bs58::encode;
 use serde::Serialize;
-use std::hash::{DefaultHasher, Hasher};
-use std::io::{Error, Result};
-use std::path::{Path, PathBuf};
-use std::{env, fs};
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -417,8 +421,33 @@ pub fn generate_rtl_for_component(
             let result = mj_env
                 .get_template("rtl_template")
                 .expect("Failed to get template")
-                .render(component);
-            let output_str = result.expect("Failed to render template");
+                .render(serde_json::to_value(component).unwrap())
+                .map_err(|e| {
+                    log::error!(
+                        "Failed to render template for file {}: {}",
+                        output_file.to_str().unwrap(),
+                        e
+                    );
+                    fs::write(
+                        output_file.with_extension("template.jinja"),
+                        rtl_template_content,
+                    )
+                    .expect("Failed to write template file");
+                    fs::write(
+                        output_file.with_extension("error.txt"),
+                        serde_json::to_string_pretty(component).unwrap(),
+                    )
+                    .expect("Failed to write error file");
+                    Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Failed to render template for file {}: {}",
+                            output_file.to_str().unwrap(),
+                            e
+                        ),
+                    )
+                });
+            let output_str = result?;
             fs::write(&output_file, file_comment + &output_str).expect("Failed to write file");
         } else {
             // Copy the file with added comment
@@ -526,6 +555,68 @@ pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn remove_write_permissions(dir_path: &str) -> Result<()> {
+    fn set_readonly_recursive(path: &Path) -> Result<()> {
+        let metadata = fs::metadata(path)?;
+        let mut perms = metadata.permissions();
+
+        // Make read-only
+        // Only make specific file types read-only
+        if path.is_file() {
+            if let Some(extension) = path.extension() {
+                if let Some(ext_str) = extension.to_str() {
+                    let ext_lower = ext_str.to_lowercase();
+                    // Only set read-only for json, systemverilog, vhdl and yaml files
+                    if ["json", "sv", "vhdl", "vhd", "yaml", "yml"].contains(&ext_lower.as_str()) {
+                        perms.set_readonly(true);
+                        fs::set_permissions(path, perms)?;
+                    }
+                }
+            }
+        }
+
+        if metadata.is_dir() {
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                set_readonly_recursive(&entry.path())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    // Only change permissions of contents, not the directory itself
+    let path = Path::new(dir_path);
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        set_readonly_recursive(&entry.path())?;
+    }
+
+    Ok(())
+}
+
+pub fn get_component_template_path() -> Result<PathBuf> {
+    if let Ok(test_path) = env::var("VESYLA_COMPONENT_TEMPLATE_PATH") {
+        return Ok(PathBuf::from(test_path));
+    }
+
+    let current_exe = env::current_exe()?;
+    let current_exe_dir = current_exe.parent().ok_or_else(|| {
+        Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to get parent directory of the executable",
+        )
+    })?;
+    let usr_dir = current_exe_dir.parent().ok_or_else(|| {
+        Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to get parent directory of the executable directory",
+        )
+    })?;
+    let template_path = Path::new(usr_dir).join("share/vesyla/component_template");
+    Ok(template_path)
 }
 
 #[cfg(test)]

@@ -169,7 +169,9 @@ fn init(
             let current_exe = env::current_exe().unwrap();
             let current_exe_dir = current_exe.parent().unwrap();
             let usr_dir = current_exe_dir.parent().unwrap();
-            let template_path = Path::new(usr_dir).join("share/vesyla/template").join(style);
+            let template_path = Path::new(usr_dir)
+                .join("share/vesyla/testcase_template")
+                .join(style);
             template_path
         }
     };
@@ -425,7 +427,7 @@ mod tests {
     // Helper to create a fake template directory with a file
     fn setup_template_dir(base: &Path, style: &str) -> std::path::PathBuf {
         // Create a fake template directory
-        let template_dir = base.join("share/vesyla/template").join(style);
+        let template_dir = base.join("share/vesyla/testcase_template").join(style);
         fs::create_dir_all(&template_dir).unwrap();
         // Copy the real template files
         let binding = env!("CARGO_MANIFEST_DIR");

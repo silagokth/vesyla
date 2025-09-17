@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "object",
+      "properties": {
+        "instr_bitwidth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 32
+        },
+        "instr_type_bitwidth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "instr_opcode_bitwidth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        },
+        "instr_slot_bitwidth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4
+        }
+      }
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "opcode": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "instr_type": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "bitwidth": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "verbo_map": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "integer"
+                      },
+                      "val": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "val"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "comment": {
+                  "type": "string"
+                },
+                "default_val": {
+                  "type": "number"
+                },
+                "is_signed": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "name",
+                "bitwidth",
+                "comment"
+              ]
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "name",
+          "opcode",
+          "instr_type"
+        ]
+      },
+      "default": []
+    }
+  }
+}

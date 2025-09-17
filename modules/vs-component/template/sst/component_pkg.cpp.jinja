@@ -1,0 +1,19 @@
+#include "{{ kind | lower }}_pkg.h"
+#include "{{ kind | lower }}.h"
+
+{% set class_name = kind | capitalize %}
+std::unordered_map<uint32_t, std::function<void(uint32_t)>>
+{{ kind | upper }}_PKG::createInstructionHandlers({{ class_name }} *{{ kind | lower}}_obj) {
+  return {
+    {% for instruction in isa.instructions %}
+    {(uint32_t)OpCode::{{ instruction.name | upper }},
+      [{{ kind | lower }}_obj](uint32_t instr) {
+        auto segment_defs = getIsaDefinitions().at(OpCode::{{ instruction.name | upper }});
+        Instruction instruction(instr, {{ kind | lower }}_obj->format, segment_defs);
+        {{ instruction.name | upper }}Instruction decoded_instr(instruction);
+        {{ kind | lower }}_obj->handle{{ instruction.name | upper }}(decoded_instr);
+      }
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  };
+}
