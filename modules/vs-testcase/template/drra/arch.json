@@ -31,15 +31,33 @@
   "cells": [
     {
       "name": "cell_top_impl",
-      "kind": "cell_top"
+      "kind": "cell_top",
+      "controller": "sequencer_impl",
+      "resource_list": [
+        "swb_impl",
+        "iosram_top_impl"
+      ]
     },
     {
       "name": "cell_mid_impl",
-      "kind": "cell_mid"
+      "kind": "cell_mid",
+      "controller": "sequencer_impl",
+      "resource_list": [
+        "swb_impl",
+        "rf_impl",
+        "rf_impl",
+        "rf_impl",
+        "dpu_impl"
+      ]
     },
     {
       "name": "cell_btm_impl",
-      "kind": "cell_btm"
+      "kind": "cell_btm",
+      "controller": "sequencer_impl",
+      "resource_list": [
+        "swb_impl",
+        "iosram_btm_impl"
+      ]
     }
   ],
   "fabric": {
