@@ -263,12 +263,26 @@ impl ComponentGenerator {
                 }
             } else if path.is_dir() {
                 let component_type = Self::get_component_type(context)?;
-                if component_type == "controller"
-                    && path.file_name().and_then(|s| s.to_str()) == Some("compile_util")
-                {
-                    continue;
-                } else {
-                    Self::copy_and_render_files(&path, context, &dest_path, force)?;
+                match component_type.as_str() {
+                    "controller" => {
+                        if path.file_name().and_then(|s| s.to_str()) == Some("rtl_controller") {
+                            let dest_path = dest_path.with_file_name("rtl");
+                            Self::copy_and_render_files(&path, context, &dest_path, force)?
+                        }
+                    }
+                    "resource" => {
+                        let mut dest_path = dest_path;
+                        if path.file_name().and_then(|s| s.to_str()) == Some("rtl_resource") {
+                            dest_path = dest_path.with_file_name("rtl");
+                        }
+                        Self::copy_and_render_files(&path, context, &dest_path, force)?
+                    }
+                    _ => {
+                        return Err(Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Invalid component type. Must be 'controller' or 'resource'.",
+                        ));
+                    }
                 }
             }
         }
