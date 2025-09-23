@@ -67,9 +67,25 @@ fn gen_sst_config(arch_file: &Path, output_dir: &Path) {
 }
 
 pub fn generate(arch_file: &Path, output_dir: &Path) {
-    if register_drra_library().is_ok() {
-        gen_sst_config(arch_file, output_dir);
-    } else {
-        warn!("SST DRRA library registration failed, skipping SST configuration generation");
+    if register_drra_library().is_err() {
+        // Copy $SST_CORE_HOME/etc/sst/sstsimulator.conf to $HOME/.sst/sstsimulator.conf
+        let sst_core_home =
+            std::env::var("SST_CORE_HOME").expect("SST_CORE_HOME environment variable is not set");
+        let home_dir = std::env::var("HOME").expect("HOME environment variable is not set");
+        let source = Path::new(&sst_core_home).join("etc/sst/sstsimulator.conf");
+        let home_dir = Path::new(&home_dir);
+        let dest_dir = home_dir.join(".sst");
+        if !dest_dir.exists() {
+            fs::create_dir_all(&dest_dir).expect("Failed to create .sst directory");
+        }
+        let dest = dest_dir.join("sstsimulator.conf");
+        if !dest.exists() {
+            fs::copy(&source, &dest).expect("Failed to copy sstsimulator.conf");
+        }
+
+        if register_drra_library().is_err() {
+            warn!("Failed to register DRRA library with SST. Please ensure that the SST installation is correct and that the sst-register command is available in your PATH.");
+        }
     }
+    gen_sst_config(arch_file, output_dir);
 }
