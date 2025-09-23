@@ -1,0 +1,42 @@
+// vesyla_template_start defines
+`define {{name}} {{fingerprint}}
+`define {{name}}_pkg {{fingerprint}}_pkg
+// vesyla_template_end defines
+
+// vesyla_template_start module_head
+{% if not already_defined %}
+module {{fingerprint}}
+import {{fingerprint}}_pkg::*;
+// vesyla_template_end module_head
+(
+  {% if io_input %}
+  output logic io_en_in,
+  output logic [IO_ADDR_WIDTH-1:0] io_addr_in,
+  input  logic [IO_DATA_WIDTH-1:0] io_data_in,
+  {% endif %}
+  {% if io_output %}
+  output logic io_en_out,
+  output logic [IO_ADDR_WIDTH-1:0] io_addr_out,
+  output logic [IO_DATA_WIDTH-1:0] io_data_out,
+  {% endif %}
+  {% for slot in range(size) %}
+  input  logic clk_{{ slot }},
+  input  logic rst_n_{{ slot }},
+  input  logic instr_en_{{ slot }},
+  input  logic [RESOURCE_INSTR_WIDTH-1:0] instr_{{ slot }},
+  input  logic [3:0] activate_{{ slot }},
+  input  logic [WORD_BITWIDTH-1:0] word_data_in_{{ slot }},
+  output logic [WORD_BITWIDTH-1:0] word_data_out_{{ slot }},
+  input  logic [BULK_BITWIDTH-1:0] bulk_data_in_{{ slot }},
+  output logic [BULK_BITWIDTH-1:0] bulk_data_out_{{ slot }}{% if not loop.last %},{% endif %}
+  {% endfor %}
+
+);
+
+
+// NOTE: Implement the module functionality here
+
+
+// vesyla_template_start module_tail
+{% endif %}
+// vesyla_template_end module_tail
