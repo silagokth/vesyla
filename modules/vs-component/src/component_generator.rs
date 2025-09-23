@@ -30,6 +30,12 @@ impl ComponentGenerator {
         let template_path = get_component_template_path()?;
 
         Self::copy_and_render_files(template_path.as_path(), &combined_json, output_dir, force)?;
+
+        // Copy JSON files to output directory
+        std::fs::create_dir_all(output_dir)?;
+        std::fs::copy(arch_json, output_dir.join(arch_json.file_name().unwrap()))?;
+        std::fs::copy(isa_json, output_dir.join(isa_json.file_name().unwrap()))?;
+
         log::info!(
             "Generated component files in output directory: {}",
             output_dir.display()
