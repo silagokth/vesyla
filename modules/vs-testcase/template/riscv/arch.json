@@ -1,0 +1,13 @@
+{
+  "platform": "riscv",
+
+  "pcu": {
+    "has_drra": false,
+    "has_io": true
+  },
+
+  "interface": {
+    "input_buffer_depth": 1024,
+    "output_buffer_depth": 1024
+  }
+}

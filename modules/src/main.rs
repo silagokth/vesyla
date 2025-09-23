@@ -34,6 +34,7 @@ fn main() {
          \tcompile     Compile the source code\n\
          \tcomponent   Assemble the system\n\
          \ttestcase    Test the system\n\
+         \tgadget      Collection of small functions\n\
          Options:\n\
          \t-h, --help     Show this help message\n\
          \t-V, --version  Show version information",
@@ -47,7 +48,7 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = ["compile", "component", "testcase"];
+    let tools_list = ["compile", "component", "testcase", "gadget"];
     match command.as_str() {
         "-h" | "--help" => {
             println!("{}", help_message);

@@ -1,0 +1,55 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+mem              0x00000000         0x0000c000
+mmio             0x0000c000         0x00000fff
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+
+.memory         0x00000000      0x354
+                0x00000000                        . = 0x0
+ start*(.text)
+ .text          0x00000000       0xcc start.o
+ *(.text)
+ .text          0x000000cc      0x178 pcu.o
+                0x000000cc                load_kernel
+                0x0000015c                call
+                0x00000170                ret
+                0x00000188                load
+                0x000001c4                store
+                0x000001f0                pcu_main
+ *(.srodata*)
+ .srodata       0x00000244        0x8 pcu.o
+ *(.rodata*)
+ .rodata        0x0000024c      0x108 pcu.o
+ *(.sdata*)
+ *(.data*)
+ .data          0x00000354        0x0 start.o
+ .data          0x00000354        0x0 pcu.o
+ *(.sbss*)
+ *(.bss*)
+ .bss           0x00000354        0x0 start.o
+ .bss           0x00000354        0x0 pcu.o
+                0x00000354                        end = .
+                0x00000354                        . = ALIGN (0x4)
+
+.mmio
+ *(.mmio)
+LOAD start.o
+LOAD pcu.o
+LOAD /opt/riscv/lib/gcc/riscv32-unknown-elf/12.2.0/libgcc.a
+OUTPUT(firmware.elf elf32-littleriscv)
+
+.riscv.attributes
+                0x00000000       0x2a
+ .riscv.attributes
+                0x00000000       0x28 start.o
+ .riscv.attributes
+                0x00000028       0x1c pcu.o
+
+.comment        0x00000000       0x1b
+ .comment       0x00000000       0x1b pcu.o
+                                 0x1c (size before relaxing)
