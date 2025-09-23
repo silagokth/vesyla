@@ -48,6 +48,8 @@ fn gen_sst_config(arch_file: &Path, output_dir: &Path) {
     // Apply the template
     let template = include_str!("../sst/sst_sim_template.py.jinja");
     let mut context = minijinja::Environment::new();
+    context.set_trim_blocks(true);
+    context.set_lstrip_blocks(true);
     context.add_template("sst_sim_template", template).unwrap();
     let result = context
         .get_template("sst_sim_template")

@@ -30,6 +30,12 @@ impl ComponentGenerator {
         let template_path = get_component_template_path()?;
 
         Self::copy_and_render_files(template_path.as_path(), &combined_json, output_dir, force)?;
+
+        // Copy JSON files to output directory
+        std::fs::create_dir_all(output_dir)?;
+        std::fs::copy(arch_json, output_dir.join(arch_json.file_name().unwrap()))?;
+        std::fs::copy(isa_json, output_dir.join(isa_json.file_name().unwrap()))?;
+
         log::info!(
             "Generated component files in output directory: {}",
             output_dir.display()
@@ -236,7 +242,7 @@ impl ComponentGenerator {
                 if path.extension().and_then(|s| s.to_str()) == Some("jinja") {
                     let dest_path = dest_path.with_extension("");
                     Self::copy_and_render_file(&path, &dest_path, context)?;
-                } else if path.extension().and_then(|s| s.to_str()) == Some("j2") {
+                } else {
                     let mut new_filename = dest_path
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -254,17 +260,29 @@ impl ComponentGenerator {
                         .with_file_name(new_filename)
                         .with_extension("sv.j2");
                     std::fs::copy(&path, &dest_path)?;
-                } else {
-                    std::fs::copy(&path, &dest_path)?;
                 }
             } else if path.is_dir() {
                 let component_type = Self::get_component_type(context)?;
-                if component_type == "controller"
-                    && path.file_name().and_then(|s| s.to_str()) == Some("compile_util")
-                {
-                    continue;
-                } else {
-                    Self::copy_and_render_files(&path, context, &dest_path, force)?;
+                match component_type.as_str() {
+                    "controller" => {
+                        if path.file_name().and_then(|s| s.to_str()) == Some("rtl_controller") {
+                            let dest_path = dest_path.with_file_name("rtl");
+                            Self::copy_and_render_files(&path, context, &dest_path, force)?
+                        }
+                    }
+                    "resource" => {
+                        let mut dest_path = dest_path;
+                        if path.file_name().and_then(|s| s.to_str()) == Some("rtl_resource") {
+                            dest_path = dest_path.with_file_name("rtl");
+                        }
+                        Self::copy_and_render_files(&path, context, &dest_path, force)?
+                    }
+                    _ => {
+                        return Err(Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Invalid component type. Must be 'controller' or 'resource'.",
+                        ));
+                    }
                 }
             }
         }
