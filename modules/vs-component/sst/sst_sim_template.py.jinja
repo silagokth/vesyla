@@ -59,10 +59,10 @@ all_cells_controllers = []
 all_cells_slots = []
 all_cells_slots_params = []
 
-{% for thiscell in cells -%}
+{% for thiscell in cells %}
 # CELL {{ thiscell.coordinates.row }} {{ thiscell.coordinates.col }}
-{% set r=thiscell.coordinates.row -%}
-{% set c=thiscell.coordinates.col -%}
+{% set r=thiscell.coordinates.row %}
+{% set c=thiscell.coordinates.col %}
 
 # List of slots in cell {{r}} {{c}}
 cell_{{r}}_{{c}}_slots = []
@@ -84,12 +84,15 @@ seq_obj_{{r}}_{{c}}_params = {
     "word_bitwidth": word_bitwidth,
     "cell_coordinates": [{{r}}, {{c}}],
     "num_slots": {{ thiscell.cell.controller.parameters.NUM_SLOTS }},
+    {% for key, value in thiscell.cell.controller.parameters.items() %}
+    "{{ key }}": {{ value }},
+    {% endfor %}
 }
 seq_obj_{{r}}_{{c}}.addParams(seq_obj_{{r}}_{{c}}_params)
 
 all_cells_controllers.append(seq_obj_{{r}}_{{c}})
 
-{% for resource in thiscell.cell.resources_list -%}
+{% for resource in thiscell.cell.resources_list %}
 
 # Slot {{ resource.slot }} {{ resource.kind }} (size: {{ resource.size }})
 resource_name = "drra." + "{{ resource.kind }}"
@@ -109,42 +112,45 @@ print(f"[SST SIM] - Initializing resource {resource_name}")
     "backing": default_backing,
     "backing_size_unit": default_backing_size_unit,
     "cell_coordinates": [{{r}}, {{c}}],
-    {%- if resource.slot is defined %}
+    {% if resource.slot is defined %}
     "slot_id": {{ resource.slot }},
-    {%- endif %}
-    {%- if resource.parameters.FSM_PER_SLOT is defined %}
+    {% endif %}
+    {% if resource.parameters.FSM_PER_SLOT is defined %}
     "number_of_fsms": {{ resource.parameters.FSM_PER_SLOT }},
-    {%- endif %}
-    {%- if resource.size is defined %}
+    {% endif %}
+    {% if resource.size is defined %}
     "resource_size": {{ resource.size }},
-    {%- endif %}
-    {%- if resource.io_input is defined and resource.io_input == True %}
+    {% endif %}
+    {% if resource.io_input is defined and resource.io_input == True %}
     "has_io_input_connection": 1,
-    {%- endif %}
-    {%- if resource.io_output is defined and resource.io_output == True %}
+    {% endif %}
+    {% if resource.io_output is defined and resource.io_output == True %}
     "has_io_output_connection": 1,
-    {%- endif %}
-    {%- if resource.parameters.NUM_SLOTS is defined %}
+    {% endif %}
+    {% if resource.parameters.NUM_SLOTS is defined %}
     "num_slots": {{ resource.parameters.NUM_SLOTS }},
-    {%- endif %}
-    {%- if resource.parameters.RF_DEPTH is defined %}
+    {% endif %}
+    {% if resource.parameters.RF_DEPTH is defined %}
     "register_file_size": {{ resource.parameters.RF_DEPTH }},
-    {%- endif %}
+    {% endif %}
+    {% for key, value in resource.parameters.items() %}
+    "{{ key }}": {{ value }},
+    {% endfor %}
 }
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}.addParams({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_params)
 
-{%- if resource.io_input is defined and resource.io_input == True %}
+{% if resource.io_input is defined and resource.io_input == True %}
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer = sst.Link("link_{{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer")
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_input_buffer.connect(
     ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_input_port", default_access_time), (input_buffer, "col_port{{c}}", default_access_time)
 )
-{%- endif %}
-{%- if resource.io_output is defined and resource.io_output == True %}
+{% endif %}
+{% if resource.io_output is defined and resource.io_output == True %}
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer = sst.Link("link_{{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer")
 {{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_to_output_buffer.connect(
     ({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}, "io_output_port", default_access_time), (output_buffer, "col_port{{c}}", default_access_time)
 )
-{%- endif %}
+{% endif %}
 
 cell_{{r}}_{{c}}_slots.append({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}})
 cell_{{r}}_{{c}}_slots_params.append({{resource.kind}}_{{r}}_{{c}}_{{resource.slot}}_params)
