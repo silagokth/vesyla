@@ -236,7 +236,7 @@ impl ComponentGenerator {
                 if path.extension().and_then(|s| s.to_str()) == Some("jinja") {
                     let dest_path = dest_path.with_extension("");
                     Self::copy_and_render_file(&path, &dest_path, context)?;
-                } else if path.extension().and_then(|s| s.to_str()) == Some("j2") {
+                } else {
                     let mut new_filename = dest_path
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -253,8 +253,6 @@ impl ComponentGenerator {
                     let dest_path = dest_path
                         .with_file_name(new_filename)
                         .with_extension("sv.j2");
-                    std::fs::copy(&path, &dest_path)?;
-                } else {
                     std::fs::copy(&path, &dest_path)?;
                 }
             } else if path.is_dir() {
