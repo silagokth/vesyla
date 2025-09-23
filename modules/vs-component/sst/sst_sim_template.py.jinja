@@ -84,7 +84,7 @@ seq_obj_{{r}}_{{c}}_params = {
     "word_bitwidth": word_bitwidth,
     "cell_coordinates": [{{r}}, {{c}}],
     "num_slots": {{ thiscell.cell.controller.parameters.NUM_SLOTS }},
-    {% for key, value in thiscell.cell.controller.parameters.items() %}
+    {% for key, value in thiscell.cell.controller.parameters | items %}
     "{{ key }}": {{ value }},
     {% endfor %}
 }
@@ -133,7 +133,7 @@ print(f"[SST SIM] - Initializing resource {resource_name}")
     {% if resource.parameters.RF_DEPTH is defined %}
     "register_file_size": {{ resource.parameters.RF_DEPTH }},
     {% endif %}
-    {% for key, value in resource.parameters.items() %}
+    {% for key, value in resource.parameters | items %}
     "{{ key }}": {{ value }},
     {% endfor %}
 }
