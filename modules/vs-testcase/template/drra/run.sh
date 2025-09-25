@@ -169,11 +169,13 @@ stop_spinner 0
 start_spinner
 printf "  ${BLUE}Verifying${NC} (mem/sram_image_m0.bin)"
 if [ ! -f "mem/sram_image_m0.bin" ]; then
+  stop_spinner 1
   printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin not found!"
   exit 1
 fi
 ## Check that the output is not empty
 if [ ! -s "mem/sram_image_m0.bin" ]; then
+  stop_spinner 1
   printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin is empty!"
   exit 1
 fi
@@ -217,6 +219,7 @@ sort -n mem/sram_image_m2.bin -o mem/sram_image_m2.bin
 set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m2.bin 2>&1)
 if [ $? -ne 0 ]; then
+  stop_spinner 1
   printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m2.bin differ!"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
@@ -248,6 +251,7 @@ sort -n mem/sram_image_m3.bin -o mem/sram_image_m3.bin # Reorder the memory file
 set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m3.bin 2>&1)
 if [ $? -ne 0 ]; then
+  stop_spinner 1
   printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m3.bin differ!"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
