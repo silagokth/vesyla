@@ -36,12 +36,14 @@ set(INSTALL_RUNTIME_OUTPUT_DIRECTORY bin)
 set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+find_package(VesylaUtils REQUIRED)
 
 include(FetchContent)
 FetchContent_Declare(
   Corrosion
   GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-  GIT_TAG v0.5.2)
+  GIT_TAG v0.5.2
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(Corrosion)
 
 get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)

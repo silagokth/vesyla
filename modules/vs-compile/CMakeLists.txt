@@ -131,7 +131,8 @@ add_library(VesylaUtil ${SOURCES_UTIL})
 add_library(VesylaTm ${SOURCES_TM})
 add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
                            ${BISON_PasmParser_OUTPUTS})
-add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is generated before schedule
+add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
+                                                  # generated before schedule
 
 set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
          ${conversion_libs})
@@ -148,9 +149,10 @@ target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
 add_dependencies(pasm-mlir-lsp-server vs-compile)
 
 include(FetchContent)
-fetchcontent_declare(
+FetchContent_Declare(
   googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip)
+  URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(INSTALL_GTEST
     OFF
@@ -158,7 +160,7 @@ set(INSTALL_GTEST
 set(gtest_force_shared_crt
     ON
     CACHE BOOL "" FORCE)
-fetchcontent_makeavailable(googletest)
+FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 # Set the unit test directory
