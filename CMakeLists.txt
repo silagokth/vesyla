@@ -78,3 +78,7 @@ install(DIRECTORY assets/applications DESTINATION share)
 file(COPY assets/applications DESTINATION ${CMAKE_BINARY_DIR}/share)
 install(DIRECTORY assets/icons DESTINATION share)
 file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
+
+# Get version from git tags
+get_git_version(VESYLA_VERSION)
+message(STATUS "VESYLA_VERSION: ${VESYLA_VERSION}")
