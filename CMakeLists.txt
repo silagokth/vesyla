@@ -82,3 +82,32 @@ file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
 # Get version from git tags
 get_git_version(VESYLA_VERSION)
 message(STATUS "VESYLA_VERSION: ${VESYLA_VERSION}")
+
+# Move the version file to the build folder add_custom_command( OUTPUT
+# ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/VESYLA_VERSION COMMAND ${CMAKE_COMMAND} -E
+# copy_if_different ${CMAKE_SOURCE_DIR}/modules/VESYLA_VERSION
+# ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/VESYLA_VERSION DEPENDS vesyla COMMENT
+# "Copying VESYLA_VERSION to build folder") add_custom_target(copy_version_file
+# ALL DEPENDS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/VESYLA_VERSION)
+# set(VESYLA_VERSION_PATH "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/VESYLA_VERSION")
+
+# PACKAGING
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "vesyla")
+set(CPACK_PACKAGE_VERSION "${VESYLA_VERSION}")
+set(CPACK_PACKAGE_VENDOR "silagokth")
+set(CPACK_PACKAGE_CONTACT "silago-team@eecs.kth.se")
+
+# Debian/Ubuntu packaging
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.31)")
+
+include(CPack)
+
+# RPM packaging (add after DEB section)
+set(CPACK_RPM_PACKAGE_LICENSE "MIT") # or your license
+set(CPACK_RPM_PACKAGE_GROUP "Development/Tools")
+set(CPACK_RPM_PACKAGE_REQUIRES "glibc >= 2.31")
+set(CPACK_RPM_SPEC_MORE_DEFINE %global __brp_check_rpaths %{nil})
+set(CPACK_RPM_SPEC_MORE_DEFINE %undefine __brp_check_rpaths)
