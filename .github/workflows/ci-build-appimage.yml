@@ -125,5 +125,5 @@ jobs:
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
-          path: ${{ github.workspace }}/build/pkg/vesyla-*
+          path: ${{ github.workspace }}/vesyla-source/build/pkg/vesyla-*
           overwrite: true
