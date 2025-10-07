@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-tags: true
+          fetch-depth: 0
 
       - name: Install bender
         run: |
@@ -120,14 +121,11 @@ jobs:
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "Renaming appimage"
-          mv ./vesyla ./vesyla-"$version"-Linux.
+          mv ./vesyla ./build/pkg/vesyla-"$version"-Linux.AppImage
 
       - name: Upload built artifact
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vesyla-${{ github.sha }}
-          path: |
-            ${{ github.workspace }}/vesyla-source/vesyla-*
-            ${{ github.workspace }}/build/pkg/vesyla-*
+          path: ${{ github.workspace }}/build/pkg/vesyla-*
           overwrite: true
