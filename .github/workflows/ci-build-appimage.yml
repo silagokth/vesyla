@@ -119,6 +119,8 @@ jobs:
           version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
+          version=${version#v}
+          echo $version
           echo "Renaming appimage"
           mv ./vesyla ./build/pkg/vesyla-"$version"-Linux.AppImage
 
