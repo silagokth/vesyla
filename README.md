@@ -5,15 +5,23 @@
 [Rustc Version 1.82+]: https://img.shields.io/badge/rustc-1.82+-lightgray.svg?e&logo=rust&logoColor=white
 [rustc]: https://blog.rust-lang.org/2024/10/17/Rust-1.82.0/
 
-Tool suite for DRRA-2 hardware accelerator platform.
+Synthesis and compilation tool suite for DRRA hardware accelerator platform.
 
-## Projects
+## Requirements
 
-- vs-testcase: Test case infrastructure and build-in test cases for DRRA-2
-- vs-component: Assemble the components of vesyla,
+- [minizinc](https://www.minizinc.org/) (used by `vesyla compile`)
+
+## Download
+
+Built packages are available for download in the [releases](https://github.com/silagokth/vesyla/releases).
+
+## [Modules](./modules/)
+
+- `testcase`: Test case infrastructure and build-in test cases for DRRA-2
+- `component`: Assemble the components of vesyla,
   it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`.
   Check the repo [drra-components](https://github.com/silagokth/drra-components).
-- vs-compile: Compiler for DRRA-2 instruction set architecture (ISA).
+- `compile`: Compiler for DRRA-2 instruction set architecture (ISA).
   It compiles the proto-assembly code (.pasm) into binary code.
   The compiler uses the [minizinc](https://www.minizinc.org/) solver.
 
@@ -39,14 +47,7 @@ Tool suite for DRRA-2 hardware accelerator platform.
 
 ## Usage
 
-### Requirements
-
-- [minizinc](https://www.minizinc.org/)
-- [drra-components](https://github.com/silagokth/drra-components): v2.6.0 or later
-
-### Commands
-
-#### `vesyla`
+### `vesyla`
 
 ```shell
 Usage: vesyla [command and options]
@@ -59,10 +60,10 @@ Options:
         -V, --version  Show version information
 ```
 
-#### `vs-testcase`
+### `vesyla testcase`
 
 ```shell
-Usage: vs-testcase <COMMAND>
+Usage: vesyla testcase <COMMAND>
 
 Commands:
   init      Initialize testcase directory
@@ -75,12 +76,13 @@ Options:
   -h, --help  Print help
 ```
 
-#### `vs-component`
+### `vesyla component`
 
 ```shell
-Usage: vs-component <COMMAND>
+Usage: vesyla component <COMMAND>
 
 Commands:
+  create         Create a new component
   assemble       Assemble the system
   validate_json  Validate JSON file
   clean          Clean the build directory
@@ -90,19 +92,21 @@ Options:
   -h, --help  Print help
 ```
 
-#### `vs-compile`
+### `vesyla compile`
 
 ```shell
-Usage: vs-compile --arch FILE --isa FILE --pasm FILE [--output DIR]
+Usage: vesyla compile --arch FILE --isa FILE --pasm FILE [--output DIR]
 Or
-vs-compile --arch FILE --isa FILE --cpp FILE [--output DIR]
+vesyla compile --arch FILE --isa FILE --cpp FILE [--output DIR]
 ```
 
 ## MLIR LSP Server for PASM
 
-Vesyla also compile a MLIR LSP server for PASM (Proto-Assembly) files. It is located
-in `build/bin/pasm-mlir-lsp-server`. You can use it with the MLIR plugin for VSCode or
-any other editor that supports LSP. To set it up in VSCode, you can use the MLIR
+When compiling Vesyla, an MLIR LSP server for MLIR-PASM (Proto-Assembly MLIR dialect) files is also built.
+It is located in `build/bin/pasm-mlir-lsp-server`.
+You can use it with the MLIR plugin for VSCode or
+any other editor that supports LSP.
+To set it up in VSCode, you can use the MLIR
 extension and configure the server path in the settings:
 
 ```json
