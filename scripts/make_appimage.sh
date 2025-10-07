@@ -82,16 +82,6 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr ..
 cmake --build . -- -j"$(nproc)"
 make DESTDIR="$APPDIR" install
 
-log info "Creating a custom AppRun for statically linked binary..."
-TEMP_APPRUN=$(mktemp)
-cat >"$TEMP_APPRUN" <<'EOF'
-#!/bin/bash
-APPDIR="$(dirname "$(readlink -f "${0}")")"
-ulimit -s 16384
-exec "$APPDIR/usr/bin/vesyla" "$@"
-EOF
-chmod +x "$TEMP_APPRUN"
-
 # Download the linuxdeploy tool
 # Check if linuxdeploy tool is already downloaded
 if [ -f "linuxdeploy-x86_64.AppImage" ] && [ -x "linuxdeploy-x86_64.AppImage" ]; then
@@ -103,23 +93,14 @@ fi
 chmod +x linuxdeploy-x86_64.AppImage
 
 # Create the AppImage and rename it to vesyla
-export NO_STRIP=1
 log info "Creating the AppImage..."
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
   --appdir "$APPDIR" \
-  --custom-apprun="$TEMP_APPRUN" \
   --output appimage
 mv vesyla-x86_64.AppImage ../vesyla
 
+# Test the AppImage
+../vesyla --version
+
 # Show success message
 echo "AppImage created successfully!"
-rm -rf "$TEMP_APPRUN"
-
-# Debug appimage
-log info "Testing AppImage..."
-cd ..
-if ! ./vesyla --version 2>&1; then
-  log warn "Version check failed. Trying with strace..."
-  strace -o /tmp/vesyla-trace.txt ./vesyla --version || true
-  log warn "Check /tmp/vesyla-trace.txt for details"
-fi
