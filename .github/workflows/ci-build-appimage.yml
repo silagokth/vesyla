@@ -112,12 +112,13 @@ jobs:
         id: check-version
         run: |
           cd ${{ github.workspace }}/vesyla-source
-          dpkg -i ./build/pkg/vesyla-*.deb
+          ls ./build/pkg
+          sudo dpkg -i ./build/pkg/vesyla-*.deb
           version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "Renaming appimage"
-          mv ./vesyla ./vesyla-"$version"-Linux.AppImage
+          mv ./vesyla ./vesyla-"$version"-Linux.
 
       - name: Upload built artifact
         id: upload-artifact
