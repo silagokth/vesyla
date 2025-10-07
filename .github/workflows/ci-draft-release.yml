@@ -18,7 +18,13 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          path: ./artifacts/
+          name: artifacts.zip
+          path: ${{ github.workspace }}
+
+      - name: Unzip artifacts
+        run: |
+          cd ${{ github.workspace }}
+          unzip artifacts
 
       - name: Upload Release
         id: upload-release

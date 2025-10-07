@@ -61,7 +61,13 @@ jobs:
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
         with:
-          path: ${{ github.workspace}}/artifacts
+          path: ${{ github.workspace }}
+
+      - name: Unzip artifacts
+        run: |
+          cd ${{ github.workspace }}
+          unzip artifacts.zip
+          ls artifacts
 
       - name: Add vesyla to PATH
         run: |
