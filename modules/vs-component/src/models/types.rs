@@ -104,7 +104,7 @@ pub trait RTLComponent {
         // Write the modified Bender YAML to the output folder
         let mut yaml_string = String::new();
         let mut emitter = YamlEmitter::new(&mut yaml_string);
-        emitter.dump(&bender_yaml[0]).map_err(|arg| {
+        emitter.dump(bender_yaml).map_err(|arg| {
             DRRAError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Failed to emit Bender YAML for {}: {}", self.name(), arg),
