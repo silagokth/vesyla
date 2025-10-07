@@ -24,6 +24,7 @@ jobs:
       - name: Unzip artifacts
         run: |
           cd ${{ github.workspace }}
+          ls
           unzip artifacts
 
       - name: Upload Release
