@@ -16,6 +16,8 @@ Autotest Template
     [Arguments]    ${testcase_path}
     ${random_string} =    Generate Random String    12    [LOWER]
     ${testcase_name} =    Set Variable    ${TEST_NAME}
+    # Clean the testcase name so it can be safely used as a directory name by replacing any character
+    # that is not a letter, digit, underscore, or hyphen with an underscore.
     ${clean_testcase_name} =    Replace String Using Regexp    ${testcase_name}    [^a-zA-Z0-9_-]    _
     ${output_dir} =    Set Variable    work/${clean_testcase_name}_${random_string}
     Create Directory    ${output_dir}
