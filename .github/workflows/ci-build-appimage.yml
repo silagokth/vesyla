@@ -67,6 +67,7 @@ jobs:
           path: ./vesyla-source
           clean: false
           fetch-tags: true
+          fetch-depth: 0
 
       - name: Check if LLVM is already installed
         id: check-llvm
