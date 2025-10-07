@@ -18,14 +18,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: artifacts.zip
-          path: ${{ github.workspace }}
-
-      - name: Unzip artifacts
-        run: |
-          cd ${{ github.workspace }}
-          ls
-          unzip artifacts
+          name: pkg-artifacts
+          path: ${{ github.workspace }}/artifacts
 
       - name: Upload Release
         id: upload-release
@@ -34,7 +28,7 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            ./artifacts/vesyla-*
+            ${{ github.workspace }}/artifacts/vesyla-*
 
   update_docs:
     needs: create_release
