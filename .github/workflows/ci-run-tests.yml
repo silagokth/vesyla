@@ -58,6 +58,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
 
+      - name: Clean artifacts
+        run: rm -rf ${{ github.workspace }}/artifacts
+
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
         with:
