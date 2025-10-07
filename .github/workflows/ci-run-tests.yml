@@ -61,10 +61,11 @@ jobs:
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
         with:
-          name: vesyla-${{ github.sha }}
+          path: ${{ github.workspace}}/artifacts
 
       - name: Add vesyla to PATH
         run: |
+          cp ${{ github.workspace }}/artifacts/vesyla-*.AppImage vesyla
           chmod a+x vesyla
           mkdir -p $HOME/.local/bin
           mv vesyla $HOME/.local/bin
