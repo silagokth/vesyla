@@ -1,4 +1,4 @@
-name: Create AppImage
+name: Build Vesyla packages
 
 on:
   workflow_call:
@@ -86,23 +86,45 @@ jobs:
       - name: Build project
         run: |
           cd ${{ github.workspace }}/vesyla-source
+          mkdir -p build
+          cd build
+          set -e
+          cmake ..
+          make -j"$(nproc)"
+          set +e
+
+      - name: Build appimage
+        run: |
+          cd ${{ github.workspace }}/vesyla-source
           set -e
           make all
           make install
           set +e
 
+      - name: Build packages
+        run: |
+          cd ${{ github.workspace }}/vesyla-source/build
+          cpack -G TGZ
+          cpack -G DEB
+          cpack -G RPM
+
       - name: Check version
         id: check-version
         run: |
           cd ${{ github.workspace }}/vesyla-source
-          version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          dpkg -i ./build/pkg/vesyla-*.deb
+          version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Renaming appimage"
+          mv ./vesyla ./vesyla-"$version"-Linux.AppImage
 
       - name: Upload built artifact
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
           name: vesyla-${{ github.sha }}
-          path: ${{ github.workspace }}/vesyla-source/vesyla
+          path: |
+            ${{ github.workspace }}/vesyla-source/vesyla-*
+            ${{ github.workspace }}/build/pkg/vesyla-*
           overwrite: true
