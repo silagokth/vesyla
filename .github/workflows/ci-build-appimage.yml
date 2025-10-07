@@ -24,9 +24,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-tags: true
-          fetch-depth: 0
 
       - name: Install bender
         run: |
@@ -69,6 +66,7 @@ jobs:
         with:
           path: ./vesyla-source
           clean: false
+          fetch-tags: true
 
       - name: Check if LLVM is already installed
         id: check-llvm
