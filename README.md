@@ -22,6 +22,7 @@ Built packages are available for download in the [releases](https://github.com/s
 
 - For AppImage or generic tar.gz package,
 extract and copy to a location in your PATH.
+Make sure to give execution permissions to the binary.
 
 - For Debian-based systems:
 
