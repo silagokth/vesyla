@@ -7,13 +7,33 @@
 
 Synthesis and compilation tool suite for DRRA hardware accelerator platform.
 
-## Requirements
+## Installation
+
+### Requirements
 
 - [minizinc](https://www.minizinc.org/) (used by `vesyla compile`)
+- `g++` (used by `vesyla testcase`)
 
-## Download
+### Download
 
 Built packages are available for download in the [releases](https://github.com/silagokth/vesyla/releases).
+
+### Install
+
+- For AppImage or generic tar.gz package,
+extract and copy to a location in your PATH.
+
+- For Debian-based systems:
+
+   ```bash
+   sudo dpkg -i pkg/vesyla-*.deb
+   ```
+
+- For RedHat-based systems:
+
+   ```bash
+   sudo rpm -i pkg/vesyla-*.rpm
+   ```
 
 ## [Modules](./modules/)
 
@@ -25,25 +45,48 @@ Built packages are available for download in the [releases](https://github.com/s
   It compiles the proto-assembly code (.pasm) into binary code.
   The compiler uses the [minizinc](https://www.minizinc.org/) solver.
 
-## Compile and Install
+## Compilation
 
-1. Install dependencies
+### Dependencies
 
-   ```bash
-   sh ./scripts/install_dependencies.sh
-   ```
+- CMake >= 3.22.1
+- Clang >= 5 or GCC >= 9.0 (C++17 support)
+- Flex and Bison (tested on 2.6.4 and 3.8.2, respectively)
 
-2. Build Vesyla
-
-   ```bash
-   make
-   ```
-
-3. Install Vesyla
+### Build
 
    ```bash
-   sudo make install
+   mkdir build
+   cd build
+   cmake ..
+   cmake --build . -- -j$(nproc)
    ```
+
+### Create and install package
+
+Packages will be generated in the `build/pkg` directory.
+
+- For Debian-based systems:
+
+   ```bash
+   cpack -G DEB
+   sudo dpkg -i pkg/vesyla-*.deb
+   ```
+
+- For RedHat-based systems:
+
+   ```bash
+   cpack -G RPM
+   sudo rpm -i pkg/vesyla-*.rpm
+   ```
+
+- For generic tar.gz package:
+
+   ```bash
+   cpack -G TGZ
+   ```
+
+   To install, extract the tarball and copy to a location in your PATH.
 
 ## Usage
 
