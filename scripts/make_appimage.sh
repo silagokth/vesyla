@@ -64,14 +64,14 @@ log() {
   fi
 }
 
-cd $BUILDDIR
+cd "$BUILDDIR"
 
 # Install rust
 if ! command -v rustc &>/dev/null; then
   log info "Rust is not installed. Installing rust..."
   echo "Installing rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-  source $HOME/.cargo/env
+  source "$HOME"/.cargo/env
 else
   log info "Rust is already installed. Skipping installation."
 fi
@@ -79,8 +79,8 @@ fi
 # Compile the application to a fakeroot directory: $APPDIR
 log info "Compiling the application..."
 cmake -DCMAKE_INSTALL_PREFIX=/usr ..
-cmake --build . -- -j$(nproc)
-make DESTDIR=$APPDIR install
+cmake --build . -- -j"$(nproc)"
+make DESTDIR="$APPDIR" install
 
 # Download the linuxdeploy tool
 # Check if linuxdeploy tool is already downloaded
