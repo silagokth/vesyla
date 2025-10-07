@@ -18,7 +18,6 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: vesyla-${{ github.sha }}
           path: ./artifacts/
 
       - name: Upload Release
