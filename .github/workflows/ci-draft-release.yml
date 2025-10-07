@@ -16,6 +16,9 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Clean old artifacts
+        run: rm -rf ${{ github.actions }}/artifacts
+
       - uses: actions/download-artifact@v4
         with:
           name: pkg-artifacts
