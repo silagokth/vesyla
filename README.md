@@ -35,16 +35,6 @@ extract and copy to a location in your PATH.
    sudo rpm -i pkg/vesyla-*.rpm
    ```
 
-## [Modules](./modules/)
-
-- `testcase`: Test case infrastructure and build-in test cases for DRRA-2
-- `component`: Assemble the components of vesyla,
-  it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`.
-  Check the repo [drra-components](https://github.com/silagokth/drra-components).
-- `compile`: Compiler for DRRA-2 instruction set architecture (ISA).
-  It compiles the proto-assembly code (.pasm) into binary code.
-  The compiler uses the [minizinc](https://www.minizinc.org/) solver.
-
 ## Compilation
 
 ### Dependencies
@@ -87,6 +77,16 @@ Packages will be generated in the `build/pkg` directory.
    ```
 
    To install, extract the tarball and copy to a location in your PATH.
+
+## [Modules](./modules/)
+
+- `testcase`: Test case infrastructure and build-in test cases for DRRA-2
+- `component`: Assemble the components of vesyla,
+  it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`.
+  Check the repo [drra-components](https://github.com/silagokth/drra-components).
+- `compile`: Compiler for DRRA-2 instruction set architecture (ISA).
+  It compiles the proto-assembly code (.pasm) into binary code.
+  The compiler uses the [minizinc](https://www.minizinc.org/) solver.
 
 ## Usage
 
