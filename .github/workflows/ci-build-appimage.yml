@@ -1,4 +1,4 @@
-name: Create AppImage
+name: Build Vesyla packages
 
 on:
   workflow_call:
@@ -66,6 +66,8 @@ jobs:
         with:
           path: ./vesyla-source
           clean: false
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Check if LLVM is already installed
         id: check-llvm
@@ -86,23 +88,46 @@ jobs:
       - name: Build project
         run: |
           cd ${{ github.workspace }}/vesyla-source
+          mkdir -p build
+          cd build
+          set -e
+          cmake ..
+          make -j"$(nproc)"
+          set +e
+
+      - name: Build appimage
+        run: |
+          cd ${{ github.workspace }}/vesyla-source
           set -e
           make all
           make install
           set +e
 
+      - name: Build packages
+        run: |
+          cd ${{ github.workspace }}/vesyla-source/build
+          cpack -G TGZ
+          cpack -G DEB
+          cpack -G RPM
+
       - name: Check version
         id: check-version
         run: |
           cd ${{ github.workspace }}/vesyla-source
-          version=$(./vesyla --version | grep '^vesyla ' | awk '{print $2}')
+          ls ./build/pkg
+          sudo dpkg -i ./build/pkg/vesyla-*.deb
+          version=$(vesyla --version | grep '^vesyla ' | awk '{print $2}')
           echo "$version"
           echo "version=$version" >> $GITHUB_OUTPUT
+          version=${version#v}
+          echo $version
+          echo "Renaming appimage"
+          mv ./vesyla ./build/pkg/vesyla-"$version"-Linux.AppImage
 
       - name: Upload built artifact
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vesyla-${{ github.sha }}
-          path: ${{ github.workspace }}/vesyla-source/vesyla
+          name: pkg-artifacts
+          path: ${{ github.workspace }}/vesyla-source/build/pkg/vesyla-*
           overwrite: true

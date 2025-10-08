@@ -80,8 +80,9 @@ install(DIRECTORY assets/icons DESTINATION share)
 file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
 
 # Get version from git tags
-get_git_version(VESYLA_VERSION)
-message(STATUS "VESYLA_VERSION: ${VESYLA_VERSION}")
+get_git_version(VESYLA_VERSION_RAW)
+message(STATUS "VESYLA_VERSION: ${VESYLA_VERSION_RAW}")
+string(REGEX REPLACE "^v" "" VESYLA_VERSION "${VESYLA_VERSION_RAW}")
 
 # PACKAGING
 set(CPACK_GENERATOR "DEB")
@@ -89,6 +90,7 @@ set(CPACK_PACKAGE_NAME "vesyla")
 set(CPACK_PACKAGE_VERSION "${VESYLA_VERSION}")
 set(CPACK_PACKAGE_VENDOR "silagokth")
 set(CPACK_PACKAGE_CONTACT "silago-team@eecs.kth.se")
+set(CPACK_PACKAGE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pkg")
 
 # Debian/Ubuntu packaging
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
