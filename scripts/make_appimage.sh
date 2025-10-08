@@ -13,21 +13,21 @@ SCRIPTDIR="$(
 BUILDDIR=$SCRIPTDIR/../build
 APPDIR=$BUILDDIR/appdir
 LOGFILE=${BUILDDIR}/build.log
-if [ -f $LOGFILE ]; then
-  rm -f $LOGFILE
+if [ -f "$LOGFILE" ]; then
+  rm -f "$LOGFILE"
 fi
 
 # Create directories
-mkdir -p ${BUILDDIR}
-if [ -d $APPDIR ]; then
-  rm -rf $APPDIR
+mkdir -p "${BUILDDIR}"
+if [ -d "$APPDIR" ]; then
+  rm -rf "$APPDIR"
 fi
-mkdir -p $APPDIR
+mkdir -p "$APPDIR"
 
-touch $LOGFILE
+touch "$LOGFILE"
 
 # Direct all stdout and stderr to the log file
-exec > >(tee -a $LOGFILE) 2>&1
+exec > >(tee -a "$LOGFILE") 2>&1
 
 # Function to print log messages.
 # It takes two arguments: the log level and the message.
@@ -45,8 +45,10 @@ log() {
   fi
   local level=$1
   local message=$2
-  if [ "$level" = "info" ]; then
+  if [ "$level" = "success" ]; then
     echo -e "${GREEN}[$level]${NC}: $message"
+  elif [ "$level" = "info" ]; then
+    echo -e "${BLUE}[$level]${NC}: $message"
   elif [ "$level" = "warn" ]; then
     echo -e "${YELLOW}[$level]${NC}: $message"
   elif [ "$level" = "error" ]; then
@@ -64,14 +66,13 @@ log() {
   fi
 }
 
-cd $BUILDDIR
+cd "$BUILDDIR"
 
 # Install rust
 if ! command -v rustc &>/dev/null; then
   log info "Rust is not installed. Installing rust..."
-  echo "Installing rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-  source $HOME/.cargo/env
+  source "$HOME/.cargo/env"
 else
   log info "Rust is already installed. Skipping installation."
 fi
@@ -79,8 +80,8 @@ fi
 # Compile the application to a fakeroot directory: $APPDIR
 log info "Compiling the application..."
 cmake -DCMAKE_INSTALL_PREFIX=/usr ..
-cmake --build . -- -j$(nproc)
-make DESTDIR=$APPDIR install
+cmake --build . -- -j"$(nproc)"
+make DESTDIR="$APPDIR" install
 
 # Download the linuxdeploy tool
 # Check if linuxdeploy tool is already downloaded
@@ -94,9 +95,16 @@ chmod +x linuxdeploy-x86_64.AppImage
 
 # Create the AppImage and rename it to vesyla
 log info "Creating the AppImage..."
-./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir $APPDIR --output appimage
+./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
+  --appdir "$APPDIR" \
+  --output appimage
 mv vesyla-x86_64.AppImage ../vesyla
 
+# Test the AppImage
+if ! ../vesyla --version; then
+  log error "AppImage test failed (../vesyla --version did not succeed)."
+  exit 1
+fi
+
 # Show success message
-echo "AppImage created successfully!"
-../vesyla --version
+log success "AppImage created successfully: $BUILDDIR/vesyla"

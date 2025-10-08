@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.22.1)
 
 # Try to find clang and clang++ in PATH
 find_program(CLANG_PATH clang)
@@ -36,12 +36,14 @@ set(INSTALL_RUNTIME_OUTPUT_DIRECTORY bin)
 set(INSTALL_SHARED_OUTPUT_DIRECTORY share/${PROJECT_NAME})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+find_package(VesylaUtils REQUIRED)
 
 include(FetchContent)
 FetchContent_Declare(
   Corrosion
   GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-  GIT_TAG v0.5.2)
+  GIT_TAG v0.5.2
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(Corrosion)
 
 get_filename_component(CORROSION_TARGET_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
@@ -76,3 +78,30 @@ install(DIRECTORY assets/applications DESTINATION share)
 file(COPY assets/applications DESTINATION ${CMAKE_BINARY_DIR}/share)
 install(DIRECTORY assets/icons DESTINATION share)
 file(COPY assets/icons DESTINATION ${CMAKE_BINARY_DIR}/share)
+
+# Get version from git tags
+get_git_version(VESYLA_VERSION_RAW)
+message(STATUS "VESYLA_VERSION: ${VESYLA_VERSION_RAW}")
+string(REGEX REPLACE "^v" "" VESYLA_VERSION "${VESYLA_VERSION_RAW}")
+
+# PACKAGING
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "vesyla")
+set(CPACK_PACKAGE_VERSION "${VESYLA_VERSION}")
+set(CPACK_PACKAGE_VENDOR "silagokth")
+set(CPACK_PACKAGE_CONTACT "silago-team@eecs.kth.se")
+set(CPACK_PACKAGE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pkg")
+
+# Debian/Ubuntu packaging
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.31)")
+
+include(CPack)
+
+# RPM packaging (add after DEB section)
+set(CPACK_RPM_PACKAGE_LICENSE "MIT") # or your license
+set(CPACK_RPM_PACKAGE_GROUP "Development/Tools")
+set(CPACK_RPM_PACKAGE_REQUIRES "glibc >= 2.31")
+set(CPACK_RPM_SPEC_MORE_DEFINE %global __brp_check_rpaths %{nil})
+set(CPACK_RPM_SPEC_MORE_DEFINE %undefine __brp_check_rpaths)

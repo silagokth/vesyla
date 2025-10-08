@@ -58,13 +58,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
 
+      - name: Clean artifacts
+        run: rm -rf ${{ github.workspace }}/artifacts
+
       - name: Get built vesyla artifact
         uses: actions/download-artifact@v4
         with:
-          name: vesyla-${{ github.sha }}
+          name: pkg-artifacts
+          path: ${{ github.workspace }}/artifacts
 
       - name: Add vesyla to PATH
         run: |
+          set -e
+          file=(/home/gh-runner/actions-runner/_work/vesyla/vesyla/artifacts/vesyla-*.AppImage)
+          if [ "${#file[@]}" -ne 1 ]; then
+            echo "Error: Expected exactly one vesyla-*.AppImage file, found ${#file[@]}"
+            exit 1
+          fi
+          cp "${file[0]}" vesyla
           chmod a+x vesyla
           mkdir -p $HOME/.local/bin
           mv vesyla $HOME/.local/bin
