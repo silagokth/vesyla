@@ -455,6 +455,14 @@ pub fn generate_rtl_for_component(
             let rtl_file_content = file_comment + &rtl_file_content;
             fs::write(&output_file, rtl_file_content).expect("Failed to write file");
         }
+
+        // Check if the file created has valid syntax
+        if output_file
+            .extension()
+            .is_some_and(|ext| ext == "sv" || ext == "v")
+        {
+            check_verilog_syntax(&output_file)?;
+        }
     }
 
     debug!(
@@ -466,6 +474,53 @@ pub fn generate_rtl_for_component(
     tmp_dir
         .close()
         .expect("Failed to close temporary directory");
+
+    Ok(())
+}
+
+pub fn check_verilog_syntax(output_file: &Path) -> Result<()> {
+    // Check if verible is installed
+    if which("verible-verilog-syntax").is_err() || which("verible-verilog-lint").is_err() {
+        warn!("Verible is not installed. Skipping syntax check for Verilog/SystemVerilog files.");
+        return Ok(());
+    }
+
+    // Run verible-verilog-syntax
+    let syntax_output = std::process::Command::new("verible-verilog-syntax")
+        .arg(output_file.to_str().unwrap())
+        .output()?;
+    if !syntax_output.status.success() {
+        return Err(Error::other(format!(
+            "Verilog/SystemVerilog syntax check failed for file {}: {}",
+            output_file.to_str().unwrap(),
+            String::from_utf8_lossy(&syntax_output.stderr)
+        )));
+    } else {
+        warn!(
+            "Verilog/SystemVerilog syntax check passed for file {}",
+            output_file.to_str().unwrap()
+        );
+    }
+
+    // Run verible-verilog-lint
+    let lint_output = std::process::Command::new("verible-verilog-lint")
+        .arg(output_file.to_str().unwrap())
+        .output()?;
+    if !String::from_utf8_lossy(&lint_output.stderr).is_empty() {
+        if String::from_utf8_lossy(&lint_output.stderr).contains("error") {
+            return Err(Error::other(format!(
+                "Verilog/SystemVerilog lint errors for file {}: {}",
+                output_file.to_str().unwrap(),
+                String::from_utf8_lossy(&lint_output.stderr)
+            )));
+        } else {
+            warn!(
+                "Verilog/SystemVerilog lint warnings for file {}: {}",
+                output_file.to_str().unwrap(),
+                String::from_utf8_lossy(&lint_output.stderr)
+            );
+        }
+    }
 
     Ok(())
 }
