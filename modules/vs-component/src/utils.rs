@@ -467,7 +467,9 @@ pub fn generate_rtl_for_component(
 
 pub fn check_verilog_syntax(output_file: &Path) -> Result<()> {
     // Check if verible is installed
-    if which("verible-verilog-syntax").is_err() || which("verible-verilog-lint").is_err() {
+    let verible_syntax = which("verible-verilog-syntax");
+    let verible_lint = which("verible-verilog-lint");
+    if verible_syntax.is_err() || verible_lint.is_err() {
         warn!("Verible is not installed. Skipping syntax check for Verilog/SystemVerilog files.");
         return Ok(());
     }
