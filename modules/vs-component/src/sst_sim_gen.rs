@@ -27,10 +27,7 @@ fn register_drra_library() -> Result<(), Error> {
         .expect("Failed to execute sst-register command");
 
     if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "sst-register command failed",
-        ));
+        return Err(std::io::Error::other("sst-register command failed"));
     }
 
     Ok(())

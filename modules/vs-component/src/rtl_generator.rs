@@ -38,10 +38,10 @@ impl RTLGenerator {
         if let Some(controller) = &mut cell.controller {
             self.process_resolved_controller(controller)?;
         } else {
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
-                format!("Cell {} does not have a controller assigned", cell.name),
-            ));
+            return Err(Error::other(format!(
+                "Cell {} does not have a controller assigned",
+                cell.name
+            )));
         }
 
         if let Some(resources) = &mut cell.resources {
@@ -49,10 +49,10 @@ impl RTLGenerator {
                 self.process_resolved_resource(resource)?;
             }
         } else {
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
-                format!("Cell {} does not have resources assigned", cell.name),
-            ));
+            return Err(Error::other(format!(
+                "Cell {} does not have resources assigned",
+                cell.name
+            )));
         }
 
         let cell_hash = cell.get_fingerprint();
@@ -67,10 +67,7 @@ impl RTLGenerator {
             // Generate the cell RTL
             cell.generate_rtl(&rtl_output_folder)?;
             cell.generate_bender(&bender_output_folder).map_err(|e| {
-                Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("While generating Bender file for cell: {}", e),
-                )
+                Error::other(format!("While generating Bender file for cell: {}", e))
             })?;
         } else {
             cell.already_defined = true;
@@ -97,10 +94,10 @@ impl RTLGenerator {
             controller
                 .generate_bender(&bender_output_folder)
                 .map_err(|e| {
-                    Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("While generating Bender file for controller: {}", e),
-                    )
+                    Error::other(format!(
+                        "While generating Bender file for controller: {}",
+                        e
+                    ))
                 })?;
         } else {
             controller.already_defined = true;
@@ -127,10 +124,7 @@ impl RTLGenerator {
             resource
                 .generate_bender(&bender_output_folder)
                 .map_err(|e| {
-                    Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("While generating Bender file for resource: {}", e),
-                    )
+                    Error::other(format!("While generating Bender file for resource: {}", e))
                 })?;
         } else {
             resource.already_defined = true;
@@ -149,12 +143,9 @@ impl RTLGenerator {
         let rtl_output_folder = output_folder.join("rtl");
 
         fabric.generate_rtl(&rtl_output_folder)?;
-        fabric.generate_bender(output_folder).map_err(|e| {
-            Error::new(
-                std::io::ErrorKind::Other,
-                format!("While generating Bender file for fabric: {}", e),
-            )
-        })?;
+        fabric
+            .generate_bender(output_folder)
+            .map_err(|e| Error::other(format!("While generating Bender file for fabric: {}", e)))?;
 
         Ok(())
     }

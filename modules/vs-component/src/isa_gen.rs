@@ -25,10 +25,7 @@ impl ISAGenerator for InstructionSet {
             Ok(_) => Ok(()),
             Err(e) => {
                 eprintln!("Failed to write documentation to file: {}", e);
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to write documentation",
-                ))
+                Err(std::io::Error::other("Failed to write documentation"))
             }
         }
     }

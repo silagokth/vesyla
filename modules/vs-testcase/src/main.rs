@@ -243,7 +243,7 @@ fn run(
         .status()
         .expect("Failed to run the testcase");
     if !status.success() {
-        let error = Err(io::Error::new(io::ErrorKind::Other, "Testcase failed"));
+        let error = Err(io::Error::other("Testcase failed"));
         error!("Testcase failed");
         return error;
     }

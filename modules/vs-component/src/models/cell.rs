@@ -342,10 +342,7 @@ impl Cell {
                 merge_parameters(&mut self.parameters, &cell_from_pool.parameters)?;
             return Ok(overwritten_params);
         }
-        Err(DRRAError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Not implemented",
-        )))
+        Err(DRRAError::Io(std::io::Error::other("Not implemented")))
     }
 
     fn get_fingerprint_table(&self) -> HashMap<String, String> {

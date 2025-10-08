@@ -10,6 +10,7 @@ use std::{
 
 use bs58::encode;
 use serde::Serialize;
+use which::which;
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -288,8 +289,7 @@ pub fn get_rtl_files_from_library(
     let output = match cmd.output() {
         Ok(output) => output,
         Err(e) => {
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
+            return Err(Error::other(
                 format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
@@ -302,8 +302,7 @@ pub fn get_rtl_files_from_library(
 
     // Check if the command was successful
     if !output.status.success() {
-        return Err(Error::new(
-            std::io::ErrorKind::Other,
+        return Err(Error::other(
             format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
@@ -411,41 +410,29 @@ pub fn generate_rtl_for_component(
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
+            let rtl_template_name = &template_path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
             let rtl_template_content =
                 fs::read_to_string(&template_path).expect("Failed to read template file");
             mj_env
-                .add_template("rtl_template", rtl_template_content.as_str())
+                .add_template(rtl_template_name, rtl_template_content.as_str())
                 .expect("Failed to add template");
 
             // Render the template with the component data
             let result = mj_env
-                .get_template("rtl_template")
+                .get_template(rtl_template_name)
                 .expect("Failed to get template")
                 .render(serde_json::to_value(component).unwrap())
                 .map_err(|e| {
-                    log::error!(
+                    Error::other(format!(
                         "Failed to render template for file {}: {}",
-                        output_file.to_str().unwrap(),
+                        &template_path.display(),
                         e
-                    );
-                    fs::write(
-                        output_file.with_extension("template.jinja"),
-                        rtl_template_content,
-                    )
-                    .expect("Failed to write template file");
-                    fs::write(
-                        output_file.with_extension("error.txt"),
-                        serde_json::to_string_pretty(component).unwrap(),
-                    )
-                    .expect("Failed to write error file");
-                    Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "Failed to render template for file {}: {}",
-                            output_file.to_str().unwrap(),
-                            e
-                        ),
-                    )
+                    ))
                 });
             let output_str = result?;
             fs::write(&output_file, file_comment + &output_str).expect("Failed to write file");
@@ -658,17 +645,11 @@ pub fn get_component_template_path() -> Result<PathBuf> {
     }
 
     let current_exe = env::current_exe()?;
-    let current_exe_dir = current_exe.parent().ok_or_else(|| {
-        Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to get parent directory of the executable",
-        )
-    })?;
+    let current_exe_dir = current_exe
+        .parent()
+        .ok_or_else(|| Error::other("Failed to get parent directory of the executable"))?;
     let usr_dir = current_exe_dir.parent().ok_or_else(|| {
-        Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to get parent directory of the executable directory",
-        )
+        Error::other("Failed to get parent directory of the executable directory")
     })?;
     let template_path = Path::new(usr_dir).join("share/vesyla/component_template");
     Ok(template_path)

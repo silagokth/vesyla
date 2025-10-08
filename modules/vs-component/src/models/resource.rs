@@ -289,10 +289,7 @@ impl Resource {
                 merge_parameters(&mut self.parameters, &resource_from_pool.parameters)?;
             return Ok(overwritten_params);
         }
-        Err(DRRAError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Not implemented",
-        )))
+        Err(DRRAError::Io(std::io::Error::other("Not implemented")))
     }
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
