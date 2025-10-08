@@ -523,8 +523,7 @@ pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
     }
     let hash = hasher.finish();
 
-    let str_hash = encode(hash.to_be_bytes()).into_string().to_lowercase();
-    "_".to_string() + &str_hash
+    encode(hash.to_be_bytes()).into_string().to_lowercase()
 }
 
 pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
