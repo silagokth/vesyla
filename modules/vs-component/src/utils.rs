@@ -485,7 +485,7 @@ pub fn check_verilog_syntax(output_file: &Path) -> Result<()> {
             String::from_utf8_lossy(&syntax_output.stderr)
         )));
     } else {
-        warn!(
+        info!(
             "Verilog/SystemVerilog syntax check passed for file {}",
             output_file.to_str().unwrap()
         );
