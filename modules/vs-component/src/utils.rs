@@ -1,6 +1,6 @@
 use crate::models::types::ParameterList;
 
-use log::{debug, warn};
+use log::{debug, info, warn};
 use std::{
     env, fs,
     hash::{DefaultHasher, Hasher},
