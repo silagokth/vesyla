@@ -100,7 +100,10 @@ log info "Creating the AppImage..."
 mv vesyla-x86_64.AppImage ../vesyla
 
 # Test the AppImage
-../vesyla --version
+if ! ../vesyla --version; then
+  echo "Error: AppImage test failed (../vesyla --version did not succeed)." >&2
+  exit 1
+fi
 
 # Show success message
 echo "AppImage created successfully!"
