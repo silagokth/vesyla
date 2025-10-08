@@ -17,7 +17,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Clean old artifacts
-        run: rm -rf ${{ github.actions }}/artifacts
+        run: rm -rf ${{ github.workspace }}/artifacts
 
       - uses: actions/download-artifact@v4
         with:
