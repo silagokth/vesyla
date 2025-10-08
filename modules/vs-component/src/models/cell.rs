@@ -118,15 +118,14 @@ impl Cell {
         // Name
         let name: String;
         let name_option = json_value.get("cell_name"); //].as_str().unwrap().to_string();
-        if name_option.is_none() {
-            if json_value.get("name").is_some() {
-                name = json_value["name"].as_str().unwrap().to_string();
-            } else {
-                name = "".to_string();
-            }
+        if let Some(name_option) = name_option {
+            name = name_option.as_str().unwrap().to_string();
+        } else if json_value.get("name").is_some() {
+            name = json_value["name"].as_str().unwrap().to_string();
         } else {
-            name = name_option.unwrap().as_str().unwrap().to_string();
+            name = "".to_string();
         }
+
         // Coordinates
         let coordinates_option = json_value.get("coordinates");
         let mut coordinates_list = Vec::new();
@@ -486,9 +485,7 @@ impl Serialize for Cell {
             for resource in resources.iter() {
                 let slot = resource.slot;
                 let size = resource.size;
-                if slot.is_some() && size.is_some() {
-                    let slot = slot.unwrap();
-                    let size = size.unwrap();
+                if let (Some(slot), Some(size)) = (slot, size) {
                     for slot_number in slot..(slot + size) {
                         used_slots.push(slot_number);
                         unused_slots.retain(|&x| x != slot_number);

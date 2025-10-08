@@ -115,15 +115,14 @@ impl Controller {
         }
         let name: String;
         let name_option = json_value.get("controller_name"); //].as_str().unwrap().to_string();
-        if name_option.is_none() {
-            if json_value.get("name").is_some() {
-                name = json_value["name"].as_str().unwrap().to_string();
-            } else {
-                name = "".to_string();
-            }
+        if let Some(name_option) = name_option {
+            name = name_option.as_str().unwrap().to_string();
+        } else if json_value.get("name").is_some() {
+            name = json_value["name"].as_str().unwrap().to_string();
         } else {
-            name = name_option.unwrap().as_str().unwrap().to_string();
+            name = "".to_string();
         }
+
         // Size (optional)
         let size = json_value.get("size").map(|x| x.as_u64().unwrap());
         let mut controller = Controller::new(name, size);

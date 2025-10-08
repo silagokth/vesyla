@@ -7,7 +7,8 @@ use crate::models::{
     resource::Resource,
     types::{DRRAError, ParameterList},
 };
-use crate::utils::*;
+
+use crate::utils::{get_arch_from_library, get_isa_from_library, get_parameters};
 
 use std::{collections::HashMap, fs, io::Error, path::Path};
 
@@ -288,21 +289,6 @@ impl HierarchicalResolver {
         let mut resolved_controller = controller_from_lib.clone();
         resolved_controller.overwrite(controller_from_pool)?;
         resolved_controller.overwrite(controller_from_list)?;
-
-        //// Clone the controller template
-        //let mut controller = self
-        //    .controller_templates
-        //    .get(controller.name.as_str())
-        //    .ok_or_else(|| {
-        //        Error::new(
-        //            std::io::ErrorKind::NotFound,
-        //            format!(
-        //                "Controller template '{}' not found",
-        //                controller.name.as_str()
-        //            ),
-        //        )
-        //    })?
-        //    .clone();
 
         // Resolve controller parameters with hierarchy: controller -> cell -> fabric
         let mut filtered_parameters = ParameterList::new();
