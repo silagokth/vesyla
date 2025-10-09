@@ -412,9 +412,19 @@ pub fn generate_rtl_for_component(
             mj_env.set_lstrip_blocks(true);
             let rtl_template_name = &template_path
                 .file_name()
-                .ok_or_else(|| Error::other(format!("Failed to get file name for path: {}", template_path.display())))?
+                .ok_or_else(|| {
+                    Error::other(format!(
+                        "Failed to get file name for path: {}",
+                        template_path.display()
+                    ))
+                })?
                 .to_str()
-                .ok_or_else(|| Error::other(format!("File name is not valid UTF-8: {}", template_path.display())))?
+                .ok_or_else(|| {
+                    Error::other(format!(
+                        "File name is not valid UTF-8: {}",
+                        template_path.display()
+                    ))
+                })?
                 .to_string();
             let rtl_template_content =
                 fs::read_to_string(&template_path).expect("Failed to read template file");
