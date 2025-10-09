@@ -1,6 +1,6 @@
 use crate::models::types::ParameterList;
 
-use log::{debug, warn};
+use log::{debug, info, warn};
 use std::{
     env, fs,
     hash::{DefaultHasher, Hasher},
@@ -10,6 +10,7 @@ use std::{
 
 use bs58::encode;
 use serde::Serialize;
+use which::which;
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -288,8 +289,7 @@ pub fn get_rtl_files_from_library(
     let output = match cmd.output() {
         Ok(output) => output,
         Err(e) => {
-            return Err(Error::new(
-                std::io::ErrorKind::Other,
+            return Err(Error::other(
                 format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
@@ -302,8 +302,7 @@ pub fn get_rtl_files_from_library(
 
     // Check if the command was successful
     if !output.status.success() {
-        return Err(Error::new(
-            std::io::ErrorKind::Other,
+        return Err(Error::other(
             format!(
                 "Failed to run bender command to get the list of RTL files for component \"{}\" (component path: {}): {}",
                 component_name,
@@ -411,41 +410,39 @@ pub fn generate_rtl_for_component(
             mj_env.set_loader(minijinja::path_loader(template_dir));
             mj_env.set_trim_blocks(true);
             mj_env.set_lstrip_blocks(true);
+            let rtl_template_name = &template_path
+                .file_name()
+                .ok_or_else(|| {
+                    Error::other(format!(
+                        "Failed to get file name for path: {}",
+                        template_path.display()
+                    ))
+                })?
+                .to_str()
+                .ok_or_else(|| {
+                    Error::other(format!(
+                        "File name is not valid UTF-8: {}",
+                        template_path.display()
+                    ))
+                })?
+                .to_string();
             let rtl_template_content =
                 fs::read_to_string(&template_path).expect("Failed to read template file");
             mj_env
-                .add_template("rtl_template", rtl_template_content.as_str())
+                .add_template(rtl_template_name, rtl_template_content.as_str())
                 .expect("Failed to add template");
 
             // Render the template with the component data
             let result = mj_env
-                .get_template("rtl_template")
+                .get_template(rtl_template_name)
                 .expect("Failed to get template")
                 .render(serde_json::to_value(component).unwrap())
                 .map_err(|e| {
-                    log::error!(
+                    Error::other(format!(
                         "Failed to render template for file {}: {}",
-                        output_file.to_str().unwrap(),
+                        &template_path.display(),
                         e
-                    );
-                    fs::write(
-                        output_file.with_extension("template.jinja"),
-                        rtl_template_content,
-                    )
-                    .expect("Failed to write template file");
-                    fs::write(
-                        output_file.with_extension("error.txt"),
-                        serde_json::to_string_pretty(component).unwrap(),
-                    )
-                    .expect("Failed to write error file");
-                    Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "Failed to render template for file {}: {}",
-                            output_file.to_str().unwrap(),
-                            e
-                        ),
-                    )
+                    ))
                 });
             let output_str = result?;
             fs::write(&output_file, file_comment + &output_str).expect("Failed to write file");
@@ -454,6 +451,14 @@ pub fn generate_rtl_for_component(
             let rtl_file_content = fs::read_to_string(&rtl_file).expect("Failed to read file");
             let rtl_file_content = file_comment + &rtl_file_content;
             fs::write(&output_file, rtl_file_content).expect("Failed to write file");
+        }
+
+        // Check if the file created has valid syntax
+        if output_file
+            .extension()
+            .is_some_and(|ext| ext == "sv" || ext == "v")
+        {
+            check_verilog_syntax(&output_file)?;
         }
     }
 
@@ -470,6 +475,56 @@ pub fn generate_rtl_for_component(
     Ok(())
 }
 
+pub fn check_verilog_syntax(output_file: &Path) -> Result<()> {
+    // Check if verible is installed
+    let verible_syntax = which("verible-verilog-syntax");
+    let verible_lint = which("verible-verilog-lint");
+    if verible_syntax.is_err() || verible_lint.is_err() {
+        warn!("Verible is not installed. Skipping syntax check for Verilog/SystemVerilog files.");
+        return Ok(());
+    }
+
+    // Run verible-verilog-syntax
+    let syntax_output = std::process::Command::new("verible-verilog-syntax")
+        .arg(output_file.to_str().unwrap())
+        .output()?;
+    if !syntax_output.status.success() {
+        return Err(Error::other(format!(
+            "Verilog/SystemVerilog syntax check failed for file {}: {}",
+            output_file.to_str().unwrap(),
+            String::from_utf8_lossy(&syntax_output.stderr)
+        )));
+    } else {
+        info!(
+            "Verilog/SystemVerilog syntax check passed for file {}",
+            output_file.to_str().unwrap()
+        );
+    }
+
+    // Run verible-verilog-lint
+    let lint_output = std::process::Command::new("verible-verilog-lint")
+        .arg(output_file.to_str().unwrap())
+        .output()?;
+    let stderr_str = String::from_utf8_lossy(&lint_output.stderr);
+    if !stderr_str.is_empty() {
+        if stderr_str.contains("error") {
+            return Err(Error::other(format!(
+                "Verilog/SystemVerilog lint errors for file {}: {}",
+                output_file.to_str().unwrap(),
+                stderr_str
+            )));
+        } else {
+            warn!(
+                "Verilog/SystemVerilog lint warnings for file {}: {}",
+                output_file.to_str().unwrap(),
+                stderr_str
+            );
+        }
+    }
+
+    Ok(())
+}
+
 pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
     let mut hasher = DefaultHasher::new();
     for name in names {
@@ -481,8 +536,7 @@ pub fn generate_hash(names: Vec<String>, parameters: &ParameterList) -> String {
     }
     let hash = hasher.finish();
 
-    let str_hash = encode(hash.to_be_bytes()).into_string().to_lowercase();
-    "_".to_string() + &str_hash
+    encode(hash.to_be_bytes()).into_string().to_lowercase()
 }
 
 pub fn copy_rtl_dir(src: &Path, dst: &Path) -> Result<()> {
@@ -603,17 +657,11 @@ pub fn get_component_template_path() -> Result<PathBuf> {
     }
 
     let current_exe = env::current_exe()?;
-    let current_exe_dir = current_exe.parent().ok_or_else(|| {
-        Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to get parent directory of the executable",
-        )
-    })?;
+    let current_exe_dir = current_exe
+        .parent()
+        .ok_or_else(|| Error::other("Failed to get parent directory of the executable"))?;
     let usr_dir = current_exe_dir.parent().ok_or_else(|| {
-        Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to get parent directory of the executable directory",
-        )
+        Error::other("Failed to get parent directory of the executable directory")
     })?;
     let template_path = Path::new(usr_dir).join("share/vesyla/component_template");
     Ok(template_path)

@@ -70,8 +70,8 @@ pub trait RTLComponent {
         fingerprint: Option<String>,
         dependencies: Option<LHashMap<Yaml, Yaml>>,
     ) -> Result<(), DRRAError> {
-        let component_path = get_path_from_library(&self.kind().to_string(), None)
-            .map_err(DRRAError::Io)?;
+        let component_path =
+            get_path_from_library(&self.kind().to_string(), None).map_err(DRRAError::Io)?;
         let bender_filepath = Path::new(&component_path).join("Bender.yml");
         if !bender_filepath.exists() {
             return Err(DRRAError::Io(std::io::Error::new(

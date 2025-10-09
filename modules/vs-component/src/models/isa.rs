@@ -103,8 +103,8 @@ impl Segment {
         // Parse verbo_map
         let mut verbo_map: Vec<VerboMapEntry> = Vec::new();
         let verbo_map_json = segment.get("verbo_map");
-        if verbo_map_json.is_some() {
-            verbo_map = VerboMapEntry::from_json(verbo_map_json.unwrap().clone())
+        if let Some(verbo_map_json) = verbo_map_json {
+            verbo_map = VerboMapEntry::from_json(verbo_map_json.clone())
                 .expect("Failed to parse verbo_map");
         }
 

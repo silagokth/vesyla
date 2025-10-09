@@ -125,14 +125,12 @@ impl Resource {
         }
         let name: String;
         let name_option = json_value.get("resource_name");
-        if name_option.is_none() {
-            if json_value.get("name").is_some() {
-                name = json_value["name"].as_str().unwrap().to_string();
-            } else {
-                name = "".to_string();
-            }
+        if let Some(name_option) = name_option {
+            name = name_option.as_str().unwrap().to_string();
+        } else if json_value.get("name").is_some() {
+            name = json_value["name"].as_str().unwrap().to_string();
         } else {
-            name = name_option.unwrap().as_str().unwrap().to_string();
+            name = "".to_string();
         }
 
         // Slot (optional)
@@ -289,10 +287,7 @@ impl Resource {
                 merge_parameters(&mut self.parameters, &resource_from_pool.parameters)?;
             return Ok(overwritten_params);
         }
-        Err(DRRAError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Not implemented",
-        )))
+        Err(DRRAError::Io(std::io::Error::other("Not implemented")))
     }
 
     pub fn add_parameter(&mut self, name: String, value: u64) {
