@@ -505,18 +505,19 @@ pub fn check_verilog_syntax(output_file: &Path) -> Result<()> {
     let lint_output = std::process::Command::new("verible-verilog-lint")
         .arg(output_file.to_str().unwrap())
         .output()?;
-    if !String::from_utf8_lossy(&lint_output.stderr).is_empty() {
-        if String::from_utf8_lossy(&lint_output.stderr).contains("error") {
+    let stderr_str = String::from_utf8_lossy(&lint_output.stderr);
+    if !stderr_str.is_empty() {
+        if stderr_str.contains("error") {
             return Err(Error::other(format!(
                 "Verilog/SystemVerilog lint errors for file {}: {}",
                 output_file.to_str().unwrap(),
-                String::from_utf8_lossy(&lint_output.stderr)
+                stderr_str
             )));
         } else {
             warn!(
                 "Verilog/SystemVerilog lint warnings for file {}: {}",
                 output_file.to_str().unwrap(),
-                String::from_utf8_lossy(&lint_output.stderr)
+                stderr_str
             );
         }
     }
