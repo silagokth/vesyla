@@ -11,6 +11,7 @@ Synthesis and compilation tool suite for DRRA hardware accelerator platform.
 
 ### Requirements
 
+- [bender](https://github.com/pulp-platform/bender) (used by `vesyla component`)
 - [minizinc](https://www.minizinc.org/) (used by `vesyla compile`)
 - `g++` (used by `vesyla testcase`)
 
