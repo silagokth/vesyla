@@ -213,7 +213,7 @@ PARAM_MAP:
         delete $1;
     }
     | /* empty */ {
-        LOG_DEBUG << "PARAM_MAP";
+        LOG_DEBUG << "PARAM_MAP (empty)";
         $$ = new parameter_map_t();
     }
     ;
