@@ -1,5 +1,4 @@
 #include "schedule/Scheduler.hpp"
-#include "util/Common.hpp"
 #include <string>
 
 int main(int argc, char **argv) {
@@ -17,11 +16,12 @@ int main(int argc, char **argv) {
   args.parse(argc, argv);
 
   if (args.flag("h") || args.flag("help")) {
-    LOG_INFO << "Usage: vs-compile --arch FILE --isa FILE --pasm FILE "
-                "[--output DIR]";
-    LOG_INFO << "Or";
-    LOG_INFO << "vs-compile --arch FILE --isa FILE --cpp FILE "
-                "[--output DIR]";
+    LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
+                "[--output DIR] [--allow-unsafe]";
+    // NOTE: commented this as not supported yet
+    // LOG_INFO << "Or";
+    // LOG_INFO << "vesyla compile --arch FILE --isa FILE --cpp FILE "
+    //             "[--output DIR]";
     return 0;
   }
 
@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
   std::string pasm_file = args.get("pasm", args.get("p"));
   std::string cpp_file = args.get("cpp", args.get("c"));
   std::string output_dir = args.get("output", args.get("o", "."));
+  bool allow_unsafe = args.flag("allow-unsafe");
 
   if (arch_file.empty() || isa_file.empty()) {
     LOG_FATAL << "Required arguments missing, see --help for usage.";
@@ -69,7 +70,7 @@ int main(int argc, char **argv) {
   cfg.set_isa_json(isa_file);
 
   vesyla::schedule::Scheduler scheduler;
-  scheduler.run(pasm_file, output_dir);
+  scheduler.run(pasm_file, output_dir, allow_unsafe);
 
   // clean up temporary directories
   std::string temp_dir = vesyla::util::SysPath::temp_dir();

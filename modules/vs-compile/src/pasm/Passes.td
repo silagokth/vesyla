@@ -10,7 +10,9 @@ def ScheduleEpochPass: Pass<"schedule-epoch-pass", "::mlir::ModuleOp"> {
   }];
   let options = [
     Option<"component_path", "component-path", "std::string", "\"\"", "">,
-    Option<"tmp_path", "tmp-path", "std::string", "\"\"", "">
+    Option<"tmp_path", "tmp-path", "std::string", "\"\"", "">,
+    Option<"allow_unsafe", "allow-unsafe", "bool", "false",
+      "Allow non-consecutive scheduling fallback if true">,
   ];
 }
 
