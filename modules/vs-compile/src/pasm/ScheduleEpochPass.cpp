@@ -714,8 +714,7 @@ private:
   }
 
   void print_time_table(
-      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table)
-      const {
+      std::map<string, std::map<int, mlir::Operation *>> &time_table) const {
     // print the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       auto cell_label = it->first;
@@ -775,7 +774,7 @@ private:
   }
 
   std::map<int, mlir::Operation *> &getOrCreateCellTimeTable(
-      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table,
+      std::map<string, std::map<int, mlir::Operation *>> &time_table,
       const std::string &label) const {
     if (time_table.find(label) == time_table.end())
       time_table[label] = std::map<int, mlir::Operation *>();
@@ -1088,9 +1087,8 @@ private:
 
     // initialize the time_table and ordered_time_table, add the label for
     // every cell in the fabric
-    std::unordered_map<string, std::map<int, mlir::Operation *>> time_table;
-    std::unordered_map<string, std::vector<mlir::Operation *>>
-        ordered_time_table;
+    std::map<string, std::map<int, mlir::Operation *>> time_table;
+    std::map<string, std::vector<mlir::Operation *>> ordered_time_table;
     for (int r = 0; r < _row; r++) {
       for (int c = 0; c < _col; c++) {
         std::string label = std::to_string(r) + "_" + std::to_string(c);
