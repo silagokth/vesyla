@@ -14,7 +14,8 @@ void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
   ofs.close();
 }
 
-void Scheduler::run(std::string pasm_file, std::string output_dir) {
+void Scheduler::run(std::string pasm_file, std::string output_dir,
+                    bool allow_unsafe = false) {
   Parser parser;
   mlir::MLIRContext context;
   mlir::DialectRegistry registry;
@@ -25,10 +26,11 @@ void Scheduler::run(std::string pasm_file, std::string output_dir) {
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   parser.parse(pasm_file, &module);
 
-  run(module, output_dir);
+  run(module, output_dir, allow_unsafe);
 }
 
-void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
+void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
+                    bool allow_unsafe = false) {
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
@@ -67,7 +69,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir) {
 
   std::string temp_dir = vesyla::util::SysPath::temp_dir();
   pm.addPass(vesyla::pasm::createScheduleEpochPass(
-      {VESYLA_SUITE_PATH_COMPONENTS, temp_dir}));
+      {VESYLA_SUITE_PATH_COMPONENTS, temp_dir, allow_unsafe}));
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: createScheduleEpochPass failed.\n";
     std::exit(EXIT_FAILURE);

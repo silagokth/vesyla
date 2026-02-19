@@ -29,16 +29,18 @@ public:
   nlohmann::json component_map;
   std::string component_path;
   std::string tmp_path;
+  bool allow_unsafe;
   int _row;
   int _col;
 
 public:
   ScheduleEpochPassRewriter(MLIRContext *context, nlohmann::json component_map,
                             std::string component_path, std::string tmp_path,
-                            int row_, int col_)
+                            bool allow_unsafe, int row_, int col_)
       : OpRewritePattern<EpochOp>(context), component_map(component_map),
         component_path(std::move(component_path)),
-        tmp_path(std::move(tmp_path)), _row(row_), _col(col_) {}
+        tmp_path(std::move(tmp_path)), allow_unsafe(allow_unsafe), _row(row_),
+        _col(col_) {}
 
 private:
   mlir::Block *getOrCreateEntryBlock(mlir::Region &region,
@@ -682,12 +684,15 @@ private:
     } // end of erasing operations
   }
 
-  void insert_rop_instructions(
-      vector<mlir::Operation *> &rop_ops, int t, PatternRewriter &rewriter,
-      std::map<int, mlir::Operation *> &cell_time_table) const {
+  void
+  insert_rop_instructions(vector<mlir::Operation *> &rop_ops, int t,
+                          PatternRewriter &rewriter,
+                          std::map<int, mlir::Operation *> &cell_time_table,
+                          bool allow_unsafe = false) const {
+    // for each ROP
     for (auto op : rop_ops) {
       auto rop_op = llvm::dyn_cast<RopOp>(op);
-      int curr_t = t - 1;
+
       mlir::Region &ropBodyRegion = rop_op.getBody();
       mlir::Block *ropEntryBlock;
       if (ropBodyRegion.empty()) {
@@ -695,27 +700,63 @@ private:
       } else {
         ropEntryBlock = &ropBodyRegion.front();
       }
+
+      // gather instructions in the ROP body
       vector<mlir::Operation *> rop_child_ops;
       for (mlir::Operation &rop_child_op : *ropEntryBlock) {
-        rop_child_ops.push_back(&rop_child_op);
+        if (llvm::dyn_cast<InstrOp>(rop_child_op))
+          rop_child_ops.push_back(&rop_child_op);
       }
-      // reverse the order of the child operations
-      std::reverse(rop_child_ops.begin(), rop_child_ops.end());
-      for (auto rop_child_op : rop_child_ops) {
-        if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
-          while (cell_time_table.find(curr_t) != cell_time_table.end()) {
+      int num_instructions = rop_child_ops.size();
+      if (num_instructions == 0)
+        continue; // skip if there is no instruction in the ROP
+
+      // search for an empty time slot that is the size of the number of
+      // instructions in the ROP
+      int curr_t = t - 1;
+      bool found_slot = false;
+      while (!found_slot) {
+        found_slot = true;
+        for (int offset = 0; offset < num_instructions; offset++) {
+          int slot_t = curr_t - offset;
+          if (cell_time_table.find(slot_t) != cell_time_table.end()) {
+            found_slot = false;
+            curr_t = slot_t - 1;
+            break;
+          }
+        }
+      }
+
+      // if not found, reverse the order of the child operations
+      if (!found_slot && allow_unsafe) {
+        llvm::outs() << "Warning: Cannot find a safe time slot for ROP at time "
+                     << t
+                     << ". Inserting instructions in reverse order, which may"
+                        "cause hazards.\n";
+        std::reverse(rop_child_ops.begin(), rop_child_ops.end());
+        for (auto rop_child_op : rop_child_ops) {
+          if (auto instr_op = llvm::dyn_cast<InstrOp>(rop_child_op)) {
+            // while the current time slot is occupied, we keep moving backward
+            while (cell_time_table.find(curr_t) != cell_time_table.end()) {
+              curr_t--;
+            }
+            cell_time_table[curr_t] = rop_child_op;
             curr_t--;
           }
-          cell_time_table[curr_t] = rop_child_op;
-          curr_t--;
         }
+        continue;
+      }
+
+      // place instructions in consecutive time slots
+      for (int offset = 0; offset < num_instructions; offset++) {
+        int slot_t = curr_t - (num_instructions - 1) + offset;
+        cell_time_table[slot_t] = rop_child_ops[offset];
       }
     }
   }
 
   void print_time_table(
-      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table)
-      const {
+      std::map<string, std::map<int, mlir::Operation *>> &time_table) const {
     // print the time table
     for (auto it = time_table.begin(); it != time_table.end(); ++it) {
       auto cell_label = it->first;
@@ -775,7 +816,7 @@ private:
   }
 
   std::map<int, mlir::Operation *> &getOrCreateCellTimeTable(
-      std::unordered_map<string, std::map<int, mlir::Operation *>> &time_table,
+      std::map<string, std::map<int, mlir::Operation *>> &time_table,
       const std::string &label) const {
     if (time_table.find(label) == time_table.end())
       time_table[label] = std::map<int, mlir::Operation *>();
@@ -870,7 +911,8 @@ private:
       first_reg = potential_first_reg + num_regs_needed;
     } else {
       llvm::outs()
-          << "Error: Cannot allocate registers for activation mode 2 at cycle "
+          << "Error: Cannot allocate registers for activation mode 2 at "
+             "cycle "
           << cycle
           << ". [r4->r7] and [r8->r11] are not available in controller.\n";
       exit(EXIT_FAILURE);
@@ -1079,7 +1121,7 @@ private:
 
   void synchronize(EpochOp &op,
                    std::unordered_map<std::string, int> &schedule_table,
-                   PatternRewriter &rewriter) const {
+                   PatternRewriter &rewriter, bool allow_unsafe = false) const {
 
     // Get the block to insert the new operations
     mlir::Block *block = getEpochBodyEntryBlock(op, rewriter);
@@ -1088,9 +1130,8 @@ private:
 
     // initialize the time_table and ordered_time_table, add the label for
     // every cell in the fabric
-    std::unordered_map<string, std::map<int, mlir::Operation *>> time_table;
-    std::unordered_map<string, std::vector<mlir::Operation *>>
-        ordered_time_table;
+    std::map<string, std::map<int, mlir::Operation *>> time_table;
+    std::map<string, std::vector<mlir::Operation *>> ordered_time_table;
     for (int r = 0; r < _row; r++) {
       for (int c = 0; c < _col; c++) {
         std::string label = std::to_string(r) + "_" + std::to_string(c);
@@ -1232,7 +1273,8 @@ private:
         std::string label = it->first;
         auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
         std::vector<mlir::Operation *> rop_ops = it->second;
-        insert_rop_instructions(rop_ops, t, rewriter, cell_time_table);
+        insert_rop_instructions(rop_ops, t, rewriter, cell_time_table,
+                                allow_unsafe);
       }
     }
 
@@ -1665,13 +1707,15 @@ public:
     nlohmann::json component_map_json = cfg.get_component_map_json();
     std::string component_path = this->component_path;
     std::string tmp_path = this->tmp_path;
+    bool allow_unsafe = this->allow_unsafe;
     nlohmann::json arch_json = cfg.get_arch_json();
     int row = arch_json["parameters"]["ROWS"].get<int>();
     int col = arch_json["parameters"]["COLS"].get<int>();
 
     RewritePatternSet patterns(&getContext());
     patterns.add<ScheduleEpochPassRewriter>(&getContext(), component_map_json,
-                                            component_path, tmp_path, row, col);
+                                            component_path, tmp_path,
+                                            allow_unsafe, row, col);
     FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsGreedily(getOperation(), patternSet)))
       signalPassFailure();

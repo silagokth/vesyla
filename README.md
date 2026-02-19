@@ -140,9 +140,7 @@ Options:
 ### `vesyla compile`
 
 ```shell
-Usage: vesyla compile --arch FILE --isa FILE --pasm FILE [--output DIR]
-Or
-vesyla compile --arch FILE --isa FILE --cpp FILE [--output DIR]
+Usage: vesyla compile --arch FILE --isa FILE --pasm FILE [--output DIR] [--allow-unsafe]
 ```
 
 ## MLIR LSP Server for PASM

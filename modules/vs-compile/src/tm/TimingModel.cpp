@@ -2,7 +2,7 @@
 // or global variables at some point
 #define MAX_SLOTS 16
 #define NUM_PORTS_PER_RESOURCE 4
-#define MAX_LATENCY 100000
+#define MAX_LATENCY 10000000
 
 #include "tm/TimingModel.hpp"
 
