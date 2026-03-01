@@ -124,8 +124,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
 file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp")
-file(GLOB SOURCES_TM "src/tm/*.cpp")
-set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC")
+set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC -fno-rtti")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -133,7 +132,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Create object libraries
 add_library(VesylaUtil ${SOURCES_UTIL})
-add_library(VesylaTm ${SOURCES_TM})
+add_subdirectory(src)
 add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
                            ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
@@ -167,24 +166,4 @@ set(gtest_force_shared_crt
     CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-enable_testing()
-# Set the unit test directory
-set(UNIT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/unit_test)
-# Automatically add all .cpp .c and .cc files in the unit test directory,
-# including subdirectories This will include all files in the unit test
-# directory and its subdirectories into the UNIT_TEST_SOURCES variable and add
-# them to the hello_test executable
-file(GLOB_RECURSE UNIT_TEST_SOURCES "${UNIT_TEST_DIR}/*.cpp"
-     "${UNIT_TEST_DIR}/*.c" "${UNIT_TEST_DIR}/*.cc")
-include(GoogleTest)
-# for each file in the UNIT_TEST_SOURCES variable
-foreach(test_file ${UNIT_TEST_SOURCES})
-  # Get the filename without the directory
-  get_filename_component(test_name ${test_file} NAME_WE)
-  # Create a test executable for each test file
-  add_executable(${test_name} ${test_file})
-  # Link the test executable with the gtest and gtest_main libraries
-  target_link_libraries(${test_name} GTest::gtest GTest::gtest_main ${LIBS})
-  # Add the test executable to the list of tests
-  gtest_discover_tests(${test_name})
-endforeach()
+add_subdirectory(unit_test)
