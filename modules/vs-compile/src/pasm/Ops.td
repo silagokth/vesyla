@@ -20,7 +20,7 @@ def InstrOp : Pasm_Op<"instr"> {
   }];
 }
 
-def EpochOp : Pasm_Op<"epoch"> {
+def EpochOp : Pasm_Op<"epoch", [NoTerminator]> {
   let summary = "Make epoch";
   let description = [{
     Make epoch
@@ -60,7 +60,7 @@ def CondOp : Pasm_Op<"cond"> {
   }];
 }
 
-def RopOp : Pasm_Op<"rop"> {
+def RopOp : Pasm_Op<"rop", [NoTerminator]> {
   let summary = "Make resource operation";
   let description = [{
     Make resource operation.
