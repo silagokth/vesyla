@@ -44,6 +44,8 @@ Make sure to give execution permissions to the binary.
 - CMake >= 3.22.1
 - Clang >= 5 or GCC >= 9.0 (C++17 support)
 - Flex and Bison (tested on 2.6.4 and 3.8.2, respectively)
+- MLIR (from [llvm/clangir](https://github.com/llvm/clangir), tested on commit `4820d600ed3362744372983068495f086c9a0659`)
+  - Use the provided script to build and install: `LLVM_CIR_COMMIT_HASH=4820d600ed3362744372983068495f086c9a0659 LLVM_SOURCE_PATH=<path> LLVM_BUILD_PATH=<path> LLVM_INSTALL_PATH=<path> bash scripts/llvm-cir-install.sh`
 
 ### Build
 
