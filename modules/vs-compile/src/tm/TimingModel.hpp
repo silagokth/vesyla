@@ -55,10 +55,7 @@ private:
   void computeStartTimes(BinaryTree<BinaryTreeData> *tree);
   unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
   buildParentMap(BinaryTree<BinaryTreeData> *tree);
-  void resolveAnchorTimingExpr(
-      Operation &op, BinaryTree<BinaryTreeData> *tree,
-      unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
-          &node_parent_map);
+  void resolveAnchorTimingExpr(Operation &op, BinaryTree<BinaryTreeData> *tree);
   BinaryTree<BinaryTreeData> *build_binary_tree(OperationExpr &expr);
 };
 

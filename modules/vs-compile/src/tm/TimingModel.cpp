@@ -283,17 +283,26 @@ void TimingModel::extractAnchors() {
 
 void TimingModel::resolveOperationTiming(Operation &op) {
   OperationExpr expr = op.expr;
-  std::vector<string> anchors_in_op;
-  for (auto it2 = anchors.begin(); it2 != anchors.end(); ++it2) {
-    if (it2->second.expr.op_name == op.name) {
-      anchors_in_op.push_back(it2->first);
-    }
-  }
 
   BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
 
   computeDurations(tree);
   computeStartTimes(tree);
+  resolveAnchorTimingExpr(op, tree);
+
+  op.duration_expr = tree->data->duration;
+
+  delete tree;
+}
+
+void TimingModel::resolveAnchorTimingExpr(Operation &op,
+                                          BinaryTree<BinaryTreeData> *tree) {
+  std::vector<string> anchors_in_op;
+  for (auto it = anchors.begin(); it != anchors.end(); ++it) {
+    if (it->second.expr.op_name == op.name) {
+      anchors_in_op.push_back(it->first);
+    }
+  }
 
   unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
       node_parent_map = buildParentMap(tree);
@@ -306,64 +315,62 @@ void TimingModel::resolveOperationTiming(Operation &op) {
     std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
     for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
          ++it3) {
-      if (it3->first->data->expr.kind == OperationExpr::EVENT) {
-        string event_id_1 = it3->first->data->expr.parameters["id"];
-        if (event_id_1 == event_id) {
-          // go through all its parents and find the repeat operation
-          BinaryTree<BinaryTreeData> *parent = it3->second;
+      if (it3->first->data->expr.kind != OperationExpr::EVENT) {
+        continue;
+      }
+      string event_id_1 = it3->first->data->expr.parameters["id"];
+      if (event_id_1 != event_id) {
+        continue;
+      }
 
-          while (parent) {
-            if (parent->data->expr.kind == OperationExpr::REPEAT) {
-              r_op_stack.push_back(parent);
-            }
+      // go through all its parents and find the repeat operation
+      BinaryTree<BinaryTreeData> *parent = it3->second;
+      while (parent) {
+        if (parent->data->expr.kind == OperationExpr::REPEAT) {
+          r_op_stack.push_back(parent);
+        }
 
-            if (node_parent_map.find(parent) != node_parent_map.end()) {
-              parent = node_parent_map[parent];
-            } else {
-              parent = nullptr;
-            }
-          }
-          // reverse the stack
-          std::reverse(r_op_stack.begin(), r_op_stack.end());
-          vector<int> indices = anchor.expr.indices;
-
-          if (r_op_stack.size() < indices.size()) {
-            LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
-            for (auto i = 0; i < r_op_stack.size(); ++i) {
-              LOG_ERROR << "r_op_stack[" << i
-                        << "]: " << r_op_stack[i]->data->expr.to_string();
-            }
-            LOG_ERROR << "indices size: " << indices.size();
-            for (auto i = 0; i < indices.size(); ++i) {
-              LOG_ERROR << "indices[" << i << "]: " << indices[i];
-            }
-            LOG_FATAL << "Too many indices!";
-            std::exit(EXIT_FAILURE);
-          }
-
-          string expr_str = "(" + op_name + "+" + it3->first->data->start;
-          for (auto i = 0; i < indices.size(); ++i) {
-            int index = indices[i];
-            int iter = std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
-            if (index >= iter) {
-              LOG_FATAL << "Index out of range: index(" << index << ") >= iter("
-                        << iter << ")";
-              std::exit(EXIT_FAILURE);
-            }
-            expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
-                       "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
-                       "))*" + std::to_string(index);
-          }
-          expr_str += ")";
-          anchor.timing_expr = expr_str;
+        if (node_parent_map.find(parent) != node_parent_map.end()) {
+          parent = node_parent_map[parent];
+        } else {
+          parent = nullptr;
         }
       }
+      // reverse the stack
+      std::reverse(r_op_stack.begin(), r_op_stack.end());
+      vector<int> indices = anchor.expr.indices;
+
+      if (r_op_stack.size() < indices.size()) {
+        LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
+        for (auto i = 0; i < r_op_stack.size(); ++i) {
+          LOG_ERROR << "r_op_stack[" << i
+                    << "]: " << r_op_stack[i]->data->expr.to_string();
+        }
+        LOG_ERROR << "indices size: " << indices.size();
+        for (auto i = 0; i < indices.size(); ++i) {
+          LOG_ERROR << "indices[" << i << "]: " << indices[i];
+        }
+        LOG_FATAL << "Too many indices!";
+        std::exit(EXIT_FAILURE);
+      }
+
+      string expr_str = "(" + op_name + "+" + it3->first->data->start;
+      for (auto i = 0; i < indices.size(); ++i) {
+        int index = indices[i];
+        int iter = std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
+        if (index >= iter) {
+          LOG_FATAL << "Index out of range: index(" << index << ") >= iter("
+                    << iter << ")";
+          std::exit(EXIT_FAILURE);
+        }
+        expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
+                   "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
+                   "))*" + std::to_string(index);
+      }
+      expr_str += ")";
+      anchor.timing_expr = expr_str;
     }
   }
-
-  op.duration_expr = tree->data->duration;
-
-  delete tree;
 }
 
 void TimingModel::computeDurations(BinaryTree<BinaryTreeData> *tree) {
