@@ -219,19 +219,25 @@ void TimingModel::compile() {
   anchors.clear();
   variables.clear();
 
-  // Recursively extract all variables from operation delay
+  extractVariables();
+  extractAnchors();
+  for (auto it = operations.begin(); it != operations.end(); ++it) {
+    resolveOperationTiming(it->second);
+  }
+
+  state = COMPILED;
+}
+
+void TimingModel::extractVariables() {
   std::function<void(OperationExpr &)> extract_variables =
       [&](OperationExpr &expr) {
         if (expr.kind == OperationExpr::TRANSIT ||
             expr.kind == OperationExpr::REPEAT) {
-          // Extract all variables from transit
           string delay_expr = expr.parameters["delay"];
           LOG_DEBUG << "Delay expression: " << delay_expr;
-          // Is it a number or a variable?
           if (is_number(delay_expr)) {
             // Is it a number, do nothing
           } else if (is_identifier(delay_expr)) {
-            // Is it a variable
             variables.insert(delay_expr);
           } else {
             LOG_ERROR << "Invalid delay expression: " << delay_expr;
@@ -245,19 +251,15 @@ void TimingModel::compile() {
     OperationExpr expr = it->second.expr;
     extract_variables(expr);
   }
+}
 
-  // Extract all anchors from constraints:
-  // op_name.e<event_id>[<index_0>][<index_1>]...
+void TimingModel::extractAnchors() {
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     if (it->kind != "linear") {
       LOG_FATAL << "Invalid constraint kind: " << it->kind;
       exit(EXIT_FAILURE);
     }
 
-    // Extract all anchors from constraint
-    // e.g. op_name.e<event_id>
-    // e.g. op_name.e<event_id>[<index_0>]
-    // e.g. op_name.e<event_id>[<index_0>][<index_1>]...
     string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
@@ -277,140 +279,146 @@ void TimingModel::compile() {
                                     anchor.name);
     }
   }
+}
 
-  for (auto it = operations.begin(); it != operations.end(); ++it) {
-    OperationExpr expr = it->second.expr;
-    std::vector<string> anchors_in_op;
-    for (auto it2 = anchors.begin(); it2 != anchors.end(); ++it2) {
-      if (it2->second.expr.op_name == it->first) {
-        anchors_in_op.push_back(it2->first);
-      }
+void TimingModel::resolveOperationTiming(Operation &op) {
+  OperationExpr expr = op.expr;
+  std::vector<string> anchors_in_op;
+  for (auto it2 = anchors.begin(); it2 != anchors.end(); ++it2) {
+    if (it2->second.expr.op_name == op.name) {
+      anchors_in_op.push_back(it2->first);
     }
+  }
 
-    // Build binary tree for the operation expression
-    BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
+  BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
 
-    // calculate the duration of the operation
-    tree->traverse_LRC([](BinaryTree<BinaryTreeData> *node) {
-      BinaryTreeData *tree_data = node->data;
-      BinaryTree<BinaryTreeData> *left = node->left;
-      BinaryTree<BinaryTreeData> *right = node->right;
-      if (tree_data->expr.kind == OperationExpr::TRANSIT) {
-        string left_duration = left->data->duration;
-        string right_duration = right->data->duration;
-        tree_data->duration = "(" + left_duration + "+" + right_duration +
-                              "+(" + tree_data->expr.parameters["delay"] + "))";
-      } else if (tree_data->expr.kind == OperationExpr::REPEAT) {
-        string left_duration = left->data->duration;
-        int iter = std::stoi(tree_data->expr.parameters["iter"]);
-        tree_data->duration = "(" + left_duration + "*" + std::to_string(iter) +
-                              "+(" + tree_data->expr.parameters["delay"] +
-                              ")*" + std::to_string(iter - 1) + ")";
-      } else if (tree_data->expr.kind == OperationExpr::EVENT) {
-        tree_data->duration = "(1)";
-      }
-    });
-    // calculate the start time of the operation
-    tree->data->start = "(0)";
-    tree->traverse_CLR([](BinaryTree<BinaryTreeData> *node) {
-      BinaryTree<BinaryTreeData> *left = node->left;
-      BinaryTree<BinaryTreeData> *right = node->right;
-      BinaryTreeData *tree_data = node->data;
-      if (left) {
-        left->data->start = tree_data->start;
-      }
-      if (right) {
-        right->data->start = "(" + tree_data->start + "+" +
-                             left->data->duration + "+(" +
-                             tree_data->expr.parameters["delay"] + "))";
-      }
-    });
+  computeDurations(tree);
+  computeStartTimes(tree);
 
-    unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
-        node_parent_map;
-    tree->traverse_CLR([&node_parent_map](BinaryTree<BinaryTreeData> *node) {
-      BinaryTree<BinaryTreeData> *left = node->left;
-      BinaryTree<BinaryTreeData> *right = node->right;
-      if (left) {
-        node_parent_map[left] = node;
-      }
-      if (right) {
-        node_parent_map[right] = node;
-      }
-    });
+  unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+      node_parent_map = buildParentMap(tree);
 
-    for (auto it2 = anchors_in_op.begin(); it2 != anchors_in_op.end(); ++it2) {
-      string anchor_name = *it2;
-      string op_name = it->first;
-      Anchor &anchor = anchors[anchor_name];
-      string event_id = std::to_string(anchor.expr.event_id);
-      std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
-      for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
-           ++it3) {
-        if (it3->first->data->expr.kind == OperationExpr::EVENT) {
-          string event_id_1 = it3->first->data->expr.parameters["id"];
-          if (event_id_1 == event_id) {
-            // go through all its parents and find the repeat operation
-            BinaryTree<BinaryTreeData> *parent = it3->second;
+  for (auto it2 = anchors_in_op.begin(); it2 != anchors_in_op.end(); ++it2) {
+    string anchor_name = *it2;
+    string op_name = op.name;
+    Anchor &anchor = anchors[anchor_name];
+    string event_id = std::to_string(anchor.expr.event_id);
+    std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
+    for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
+         ++it3) {
+      if (it3->first->data->expr.kind == OperationExpr::EVENT) {
+        string event_id_1 = it3->first->data->expr.parameters["id"];
+        if (event_id_1 == event_id) {
+          // go through all its parents and find the repeat operation
+          BinaryTree<BinaryTreeData> *parent = it3->second;
 
-            while (parent) {
-              if (parent->data->expr.kind == OperationExpr::REPEAT) {
-                r_op_stack.push_back(parent);
-              }
-
-              if (node_parent_map.find(parent) != node_parent_map.end()) {
-                parent = node_parent_map[parent];
-              } else {
-                parent = nullptr;
-              }
+          while (parent) {
+            if (parent->data->expr.kind == OperationExpr::REPEAT) {
+              r_op_stack.push_back(parent);
             }
-            // reverse the stack
-            std::reverse(r_op_stack.begin(), r_op_stack.end());
-            vector<int> indices = anchor.expr.indices;
 
-            if (r_op_stack.size() < indices.size()) {
-              LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
-              for (auto i = 0; i < r_op_stack.size(); ++i) {
-                LOG_ERROR << "r_op_stack[" << i
-                          << "]: " << r_op_stack[i]->data->expr.to_string();
-              }
-              LOG_ERROR << "indices size: " << indices.size();
-              for (auto i = 0; i < indices.size(); ++i) {
-                LOG_ERROR << "indices[" << i << "]: " << indices[i];
-              }
-              LOG_FATAL << "Too many indices!";
+            if (node_parent_map.find(parent) != node_parent_map.end()) {
+              parent = node_parent_map[parent];
+            } else {
+              parent = nullptr;
+            }
+          }
+          // reverse the stack
+          std::reverse(r_op_stack.begin(), r_op_stack.end());
+          vector<int> indices = anchor.expr.indices;
+
+          if (r_op_stack.size() < indices.size()) {
+            LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
+            for (auto i = 0; i < r_op_stack.size(); ++i) {
+              LOG_ERROR << "r_op_stack[" << i
+                        << "]: " << r_op_stack[i]->data->expr.to_string();
+            }
+            LOG_ERROR << "indices size: " << indices.size();
+            for (auto i = 0; i < indices.size(); ++i) {
+              LOG_ERROR << "indices[" << i << "]: " << indices[i];
+            }
+            LOG_FATAL << "Too many indices!";
+            std::exit(EXIT_FAILURE);
+          }
+
+          string expr_str = "(" + op_name + "+" + it3->first->data->start;
+          for (auto i = 0; i < indices.size(); ++i) {
+            int index = indices[i];
+            int iter = std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
+            if (index >= iter) {
+              LOG_FATAL << "Index out of range: index(" << index << ") >= iter("
+                        << iter << ")";
               std::exit(EXIT_FAILURE);
             }
-
-            string expr_str = "(" + op_name + "+" + it3->first->data->start;
-            for (auto i = 0; i < indices.size(); ++i) {
-              int index = indices[i];
-              int iter =
-                  std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
-              if (index >= iter) {
-                LOG_FATAL << "Index out of range: index(" << index
-                          << ") >= iter(" << iter << ")";
-                std::exit(EXIT_FAILURE);
-              }
-              expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
-                         "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
-                         "))*" + std::to_string(index);
-            }
-            expr_str += ")";
-            anchor.timing_expr = expr_str;
+            expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
+                       "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
+                       "))*" + std::to_string(index);
           }
+          expr_str += ")";
+          anchor.timing_expr = expr_str;
         }
       }
     }
-
-    it->second.duration_expr = tree->data->duration;
-
-    // delete the tree
-    delete tree;
   }
 
-  // Compilation logic
-  state = COMPILED;
+  op.duration_expr = tree->data->duration;
+
+  delete tree;
+}
+
+void TimingModel::computeDurations(BinaryTree<BinaryTreeData> *tree) {
+  tree->traverse_LRC([](BinaryTree<BinaryTreeData> *node) {
+    BinaryTreeData *tree_data = node->data;
+    BinaryTree<BinaryTreeData> *left = node->left;
+    BinaryTree<BinaryTreeData> *right = node->right;
+    if (tree_data->expr.kind == OperationExpr::TRANSIT) {
+      string left_duration = left->data->duration;
+      string right_duration = right->data->duration;
+      tree_data->duration = "(" + left_duration + "+" + right_duration + "+(" +
+                            tree_data->expr.parameters["delay"] + "))";
+    } else if (tree_data->expr.kind == OperationExpr::REPEAT) {
+      string left_duration = left->data->duration;
+      int iter = std::stoi(tree_data->expr.parameters["iter"]);
+      tree_data->duration = "(" + left_duration + "*" + std::to_string(iter) +
+                            "+(" + tree_data->expr.parameters["delay"] + ")*" +
+                            std::to_string(iter - 1) + ")";
+    } else if (tree_data->expr.kind == OperationExpr::EVENT) {
+      tree_data->duration = "(1)";
+    }
+  });
+}
+
+void TimingModel::computeStartTimes(BinaryTree<BinaryTreeData> *tree) {
+  tree->data->start = "(0)";
+  tree->traverse_CLR([](BinaryTree<BinaryTreeData> *node) {
+    BinaryTree<BinaryTreeData> *left = node->left;
+    BinaryTree<BinaryTreeData> *right = node->right;
+    BinaryTreeData *tree_data = node->data;
+    if (left) {
+      left->data->start = tree_data->start;
+    }
+    if (right) {
+      right->data->start = "(" + tree_data->start + "+" + left->data->duration +
+                           "+(" + tree_data->expr.parameters["delay"] + "))";
+    }
+  });
+}
+
+unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+TimingModel::buildParentMap(BinaryTree<BinaryTreeData> *tree) {
+  unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+      node_parent_map;
+  tree->traverse_CLR([&node_parent_map](BinaryTree<BinaryTreeData> *node) {
+    BinaryTree<BinaryTreeData> *left = node->left;
+    BinaryTree<BinaryTreeData> *right = node->right;
+    if (left) {
+      node_parent_map[left] = node;
+    }
+    if (right) {
+      node_parent_map[right] = node;
+    }
+  });
+  return node_parent_map;
 }
 
 BinaryTree<BinaryTreeData> *

@@ -48,6 +48,17 @@ public:
   Operation get_operation(string name);
 
 private:
+  void extractVariables();
+  void extractAnchors();
+  void resolveOperationTiming(Operation &op);
+  void computeDurations(BinaryTree<BinaryTreeData> *tree);
+  void computeStartTimes(BinaryTree<BinaryTreeData> *tree);
+  unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+  buildParentMap(BinaryTree<BinaryTreeData> *tree);
+  void resolveAnchorTimingExpr(
+      Operation &op, BinaryTree<BinaryTreeData> *tree,
+      unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
+          &node_parent_map);
   BinaryTree<BinaryTreeData> *build_binary_tree(OperationExpr &expr);
 };
 
