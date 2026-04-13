@@ -120,3 +120,56 @@ TEST(tm, overall_test_2) {
   EXPECT_NE(result.find("total_latency"), result.end());
   EXPECT_EQ(result["total_latency"], "15");
 }
+
+// Test that a 1-D wildcard constraint expands to the cartesian product of all
+// matching anchor pairs (3 * 4 = 12 constraints).
+TEST(tm, wildcard_expansion_1d) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation A R<3,0>(e0)
+    operation B R<4,0>(e0)
+    constraint linear A.e0[*] != B.e0[*]
+  )");
+  tm.compile();
+  // A has 3 events, B has 4 events → 3 * 4 = 12 expanded constraints
+  EXPECT_EQ(tm.constraints.size(), 12u);
+}
+
+// Test that a 2-D wildcard constraint expands to the cartesian product:
+// A has 2*4 = 8 events, B has 4*4 = 16 events → 8 * 16 = 128 constraints.
+TEST(tm, wildcard_expansion_2d) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation A R<2,0>(R<4,0>(e0))
+    operation B R<4,0>(R<4,0>(e0))
+    constraint linear A.e0[*][*] != B.e0[*][*]
+  )");
+  tm.compile();
+  EXPECT_EQ(tm.constraints.size(), 128u);
+}
+
+// Test partial wildcard: A.e0[0][*] selects 4 anchors, B.e0[1][*] selects 4
+// anchors → 4 * 4 = 16 constraints.
+TEST(tm, wildcard_expansion_partial) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation A R<2,0>(R<4,0>(e0))
+    operation B R<2,0>(R<4,0>(e0))
+    constraint linear A.e0[0][*] != B.e0[1][*]
+  )");
+  tm.compile();
+  EXPECT_EQ(tm.constraints.size(), 16u);
+}
+
+// Test that non-wildcard constraints are not affected.
+TEST(tm, wildcard_no_expansion_for_literal) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation A R<3,0>(e0)
+    operation B R<4,0>(e0)
+    constraint linear A.e0[1] != B.e0[2]
+  )");
+  tm.compile();
+  // Exactly one constraint (no expansion)
+  EXPECT_EQ(tm.constraints.size(), 1u);
+}

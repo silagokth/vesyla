@@ -246,6 +246,142 @@ void TimingModel::compile() {
     extract_variables(expr);
   }
 
+  // Pre-process wildcard constraints: expand anchor patterns containing '*'
+  // e.g. "A.e0[*] != B.e0[*]" with A having 3 events and B having 4 events
+  // expands to 12 specific constraints (cartesian product).
+  {
+    std::string wc_pattern_str =
+        "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+|\\*)\\])*";
+    std::regex wc_pattern_regex(wc_pattern_str);
+
+    std::vector<Constraint> expanded_constraints;
+    std::vector<bool> to_remove_flags(constraints.size(), false);
+
+    for (size_t ci = 0; ci < constraints.size(); ++ci) {
+      Constraint &cstr = constraints[ci];
+      std::string expr = cstr.expr;
+
+      // Collect all wildcard anchor occurrences with their positions
+      struct WildcardMatch {
+        size_t start;
+        size_t length;
+        std::vector<std::string> expansions;
+      };
+      std::vector<WildcardMatch> wc_matches;
+
+      std::sregex_iterator it(expr.begin(), expr.end(), wc_pattern_regex);
+      std::sregex_iterator end_it;
+
+      for (; it != end_it; ++it) {
+        std::string matched = (*it)[0];
+        if (matched.find('*') == std::string::npos)
+          continue;
+
+        // Parse the wildcard anchor expression
+        AnchorExpr anchor_expr(matched);
+        std::string op_name = anchor_expr.op_name;
+
+        if (operations.find(op_name) == operations.end()) {
+          LOG_FATAL << "Operation not found for wildcard anchor: " << op_name;
+          exit(EXIT_FAILURE);
+        }
+
+        Operation &op = operations[op_name];
+        std::string target_event = "e" + std::to_string(anchor_expr.event_id);
+
+        // Find all specific anchor strings that match the wildcard pattern
+        std::vector<std::string> specific_anchors;
+        std::regex idx_re("\\[([0-9]+)\\]");
+        for (const auto &anchor_str : op.get_all_anchors()) {
+          // Check that the anchor belongs to the right event
+          if (anchor_str.substr(0, target_event.size()) != target_event)
+            continue;
+          if (anchor_str.size() > target_event.size() &&
+              anchor_str[target_event.size()] != '[')
+            continue;
+
+          // Parse the anchor's indices
+          std::vector<int> anchor_indices;
+          std::smatch m;
+          std::string remaining = anchor_str.substr(target_event.size());
+          std::string::const_iterator ss(remaining.cbegin());
+          while (std::regex_search(ss, remaining.cend(), m, idx_re)) {
+            ss = m.suffix().first;
+            anchor_indices.push_back(std::stoi(m[1]));
+          }
+
+          // Dimensions must match
+          if (anchor_indices.size() != anchor_expr.indices.size())
+            continue;
+
+          // Each non-wildcard index must equal the anchor's index
+          bool matches = true;
+          for (size_t i = 0; i < anchor_expr.indices.size(); i++) {
+            if (anchor_expr.indices[i] != -1 &&
+                anchor_expr.indices[i] != anchor_indices[i]) {
+              matches = false;
+              break;
+            }
+          }
+
+          if (matches) {
+            specific_anchors.push_back(op_name + "." + anchor_str);
+          }
+        }
+
+        if (specific_anchors.empty()) {
+          LOG_WARNING << "No anchors matched wildcard pattern: " << matched;
+        }
+
+        wc_matches.push_back(
+            {(size_t)it->position(), (size_t)matched.size(), specific_anchors});
+      }
+
+      if (wc_matches.empty())
+        continue;
+
+      // Mark original wildcard constraint for removal
+      to_remove_flags[ci] = true;
+
+      // Generate cartesian product of all wildcard expansions
+      std::vector<std::vector<size_t>> combos = {{}};
+      for (const auto &wm : wc_matches) {
+        std::vector<std::vector<size_t>> new_combos;
+        for (const auto &combo : combos) {
+          for (size_t j = 0; j < wm.expansions.size(); j++) {
+            std::vector<size_t> new_combo = combo;
+            new_combo.push_back(j);
+            new_combos.push_back(new_combo);
+          }
+        }
+        combos = new_combos;
+      }
+
+      // Create one new constraint per combination
+      for (const auto &combo : combos) {
+        std::string new_expr = expr;
+        // Replace in reverse order to preserve earlier positions
+        for (int i = (int)wc_matches.size() - 1; i >= 0; i--) {
+          new_expr.replace(wc_matches[i].start, wc_matches[i].length,
+                           wc_matches[i].expansions[combo[i]]);
+        }
+        expanded_constraints.push_back(Constraint(cstr.kind, new_expr));
+      }
+    }
+
+    // Rebuild constraints: keep non-wildcard ones, append expanded ones
+    std::vector<Constraint> updated_constraints;
+    for (size_t ci = 0; ci < constraints.size(); ++ci) {
+      if (!to_remove_flags[ci]) {
+        updated_constraints.push_back(constraints[ci]);
+      }
+    }
+    for (const auto &c : expanded_constraints) {
+      updated_constraints.push_back(c);
+    }
+    constraints = updated_constraints;
+  }
+
   // Extract all anchors from constraints:
   // op_name.e<event_id>[<index_0>][<index_1>]...
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {

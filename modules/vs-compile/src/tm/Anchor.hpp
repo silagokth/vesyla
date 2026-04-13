@@ -14,11 +14,12 @@ namespace tm {
 struct AnchorExpr {
   string op_name;
   int event_id;
-  std::vector<int> indices;
+  std::vector<int> indices; // -1 represents a wildcard (*)
   AnchorExpr() {}
   AnchorExpr(string str);
   ~AnchorExpr();
   string to_string();
+  bool has_wildcards() const;
 };
 
 struct Anchor {
