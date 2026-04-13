@@ -14,7 +14,8 @@ namespace tm {
 struct AnchorExpr {
   string op_name;
   int event_id;
-  std::vector<int> indices; // -1 represents a wildcard (*)
+  std::vector<int> indices;
+  std::vector<bool> wildcard_mask; // wildcard_mask[i] == true means indices[i] is a wildcard (*)
   AnchorExpr() {}
   AnchorExpr(string str);
   ~AnchorExpr();

@@ -173,3 +173,49 @@ TEST(tm, wildcard_no_expansion_for_literal) {
   // Exactly one constraint (no expansion)
   EXPECT_EQ(tm.constraints.size(), 1u);
 }
+
+// Test that a negative index (-1) resolves the same as the last positive index.
+// write_c_seq has R<32,0> → 32 iterations; index -1 should resolve to 31.
+TEST(tm, negative_index_resolves_same_as_last_positive) {
+  vesyla::tm::TimingModel tm1, tm2;
+  tm1.from_string(R"(
+    operation write_c_seq R<32,0>(e0)
+    operation read_c R<2,0>(e0)
+    constraint linear ( read_c.e0[0] > write_c_seq.e0[-1] )
+  )");
+  tm2.from_string(R"(
+    operation write_c_seq R<32,0>(e0)
+    operation read_c R<2,0>(e0)
+    constraint linear ( read_c.e0[0] > write_c_seq.e0[31] )
+  )");
+  vesyla::tm::Solver solver("/tmp");
+  auto r1 = solver.solve(tm1);
+  auto r2 = solver.solve(tm2);
+  EXPECT_EQ(r1["read_c"], r2["read_c"]);
+}
+
+// Test that a negative index out of range triggers fatal exit.
+TEST(tm, negative_index_out_of_range_is_fatal) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation write_c_seq R<16,0>(e0)
+    operation read_c R<2,0>(e0)
+    constraint linear ( read_c.e0[0] > write_c_seq.e0[-17] )
+  )");
+  EXPECT_EXIT(tm.compile(), ::testing::ExitedWithCode(EXIT_FAILURE), "");
+}
+
+// Test combined negative and wildcard: A.e0[-1][*] on a 3x4 op expands
+// the outer -1 to index 2 and the inner * to all 4 → 4 specific anchors.
+// With a non-wildcard B.e0, this yields exactly 4 constraints.
+TEST(tm, wildcard_with_negative_outer_index) {
+  vesyla::tm::TimingModel tm;
+  tm.from_string(R"(
+    operation A R<3,0>(R<4,0>(e0))
+    operation B e0
+    constraint linear A.e0[-1][*] > B.e0
+  )");
+  tm.compile();
+  // A.e0[-1] resolves to outer index 2; [*] expands over 4 inner indices → 4 constraints.
+  EXPECT_EQ(tm.constraints.size(), 4u);
+}

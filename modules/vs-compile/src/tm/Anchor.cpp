@@ -20,22 +20,24 @@ AnchorExpr::AnchorExpr(string str) {
 
   // use regex to match <op_name>.<event_id>[<index_0>][<index_1>]...
   auto regex =
-      std::regex("^([a-zA-Z_][a-zA-Z0-9_]*)\\.e([0-9]+)(\\[([0-9]+|\\*)\\])*$");
+      std::regex("^([a-zA-Z_][a-zA-Z0-9_]*)\\.e([0-9]+)(\\[(-?[0-9]+|\\*)\\])*$");
   std::smatch match;
   if (std::regex_match(str, match, regex)) {
     op_name = match[1];
     event_id = std::stoi(match[2]);
     std::string indices_str = match[0];
     // remove the op_name and event_id from the string
-    auto regex2 = std::regex("\\[([0-9]+|\\*)\\]");
+    auto regex2 = std::regex("\\[(-?[0-9]+|\\*)\\]");
     std::smatch match2;
     std::string::const_iterator search_start(indices_str.cbegin());
     while (
         std::regex_search(search_start, indices_str.cend(), match2, regex2)) {
       search_start = match2.suffix().first;
       if (match2[1] == "*") {
-        indices.push_back(-1); // -1 is the wildcard sentinel
+        wildcard_mask.push_back(true);
+        indices.push_back(0); // placeholder; value is irrelevant for wildcards
       } else {
+        wildcard_mask.push_back(false);
         indices.push_back(std::stoi(match2[1]));
       }
     }
@@ -50,7 +52,7 @@ AnchorExpr::~AnchorExpr() {}
 string AnchorExpr::to_string() {
   string str = op_name + ".e" + std::to_string(event_id);
   for (size_t i = 0; i < indices.size(); i++) {
-    if (indices[i] == -1) {
+    if (wildcard_mask[i]) {
       str += "[*]";
     } else {
       str += "[" + std::to_string(indices[i]) + "]";
@@ -60,8 +62,8 @@ string AnchorExpr::to_string() {
 }
 
 bool AnchorExpr::has_wildcards() const {
-  for (int idx : indices) {
-    if (idx == -1)
+  for (size_t i = 0; i < wildcard_mask.size(); i++) {
+    if (wildcard_mask[i])
       return true;
   }
   return false;
@@ -70,19 +72,29 @@ bool AnchorExpr::has_wildcards() const {
 Anchor::Anchor(string expr_str) : expr(expr_str) {
   int event_id = expr.event_id;
   string op_name = expr.op_name;
-  vector<int> indices = expr.indices;
   name = op_name + "_e" + std::to_string(event_id);
-  for (size_t i = 0; i < indices.size(); i++) {
-    name += "_" + std::to_string(indices[i]);
+  for (size_t i = 0; i < expr.indices.size(); i++) {
+    if (expr.wildcard_mask[i]) {
+      name += "_wc";
+    } else if (expr.indices[i] < 0) {
+      name += "_n" + std::to_string(-expr.indices[i]);
+    } else {
+      name += "_" + std::to_string(expr.indices[i]);
+    }
   }
 }
 Anchor::Anchor(AnchorExpr expr) : expr(expr) {
   int event_id = expr.event_id;
   string op_name = expr.op_name;
-  vector<int> indices = expr.indices;
   name = op_name + "_e" + std::to_string(event_id);
-  for (size_t i = 0; i < indices.size(); i++) {
-    name += "_" + std::to_string(indices[i]);
+  for (size_t i = 0; i < expr.indices.size(); i++) {
+    if (expr.wildcard_mask[i]) {
+      name += "_wc";
+    } else if (expr.indices[i] < 0) {
+      name += "_n" + std::to_string(-expr.indices[i]);
+    } else {
+      name += "_" + std::to_string(expr.indices[i]);
+    }
   }
 }
 Anchor::~Anchor() {}

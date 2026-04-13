@@ -251,7 +251,7 @@ void TimingModel::compile() {
   // expands to 12 specific constraints (cartesian product).
   {
     std::string wc_pattern_str =
-        "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+|\\*)\\])*";
+        "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[(-?[0-9]+|\\*)\\])*";
     std::regex wc_pattern_regex(wc_pattern_str);
 
     std::vector<Constraint> expanded_constraints;
@@ -292,14 +292,35 @@ void TimingModel::compile() {
         // Find all specific anchor strings that match the wildcard pattern
         std::vector<std::string> specific_anchors;
         std::regex idx_re("\\[([0-9]+)\\]");
+        std::vector<std::string> event_anchors;
         for (const auto &anchor_str : op.get_all_anchors()) {
-          // Check that the anchor belongs to the right event
           if (anchor_str.substr(0, target_event.size()) != target_event)
             continue;
           if (anchor_str.size() > target_event.size() &&
               anchor_str[target_event.size()] != '[')
             continue;
+          event_anchors.push_back(anchor_str);
+        }
 
+        // Determine the number of iterations per dimension by scanning all
+        // event anchors, so negative indices can be resolved.
+        std::vector<int> dim_iters;
+        for (const auto &anchor_str : event_anchors) {
+          std::vector<int> ai;
+          std::smatch m;
+          std::string remaining = anchor_str.substr(target_event.size());
+          std::string::const_iterator ss(remaining.cbegin());
+          while (std::regex_search(ss, remaining.cend(), m, idx_re)) {
+            ss = m.suffix().first;
+            ai.push_back(std::stoi(m[1]));
+          }
+          while (dim_iters.size() < ai.size())
+            dim_iters.push_back(0);
+          for (size_t d = 0; d < ai.size(); d++)
+            dim_iters[d] = std::max(dim_iters[d], ai[d] + 1);
+        }
+
+        for (const auto &anchor_str : event_anchors) {
           // Parse the anchor's indices
           std::vector<int> anchor_indices;
           std::smatch m;
@@ -314,13 +335,24 @@ void TimingModel::compile() {
           if (anchor_indices.size() != anchor_expr.indices.size())
             continue;
 
-          // Each non-wildcard index must equal the anchor's index
+          // Each non-wildcard index must equal the anchor's index.
+          // Negative indices are resolved Python-style using the iteration count.
           bool matches = true;
           for (size_t i = 0; i < anchor_expr.indices.size(); i++) {
-            if (anchor_expr.indices[i] != -1 &&
-                anchor_expr.indices[i] != anchor_indices[i]) {
-              matches = false;
-              break;
+            if (!anchor_expr.wildcard_mask[i]) {
+              int expected = anchor_expr.indices[i];
+              if (expected < 0) {
+                if (i < dim_iters.size())
+                  expected = dim_iters[i] + expected;
+                else {
+                  matches = false;
+                  break;
+                }
+              }
+              if (expected != anchor_indices[i]) {
+                matches = false;
+                break;
+              }
             }
           }
 
@@ -394,7 +426,7 @@ void TimingModel::compile() {
     // e.g. op_name.e<event_id>
     // e.g. op_name.e<event_id>[<index_0>]
     // e.g. op_name.e<event_id>[<index_0>][<index_1>]...
-    string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
+    string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[(-?[0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
     while (std::regex_search(it->expr, match, regex)) {
@@ -523,14 +555,18 @@ void TimingModel::compile() {
               int index = indices[i];
               int iter =
                   std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
-              if (index >= iter) {
-                LOG_FATAL << "Index out of range: index(" << index
-                          << ") >= iter(" << iter << ")";
+              // resolve negative indices (Python-style: -1 means last)
+              int resolved = (!anchor.expr.wildcard_mask[i] && index < 0)
+                                 ? iter + index
+                                 : index;
+              if (resolved < 0 || resolved >= iter) {
+                LOG_FATAL << "Index out of range: resolved(" << resolved
+                          << ") not in [0, " << iter << ")";
                 std::exit(EXIT_FAILURE);
               }
               expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
                          "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
-                         "))*" + std::to_string(index);
+                         "))*" + std::to_string(resolved);
             }
             expr_str += ")";
             anchor.timing_expr = expr_str;
