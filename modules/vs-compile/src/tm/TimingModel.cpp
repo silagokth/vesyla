@@ -1,5 +1,6 @@
 // TODO this should come from a config file
 // or global variables at some point
+#include <future>
 #define MAX_SLOTS 16
 #define NUM_PORTS_PER_RESOURCE 4
 #define MAX_LATENCY 10000000
@@ -126,6 +127,17 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
   // add anchors
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
     mzn_file << "var 0..MAX_LATENCY: " + it->second.name + ";\n";
+    if (it->second.timing_expr.empty()) {
+      LOG_ERROR << "Anchor " << it->second.name
+                << " does not have a timing expression!";
+      // print all anchors
+      for (auto it2 = anchors.begin(); it2 != anchors.end(); ++it2) {
+        LOG_ERROR << "Anchor " << it2->second.name
+                  << " with expr: " << it2->second.expr.to_string()
+                  << " and timing_expr: " << it2->second.timing_expr;
+      }
+      std::exit(EXIT_FAILURE);
+    }
     mzn_file << "constraint " + it->second.name +
                     " == " + it->second.timing_expr + ";\n";
   }
@@ -283,6 +295,8 @@ void TimingModel::extractAnchors() {
 
 void TimingModel::resolveOperationTiming(Operation &op) {
   OperationExpr expr = op.expr;
+  LOG_DEBUG << "Resolving timing for operation " << op.name
+            << " with expression: " << expr.to_string();
 
   BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
 
@@ -299,10 +313,17 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
                                           BinaryTree<BinaryTreeData> *tree) {
   std::vector<string> anchors_in_op;
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
+    LOG_DEBUG << "Checking anchor " << it->second.name
+              << " with expr: " << it->second.expr.to_string()
+              << " against operation " << op.name
+              << " with expr: " << op.expr.to_string();
     if (it->second.expr.op_name == op.name) {
       anchors_in_op.push_back(it->first);
     }
   }
+
+  LOG_DEBUG << "Operation " << op.name << " has " << anchors_in_op.size()
+            << " anchors.";
 
   unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
       node_parent_map = buildParentMap(tree);
@@ -336,6 +357,14 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
           parent = nullptr;
         }
       }
+
+      LOG_DEBUG << "Anchor " << anchor_name << " has " << r_op_stack.size()
+                << " repeat operations in its path.";
+      for (auto i = 0; i < r_op_stack.size(); ++i) {
+        LOG_DEBUG << "Repeat operation " << i << ": "
+                  << r_op_stack[i]->data->expr.to_string();
+      }
+
       // reverse the stack
       std::reverse(r_op_stack.begin(), r_op_stack.end());
       vector<int> indices = anchor.expr.indices;
