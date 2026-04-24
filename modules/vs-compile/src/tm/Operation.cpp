@@ -90,10 +90,12 @@ OperationExpr::OperationExpr(string str) {
     if (std::regex_match(str, match, regex)) {
       parameters["delay"] = match[1];
       string inner_str = match[2];
-      // split the inner string by comma considering the brackets: {}, [], ()
+      // split the inner string by comma considering the brackets: {}, [], (),
+      // <>
       int bracket_curly = 0;
       int bracket_square = 0;
       int bracket_round = 0;
+      int bracket_angle = 0;
       string inner_str_temp = "";
       for (size_t i = 0; i < inner_str.size(); i++) {
         if (inner_str[i] == '(') {
@@ -108,8 +110,13 @@ OperationExpr::OperationExpr(string str) {
           bracket_square++;
         } else if (inner_str[i] == ']') {
           bracket_square--;
+        } else if (inner_str[i] == '<') {
+          bracket_angle++;
+        } else if (inner_str[i] == '>') {
+          bracket_angle--;
         } else if (inner_str[i] == ',' && bracket_curly == 0 &&
-                   bracket_square == 0 && bracket_round == 0) {
+                   bracket_square == 0 && bracket_round == 0 &&
+                   bracket_angle == 0) {
           children.push_back(OperationExpr(inner_str_temp));
           inner_str_temp = "";
           continue;
