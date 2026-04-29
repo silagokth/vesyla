@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
+#include <algorithm>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -849,11 +851,11 @@ private:
     return slot_port_index_list;
   }
 
-  std::unordered_map<std::string, std::vector<mlir::Operation *>>
+  std::map<std::string, std::vector<mlir::Operation *>>
   get_rop_ops_for_cycle(
       int currentCycle,
       std::unordered_map<mlir::Operation *, int> time_table_rop) const {
-    std::unordered_map<std::string, std::vector<mlir::Operation *>>
+    std::map<std::string, std::vector<mlir::Operation *>>
         rop_ops_at_t;
     for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
       // only keep the rop ops for the current cycle
@@ -870,6 +872,22 @@ private:
         rop_ops_at_t[label] = std::vector<mlir::Operation *>();
       }
       rop_ops_at_t[label].push_back(it->first);
+    }
+
+    // Sort each cell's rop list deterministically by source position (the
+    // order in which rops appear in the parent block). The input
+    // time_table_rop is an unordered_map keyed by Operation*, so its
+    // iteration order varies between runs. Without this sort, rops that
+    // share a cycle within a cell get serialised in random order, which
+    // changes the dispatch order in instr.bin and exposes a flaky-looking
+    // test failure on testcases like mul_512_1_1. Using source order
+    // matches what the user wrote in the pasm and keeps the dispatch
+    // sequence stable.
+    for (auto &kv : rop_ops_at_t) {
+      std::sort(kv.second.begin(), kv.second.end(),
+                [](mlir::Operation *a, mlir::Operation *b) {
+                  return a->isBeforeInBlock(b);
+                });
     }
 
     return rop_ops_at_t;
@@ -1181,7 +1199,7 @@ private:
     int total_latency = schedule_table["total_latency"];
     std::unordered_map<string, bool> cell_contains_act_mode2;
     for (int t = 0; t < total_latency; t++) {
-      std::unordered_map<std::string, std::vector<mlir::Operation *>>
+      std::map<std::string, std::vector<mlir::Operation *>>
           rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
 
       // if no rop ops are schedule at t, continue
@@ -1267,7 +1285,7 @@ private:
     print_time_table(time_table);
 
     for (int t = 0; t < total_latency; t++) {
-      std::unordered_map<std::string, std::vector<mlir::Operation *>>
+      std::map<std::string, std::vector<mlir::Operation *>>
           rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
