@@ -22,8 +22,27 @@ jobs:
 
       - name: Download DRRA components library
         run: |
+          set -e
           source ~/.config/envman/PATH.env
-          gh release download --repo silagokth/drra-components --pattern "library.tar.gz"
+          BRANCH="${{ inputs.branch }}"
+          REPO="silagokth/drra-components"
+          rm -f library.tar.gz
+          if [ -n "$BRANCH" ] && gh api "repos/$REPO/branches/$BRANCH" >/dev/null 2>&1; then
+            RUN_ID=$(gh run list --repo "$REPO" --branch "$BRANCH" \
+                       --workflow "PR workflow" --status success \
+                       --limit 1 --json databaseId -q '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Using drra-components@$BRANCH library artifact from run $RUN_ID"
+              gh run download "$RUN_ID" --repo "$REPO" -n library -D .
+            else
+              echo "Branch $BRANCH exists on $REPO but no successful 'PR workflow' run found; falling back to latest release"
+            fi
+          else
+            echo "Branch $BRANCH not found on $REPO; using latest release"
+          fi
+          if [ ! -f library.tar.gz ]; then
+            gh release download --repo "$REPO" --pattern "library.tar.gz"
+          fi
           if [ ! -f library.tar.gz ]; then
             echo "Error: library.tar.gz not found"
             exit 1
