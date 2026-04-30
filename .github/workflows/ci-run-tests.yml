@@ -94,6 +94,8 @@ jobs:
           fi
 
       - name: Run DRRA tests
+        id: run_tests
+        continue-on-error: true
         run: |
           cd tests
           . /usr/share/modules/init/sh
@@ -109,11 +111,103 @@ jobs:
           vesyla testcase generate -d ./testcases
           ./run.sh
 
+      - name: Collect failed-test debug logs
+        if: steps.run_tests.outcome == 'failure'
+        run: |
+          cd tests
+          . /usr/share/modules/init/sh
+          module use /opt/modules
+          module add questasim
+          module add bender
+          module add sst
+          source .venv/bin/activate
+          export VESYLA_SUITE_PATH_COMPONENTS=$(readlink -e ../library)
+          mkdir -p failed_logs
+          python3 - <<'PY'
+          import os, re, subprocess, pathlib
+          from xml.etree import ElementTree as ET
+
+          # Map test name -> testcase path from autotest_config.robot
+          name2path = {}
+          row = re.compile(r'^([\w:.\-]+)\s{2,}(/\S.*)$')
+          in_cases = False
+          for line in open('autotest_config.robot'):
+              if line.startswith('*** Test Cases'):
+                  in_cases = True
+                  continue
+              if line.startswith('***'):
+                  in_cases = False
+              if in_cases:
+                  m = row.match(line.rstrip())
+                  if m:
+                      name2path[m.group(1)] = m.group(2)
+
+          # Collect FAIL test names from robot output.xml
+          tree = ET.parse('output/output.xml')
+          failed = []
+          for test in tree.iter('test'):
+              st = test.find('status')
+              if st is not None and st.get('status') == 'FAIL':
+                  failed.append(test.get('name'))
+          print(f'Found {len(failed)} failed test(s): {failed}')
+
+          summary = open('failed_logs/SUMMARY.txt', 'w')
+          for name in failed:
+              path = name2path.get(name)
+              slug = re.sub(r'[^A-Za-z0-9_-]', '_', name)
+              out = pathlib.Path('failed_logs') / slug
+              out.mkdir(parents=True, exist_ok=True)
+              log_path = out / 'debug.log'
+              summary.write(f'{name}\t{path}\t{log_path}\n')
+              if not path:
+                  log_path.write_text(f'No testcase path found for {name}\n')
+                  continue
+              with open(log_path, 'w') as log:
+                  log.write(f'===== Test: {name} =====\n')
+                  log.write(f'===== Path: {path} =====\n\n')
+                  log.write('===== vesyla testcase run -d <path> -o <out>/run =====\n')
+                  log.flush()
+                  run_dir = out / 'run'
+                  subprocess.run(
+                      ['vesyla', 'testcase', 'run', '-d', path, '-o', str(run_dir)],
+                      stdout=log, stderr=subprocess.STDOUT,
+                  )
+                  script = run_dir / 'run.sh'
+                  if script.exists():
+                      log.write('\n===== bash run.sh -d (debug) =====\n')
+                      log.flush()
+                      subprocess.run(
+                          ['bash', 'run.sh', '-d'],
+                          cwd=str(run_dir),
+                          stdout=log, stderr=subprocess.STDOUT,
+                      )
+                  else:
+                      log.write(f'\nNo run.sh generated at {script}\n')
+          summary.close()
+          PY
+          tar czf ../failed-test-logs.tar.gz failed_logs
+
+      - name: Upload failed-test debug logs
+        if: steps.run_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-test-logs
+          path: failed-test-logs.tar.gz
+          if-no-files-found: ignore
+
       - name: Compress test outputs
+        if: always()
         run: tar czf output.tar.gz tests/output
 
       - name: Upload test outputs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-outputs
           path: output.tar.gz
+
+      - name: Fail job if tests failed
+        if: steps.run_tests.outcome == 'failure'
+        run: |
+          echo "DRRA tests failed; see failed-test-logs artifact for per-test debug output."
+          exit 1
