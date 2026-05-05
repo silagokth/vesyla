@@ -1381,7 +1381,7 @@ private:
       if (prev_t != total_latency - 1) {
         rewriter.setInsertionPointToEnd(block);
         auto wait_instr_param_map =
-            create_wait_instr(total_latency - 1 - prev_t);
+            create_wait_instr(total_latency - 2 - prev_t);
         mlir::StringAttr id =
             rewriter.getStringAttr(vesyla::util::Common::gen_random_string(8));
         mlir::StringAttr type = rewriter.getStringAttr("wait");
