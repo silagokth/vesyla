@@ -9,6 +9,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 class Pasm_Op<string mnemonic, list<Trait> traits = []> :
     Op<Pasm_Dialect, mnemonic, traits>;
@@ -20,7 +21,7 @@ def InstrOp : Pasm_Op<"instr"> {
   }];
 }
 
-def EpochOp : Pasm_Op<"epoch"> {
+def EpochOp : Pasm_Op<"epoch", [SymbolTable]> {
   let summary = "Make epoch";
   let description = [{
     Make epoch
@@ -60,13 +61,14 @@ def CondOp : Pasm_Op<"cond"> {
   }];
 }
 
-def RopOp : Pasm_Op<"rop"> {
+def RopOp : Pasm_Op<"rop", [Symbol]> {
   let summary = "Make resource operation";
   let description = [{
     Make resource operation.
   }];
 
-  let arguments = (ins StrAttr:$id, I32Attr:$row, I32Attr:$col,
+  let arguments = (ins SymbolNameAttr:$sym_name,
+                   I32Attr:$row, I32Attr:$col,
                    I32Attr:$slot, I32Attr:$port);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
@@ -99,17 +101,29 @@ def RawOp : Pasm_Op<"raw"> {
 }
 
 def CstrOp : Pasm_Op<"cstr"> {
-  let summary = "Make constraint";
+  let summary = "Delay constraint between two ROPs";
   let description = [{
-    Make constraint.
+    Constrains the delay from src ROP to dst ROP, applied over the
+    given index ranges of each, to lie within [min_delay, max_delay].
   }];
 
-  let arguments = (ins StrAttr:$type,
-                   StrAttr:$expr);
+  let arguments = (ins
+    FlatSymbolRefAttr:$src,
+    DefaultValuedStrAttr<StrAttr, "">:$src_event,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$src_idx_lo,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$src_idx_hi,
+    FlatSymbolRefAttr:$dst,
+    DefaultValuedStrAttr<StrAttr, "">:$dst_event,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_lo,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_hi,
+    I32Attr:$min_delay,
+    I32Attr:$max_delay);
 
   let assemblyFormat = [{
     `<` attr-dict `>`
   }];
+
+  let hasVerifier = 1;
 }
 
 

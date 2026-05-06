@@ -27,6 +27,14 @@ void PasmDialect::registerOps() {
       >();
 }
 
+LogicalResult CstrOp::verify() {
+  if (getSrcIdxLo().size() != getSrcIdxHi().size())
+    return emitOpError("src_idx_lo and src_idx_hi must have the same size");
+  if (getDstIdxLo().size() != getDstIdxHi().size())
+    return emitOpError("dst_idx_lo and dst_idx_hi must have the same size");
+  return success();
+}
+
 // void MakeInstrOp::build(OpBuilder &builder, OperationState &state, StringRef
 // id,
 //                         StringRef type, DictionaryAttr param, Type

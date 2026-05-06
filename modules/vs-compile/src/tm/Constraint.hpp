@@ -1,6 +1,7 @@
 #ifndef __VESYLA_TM_CONSTRAINT_HPP__
 #define __VESYLA_TM_CONSTRAINT_HPP__
 
+#include "pasm/Ops.hpp"
 #include "util/Common.hpp"
 #include <regex>
 #include <string>
@@ -21,6 +22,7 @@ struct Constraint {
     expr.erase(remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
   }
   Constraint(string expr_);
+  Constraint(vesyla::pasm::CstrOp cstr_op);
   ~Constraint() {}
   string to_string();
 };

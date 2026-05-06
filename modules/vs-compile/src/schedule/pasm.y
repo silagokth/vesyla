@@ -17,6 +17,7 @@
     struct operation_t {
         std::string kind;
         mlir::Operation* op;
+        std::vector<mlir::Operation*> extra_ops;
     };
     struct operation_vector_t {
         std::vector<operation_t*> ops;
@@ -136,6 +137,10 @@ EPOCH_REGION:
                 auto new_instr_op = builder.clone(*instr_op);
                 // remove the old instr_op
                 instr_op->erase();
+                for (auto* extra_op : instr->extra_ops) {
+                    builder.clone(*extra_op);
+                    extra_op->erase();
+                }
             }
             // Clean up instr_list
             delete $3;
@@ -149,7 +154,7 @@ EPOCH_REGION:
         }
         $$ = op;
     }
-        
+
     | EPOCH '<' ID '>' '{' OP_LIST '}' {
         LOG_DEBUG << "EPOCH_REGION";
         auto* op = new operation_t();
@@ -170,6 +175,10 @@ EPOCH_REGION:
                 auto new_instr_op = builder.clone(*instr_op);
                 // remove the old instr_op
                 instr_op->erase();
+                for (auto* extra_op : instr->extra_ops) {
+                    builder.clone(*extra_op);
+                    extra_op->erase();
+                }
             }
             // Clean up instr_list
             delete $6;
@@ -598,23 +607,14 @@ CSTR_OP:
         LOG_DEBUG << "CSTR_OP";
         auto* op = new operation_t();
         op->kind = "CSTR";
-        if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(temp_epoch_op)) {
-            // create a InstrOp
-            mlir::OpBuilder builder(epoch_op.getBody());
-            auto loc = builder.getUnknownLoc();
-            std::string cstr_contents = $3;
-            // remove quotes from cstr_contents
-            if (cstr_contents.front() == '"' && cstr_contents.back() == '"') {
-                cstr_contents = cstr_contents.substr(1, cstr_contents.size() - 2);
-            }
-            auto cstr_op = builder.create<vesyla::pasm::CstrOp>(loc,
-                builder.getStringAttr("linear"),
-                builder.getStringAttr(cstr_contents));
-            op->op = cstr_op.getOperation();
-        }
-        else {
-            yyerror("EpochOp not found");
+        auto cstr_ops = parse_and_build_cstr(std::string($3));
+        if (cstr_ops.empty()) {
+            yyerror("cstr: parse_and_build_cstr returned no operations");
             exit(1);
+        }
+        op->op = cstr_ops[0];
+        for (size_t i = 1; i < cstr_ops.size(); ++i) {
+            op->extra_ops.push_back(cstr_ops[i]);
         }
         $$ = op;
     }

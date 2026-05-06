@@ -5,11 +5,11 @@
 #include "mlir/Support/LLVM.h"
 #include "pasm/Ops.hpp"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 #include <bitset>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
-#include <algorithm>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -185,7 +185,7 @@ private:
     nlohmann::json op_json;
     if (auto rop_op = llvm::dyn_cast<RopOp>(op)) {
       op_json["kind"] = "rop";
-      op_json["id"] = rop_op.getId().str();
+      op_json["id"] = rop_op.getSymName().str();
       op_json["row"] = rop_op.getRow();
       op_json["col"] = rop_op.getCol();
       op_json["slot"] = rop_op.getSlot();
@@ -851,12 +851,10 @@ private:
     return slot_port_index_list;
   }
 
-  std::map<std::string, std::vector<mlir::Operation *>>
-  get_rop_ops_for_cycle(
+  std::map<std::string, std::vector<mlir::Operation *>> get_rop_ops_for_cycle(
       int currentCycle,
       std::unordered_map<mlir::Operation *, int> time_table_rop) const {
-    std::map<std::string, std::vector<mlir::Operation *>>
-        rop_ops_at_t;
+    std::map<std::string, std::vector<mlir::Operation *>> rop_ops_at_t;
     for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
       // only keep the rop ops for the current cycle
       if (it->second != currentCycle)
@@ -1163,7 +1161,7 @@ private:
     std::unordered_map<mlir::Operation *, int> time_table_cop;
     for (mlir::Operation &child_op : *block) {
       if (auto rop_op = llvm::dyn_cast<RopOp>(&child_op)) {
-        time_table_rop[&child_op] = schedule_table[rop_op.getId().str()];
+        time_table_rop[&child_op] = schedule_table[rop_op.getSymName().str()];
       } else if (auto cop_op = llvm::dyn_cast<CopOp>(&child_op)) {
         time_table_cop[&child_op] = schedule_table[cop_op.getId().str()];
       } else if (auto raw_op = llvm::dyn_cast<RawOp>(&child_op)) {
@@ -1199,8 +1197,8 @@ private:
     int total_latency = schedule_table["total_latency"];
     std::unordered_map<string, bool> cell_contains_act_mode2;
     for (int t = 0; t < total_latency; t++) {
-      std::map<std::string, std::vector<mlir::Operation *>>
-          rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
+      std::map<std::string, std::vector<mlir::Operation *>> rop_ops_at_t =
+          get_rop_ops_for_cycle(t, time_table_rop);
 
       // if no rop ops are schedule at t, continue
       if (rop_ops_at_t.empty())
@@ -1227,9 +1225,9 @@ private:
           auto rop_op = llvm::dyn_cast<RopOp>(rop_ops[rop_i]);
           auto rop_port = slot_port_index_list[rop_i];
           if (rop_i == rop_ops.size() - 1)
-            llvm::outs() << rop_op.getId() << " (" << rop_port << ")]\n";
+            llvm::outs() << rop_op.getSymName() << " (" << rop_port << ")]\n";
           else
-            llvm::outs() << rop_op.getId() << " (" << rop_port << "), ";
+            llvm::outs() << rop_op.getSymName() << " (" << rop_port << "), ";
         }
 
         // place act instructions in time table
@@ -1285,8 +1283,8 @@ private:
     print_time_table(time_table);
 
     for (int t = 0; t < total_latency; t++) {
-      std::map<std::string, std::vector<mlir::Operation *>>
-          rop_ops_at_t = get_rop_ops_for_cycle(t, time_table_rop);
+      std::map<std::string, std::vector<mlir::Operation *>> rop_ops_at_t =
+          get_rop_ops_for_cycle(t, time_table_rop);
       for (auto it = rop_ops_at_t.begin(); it != rop_ops_at_t.end(); ++it) {
         std::string label = it->first;
         auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
@@ -1592,9 +1590,7 @@ public:
         }
         return failure();
       } else if (auto cstr_op = llvm::dyn_cast<CstrOp>(&child_op)) {
-        std::string type = cstr_op.getType().str();
-        std::string expr = cstr_op.getExpr().str();
-        model.add_constraint(tm::Constraint(type, expr));
+        model.add_constraint(tm::Constraint(cstr_op));
       } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&child_op)) {
         // DO NOTHING
       } else {
