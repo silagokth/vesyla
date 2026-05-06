@@ -24,9 +24,43 @@ Autotest Template
 
     ${result} =    Run Process    vesyla testcase run -d "${testcase_path}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
 
-    Run Keyword If    ${result.rc} != 0    Log Failed Test Output    ${output_dir}
-    Should Be Equal As Integers    ${result.rc}    0
+    Verify Setup            ${result.rc}    ${output_dir}
+    Verify Model 2 Run      ${result.rc}    ${output_dir}
+    Verify Model 2 Output   ${result.rc}    ${output_dir}
+    Verify RTL Run          ${result.rc}    ${output_dir}
+    Verify RTL Output       ${result.rc}    ${output_dir}
+    Verify Exit Code        ${result.rc}    ${output_dir}
     Remove Directory    ${output_dir}    recursive=True
+
+Verify Setup
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 1    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    1    Setup failed
+
+Verify Model 2 Run
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 2    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    2    Model 2 (SST) failed to run
+
+Verify Model 2 Output
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 3    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    3    Model 2 (SST) output mismatch vs model_0
+
+Verify RTL Run
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 4    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    4    RTL simulation crashed
+
+Verify RTL Output
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 5    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    5    RTL output mismatch vs model_0
+
+Verify Exit Code
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} != 0    Log Failed Test Output    ${output_dir}
+    Should Be Equal As Integers    ${rc}    0    Unknown failure (rc=${rc})
 
 Log Failed Test Output
     [Arguments]    ${output_dir}
