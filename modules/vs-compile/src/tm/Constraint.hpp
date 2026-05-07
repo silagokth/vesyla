@@ -14,12 +14,12 @@ namespace tm {
 
 struct Constraint {
   string kind;
-  string expr;
+  std::vector<string> exprs;
 
   Constraint() {}
-  Constraint(string kind_, string expr_) : kind(kind_), expr(expr_) {
-    // remove all white spaces
-    expr.erase(remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
+  Constraint(string kind_, string expr_) : kind(kind_) {
+    expr_.erase(remove_if(expr_.begin(), expr_.end(), ::isspace), expr_.end());
+    exprs.push_back(expr_);
   }
   Constraint(string expr_);
   Constraint(vesyla::pasm::CstrOp cstr_op);

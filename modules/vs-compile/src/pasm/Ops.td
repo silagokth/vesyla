@@ -117,7 +117,8 @@ def CstrOp : Pasm_Op<"cstr"> {
     DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_lo,
     DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_hi,
     I32Attr:$min_delay,
-    I32Attr:$max_delay);
+    I32Attr:$max_delay,
+    DefaultValuedAttr<BoolAttr, "false">:$is_neq);
 
   let assemblyFormat = [{
     `<` attr-dict `>`

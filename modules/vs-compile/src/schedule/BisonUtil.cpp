@@ -24,6 +24,37 @@ void print_grammar(const std::string &grammar_) {
 } // namespace schedule
 } // namespace vesyla
 
+namespace {
+struct RepInfo {
+  mlir::Attribute iter;
+  mlir::Attribute delay;
+};
+
+std::vector<RepInfo> get_rop_reps(vesyla::pasm::EpochOp epoch_op,
+                                  llvm::StringRef rop_id) {
+  std::vector<RepInfo> reps;
+  if (epoch_op.getBody().empty())
+    return reps;
+  for (auto &op : epoch_op.getBody().front().getOperations()) {
+    auto rop = llvm::dyn_cast<vesyla::pasm::RopOp>(&op);
+    if (!rop || rop.getSymName() != rop_id)
+      continue;
+    if (rop.getBody().empty())
+      break;
+    for (auto &child : rop.getBody().front().getOperations()) {
+      auto instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(&child);
+      if (!instr || instr.getType() != "rep")
+        continue;
+      auto param = instr.getParam();
+      reps.push_back({param.get("iter"), param.get("delay")});
+    }
+    break;
+  }
+  return reps;
+}
+
+} // namespace
+
 mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
                             const std::string &cmp) {
   auto epoch_op =
@@ -64,7 +95,7 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
     dst_indices = lhs->indices;
     min_delay = 1 + beta - alpha;
     max_delay = 10000000;
-  } else { // "=="
+  } else { // "==" or "!="
     src_id = lhs->id;
     src_event = lhs->event;
     src_indices = lhs->indices;
@@ -74,6 +105,7 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
     min_delay = alpha - beta;
     max_delay = alpha - beta;
   }
+  bool is_neq = (cmp == "!=");
 
   // Same-sign post-rule: if both bounds are negative, swap direction.
   if (min_delay < 0 && max_delay < 0) {
@@ -86,17 +118,41 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
     max_delay = new_max;
   }
 
-  auto cstr_op = builder.create<vesyla::pasm::CstrOp>(
-      loc, mlir::FlatSymbolRefAttr::get(builder.getContext(), src_id),
+  // If event is missing and the rop has rep instructions, default to e0
+  // pinned at iteration 0 (one zero index per rep level).
+  auto src_reps = get_rop_reps(epoch_op, src_id);
+  if (src_event.empty() && !src_reps.empty()) {
+    src_event = "e0";
+    if (src_indices.empty()) {
+      src_indices.assign(src_reps.size(), 0);
+    }
+  }
+  auto dst_reps = get_rop_reps(epoch_op, dst_id);
+  if (dst_event.empty() && !dst_reps.empty()) {
+    dst_event = "e0";
+    if (dst_indices.empty()) {
+      dst_indices.assign(dst_reps.size(), 0);
+    }
+  }
+
+  std::vector<int32_t> src_idx_lo = src_indices;
+  std::vector<int32_t> src_idx_hi = src_indices;
+  std::vector<int32_t> dst_idx_lo = dst_indices;
+  std::vector<int32_t> dst_idx_hi = dst_indices;
+
+  auto cstr_op = vesyla::pasm::CstrOp::create(
+      builder, loc,
+      mlir::FlatSymbolRefAttr::get(builder.getContext(), src_id),
       builder.getStringAttr(src_event),
-      builder.getDenseI32ArrayAttr(src_indices),
-      builder.getDenseI32ArrayAttr(src_indices),
+      builder.getDenseI32ArrayAttr(src_idx_lo),
+      builder.getDenseI32ArrayAttr(src_idx_hi),
       mlir::FlatSymbolRefAttr::get(builder.getContext(), dst_id),
       builder.getStringAttr(dst_event),
-      builder.getDenseI32ArrayAttr(dst_indices),
-      builder.getDenseI32ArrayAttr(dst_indices),
+      builder.getDenseI32ArrayAttr(dst_idx_lo),
+      builder.getDenseI32ArrayAttr(dst_idx_hi),
       builder.getI32IntegerAttr(min_delay),
-      builder.getI32IntegerAttr(max_delay));
+      builder.getI32IntegerAttr(max_delay),
+      builder.getBoolAttr(is_neq));
 
   return cstr_op.getOperation();
 }
@@ -166,16 +222,12 @@ std::vector<mlir::Operation *> parse_and_build_cstr(const std::string &expr) {
   rop_ref_t *lhs = parse_rop_ref(lhs_str);
   rop_ref_t *rhs = parse_rop_ref(rhs_str);
 
-  std::vector<mlir::Operation *> ops;
-  if (cmp == "!=") {
-    // lhs != rhs is encoded as two "<" edges:
-    //   lhs < rhs  (lhs precedes rhs by at least 1 cycle)
-    //   rhs < lhs  (rhs precedes lhs by at least 1 cycle)
-    ops.push_back(build_cstr(lhs, rhs, "<"));
-    ops.push_back(build_cstr(rhs, lhs, "<"));
-  } else {
-    ops.push_back(build_cstr(lhs, rhs, cmp));
+  if ((cmp == "==" || cmp == "!=") && lhs->offset < rhs->offset) {
+    std::swap(lhs, rhs);
   }
+
+  std::vector<mlir::Operation *> ops;
+  ops.push_back(build_cstr(lhs, rhs, cmp));
 
   delete lhs;
   delete rhs;

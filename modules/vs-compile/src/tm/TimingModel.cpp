@@ -143,7 +143,9 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
 
   // add constraints
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
-    mzn_file << "constraint " + it->expr + ";\n";
+    for (auto &e : it->exprs) {
+      mzn_file << "constraint " + e + ";\n";
+    }
   }
 
   // add act modes
@@ -274,20 +276,22 @@ void TimingModel::extractAnchors() {
     string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
     std::regex regex(pattern);
     std::smatch match;
-    while (std::regex_search(it->expr, match, regex)) {
-      Anchor anchor(match[0]);
-      anchors[anchor.name] = anchor;
+    for (auto &e : it->exprs) {
+      while (std::regex_search(e, match, regex)) {
+        Anchor anchor(match[0]);
+        anchors[anchor.name] = anchor;
 
-      // replace the event identifier in the expression with the anchor name
-      string anchor_string_pattern = match[0];
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\."), "\\.");
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\["), "\\[");
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\]"), "\\]");
-      it->expr = std::regex_replace(it->expr, std::regex(anchor_string_pattern),
-                                    anchor.name);
+        // replace the event identifier in the expression with the anchor name
+        string anchor_string_pattern = match[0];
+        anchor_string_pattern = std::regex_replace(
+            anchor_string_pattern, std::regex("\\."), "\\.");
+        anchor_string_pattern = std::regex_replace(
+            anchor_string_pattern, std::regex("\\["), "\\[");
+        anchor_string_pattern = std::regex_replace(
+            anchor_string_pattern, std::regex("\\]"), "\\]");
+        e = std::regex_replace(e, std::regex(anchor_string_pattern),
+                               anchor.name);
+      }
     }
   }
 }
