@@ -200,7 +200,7 @@ printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm || exit 2
+  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
 else
   run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
 fi

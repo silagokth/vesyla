@@ -593,9 +593,6 @@ private:
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
-        // delete the temporary files
-        std::filesystem::remove(input_filename);
-        std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "rop") {
           llvm::outs() << "Error: Output JSON is not a RopOp.\n";
           std::exit(EXIT_FAILURE);
@@ -655,9 +652,6 @@ private:
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
-        // delete the temporary files
-        std::filesystem::remove(input_filename);
-        std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "cop") {
           llvm::outs() << "Error: Output JSON is not a CopOp.\n";
           std::exit(EXIT_FAILURE);
@@ -1569,10 +1563,6 @@ public:
         operation.slot = rop_json["slot"].get<int>();
         operation.port = rop_json["port"].get<int>();
         model.add_operation(operation);
-
-        // delete the temporary files
-        remove(input_filename.c_str());
-        remove(output_filename.c_str());
 
         op_exprs.push_back(OpExprTuple{
             rop_json["id"].get<std::string>(),

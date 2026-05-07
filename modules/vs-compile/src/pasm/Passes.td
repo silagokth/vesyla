@@ -13,6 +13,8 @@ def ScheduleEpochPass: Pass<"schedule-epoch-pass", "::mlir::ModuleOp"> {
     Option<"tmp_path", "tmp-path", "std::string", "\"\"", "">,
     Option<"allow_unsafe", "allow-unsafe", "bool", "false",
       "Allow non-consecutive scheduling fallback if true">,
+    Option<"keep_debug_files", "keep-debug-files", "bool", "false",
+      "Keep all intermediate files (no cleanup) if true">,
   ];
 }
 
