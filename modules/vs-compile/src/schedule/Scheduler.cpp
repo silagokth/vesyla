@@ -51,7 +51,25 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   // Create a PassManager
   mlir::PassManager pm(module.getContext());
 
-  save_mlir(module, module_debug_path + "/0.mlir");
+  std::string zero_mlir =
+      std::filesystem::absolute(module_debug_path + "/0.mlir").string();
+  save_mlir(module, zero_mlir);
+
+  std::string viz_script = vesyla::util::SysPath::prog_dir() + "scripts/script.py";
+  if (std::filesystem::exists(viz_script)) {
+    std::string vis_dir =
+        std::filesystem::absolute(output_dir + "/debug/vis").string();
+    std::filesystem::create_directories(vis_dir);
+    std::string cmd =
+        "cd " + vis_dir + " && python3 " + viz_script + " " + zero_mlir;
+    int rc = std::system(cmd.c_str());
+    if (rc != 0) {
+      LOG_WARNING << "MLIR visualization failed (exit " << rc << "): " << cmd;
+    }
+  } else {
+    LOG_WARNING << "MLIR visualization script not found: " << viz_script;
+  }
+
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: createAddSlotPortPass failed.\n";
