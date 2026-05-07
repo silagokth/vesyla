@@ -125,7 +125,8 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
 file(GLOB SOURCES_UTIL "src/util/*.cpp" "src/util/*/*.cpp")
 file(GLOB SOURCES_TM "src/tm/*.cpp")
-set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC")
+set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -g -O3 -fPIC")
+find_package(Threads REQUIRED)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -142,15 +143,24 @@ add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
 set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
          ${conversion_libs})
 
+file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script.py DESTINATION scripts)
+
 # Add the main executable target vs-compile
 add_llvm_executable(vs-compile src/exec/vs-compile/main.cpp)
 llvm_update_compile_flags(vs-compile)
-target_link_libraries(vs-compile PRIVATE ${LIBS})
+target_link_libraries(vs-compile PRIVATE ${LIBS} Threads::Threads)
 mlir_check_all_link_libraries(vs-compile)
+
+# Add the pasm-opt executable target
+add_llvm_executable(pasm-opt src/exec/pasm-opt/main.cpp)
+llvm_update_compile_flags(pasm-opt)
+target_link_libraries(pasm-opt PRIVATE ${LIBS} Threads::Threads)
+mlir_check_all_link_libraries(pasm-opt)
 
 # Add a target to build mlir-lsp-server from util/mlir_lsp_support
 add_executable(pasm-mlir-lsp-server src/exec/pasm-mlir-lsp-server/main.cpp)
-target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
+target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib Threads::Threads)
 add_dependencies(pasm-mlir-lsp-server vs-compile)
 
 include(FetchContent)
@@ -184,7 +194,7 @@ foreach(test_file ${UNIT_TEST_SOURCES})
   # Create a test executable for each test file
   add_executable(${test_name} ${test_file})
   # Link the test executable with the gtest and gtest_main libraries
-  target_link_libraries(${test_name} GTest::gtest GTest::gtest_main ${LIBS})
+  target_link_libraries(${test_name} GTest::gtest GTest::gtest_main ${LIBS} Threads::Threads)
   # Add the test executable to the list of tests
   gtest_discover_tests(${test_name})
 endforeach()

@@ -185,6 +185,10 @@ def parse_attr_dict(s):
             nums = re.findall(r"-?\d+", content[colon + 1:]) if colon != -1 else []
             out[key] = [int(n) for n in nums]
             i = j + 1
+        elif re.match(r"(?:true|false)\b", body[i:]):
+            tok = re.match(r"(?:true|false)\b", body[i:]).group(0)
+            out[key] = (tok == "true")
+            i += len(tok)
         else:
             num = re.match(r"-?\d+", body[i:])
             if num:
@@ -400,7 +404,8 @@ def build_graph(epoch_name, body):
             node_indices[b].add(b_idx)
         mn = c.get("min_delay", 0)
         mx = c.get("max_delay", 0)
-        edges.append((a, a_idx, b, b_idx, mn, mx))
+        is_neq = bool(c.get("is_neq", False))
+        edges.append((a, a_idx, b, b_idx, mn, mx, is_neq))
 
     dot = Digraph()
     dot.attr(label=epoch_name, labelloc="t", nodesep="0.6", ranksep="0.8")
@@ -441,6 +446,7 @@ def build_graph(epoch_name, body):
         '<TR><TD BGCOLOR="darkgreen" WIDTH="20"></TD><TD ALIGN="LEFT">RAW-dependency</TD></TR>'
         '<TR><TD BGCOLOR="red" WIDTH="20"></TD><TD ALIGN="LEFT">WAR-dependency</TD></TR>'
         '<TR><TD BGCOLOR="blue" WIDTH="20"></TD><TD ALIGN="LEFT">swb-dependency</TD></TR>'
+        '<TR><TD ALIGN="CENTER"><FONT FACE="monospace">- - -</FONT></TD><TD ALIGN="LEFT">not-equal dependency</TD></TR>'
         '</TABLE>>'
     )
     dot.node("__legend__", label=legend, shape="plaintext")
@@ -453,12 +459,16 @@ def build_graph(epoch_name, body):
             return "blue"
         return default
 
-    for a, a_idx, b, b_idx, mn, mx in edges:
+    for a, a_idx, b, b_idx, mn, mx, is_neq in edges:
         if a not in nodes or b not in nodes:
             continue
         tail = endpoint(a, a_idx)
         head = endpoint(b, b_idx)
-        if mn == mx:
+        if is_neq:
+            label = f"!=[{mn}]"
+            color = pick_color(a, b, "red")
+            dot.edge(tail, head, label=label, color=color, fontcolor=color, style="dashed")
+        elif mn == mx:
             label = f"[{mn},{mn}]"
             color = pick_color(a, b, "red")
             extra = {"dir": "both"} if mn == 0 else {}
