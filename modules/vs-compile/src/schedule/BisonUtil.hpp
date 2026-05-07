@@ -36,10 +36,17 @@ void print_grammar(const std::string &grammar_,
 } // namespace schedule
 } // namespace vesyla
 
+struct idx_entry_t {
+  bool lo_default;
+  bool hi_default;
+  int32_t lo;
+  int32_t hi;
+};
+
 struct rop_ref_t {
   std::string id;
   std::string event;
-  std::vector<int32_t> indices;
+  std::vector<idx_entry_t> indices;
   int offset;
 };
 

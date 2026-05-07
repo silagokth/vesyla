@@ -71,9 +71,9 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   int beta = rhs->offset;
 
   std::string src_id, src_event;
-  std::vector<int32_t> src_indices;
+  std::vector<idx_entry_t> src_indices;
   std::string dst_id, dst_event;
-  std::vector<int32_t> dst_indices;
+  std::vector<idx_entry_t> dst_indices;
   int min_delay = 0;
   int max_delay = 0;
 
@@ -124,21 +124,45 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   if (src_event.empty() && !src_reps.empty()) {
     src_event = "e0";
     if (src_indices.empty()) {
-      src_indices.assign(src_reps.size(), 0);
+      src_indices.assign(src_reps.size(), idx_entry_t{false, false, 0, 0});
     }
   }
   auto dst_reps = get_rop_reps(epoch_op, dst_id);
   if (dst_event.empty() && !dst_reps.empty()) {
     dst_event = "e0";
     if (dst_indices.empty()) {
-      dst_indices.assign(dst_reps.size(), 0);
+      dst_indices.assign(dst_reps.size(), idx_entry_t{false, false, 0, 0});
     }
   }
 
-  std::vector<int32_t> src_idx_lo = src_indices;
-  std::vector<int32_t> src_idx_hi = src_indices;
-  std::vector<int32_t> dst_idx_lo = dst_indices;
-  std::vector<int32_t> dst_idx_hi = dst_indices;
+  auto lower_indices = [&](const std::vector<idx_entry_t> &entries,
+                           const std::vector<RepInfo> &reps,
+                           std::vector<int32_t> &out_lo,
+                           std::vector<int32_t> &out_hi) {
+    for (size_t k = 0; k < entries.size(); ++k) {
+      const auto &e = entries[k];
+      int32_t lo = e.lo_default ? 0 : e.lo;
+      int32_t hi = e.hi;
+      if (e.hi_default) {
+        if (k < reps.size()) {
+          if (auto iter_int =
+                  llvm::dyn_cast_or_null<mlir::IntegerAttr>(reps[k].iter)) {
+            hi = static_cast<int32_t>(iter_int.getInt()) - 1;
+          } else {
+            hi = lo;
+          }
+        } else {
+          hi = lo;
+        }
+      }
+      out_lo.push_back(lo);
+      out_hi.push_back(hi);
+    }
+  };
+
+  std::vector<int32_t> src_idx_lo, src_idx_hi, dst_idx_lo, dst_idx_hi;
+  lower_indices(src_indices, src_reps, src_idx_lo, src_idx_hi);
+  lower_indices(dst_indices, dst_reps, dst_idx_lo, dst_idx_hi);
 
   auto cstr_op = vesyla::pasm::CstrOp::create(
       builder, loc,
@@ -157,9 +181,45 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   return cstr_op.getOperation();
 }
 
+static int32_t parse_nonneg_int(const std::string &s, const std::string &ctx) {
+  static const std::regex int_re(R"(^\d+$)");
+  if (!std::regex_match(s, int_re)) {
+    vesyla::schedule::print_error(
+        ("cstr: index must be a non-negative integer in " + ctx + ": " + s)
+            .c_str());
+    exit(1);
+  }
+  return static_cast<int32_t>(std::stoi(s));
+}
+
+static idx_entry_t parse_idx_entry(const std::string &raw) {
+  std::string content = raw;
+  content.erase(std::remove_if(content.begin(), content.end(), ::isspace),
+                content.end());
+  idx_entry_t e{false, false, 0, 0};
+  auto colon = content.find(':');
+  if (colon == std::string::npos) {
+    e.lo = e.hi = parse_nonneg_int(content, "[" + raw + "]");
+    return e;
+  }
+  std::string left = content.substr(0, colon);
+  std::string right = content.substr(colon + 1);
+  if (left.empty()) {
+    e.lo_default = true;
+  } else {
+    e.lo = parse_nonneg_int(left, "[" + raw + "]");
+  }
+  if (right.empty()) {
+    e.hi_default = true;
+  } else {
+    e.hi = parse_nonneg_int(right, "[" + raw + "]");
+  }
+  return e;
+}
+
 static rop_ref_t *parse_rop_ref(const std::string &s) {
   static const std::regex re(
-      R"(^\s*(\w+)(?:\.(\w+))?((?:\s*\[\s*[+-]?\d+\s*\])*)\s*([+-]\s*\d+)?\s*$)");
+      R"(^\s*(\w+)(?:\.(\w+))?((?:\s*\[[^\]]*\])*)\s*([+-]\s*\d+)?\s*$)");
   LOG_DEBUG << "parse_rop_ref input: [" << s << "]";
   std::smatch m;
   if (!std::regex_match(s, m, re)) {
@@ -174,10 +234,19 @@ static rop_ref_t *parse_rop_ref(const std::string &s) {
   ref->offset = 0;
 
   std::string idx_str = m[3];
-  static const std::regex idx_re(R"(\[\s*([+-]?\d+)\s*\])");
+  static const std::regex idx_re(R"(\[([^\]]*)\])");
   for (auto it = std::sregex_iterator(idx_str.begin(), idx_str.end(), idx_re);
        it != std::sregex_iterator(); ++it) {
-    ref->indices.push_back(std::stoi((*it)[1]));
+    ref->indices.push_back(parse_idx_entry((*it)[1].str()));
+  }
+
+  for (size_t k = 0; k + 1 < ref->indices.size(); ++k) {
+    const auto &e = ref->indices[k];
+    if (e.lo_default || e.hi_default || e.lo != e.hi) {
+      vesyla::schedule::print_error(
+          ("cstr: range allowed only on the innermost index in: " + s).c_str());
+      exit(1);
+    }
   }
 
   if (m[4].matched) {
