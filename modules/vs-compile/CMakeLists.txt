@@ -20,9 +20,10 @@ find_package(BISON REQUIRED)
 set(FLEX_INPUT lib/Parser/pasm.l)
 set(BISON_INPUT lib/Parser/pasm.y)
 
-# Generate lexer and parser
-flex_target(PasmLexer ${FLEX_INPUT} ${CMAKE_BINARY_DIR}/PasmLexer.cpp)
-bison_target(PasmParser ${BISON_INPUT} ${CMAKE_BINARY_DIR}/PasmParser.cpp)
+# Generate lexer and parser (output under this subproject's build dir so the
+# build works whether vs-compile is configured standalone or as a subdirectory)
+flex_target(PasmLexer ${FLEX_INPUT} ${CMAKE_CURRENT_BINARY_DIR}/PasmLexer.cpp)
+bison_target(PasmParser ${BISON_INPUT} ${CMAKE_CURRENT_BINARY_DIR}/PasmParser.cpp)
 add_flex_bison_dependency(PasmLexer PasmParser)
 
 set(LLVM_HOME $ENV{LLVM_HOME})
@@ -53,10 +54,12 @@ message(STATUS "MLIR_INCLUDE_DIRS: ${MLIR_INCLUDE_DIRS}")
 
 # First-party public headers
 include_directories(${PROJECT_SOURCE_DIR}/include)
-# Tablegen-generated headers (mirror include/ layout under build/include/)
-include_directories(${CMAKE_BINARY_DIR}/include)
-# Bison-generated PasmParser.hpp lands directly in CMAKE_BINARY_DIR
-include_directories(${CMAKE_BINARY_DIR})
+# Tablegen-generated headers (mirror include/ layout under this subproject's
+# build dir so the build works whether vs-compile is configured standalone or
+# as a subdirectory of a parent project)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
+# Bison-generated PasmParser.hpp lands directly in this subproject's build dir
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Vendored third-party headers
 include_directories(${PROJECT_SOURCE_DIR}/third_party/plog)
 include_directories(${PROJECT_SOURCE_DIR}/third_party)
@@ -75,9 +78,10 @@ function(add_vesyla_mlir_dialect dialect)
   set(IR_OUT_REL include/vesyla/Dialect/${dialect}/IR)
   set(TR_OUT_REL include/vesyla/Dialect/${dialect}/Transforms)
 
-  # Ensure the output directories exist for tablegen
-  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/${IR_OUT_REL})
-  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/${TR_OUT_REL})
+  # Ensure the output directories exist for tablegen. mlir_tablegen() resolves
+  # relative paths against CMAKE_CURRENT_BINARY_DIR, so we mkdir the same.
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${IR_OUT_REL})
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${TR_OUT_REL})
 
   # Ops
   set(LLVM_TARGET_DEFINITIONS ${IR_TD_DIR}/${dialect}Ops.td)
