@@ -1343,6 +1343,8 @@ private:
                   return a.first < b.first;
                 });
 
+      // wait(N) consumes N+1 cycles (1 issue + N stall). Mid-gap fills
+      // curr_t - prev_t - 1 cycles, tail pads to total_latency.
       int prev_t = -1;
       std::vector<std::pair<int, mlir::Operation *>> new_time_op_vec;
       if (time_op_vec.size() > 0) {
@@ -1453,6 +1455,38 @@ private:
       // add a terminator to raw_op_block
       rewriter.setInsertionPointToEnd(raw_op_entry_block);
       rewriter.create<YieldOp>(raw_op->getLoc());
+
+      // Verifier: per-cell stream cycles must equal total_latency.
+      int stream_cycles = 0;
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+        auto instr_op = llvm::dyn_cast<vesyla::pasm::InstrOp>(*it2);
+        if (!instr_op) {
+          continue;
+        }
+        if (instr_op.getType() == "wait") {
+          mlir::DictionaryAttr params = instr_op.getParam();
+          int wait_n = 0;
+          if (params.contains("cycle")) {
+            if (auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(
+                    params.get("cycle"))) {
+              wait_n = int_attr.getInt();
+            }
+          }
+          stream_cycles += wait_n + 1;
+        } else {
+          stream_cycles += 1;
+        }
+      }
+      if (stream_cycles != total_latency) {
+        llvm::outs() << "Error: ScheduleEpochPass cell " << it->first
+                     << " stream cycles (" << stream_cycles
+                     << ") != total_latency (" << total_latency
+                     << "). Inter-cell sync broken — "
+                     << "check op duration_expr (multi-cycle ops like "
+                        "rep/act must reflect HW cycles in MZN) or wait "
+                        "param math.\n";
+        std::exit(EXIT_FAILURE);
+      }
     }
 
     // start from the end, remove everything after the first yield
