@@ -187,11 +187,13 @@ if [ ! -s "mem/sram_image_m0.bin" ]; then
   exit 1
 fi
 sort -n mem/sram_image_m0.bin -o mem/sram_image_m0.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m0.bin --data-type int16_t || true
 stop_spinner 0
 
 # Model 1
 printf "${BOLD}Model 1:${NC} ${YELLOW}Warning${NC} Not implemented. Skipping...\n"
 cp mem/sram_image_m0.bin mem/sram_image_m1.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m1.bin --data-type int16_t || true
 
 # Model 2
 printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
@@ -223,11 +225,12 @@ stop_spinner 0
 start_spinner
 printf "  ${BLUE}Verifying${NC} (mem/sram_image_m2.bin)"
 sort -n mem/sram_image_m2.bin -o mem/sram_image_m2.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m2.bin --data-type int16_t || true
 set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m2.bin 2>&1)
 if [ $? -ne 0 ]; then
   stop_spinner 1
-  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m2.bin differ!"
+  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m2.bin differ!\n"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
   exit 3
@@ -259,7 +262,7 @@ set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m3.bin 2>&1)
 if [ $? -ne 0 ]; then
   stop_spinner 1
-  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m3.bin differ!"
+  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m3.bin differ!\n"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
   exit 5
