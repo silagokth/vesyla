@@ -21,16 +21,20 @@ fi
 # get the id of the code segment from the first argument
 id=$1
 vsim_cli_mode="-c"
+debug_mode=0
 
 for arg in "$@"; do
   case "$arg" in
   -h | --help)
-    echo "Usage: $0 <id>"
+    echo "Usage: $0 <id> [--debug]"
     exit 0
     ;;
   -it | -interactive | -it=all | --interactive=all | -it=rtl | --interactive=rtl)
     # set the interactive mode
     vsim_cli_mode="-voptargs=+acc -debugDB"
+    ;;
+  -d | --debug)
+    debug_mode=1
     ;;
   esac
 done
@@ -53,8 +57,6 @@ if [ ! -d "${workspace_path}/mem" ]; then
   exit 1
 fi
 mkdir -p ${workspace_path}/archive
-mkdir -p ${workspace_path}/system/metric
-mkdir -p ${workspace_path}/system/state
 
 # create the necessary directories
 mkdir -p ${workspace_path}/temp
@@ -73,10 +75,39 @@ echo "exit" >>read_src.do
 vsim -c -do read_src.do
 
 # run the simulation
-vsim $vsim_cli_mode -do "run -all" work.fabric_tb
+if [ "$debug_mode" = "1" ]; then
+  mkdir -p ${workspace_path}/temp/debug
+  if [ "$vsim_cli_mode" = "-c" ]; then
+    vsim_cli_mode="-c -voptargs=+acc"
+  fi
+  cat >debug_capture.do <<'EOF'
+vcd file debug/trace.vcd
+set ports [concat \
+  [find signals -in    -r /*] \
+  [find signals -out   -r /*] \
+  [find signals -inout -r /*]]
+foreach s $ports {
+  log $s
+  vcd add $s
+}
+run -all
+vcd flush
+quit -f
+EOF
+  vsim $vsim_cli_mode -wlf debug/trace.wlf -do debug_capture.do work.fabric_tb
+else
+  vsim $vsim_cli_mode -do "run -all" work.fabric_tb
+fi
 
 # copy the output file
 cp ${workspace_path}/temp/sram_image_out.bin ${workspace_path}/mem/sram_image_m3.bin
+
+# extract debug artifacts to the archive root
+if [ "$debug_mode" = "1" ]; then
+  mkdir -p ${workspace_path}/archive/rtl_sim_${id}/debug
+  mv ${workspace_path}/temp/debug/* ${workspace_path}/archive/rtl_sim_${id}/debug/
+  rmdir ${workspace_path}/temp/debug
+fi
 
 # archive everything
 mv ${workspace_path}/temp ${workspace_path}/archive/rtl_sim_${id}
