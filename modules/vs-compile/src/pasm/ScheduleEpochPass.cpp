@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -593,6 +594,8 @@ private:
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
+        std::filesystem::remove(input_filename);
+        std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "rop") {
           llvm::outs() << "Error: Output JSON is not a RopOp.\n";
           std::exit(EXIT_FAILURE);
@@ -652,6 +655,8 @@ private:
         }
         nlohmann::json output_json = nlohmann::json::parse(output_file);
         output_file.close();
+        std::filesystem::remove(input_filename);
+        std::filesystem::remove(output_filename);
         if (output_json["kind"].get<std::string>() != "cop") {
           llvm::outs() << "Error: Output JSON is not a CopOp.\n";
           std::exit(EXIT_FAILURE);
@@ -1564,6 +1569,9 @@ public:
         operation.port = rop_json["port"].get<int>();
         model.add_operation(operation);
 
+        std::filesystem::remove(input_filename);
+        std::filesystem::remove(output_filename);
+
         op_exprs.push_back(OpExprTuple{
             rop_json["id"].get<std::string>(),
             rop_json["kind"].get<std::string>(), rop_json["row"].get<int>(),
@@ -1580,7 +1588,9 @@ public:
         }
         return failure();
       } else if (auto cstr_op = llvm::dyn_cast<CstrOp>(&child_op)) {
-        model.add_constraint(tm::Constraint(cstr_op));
+        for (auto &c : tm::Constraint::from_cstr_op(cstr_op)) {
+          model.add_constraint(c);
+        }
       } else if (auto yield_op = llvm::dyn_cast<YieldOp>(&child_op)) {
         // DO NOTHING
       } else {
@@ -1593,7 +1603,11 @@ public:
 
     // add built-in constraints
     std::unordered_map<std::string, std::vector<std::string>> all_resource_op;
-    std::unordered_map<std::string, std::vector<std::string>>
+    struct CopAnchorRef {
+      std::string op_name;
+      tm::Constraint::Anchor anchor;
+    };
+    std::unordered_map<std::string, std::vector<CopAnchorRef>>
         all_control_op_anchors;
     for (auto &op_expr : op_exprs) {
       if (op_expr.kind == "rop") {
@@ -1606,15 +1620,16 @@ public:
       } else if (op_expr.kind == "cop") {
         std::string label =
             std::to_string(op_expr.row) + "_" + std::to_string(op_expr.col);
-        if (all_control_op_anchors.find(label) ==
-            all_control_op_anchors.end()) {
-          all_control_op_anchors[label] = std::vector<std::string>();
+        // OperationExpr::get_all_anchors yields (event_id, idx) pairs with
+        // indices in innermost-first order, matching tm::Constraint::Anchor.
+        auto cop_op_info = model.get_operation(op_expr.id);
+        for (auto &p : cop_op_info.expr.get_all_anchors()) {
+          CopAnchorRef ref;
+          ref.op_name = op_expr.id;
+          ref.anchor.event_id = p.first;
+          ref.anchor.idx = p.second;
+          all_control_op_anchors[label].push_back(std::move(ref));
         }
-        std::vector<std::string> anchors =
-            model.get_operation(op_expr.id).get_all_anchors();
-        all_control_op_anchors[label].insert(
-            all_control_op_anchors[label].end(), anchors.begin(),
-            anchors.end());
       } else if (op_expr.kind == "raw") {
         // DO NOTHING
       } else if (op_expr.kind == "cstr") {
@@ -1651,9 +1666,14 @@ public:
               all_control_op_anchors.end()) {
             // add a constraint that the ROPs cannot be executed at the same
             // time as the control operations
-            for (auto &anchor : all_control_op_anchors[label]) {
-              model.add_constraint(
-                  tm::Constraint("linear", ops[i] + " != " + anchor));
+            for (auto &ref : all_control_op_anchors[label]) {
+              tm::Constraint c(/*src_id=*/ops[i], /*dst_id=*/ref.op_name,
+                               /*min_delay=*/0, /*max_delay=*/0,
+                               /*src_anchor=*/std::nullopt,
+                               /*dst_anchor=*/ref.anchor);
+              c.is_neq = true;
+              c.kind = "linear";
+              model.add_constraint(std::move(c));
             }
           }
         }

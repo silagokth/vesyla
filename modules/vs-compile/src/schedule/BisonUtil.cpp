@@ -74,8 +74,8 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   std::vector<idx_entry_t> src_indices;
   std::string dst_id, dst_event;
   std::vector<idx_entry_t> dst_indices;
-  int min_delay = 0;
-  int max_delay = 0;
+  std::optional<int> min_delay;
+  std::optional<int> max_delay;
 
   if (cmp == "<") {
     src_id = lhs->id;
@@ -85,7 +85,7 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
     dst_event = rhs->event;
     dst_indices = rhs->indices;
     min_delay = 1 + alpha - beta;
-    max_delay = 10000000;
+    // no upper bound
   } else if (cmp == ">") {
     src_id = rhs->id;
     src_event = rhs->event;
@@ -94,7 +94,7 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
     dst_event = lhs->event;
     dst_indices = lhs->indices;
     min_delay = 1 + beta - alpha;
-    max_delay = 10000000;
+    // no upper bound
   } else { // "==" or "!="
     src_id = lhs->id;
     src_event = lhs->event;
@@ -107,13 +107,13 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   }
   bool is_neq = (cmp == "!=");
 
-  // Same-sign post-rule: if both bounds are negative, swap direction.
-  if (min_delay < 0 && max_delay < 0) {
+  // Same-sign post-rule: if both bounds are present and negative, swap.
+  if (min_delay && max_delay && *min_delay < 0 && *max_delay < 0) {
     std::swap(src_id, dst_id);
     std::swap(src_event, dst_event);
     std::swap(src_indices, dst_indices);
-    int new_min = -max_delay;
-    int new_max = -min_delay;
+    int new_min = -*max_delay;
+    int new_max = -*min_delay;
     min_delay = new_min;
     max_delay = new_max;
   }
@@ -139,18 +139,23 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
                            const std::vector<RepInfo> &reps,
                            std::vector<int32_t> &out_lo,
                            std::vector<int32_t> &out_hi) {
+    if (entries.size() > reps.size()) {
+      vesyla::schedule::print_error(
+          ("cstr: more indices (" + std::to_string(entries.size()) +
+           ") than rep levels (" + std::to_string(reps.size()) + ")")
+              .c_str());
+      exit(1);
+    }
+    // entries[k] pairs with reps[k] (instruction order): the first rep
+    // written is index [0], next is [1], ...
     for (size_t k = 0; k < entries.size(); ++k) {
       const auto &e = entries[k];
       int32_t lo = e.lo_default ? 0 : e.lo;
       int32_t hi = e.hi;
       if (e.hi_default) {
-        if (k < reps.size()) {
-          if (auto iter_int =
-                  llvm::dyn_cast_or_null<mlir::IntegerAttr>(reps[k].iter)) {
-            hi = static_cast<int32_t>(iter_int.getInt()) - 1;
-          } else {
-            hi = lo;
-          }
+        if (auto iter_int =
+                llvm::dyn_cast_or_null<mlir::IntegerAttr>(reps[k].iter)) {
+          hi = static_cast<int32_t>(iter_int.getInt()) - 1;
         } else {
           hi = lo;
         }
@@ -174,8 +179,8 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
       builder.getStringAttr(dst_event),
       builder.getDenseI32ArrayAttr(dst_idx_lo),
       builder.getDenseI32ArrayAttr(dst_idx_hi),
-      builder.getI32IntegerAttr(min_delay),
-      builder.getI32IntegerAttr(max_delay),
+      min_delay ? builder.getI32IntegerAttr(*min_delay) : mlir::IntegerAttr(),
+      max_delay ? builder.getI32IntegerAttr(*max_delay) : mlir::IntegerAttr(),
       builder.getBoolAttr(is_neq));
 
   return cstr_op.getOperation();

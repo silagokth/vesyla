@@ -19,71 +19,87 @@ Constraint::Constraint(string expr_str) {
   std::smatch match;
   if (std::regex_match(expr_str, match, std::regex(pattern))) {
     kind = match[1];
-    exprs.push_back(match[2]);
+    expr = match[2];
   } else {
     LOG_FATAL << "Invalid constraint string: " << expr_str;
     std::exit(EXIT_FAILURE);
   }
 }
+
 string Constraint::to_string() {
-  string s;
-  for (auto &e : exprs)
-    s += "constraint " + kind + " " + e + ";\n";
+  // Legacy path: a raw string was supplied at construction (e.g., cop != rop
+  // anchor constraints). Return it as-is.
+  if (!expr.empty())
+    return expr;
+
+  // Flat MZN-friendly form: "read_a_seq_e0_0_29". Matches the names
+  // tm::Anchor produces in extractAnchors so to_mzn can emit directly.
+  auto flat_ref = [](const std::string &id,
+                     const std::optional<Anchor> &anchor) -> std::string {
+    if (!anchor)
+      return id;
+    std::string s = id + "_" + anchor->event_id;
+    for (int i : anchor->idx)
+      s += "_" + std::to_string(i);
+    return s;
+  };
+  std::string sr = flat_ref(src_id, src_anchor);
+  std::string dr = flat_ref(dst_id, dst_anchor);
+
+  if (is_neq) {
+    int m = min_delay.value_or(0);
+    if (m == 0)
+      return dr + " != " + sr;
+    return dr + " != " + sr + " + " + std::to_string(m);
+  }
+  if (min_delay && max_delay && *min_delay == *max_delay) {
+    int m = *min_delay;
+    if (m == 0)
+      return dr + " == " + sr;
+    if (m > 0)
+      return dr + " == " + sr + " + " + std::to_string(m);
+    return dr + " == " + sr + " - " + std::to_string(-m);
+  }
+  std::string s;
+  if (min_delay)
+    s = dr + " - " + sr + " >= " + std::to_string(*min_delay);
+  if (max_delay) {
+    if (!s.empty())
+      s += " /\\ ";
+    s += dr + " - " + sr + " <= " + std::to_string(*max_delay);
+  }
   return s;
 }
 
-Constraint::Constraint(vesyla::pasm::CstrOp cstr_op) {
-  auto fmt_ref = [](llvm::StringRef rop_id, llvm::StringRef event,
-                    llvm::ArrayRef<int32_t> indices) {
-    std::string s = event.empty() ? rop_id.str() : (rop_id + "." + event).str();
-    for (int32_t i : indices) {
-      s += "[" + std::to_string(i) + "]";
-    }
-    return s;
-  };
+std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
+  std::vector<Constraint> result;
 
   llvm::ArrayRef<int32_t> src_lo = cstr_op.getSrcIdxLo();
   llvm::ArrayRef<int32_t> src_hi = cstr_op.getSrcIdxHi();
   llvm::ArrayRef<int32_t> dst_lo = cstr_op.getDstIdxLo();
   llvm::ArrayRef<int32_t> dst_hi = cstr_op.getDstIdxHi();
-  int32_t min_delay = cstr_op.getMinDelay();
-  int32_t max_delay = cstr_op.getMaxDelay();
+  std::string src_id = cstr_op.getSrc().str();
+  std::string dst_id = cstr_op.getDst().str();
+  std::string src_event = cstr_op.getSrcEvent().str();
+  std::string dst_event = cstr_op.getDstEvent().str();
+  std::optional<int> min_delay;
+  std::optional<int> max_delay;
+  if (auto a = cstr_op.getMinDelayAttr())
+    min_delay = a.getInt();
+  if (auto a = cstr_op.getMaxDelayAttr())
+    max_delay = a.getInt();
   bool is_neq = cstr_op.getIsNeq();
 
-  kind = "linear";
-
-  auto build_atom = [&](llvm::ArrayRef<int32_t> src_idx,
-                        llvm::ArrayRef<int32_t> dst_idx) -> std::string {
-    std::string src_ref =
-        fmt_ref(cstr_op.getSrc(), cstr_op.getSrcEvent(), src_idx);
-    std::string dst_ref =
-        fmt_ref(cstr_op.getDst(), cstr_op.getDstEvent(), dst_idx);
-    if (is_neq) {
-      if (min_delay == 0) {
-        return dst_ref + " != " + src_ref;
-      }
-      return dst_ref + " != " + src_ref + " + " + std::to_string(min_delay);
-    }
-    if (min_delay == max_delay) {
-      if (min_delay == 0) {
-        return dst_ref + " == " + src_ref;
-      }
-      if (min_delay > 0) {
-        return dst_ref + " == " + src_ref + " + " + std::to_string(min_delay);
-      }
-      return dst_ref + " == " + src_ref + " - " + std::to_string(-min_delay);
-    }
-    std::string s =
-        dst_ref + " - " + src_ref + " >= " + std::to_string(min_delay);
-    // 10000000 matches MAX_LATENCY in tm/TimingModel.cpp; sentinel = no upper
-    // bound.
-    if (max_delay != 10000000) {
-      s += " /\\ " + dst_ref + " - " + src_ref +
-           " <= " + std::to_string(max_delay);
-    }
-    return s;
+  auto make_anchor =
+      [](const std::string &event,
+         const std::vector<int32_t> &idx) -> std::optional<Anchor> {
+    if (event.empty())
+      return std::nullopt;
+    Anchor a;
+    a.event_id = event;
+    a.idx.assign(idx.begin(), idx.end());
+    return a;
   };
-
   auto advance = [](std::vector<int32_t> &cur, llvm::ArrayRef<int32_t> lo,
                     llvm::ArrayRef<int32_t> hi) {
     for (size_t i = cur.size(); i-- > 0;) {
@@ -98,15 +114,20 @@ Constraint::Constraint(vesyla::pasm::CstrOp cstr_op) {
 
   std::vector<int32_t> src_cur(src_lo.begin(), src_lo.end());
   std::vector<int32_t> dst_cur(dst_lo.begin(), dst_lo.end());
-  exprs.push_back(build_atom(src_cur, dst_cur));
+  auto emit = [&]() {
+    Constraint c(src_id, dst_id, min_delay, max_delay,
+                 make_anchor(src_event, src_cur),
+                 make_anchor(dst_event, dst_cur));
+    c.is_neq = is_neq;
+    c.kind = "linear";
+    result.push_back(std::move(c));
+  };
+  emit();
   while (advance(src_cur, src_lo, src_hi)) {
     advance(dst_cur, dst_lo, dst_hi);
-    exprs.push_back(build_atom(src_cur, dst_cur));
+    emit();
   }
-
-  for (auto &e : exprs) {
-    e.erase(remove_if(e.begin(), e.end(), ::isspace), e.end());
-  }
+  return result;
 }
 
 } // namespace tm
