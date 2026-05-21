@@ -17,6 +17,7 @@ namespace vesyla {
 namespace pasm {} // namespace pasm
 } // namespace vesyla
 
+#include "pasm/Attrs.hpp"
 #include "pasm/Types.hpp"
 
 #define GET_OP_CLASSES

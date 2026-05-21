@@ -28,10 +28,58 @@ void PasmDialect::registerOps() {
 }
 
 LogicalResult CstrOp::verify() {
-  if (getSrcIdxLo().size() != getSrcIdxHi().size())
-    return emitOpError("src_idx_lo and src_idx_hi must have the same size");
-  if (getDstIdxLo().size() != getDstIdxHi().size())
-    return emitOpError("dst_idx_lo and dst_idx_hi must have the same size");
+  auto src = getSrc();
+  if (src.getIdxLo().size() != src.getIdxHi().size()) {
+    return emitOpError("src idx_lo and idx_hi must have the same size");
+  }
+  if (src.getEvent().empty() != src.getIdxLo().empty()) {
+    return emitOpError("src must have both event and indices, or neither");
+  }
+  for (std::size_t i = 0; i < src.getIdxLo().size(); ++i) {
+    if (src.getIdxLo()[i] > src.getIdxHi()[i]) {
+      return emitOpError("src idx_lo must be <= idx_hi in every dimension");
+    }
+  }
+  auto dst = getDst();
+  if (dst.getIdxLo().size() != dst.getIdxHi().size()) {
+    return emitOpError("dst idx_lo and idx_hi must have the same size");
+  }
+  if (dst.getEvent().empty() != dst.getIdxLo().empty()) {
+    return emitOpError("dst must have both event and indices, or neither");
+  }
+  for (std::size_t i = 0; i < dst.getIdxLo().size(); ++i) {
+    if (dst.getIdxLo()[i] > dst.getIdxHi()[i]) {
+      return emitOpError("dst idx_lo must be <= idx_hi in every dimension");
+    }
+  }
+  uint64_t src_count = 1;
+  for (std::size_t i = 0; i < src.getIdxLo().size(); ++i) {
+    src_count *=
+        static_cast<uint64_t>(src.getIdxHi()[i] - src.getIdxLo()[i] + 1);
+  }
+  uint64_t dst_count = 1;
+  for (std::size_t i = 0; i < dst.getIdxLo().size(); ++i) {
+    dst_count *=
+        static_cast<uint64_t>(dst.getIdxHi()[i] - dst.getIdxLo()[i] + 1);
+  }
+  if (src_count != dst_count) {
+    return emitOpError(
+        "src and dst must reference the same number of elements");
+  }
+  return success();
+}
+
+LogicalResult IcDepOp::verify() {
+  StringRef kind = getKind();
+  if (kind != "word" && kind != "bulk")
+    return emitOpError("kind must be \"word\" or \"bulk\", got \"")
+           << kind << "\"";
+  auto dst = getDst();
+  if (dst.empty())
+    return emitOpError("dst must contain at least one receiver");
+  if (dst.size() > 1 && kind != "bulk")
+    return emitOpError(
+        "dst may contain more than one receiver only when kind = \"bulk\"");
   return success();
 }
 

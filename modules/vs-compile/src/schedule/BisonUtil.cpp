@@ -169,19 +169,34 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   lower_indices(src_indices, src_reps, src_idx_lo, src_idx_hi);
   lower_indices(dst_indices, dst_reps, dst_idx_lo, dst_idx_hi);
 
-  auto cstr_op = vesyla::pasm::CstrOp::create(
-      builder, loc,
-      mlir::FlatSymbolRefAttr::get(builder.getContext(), src_id),
-      builder.getStringAttr(src_event),
-      builder.getDenseI32ArrayAttr(src_idx_lo),
-      builder.getDenseI32ArrayAttr(src_idx_hi),
-      mlir::FlatSymbolRefAttr::get(builder.getContext(), dst_id),
-      builder.getStringAttr(dst_event),
-      builder.getDenseI32ArrayAttr(dst_idx_lo),
-      builder.getDenseI32ArrayAttr(dst_idx_hi),
-      min_delay ? builder.getI32IntegerAttr(*min_delay) : mlir::IntegerAttr(),
-      max_delay ? builder.getI32IntegerAttr(*max_delay) : mlir::IntegerAttr(),
-      builder.getBoolAttr(is_neq));
+  std::optional<int32_t> min_v;
+  std::optional<int32_t> max_v;
+  if (min_delay) {
+    min_v = static_cast<int32_t>(*min_delay);
+  }
+  if (max_delay) {
+    max_v = static_cast<int32_t>(*max_delay);
+  }
+  auto delay_attr =
+      vesyla::pasm::DelayAttr::get(builder.getContext(), min_v, max_v);
+
+  std::vector<uint32_t> src_lo_u(src_idx_lo.begin(), src_idx_lo.end());
+  std::vector<uint32_t> src_hi_u(src_idx_hi.begin(), src_idx_hi.end());
+  std::vector<uint32_t> dst_lo_u(dst_idx_lo.begin(), dst_idx_lo.end());
+  std::vector<uint32_t> dst_hi_u(dst_idx_hi.begin(), dst_idx_hi.end());
+
+  auto src_ar = vesyla::pasm::AnchorRangeAttr::get(
+      builder.getContext(),
+      mlir::FlatSymbolRefAttr::get(builder.getContext(), src_id), src_event,
+      src_lo_u, src_hi_u);
+  auto dst_ar = vesyla::pasm::AnchorRangeAttr::get(
+      builder.getContext(),
+      mlir::FlatSymbolRefAttr::get(builder.getContext(), dst_id), dst_event,
+      dst_lo_u, dst_hi_u);
+
+  auto cstr_op = vesyla::pasm::CstrOp::create(builder, loc, src_ar, dst_ar,
+                                              delay_attr,
+                                              builder.getBoolAttr(is_neq));
 
   return cstr_op.getOperation();
 }

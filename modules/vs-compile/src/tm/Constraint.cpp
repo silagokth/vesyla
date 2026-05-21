@@ -74,34 +74,40 @@ string Constraint::to_string() {
 std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
   std::vector<Constraint> result;
 
-  llvm::ArrayRef<int32_t> src_lo = cstr_op.getSrcIdxLo();
-  llvm::ArrayRef<int32_t> src_hi = cstr_op.getSrcIdxHi();
-  llvm::ArrayRef<int32_t> dst_lo = cstr_op.getDstIdxLo();
-  llvm::ArrayRef<int32_t> dst_hi = cstr_op.getDstIdxHi();
-  std::string src_id = cstr_op.getSrc().str();
-  std::string dst_id = cstr_op.getDst().str();
-  std::string src_event = cstr_op.getSrcEvent().str();
-  std::string dst_event = cstr_op.getDstEvent().str();
+  auto src_ar = cstr_op.getSrc();
+  auto dst_ar = cstr_op.getDst();
+  llvm::ArrayRef<uint32_t> src_lo = src_ar.getIdxLo();
+  llvm::ArrayRef<uint32_t> src_hi = src_ar.getIdxHi();
+  llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
+  llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
+  std::string src_id = src_ar.getInstr().getValue().str();
+  std::string dst_id = dst_ar.getInstr().getValue().str();
+  std::string src_event = src_ar.getEvent().str();
+  std::string dst_event = dst_ar.getEvent().str();
   std::optional<int> min_delay;
   std::optional<int> max_delay;
-  if (auto a = cstr_op.getMinDelayAttr())
-    min_delay = a.getInt();
-  if (auto a = cstr_op.getMaxDelayAttr())
-    max_delay = a.getInt();
+  auto d = cstr_op.getDelay();
+  if (auto m = d.getMin()) {
+    min_delay = *m;
+  }
+  if (auto m = d.getMax()) {
+    max_delay = *m;
+  }
   bool is_neq = cstr_op.getIsNeq();
 
   auto make_anchor =
       [](const std::string &event,
-         const std::vector<int32_t> &idx) -> std::optional<Anchor> {
-    if (event.empty())
+         const std::vector<uint32_t> &idx) -> std::optional<Anchor> {
+    if (event.empty()) {
       return std::nullopt;
+    }
     Anchor a;
     a.event_id = event;
     a.idx.assign(idx.begin(), idx.end());
     return a;
   };
-  auto advance = [](std::vector<int32_t> &cur, llvm::ArrayRef<int32_t> lo,
-                    llvm::ArrayRef<int32_t> hi) {
+  auto advance = [](std::vector<uint32_t> &cur, llvm::ArrayRef<uint32_t> lo,
+                    llvm::ArrayRef<uint32_t> hi) {
     for (size_t i = cur.size(); i-- > 0;) {
       if (cur[i] < hi[i]) {
         cur[i]++;
@@ -112,8 +118,8 @@ std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
     return false;
   };
 
-  std::vector<int32_t> src_cur(src_lo.begin(), src_lo.end());
-  std::vector<int32_t> dst_cur(dst_lo.begin(), dst_lo.end());
+  std::vector<uint32_t> src_cur(src_lo.begin(), src_lo.end());
+  std::vector<uint32_t> dst_cur(dst_lo.begin(), dst_lo.end());
   auto emit = [&]() {
     Constraint c(src_id, dst_id, min_delay, max_delay,
                  make_anchor(src_event, src_cur),

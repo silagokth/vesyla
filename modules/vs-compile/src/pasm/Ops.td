@@ -3,6 +3,7 @@
 
 include "pasm/Dialect.td"
 include "pasm/Types.td"
+include "pasm/Attrs.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -104,21 +105,47 @@ def CstrOp : Pasm_Op<"cstr"> {
   let summary = "Delay constraint between two ROPs";
   let description = [{
     Constrains the delay from src ROP to dst ROP, applied over the
-    given index ranges of each, to lie within [min_delay, max_delay].
+    given index ranges of each, to lie within the optional bounds
+    carried by `delay = #pasm.delay<[<min>, <max>]>` (either bound
+    may be absent).
   }];
 
   let arguments = (ins
-    FlatSymbolRefAttr:$src,
-    DefaultValuedStrAttr<StrAttr, "">:$src_event,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$src_idx_lo,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$src_idx_hi,
-    FlatSymbolRefAttr:$dst,
-    DefaultValuedStrAttr<StrAttr, "">:$dst_event,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_lo,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$dst_idx_hi,
-    OptionalAttr<I32Attr>:$min_delay,
-    OptionalAttr<I32Attr>:$max_delay,
+    AnchorRangeAttr:$src,
+    AnchorRangeAttr:$dst,
+    DelayAttr:$delay,
     DefaultValuedAttr<BoolAttr, "false">:$is_neq);
+
+  let assemblyFormat = [{
+    `<` attr-dict `>`
+  }];
+
+  let hasVerifier = 1;
+}
+
+def IcDepOp : Pasm_Op<"icdep"> {
+  let summary = "Interconnect dependency edge between two resource endpoints";
+  let description = [{
+    Represents an interconnect dependency edge from a source `ResourceAttr`
+    to a target `ResourceAttr`. The edge carries two anchors describing the
+    first and last use of the interconnect, each given as
+    (instruction, event, indices) together with a delay value.
+  }];
+
+  let arguments = (ins
+    ResourceAttr:$src,
+    ResourceArrayAttr:$dst,
+    StrAttr:$kind,
+
+    FlatSymbolRefAttr:$first_instr,
+    DefaultValuedStrAttr<StrAttr, "">:$first_event,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$first_idx,
+    I32Attr:$first_delay,
+
+    FlatSymbolRefAttr:$last_instr,
+    DefaultValuedStrAttr<StrAttr, "">:$last_event,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$last_idx,
+    I32Attr:$last_delay);
 
   let assemblyFormat = [{
     `<` attr-dict `>`

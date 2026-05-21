@@ -93,6 +93,11 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
   mlir_tablegen(${DIALECT_INCLUDE_DIR}/Types.cpp.inc -gen-typedef-defs)
   add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
 
+  set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Attrs.td)
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Attrs.hpp.inc -gen-attrdef-decls -attrdefs-dialect=${dialect_namespace})
+  mlir_tablegen(${DIALECT_INCLUDE_DIR}/Attrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=${dialect_namespace})
+  add_public_tablegen_target(Vesyla${dialect}AttrsIncGen)
+
   set(LLVM_TARGET_DEFINITIONS ${DIALECT_SRC_DIR}/Passes.td)
   mlir_tablegen(${DIALECT_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
   add_public_tablegen_target(Vesyla${dialect}PassesIncGen)
@@ -101,7 +106,8 @@ function(add_custom_mlir_dialect dialect dialect_namespace)
   add_custom_target(
     Vesyla${dialect}IncGen
     DEPENDS Vesyla${dialect}DialectIncGen Vesyla${dialect}OpsIncGen
-            Vesyla${dialect}TypesIncGen Vesyla${dialect}PassesIncGen)
+            Vesyla${dialect}TypesIncGen Vesyla${dialect}AttrsIncGen
+            Vesyla${dialect}PassesIncGen)
 
   # Add dependencies
   add_dependencies(mlir-headers Vesyla${dialect}IncGen)
@@ -145,18 +151,16 @@ set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/script.py DESTINATION scripts)
+file(COPY scripts/script_icdep.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script_icdep.py DESTINATION scripts)
+file(COPY scripts/script_grouped_no_slot0.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script_grouped_no_slot0.py DESTINATION scripts)
 
 # Add the main executable target vs-compile
 add_llvm_executable(vs-compile src/exec/vs-compile/main.cpp)
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS} Threads::Threads)
 mlir_check_all_link_libraries(vs-compile)
-
-# Add the pasm-opt executable target
-add_llvm_executable(pasm-opt src/exec/pasm-opt/main.cpp)
-llvm_update_compile_flags(pasm-opt)
-target_link_libraries(pasm-opt PRIVATE ${LIBS} Threads::Threads)
-mlir_check_all_link_libraries(pasm-opt)
 
 # Add a target to build mlir-lsp-server from util/mlir_lsp_support
 add_executable(pasm-mlir-lsp-server src/exec/pasm-mlir-lsp-server/main.cpp)
