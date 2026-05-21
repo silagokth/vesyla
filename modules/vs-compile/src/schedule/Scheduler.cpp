@@ -55,11 +55,56 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
       std::filesystem::absolute(module_debug_path + "/0.mlir").string();
   save_mlir(module, zero_mlir);
 
+  std::string viz_script_grouped =
+      vesyla::util::SysPath::prog_dir() + "scripts/script_grouped.py";
+  std::string vis_dir =
+      std::filesystem::absolute(output_dir + "/debug/vis").string();
+  std::filesystem::create_directories(vis_dir);
+  if (std::filesystem::exists(viz_script_grouped)) {
+    try {
+      std::string cmd = "cd " + vis_dir + " && python3 " + viz_script_grouped +
+                        " " + zero_mlir;
+      int rc = std::system(cmd.c_str());
+      if (rc != 0) {
+        LOG_WARNING << "MLIR grouped visualization failed (exit " << rc
+                    << "): " << cmd;
+      }
+    } catch (const std::exception &e) {
+      LOG_WARNING << "MLIR grouped visualization threw: " << e.what();
+    } catch (...) {
+      LOG_WARNING << "MLIR grouped visualization threw an unknown exception.";
+    }
+  } else {
+    LOG_WARNING << "MLIR grouped visualization script not found: "
+                << viz_script_grouped;
+  }
+
+  std::string viz_script_grouped_no_slot0 =
+      vesyla::util::SysPath::prog_dir() +
+      "scripts/script_grouped_no_slot0.py";
+  if (std::filesystem::exists(viz_script_grouped_no_slot0)) {
+    try {
+      std::string cmd = "cd " + vis_dir + " && python3 " +
+                        viz_script_grouped_no_slot0 + " " + zero_mlir;
+      int rc = std::system(cmd.c_str());
+      if (rc != 0) {
+        LOG_WARNING << "MLIR grouped (no slot0) visualization failed (exit "
+                    << rc << "): " << cmd;
+      }
+    } catch (const std::exception &e) {
+      LOG_WARNING << "MLIR grouped (no slot0) visualization threw: "
+                  << e.what();
+    } catch (...) {
+      LOG_WARNING
+          << "MLIR grouped (no slot0) visualization threw an unknown exception.";
+    }
+  } else {
+    LOG_WARNING << "MLIR grouped (no slot0) visualization script not found: "
+                << viz_script_grouped_no_slot0;
+  }
+
   std::string viz_script = vesyla::util::SysPath::prog_dir() + "scripts/script.py";
   if (std::filesystem::exists(viz_script)) {
-    std::string vis_dir =
-        std::filesystem::absolute(output_dir + "/debug/vis").string();
-    std::filesystem::create_directories(vis_dir);
     std::string cmd =
         "cd " + vis_dir + " && python3 " + viz_script + " " + zero_mlir;
     int rc = std::system(cmd.c_str());

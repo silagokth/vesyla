@@ -1,17 +1,28 @@
+import argparse
 import os
 import re
 import subprocess
 import sys
 
-if len(sys.argv) < 2:
-    sys.exit(f"usage: {sys.argv[0]} <mlir-file>")
-MLIR_FILE = sys.argv[1]
+_parser = argparse.ArgumentParser(
+    description="Render a grouped-by-slot view of a pasm .mlir file, "
+                "including interconnect-dependency (icdep) edges."
+)
+_parser.add_argument("mlir_file", help="path to the .mlir input file")
+_parser.add_argument(
+    "-o", "--output-dir",
+    help="directory for generated .dot / .png files "
+         "(default: directory containing the input file)",
+)
+_args = _parser.parse_args()
+MLIR_FILE = _args.mlir_file
+OUTPUT_DIR = _args.output_dir or os.path.dirname(os.path.abspath(MLIR_FILE))
 INF_DELAY = 10000000  # max_delay value treated as +inf
 
 
 # ---------------------------------------------------------------------------
 # Minimal Graphviz emitter — only the system `dot` binary is required.
-# Mirrors the subset of `graphviz.Digraph` that this script uses.
+# Adds subgraph/cluster support on top of the basic Digraph used by script.py.
 # ---------------------------------------------------------------------------
 
 _ID_SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$|^-?\d+(?:\.\d+)?$")
@@ -25,7 +36,7 @@ def _is_html_label(s):
 def _quote_val(v):
     s = str(v)
     if _is_html_label(s):
-        return s  # raw HTML label — emitted unquoted, wrapped in <...>
+        return s
     return '"' + s.replace('"', r'\"') + '"'
 
 
@@ -48,7 +59,9 @@ def _quote_endpoint(ep):
     return _quote_id(s)
 
 
-class Digraph:
+class _Block:
+    """A container that can hold attributes, default styles, nodes, edges, and nested subgraphs."""
+
     def __init__(self):
         self._graph_attrs = {}
         self._default_node_attrs = {}
@@ -68,7 +81,7 @@ class Digraph:
         if label is not None:
             attrs["label"] = label
         attrs.update(style)
-        self._statements.append(f"  {_quote_id(name)} [{_fmt_attrs(attrs)}];")
+        self._statements.append(f"{_quote_id(name)} [{_fmt_attrs(attrs)}];")
 
     def edge(self, tail, head, label=None, **style):
         attrs = {}
@@ -76,18 +89,38 @@ class Digraph:
             attrs["label"] = label
         attrs.update(style)
         self._statements.append(
-            f"  {_quote_endpoint(tail)} -> {_quote_endpoint(head)} [{_fmt_attrs(attrs)}];"
+            f"{_quote_endpoint(tail)} -> {_quote_endpoint(head)} [{_fmt_attrs(attrs)}];"
         )
 
+    def subgraph(self, name):
+        sg = _Block()
+        self._statements.append(("subgraph", name, sg))
+        return sg
+
+    def _emit_body(self, indent):
+        pad = "  " * indent
+        out = []
+        for k, v in self._graph_attrs.items():
+            out.append(f"{pad}{k}={_quote_val(v)};")
+        if self._default_node_attrs:
+            out.append(f"{pad}node [{_fmt_attrs(self._default_node_attrs)}];")
+        if self._default_edge_attrs:
+            out.append(f"{pad}edge [{_fmt_attrs(self._default_edge_attrs)}];")
+        for stmt in self._statements:
+            if isinstance(stmt, tuple) and stmt[0] == "subgraph":
+                _, name, sg = stmt
+                out.append(f"{pad}subgraph {_quote_id(name)} {{")
+                out.extend(sg._emit_body(indent + 1))
+                out.append(f"{pad}}}")
+            else:
+                out.append(f"{pad}{stmt}")
+        return out
+
+
+class Digraph(_Block):
     def source(self):
         out = ["digraph G {"]
-        for k, v in self._graph_attrs.items():
-            out.append(f"  {k}={_quote_val(v)};")
-        if self._default_node_attrs:
-            out.append(f"  node [{_fmt_attrs(self._default_node_attrs)}];")
-        if self._default_edge_attrs:
-            out.append(f"  edge [{_fmt_attrs(self._default_edge_attrs)}];")
-        out.extend(self._statements)
+        out.extend(self._emit_body(1))
         out.append("}")
         return "\n".join(out) + "\n"
 
@@ -127,7 +160,41 @@ class Digraph:
         except FileNotFoundError:
             pass
 
-src = open(MLIR_FILE).read()
+def strip_mlir_comments(text):
+    """Strip MLIR // line comments, preserving // inside "..." strings."""
+    out = []
+    i = 0
+    n = len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            nl = text.find("\n", i)
+            if nl == -1:
+                break
+            i = nl
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+src = strip_mlir_comments(open(MLIR_FILE).read())
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +213,43 @@ def _balance(text, i, open_c="{", close_c="}"):
                 return i + 1
         i += 1
     return -1
+
+
+def parse_typed_attr(text, i):
+    nm = re.match(r"#[\w.]+", text[i:])
+    name = nm.group(0)
+    i += nm.end()
+    if i < len(text) and text[i] == "<":
+        j = _balance(text, i, "<", ">")
+        inner = text[i + 1:j - 1]
+        params = {}
+        for pm in re.finditer(r"(\w+)\s*=\s*(-?\d+)", inner):
+            params[pm.group(1)] = int(pm.group(2))
+        return {"_type": name, **params}, j
+    return {"_type": name}, i
+
+
+def parse_list_attr(text, i):
+    j = _balance(text, i, "[", "]")
+    inner = text[i + 1:j - 1]
+    items = []
+    k = 0
+    while k < len(inner):
+        while k < len(inner) and inner[k] in " \t\n,":
+            k += 1
+        if k >= len(inner):
+            break
+        if inner[k] == "#":
+            item, k = parse_typed_attr(inner, k)
+            items.append(item)
+        else:
+            tok = re.match(r"\S+", inner[k:])
+            if tok:
+                items.append(tok.group(0))
+                k += len(tok.group(0))
+            else:
+                k += 1
+    return items, j
 
 
 def parse_attr_dict(s):
@@ -178,6 +282,10 @@ def parse_attr_dict(s):
             j = _balance(body, i)
             out[key] = parse_attr_dict(body[i:j])
             i = j
+        elif body[i] == "#":
+            out[key], i = parse_typed_attr(body, i)
+        elif body[i] == "[":
+            out[key], i = parse_list_attr(body, i)
         elif body[i:i + 5] == "array":
             j = body.find(">", i)
             content = body[i:j + 1]
@@ -194,7 +302,6 @@ def parse_attr_dict(s):
             if num:
                 out[key] = int(num.group(0))
                 i += num.end()
-                # skip optional ` : i32` etc.
                 while i < len(body) and body[i] in " \t":
                     i += 1
                 if i < len(body) and body[i] == ":":
@@ -212,8 +319,6 @@ def parse_attr_dict(s):
 
 
 def find_op(text, op_name, start=0):
-    """Find the next `pasm.<op_name><` at or after `start`.
-    Returns (attrs, body_or_None, end_index, match_start) or None."""
     pat = re.compile(rf"pasm\.{re.escape(op_name)}<\s*")
     m = pat.search(text, start)
     if not m:
@@ -351,7 +456,6 @@ def endpoint(name, idx):
 
 
 def cstr_idx(lo_arr, hi_arr):
-    """Combine `_idx_lo` and `_idx_hi` arrays into a tuple of strings (`lo` if equal, `lo:hi` otherwise)."""
     lo_arr = lo_arr or []
     hi_arr = hi_arr or []
     n = max(len(lo_arr), len(hi_arr))
@@ -364,6 +468,17 @@ def cstr_idx(lo_arr, hi_arr):
         else:
             out.append(f"{lo}:{hi}")
     return tuple(out)
+
+
+def slot_sort_key(slot):
+    if slot is None:
+        return (1, 0, "")
+    if isinstance(slot, int):
+        return (0, slot, "")
+    s = str(slot)
+    if s.lstrip("-").isdigit():
+        return (0, int(s), "")
+    return (0, 0, s)
 
 
 def build_graph(epoch_name, body):
@@ -382,12 +497,17 @@ def build_graph(epoch_name, body):
 
     node_reps = {n: parse_reps(b) for n, b in node_bodies.items()}
 
-    # Collect cstrs that are direct children of the epoch (not inside a rop body).
     cstrs = []
     for attrs, _, c_start, _ in find_all_ops(body, "cstr"):
         if any(s <= c_start < e for s, e in rop_spans):
             continue
         cstrs.append(attrs)
+
+    icdeps = []
+    for attrs, _, c_start, _ in find_all_ops(body, "icdep"):
+        if any(s <= c_start < e for s, e in rop_spans):
+            continue
+        icdeps.append(attrs)
 
     node_indices = {n: set() for n in nodes}
     edges = []
@@ -408,10 +528,33 @@ def build_graph(epoch_name, body):
         edges.append((a, a_idx, b, b_idx, mn, mx, is_neq))
 
     dot = Digraph()
-    dot.attr(label=epoch_name, labelloc="t", nodesep="0.6", ranksep="0.8")
+    dot.attr(label=epoch_name, labelloc="t", nodesep="0.6", ranksep="0.8",
+             compound="true", rankdir="TB", newrank="true")
     dot.attr("node", shape="record")
 
-    for n in sorted(nodes):
+    # Group nodes by slot.
+    slots = {}
+    for n in nodes:
+        slot = node_attrs.get(n, {}).get("slot")
+        slots.setdefault(slot, []).append(n)
+
+    # Slots referenced by icdeps but not occupied by any rop need an empty cluster.
+    icdep_extra_slots = set()
+    for ic in icdeps:
+        src_res = ic.get("src")
+        if isinstance(src_res, dict):
+            icdep_extra_slots.add(src_res.get("slot"))
+        for d in ic.get("dst") or []:
+            if isinstance(d, dict):
+                icdep_extra_slots.add(d.get("slot"))
+    for s in icdep_extra_slots:
+        slots.setdefault(s, [])
+
+    sorted_slot_keys = sorted(slots.keys(), key=slot_sort_key)
+    ordered_members = [sorted(slots[s]) for s in sorted_slot_keys]
+    max_count = max((len(m) for m in ordered_members), default=0)
+
+    def emit_node(target, n):
         indices = sorted(node_indices[n], key=sort_key)
         reps = node_reps.get(n, [])
         rep_section = ""
@@ -434,11 +577,43 @@ def build_graph(epoch_name, body):
         head = f"{title}{rep_section}{op_section}"
         if indices:
             ports = "|".join(f"<{port_name(i)}>{idx_label(i)}" for i in indices)
-            dot.node(n, label=f"{{{head}|{{{ports}}}}}", **style)
+            target.node(n, label=f"{{{head}|{{{ports}}}}}", **style)
         elif rep_section or op_section:
-            dot.node(n, label=f"{{{head}}}", **style)
+            target.node(n, label=f"{{{head}}}", **style)
         else:
-            dot.node(n, label=title, **style)
+            target.node(n, label=title, **style)
+
+    slot_anchor = {}  # slot -> node name to use as ltail/lhead anchor
+    slot_cluster_id = {}
+    for slot, members in zip(sorted_slot_keys, ordered_members):
+        slot_label = f"slot {slot}" if slot is not None else "slot ?"
+        cluster_id = f"cluster_slot_{slot if slot is not None else 'none'}"
+        slot_cluster_id[slot] = cluster_id
+        sg = dot.subgraph(cluster_id)
+        sg.attr(label=slot_label, style="rounded,filled", color="gray70",
+                fillcolor="gray95", margin="30")
+        if not members:
+            placeholder = f"__empty_slot_{slot if slot is not None else 'none'}"
+            sg.node(placeholder, label="(no rop)", shape="box",
+                    style="dashed", color="gray60", fontcolor="gray40")
+            slot_anchor[slot] = placeholder
+            column = [placeholder]
+        else:
+            for n in members:
+                emit_node(sg, n)
+            slot_anchor[slot] = members[0]
+            column = list(members)
+        pad_names = []
+        for k in range(max_count - len(column)):
+            pad_name = f"__pad_{cluster_id}_{k}"
+            sg.node(pad_name, label="", style="invis", shape="box",
+                    width="2.0", height="0.4", fixedsize="true")
+            pad_names.append(pad_name)
+        column = column + pad_names
+        # Stack instructions inside this slot vertically.
+        for k in range(len(column) - 1):
+            sg.edge(column[k], column[k + 1], style="invis",
+                    constraint="true", weight="1000")
 
     legend = (
         '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
@@ -446,6 +621,7 @@ def build_graph(epoch_name, body):
         '<TR><TD BGCOLOR="darkgreen" WIDTH="20"></TD><TD ALIGN="LEFT">RAW-dependency</TD></TR>'
         '<TR><TD BGCOLOR="red" WIDTH="20"></TD><TD ALIGN="LEFT">WAR-dependency</TD></TR>'
         '<TR><TD BGCOLOR="blue" WIDTH="20"></TD><TD ALIGN="LEFT">swb-dependency</TD></TR>'
+        '<TR><TD BGCOLOR="purple" WIDTH="20"></TD><TD ALIGN="LEFT">interconnect dependency (icdep)</TD></TR>'
         '<TR><TD ALIGN="CENTER"><FONT FACE="monospace">- - -</FONT></TD><TD ALIGN="LEFT">not-equal dependency</TD></TR>'
         '</TABLE>>'
     )
@@ -459,28 +635,85 @@ def build_graph(epoch_name, body):
             return "blue"
         return default
 
-    for a, a_idx, b, b_idx, mn, mx, is_neq in edges:
+    # When several edges share the same (src, dst) node pair, give each a
+    # distinct color from a palette so parallel edges are easy to tell apart.
+    palette = ["red", "darkred", "firebrick", "crimson", "indianred",
+               "tomato", "orangered", "brown", "maroon", "salmon",
+               "lightcoral", "palevioletred"]
+    pair_indices = {}
+    for ei, (a, _, b, _, _, _, _) in enumerate(edges):
+        pair_indices.setdefault((a, b), []).append(ei)
+    override_color = {}
+    for pair, idxs in pair_indices.items():
+        if len(idxs) > 1:
+            for pos, ei in enumerate(idxs):
+                override_color[ei] = palette[pos % len(palette)]
+
+    for ei, (a, a_idx, b, b_idx, mn, mx, is_neq) in enumerate(edges):
         if a not in nodes or b not in nodes:
             continue
         tail = endpoint(a, a_idx)
         head = endpoint(b, b_idx)
+        forced = override_color.get(ei)
         if is_neq:
             label = f"!=[{mn}]"
-            color = pick_color(a, b, "red")
+            color = forced if forced else pick_color(a, b, "red")
             dot.edge(tail, head, label=label, color=color, fontcolor=color, style="dashed")
         elif mn == mx:
             label = f"[{mn},{mn}]"
-            color = pick_color(a, b, "red")
+            color = forced if forced else pick_color(a, b, "red")
             extra = {"dir": "both"} if mn == 0 else {}
             dot.edge(tail, head, label=label, color=color, fontcolor=color, **extra)
         elif mx is None or mx >= INF_DELAY:
             label = f"[{mn},inf)"
-            color = pick_color(a, b, "darkgreen")
+            color = forced if forced else pick_color(a, b, "darkgreen")
             dot.edge(tail, head, label=label, color=color, fontcolor=color)
         else:
             label = f"[{mn},{mx}]"
-            color = pick_color(a, b, "red")
+            color = forced if forced else pick_color(a, b, "red")
             dot.edge(tail, head, label=label, color=color, fontcolor=color)
+
+    def fmt_anchor(prefix, ic):
+        instr = ic.get(f"{prefix}_instr", "") or ""
+        event = ic.get(f"{prefix}_event", "") or ""
+        idx = ic.get(f"{prefix}_idx") or []
+        delay = ic.get(f"{prefix}_delay", 0)
+        out = instr
+        if event:
+            out += f".{event}"
+        if idx:
+            out += "[" + ",".join(str(i) for i in idx) + "]"
+        out += f" @{delay}"
+        return out
+
+    for ic in icdeps:
+        src_res = ic.get("src")
+        if not isinstance(src_res, dict):
+            continue
+        src_slot = src_res.get("slot")
+        src_port = src_res.get("port")
+        if src_slot not in slot_anchor:
+            continue
+        kind = ic.get("kind", "")
+        first = fmt_anchor("first", ic)
+        last = fmt_anchor("last", ic)
+        label = f"{kind}\\nfirst: {first}\\nlast:  {last}"
+        for d in ic.get("dst") or []:
+            if not isinstance(d, dict):
+                continue
+            dst_slot = d.get("slot")
+            dst_port = d.get("port")
+            if dst_slot not in slot_anchor:
+                continue
+            dot.edge(
+                slot_anchor[src_slot], slot_anchor[dst_slot],
+                label=label,
+                taillabel=f"p{src_port}", headlabel=f"p{dst_port}",
+                color="purple", fontcolor="purple",
+                ltail=slot_cluster_id[src_slot],
+                lhead=slot_cluster_id[dst_slot],
+                penwidth="2", labeldistance="2", labelangle="20",
+            )
 
     return dot
 
@@ -489,9 +722,8 @@ epochs = find_epochs(src)
 if not epochs:
     epochs = [("graph", src)]
 
-base = os.path.splitext(os.path.basename(MLIR_FILE))[0]
-multi = len(epochs) > 1
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 for name, body in epochs:
     dot = build_graph(name, body)
-    out_name = f"{base}_{name}" if multi else base
-    dot.render(out_name, format="png", view=False, cleanup=False)
+    stem = f"{name}_icdep"
+    dot.render(os.path.join(OUTPUT_DIR, stem), format="png", view=False, cleanup=False)
