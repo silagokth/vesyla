@@ -51,4 +51,13 @@ def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
     Add slot and port operations to the module.
   }];
 }
+
+def InterconnectPass: Pass<"interconnect-pass", "::mlir::ModuleOp"> {
+  let summary = "Lower pasm.icdep edges to pasm.rop and pasm.cstr ops.";
+  let description = [{
+    Walks every `pasm.icdep` op and rewrites it into the resource
+    operations (`pasm.rop`) and delay constraints (`pasm.cstr`) that the
+    interconnect requires to realize the dependency.
+  }];
+}
 #endif // VESYLA_PASM_PASSES
