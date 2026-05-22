@@ -21,8 +21,6 @@ struct RangeRef {
   std::string event;
   std::vector<uint32_t> lo;
   std::vector<uint32_t> hi;
-  // True iff every constraint traversed to reach this frame had min_delay == 0.
-  bool min_delay_zero;
 };
 
 bool ranges_intersect(llvm::ArrayRef<uint32_t> a_lo,
@@ -54,31 +52,32 @@ bool range_strictly_after(llvm::ArrayRef<uint32_t> a_lo,
   return true;
 }
 
+// Maps `idx` (a coord inside [src_lo, src_hi]) to the same-position coord
+// inside [dst_lo, dst_hi] using row-major flat-index correspondence. Caller
+// must guarantee equal element count between the two ranges.
+std::vector<uint32_t> map_index(llvm::ArrayRef<uint32_t> idx,
+                                llvm::ArrayRef<uint32_t> src_lo,
+                                llvm::ArrayRef<uint32_t> src_hi,
+                                llvm::ArrayRef<uint32_t> dst_lo,
+                                llvm::ArrayRef<uint32_t> dst_hi) {
+  uint64_t flat = 0;
+  uint64_t stride = 1;
+  for (int i = static_cast<int>(src_lo.size()) - 1; i >= 0; --i) {
+    flat += static_cast<uint64_t>(idx[i] - src_lo[i]) * stride;
+    stride *= static_cast<uint64_t>(src_hi[i] - src_lo[i] + 1);
+  }
+  std::vector<uint32_t> out(dst_lo.size());
+  stride = 1;
+  for (int i = static_cast<int>(dst_lo.size()) - 1; i >= 0; --i) {
+    uint64_t dim = static_cast<uint64_t>(dst_hi[i] - dst_lo[i] + 1);
+    out[i] = dst_lo[i] + static_cast<uint32_t>((flat / stride) % dim);
+    stride *= dim;
+  }
+  return out;
+}
+
 void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
                      llvm::StringRef kind) {
-  auto log_node = [](int id, NodeKind kind, const Anchor &a) {
-    llvm::errs() << "node " << id << " "
-                 << (kind == NodeKind::First ? "first" : "last") << ": ";
-    if (a.instr_id) {
-      llvm::errs() << a.instr_id.getValue();
-    } else {
-      llvm::errs() << "<sentinel>";
-    }
-    llvm::errs() << " [" << a.event << ", [";
-    for (std::size_t i = 0; i < a.indices.size(); ++i) {
-      if (i > 0) {
-        llvm::errs() << ",";
-      }
-      llvm::errs() << a.indices[i];
-    }
-    llvm::errs() << "], delay=" << a.delay << "]\n";
-  };
-
-  // insert start and end node first
-  Anchor sentinel{};
-  graph.insert_node(sentinel, 0, NodeKind::First);
-  graph.insert_node(sentinel, 0, NodeKind::Last);
-
   int current_id = 1;
 
   // create two nodes for each datadependency one for the first use and one for
@@ -108,24 +107,24 @@ void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
     graph.insert_node(last_anchor, current_id, NodeKind::Last);
     ++current_id;
   }
+
   // DFS each non-sentinel node to discover edges to other nodes.
   for (const Node &node : graph) {
     if (!node.anchor.instr_id) {
       continue;
     }
-    log_node(node.id, node.kind, node.anchor);
 
     // DFS stack of range frames yet to expand for this node.
     std::vector<RangeRef> stack;
     stack.push_back(RangeRef{node.anchor.instr_id, node.anchor.event,
-                             node.anchor.indices, node.anchor.indices,
-                             /*min_delay_zero=*/true});
+                             node.anchor.indices, node.anchor.indices});
 
     // Cycle guard: delay-[0,0] reverse traversal can otherwise loop forever.
     std::set<std::tuple<std::string, std::string, std::vector<uint32_t>,
                         std::vector<uint32_t>>>
         visited;
 
+    // look for all possible paths to check which other nodes are reachable here
     while (!stack.empty()) {
       RangeRef current = std::move(stack.back());
       stack.pop_back();
@@ -136,7 +135,7 @@ void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
         continue;
       }
 
-      // Follow constraints onward to reach further nodes.
+      // check all constraints for possible matches
       for (mlir::Operation &op : epoch.getBody().front()) {
         auto cstr = mlir::dyn_cast<CstrOp>(op);
         if (!cstr) {
@@ -158,102 +157,52 @@ void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
             continue;
           }
 
-          // Event-less constraints carry no indices; just propagate dst.
+          // constraints without indices should just be propagated
           if (src_event.empty()) {
             llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
             llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
-            bool new_flag = cstr.getDelay().getMin().value_or(0) == 0;
-            stack.push_back(RangeRef{
-                dst_ar.getInstr(), dst_ar.getEvent().str(),
-                std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
-                std::vector<uint32_t>(dst_hi.begin(), dst_hi.end()), new_flag});
+            stack.push_back(
+                RangeRef{dst_ar.getInstr(), dst_ar.getEvent().str(),
+                         std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
+                         std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
             continue;
           }
 
-          // src matches if its range overlaps current or starts strictly after
-          // it.
+          // Only reject the cstr when src lies strictly in current's past on
+          // every propagated dim — clamp + map_index handles every other case.
+          // Surplus src dims (beyond dst's arity) are filter dims and aren't
+          // gated here.
           llvm::ArrayRef<uint32_t> src_lo = src_ar.getIdxLo();
           llvm::ArrayRef<uint32_t> src_hi = src_ar.getIdxHi();
-          bool intersects =
-              ranges_intersect(current.lo, current.hi, src_lo, src_hi);
-          bool src_after = range_strictly_after(src_lo, current.hi);
-          if (!intersects && !src_after) {
+          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIdxLo();
+          llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
+          std::size_t n = std::min(src_lo.size(), dst_lo_ar.size());
+          if (range_strictly_after(current_lo_ar.take_front(n),
+                                   src_hi.take_front(n))) {
             continue;
           }
 
           llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
           llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
 
-          // Trace: matched src -> dst hop with full index ranges.
-          llvm::errs() << "\t" << src_ar.getInstr().getValue() << " ["
-                       << src_ar.getEvent() << ", [";
+          // Clamp current.lo into src's rectangle, then map that src coord to
+          // the corresponding dst coord by row-major flat-index correspondence.
+          std::vector<uint32_t> matched_src(src_lo.size());
           for (std::size_t i = 0; i < src_lo.size(); ++i) {
-            if (i > 0) {
-              llvm::errs() << ",";
-            }
-            llvm::errs() << src_lo[i] << ":" << src_hi[i];
+            uint32_t cl = (i < current.lo.size()) ? current.lo[i] : src_lo[i];
+            matched_src[i] = std::min(std::max(cl, src_lo[i]), src_hi[i]);
           }
-          llvm::errs() << "]] -> " << dst_ar.getInstr().getValue() << " ["
-                       << dst_ar.getEvent() << ", [";
-          for (std::size_t i = 0; i < dst_lo.size(); ++i) {
-            if (i > 0) {
-              llvm::errs() << ",";
-            }
-            llvm::errs() << dst_lo[i] << ":" << dst_hi[i];
-          }
-          llvm::errs() << "]]\n";
-
-          // src is a single element: no delta to apply, propagate dst as-is.
-          bool src_single = true;
-          for (std::size_t i = 0; i < src_lo.size(); ++i) {
-            if (src_lo[i] != src_hi[i]) {
-              src_single = false;
-              break;
-            }
-          }
-          if (src_single) {
-            bool new_flag = current.min_delay_zero &&
-                            cstr.getDelay().getMin().value_or(0) == 0;
-            stack.push_back(RangeRef{
-                dst_ar.getInstr(), dst_ar.getEvent().str(),
-                std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
-                std::vector<uint32_t>(dst_hi.begin(), dst_hi.end()), new_flag});
-            continue;
-          }
-
-          // delta = how far inside src the current frame's lower bound sits.
-          std::vector<uint32_t> new_lo(src_lo.size());
-          std::vector<uint32_t> delta(src_lo.size());
-          bool delta_nonzero = false;
-          for (std::size_t i = 0; i < src_lo.size(); ++i) {
-            new_lo[i] = std::max(current.lo[i], src_lo[i]);
-            delta[i] = new_lo[i] - src_lo[i];
-            if (delta[i] != 0) {
-              delta_nonzero = true;
-            }
-          }
-
-          // Apply delta to dst's lower bound, only for as many dims as delta
-          // has.
-          std::vector<uint32_t> dst_new_lo(dst_lo.begin(), dst_lo.end());
-          for (std::size_t i = 0; i < delta.size() && i < dst_new_lo.size();
-               ++i) {
-            dst_new_lo[i] += delta[i];
-          }
-
-          // Bilaterality survives only if delta is zero AND this hop's min
-          // delay is zero.
-          bool new_flag = current.min_delay_zero && !delta_nonzero &&
-                          cstr.getDelay().getMin().value_or(0) == 0;
+          std::vector<uint32_t> dst_new_lo =
+              map_index(matched_src, src_lo, src_hi, dst_lo, dst_hi);
 
           stack.push_back(RangeRef{
               dst_ar.getInstr(), dst_ar.getEvent().str(), std::move(dst_new_lo),
-              std::vector<uint32_t>(dst_hi.begin(), dst_hi.end()), new_flag});
+              std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
         }
       }
 
-      // Direct match: another graph node lies at or past current's lower
-      // bound in the same (instr, event) space.
+      // check if there is a node in that range if yes create an edege between
+      // them
       for (const Node &candidate : graph) {
         if (candidate.key() == node.key()) {
           continue;
@@ -313,10 +262,11 @@ public:
                    << "========================================\n";
       RoutingDepGraph graph;
       populate_routes(graph, op, kind);
-      // graph.transitive_reduce();
 
       std::string dot_path = (prefix + "_" + op.getId().str() + ".dot").str();
       std::string png_path = (prefix + "_" + op.getId().str() + ".png").str();
+      graph.transitive_reduce(); // this was implemented using claude maybe
+                                 // there is a more efficient algorithm
       graph.dump_dot(dot_path);
 
       // Best-effort PNG rendering via graphviz. Any failure is reported but

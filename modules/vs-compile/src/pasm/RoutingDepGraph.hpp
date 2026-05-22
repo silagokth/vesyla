@@ -41,6 +41,10 @@ struct Edge {
 
 class RoutingDepGraph {
 public:
+  // Seeds the graph with start and end sentinel nodes (id=0) and an edge
+  // between them.
+  RoutingDepGraph();
+
   void insert_node(const Anchor &anchor, int id, NodeKind kind);
   void insert_edge(NodeKey from, NodeKey to);
 

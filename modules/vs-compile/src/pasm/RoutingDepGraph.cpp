@@ -59,7 +59,6 @@ std::string escape_dot_label(llvm::StringRef in) {
 
 } // namespace
 
-
 bool Anchor::operator<(const Anchor &o) const {
   llvm::StringRef a = instr_id ? instr_id.getValue() : llvm::StringRef();
   llvm::StringRef b = o.instr_id ? o.instr_id.getValue() : llvm::StringRef();
@@ -73,6 +72,13 @@ bool Anchor::operator<(const Anchor &o) const {
     return indices < o.indices;
   }
   return delay < o.delay;
+}
+
+RoutingDepGraph::RoutingDepGraph() {
+  Anchor sentinel{};
+  insert_node(sentinel, 0, NodeKind::First);
+  insert_node(sentinel, 0, NodeKind::Last);
+  insert_edge({0, NodeKind::First}, {0, NodeKind::Last});
 }
 
 void RoutingDepGraph::insert_node(const Anchor &anchor, int id, NodeKind kind) {
@@ -100,64 +106,69 @@ void RoutingDepGraph::insert_edge(NodeKey from, NodeKey to) {
 }
 
 void RoutingDepGraph::transitive_reduce() {
-  std::vector<bool> remove_flag(edges_.size(), false);
+  std::vector<bool> removed(edges_.size(), false);
 
-  for (const Node &u : nodes_) {
-    NodeKey u_key = u.key();
-    auto out_it = outgoing_.find(u_key);
-    if (out_it == outgoing_.end()) {
-      continue;
-    }
-
-    std::vector<std::size_t> direct_edges;
-    std::vector<NodeKey> frontier;
-    for (std::size_t i : out_it->second) {
-      direct_edges.push_back(i);
-      frontier.push_back(edges_[i].to);
-    }
-
-    // BFS from frontier, treating u as blocked. Each node is visited at most
-    // once. Anything reached this way is reachable from u via a path of
-    // length >= 2.
-    std::set<NodeKey> reachable;
-    std::set<NodeKey> visited;
-    visited.insert(u_key);
+  // True iff `target` is reachable from `src` using only edges that are still
+  // in the graph (not in `removed`) and skipping the edge at `skip_edge`.
+  auto reachable = [&](NodeKey src, NodeKey target, std::size_t skip_edge) {
+    std::set<NodeKey> seen;
     std::queue<NodeKey> q;
-    for (NodeKey f : frontier) {
-      if (visited.insert(f).second) {
-        q.push(f);
-      }
-    }
+    seen.insert(src);
+    q.push(src);
     while (!q.empty()) {
-      NodeKey x = q.front();
+      NodeKey u = q.front();
       q.pop();
-      auto ox = outgoing_.find(x);
-      if (ox == outgoing_.end()) {
+      auto it = outgoing_.find(u);
+      if (it == outgoing_.end()) {
         continue;
       }
-      for (std::size_t i : ox->second) {
-        NodeKey w = edges_[i].to;
-        if (w == u_key) {
+      for (std::size_t i : it->second) {
+        if (i == skip_edge || removed[i]) {
           continue;
         }
-        reachable.insert(w);
-        if (visited.insert(w).second) {
-          q.push(w);
+        NodeKey v = edges_[i].to;
+        if (v == target) {
+          return true;
+        }
+        if (seen.insert(v).second) {
+          q.push(v);
         }
       }
     }
+    return false;
+  };
 
-    for (std::size_t i : direct_edges) {
-      if (reachable.count(edges_[i].to)) {
-        remove_flag[i] = true;
+  // BFS from the start sentinel. For each visited node's outgoing edges,
+  // drop the edge if its destination is still reachable without it.
+  NodeKey start{0, NodeKind::First};
+  std::set<NodeKey> visited;
+  std::queue<NodeKey> q;
+  visited.insert(start);
+  q.push(start);
+  while (!q.empty()) {
+    NodeKey u = q.front();
+    q.pop();
+    auto it = outgoing_.find(u);
+    if (it == outgoing_.end()) {
+      continue;
+    }
+    std::vector<std::size_t> outs(it->second.begin(), it->second.end());
+    for (std::size_t edge_idx : outs) {
+      NodeKey v = edges_[edge_idx].to;
+      if (!removed[edge_idx] && reachable(u, v, edge_idx)) {
+        removed[edge_idx] = true;
+      }
+      if (visited.insert(v).second) {
+        q.push(v);
       }
     }
   }
 
+  // Rebuild edges_ and the adjacency maps.
   std::vector<Edge> new_edges;
   new_edges.reserve(edges_.size());
   for (std::size_t i = 0; i < edges_.size(); ++i) {
-    if (!remove_flag[i]) {
+    if (!removed[i]) {
       new_edges.push_back(edges_[i]);
     }
   }
@@ -244,11 +255,9 @@ void RoutingDepGraph::dump_dot(const std::string &path) const {
     } else if (n.id == 0 && n.kind == NodeKind::Last) {
       ofs << "  " << id << " [shape=circle, label=\"end\"];\n";
     } else {
-      llvm::StringRef instr_name = n.anchor.instr_id
-                                       ? n.anchor.instr_id.getValue()
-                                       : llvm::StringRef();
-      std::string header =
-          std::to_string(n.id) + " " + kind_str(n.kind);
+      llvm::StringRef instr_name =
+          n.anchor.instr_id ? n.anchor.instr_id.getValue() : llvm::StringRef();
+      std::string header = std::to_string(n.id) + " " + kind_str(n.kind);
       std::string body = "instr: " + escape_dot_label(instr_name) +
                          "\\nevent: " + escape_dot_label(n.anchor.event) +
                          "\\nindices: " + indices_to_str(n.anchor.indices) +
@@ -258,10 +267,26 @@ void RoutingDepGraph::dump_dot(const std::string &path) const {
     }
   }
 
+  std::set<std::pair<NodeKey, NodeKey>> emitted;
+  std::set<std::pair<NodeKey, NodeKey>> all_edges;
   for (const Edge &e : edges_) {
+    all_edges.emplace(e.from, e.to);
+  }
+  for (const Edge &e : edges_) {
+    if (emitted.count({e.from, e.to})) {
+      continue;
+    }
     std::string a = node_dot_id(e.from.first, e.from.second);
     std::string b = node_dot_id(e.to.first, e.to.second);
-    ofs << "  " << a << " -> " << b << ";\n";
+    bool bilateral = e.from != e.to && all_edges.count({e.to, e.from});
+    if (bilateral) {
+      ofs << "  " << a << " -> " << b << " [dir=both];\n";
+      emitted.emplace(e.from, e.to);
+      emitted.emplace(e.to, e.from);
+    } else {
+      ofs << "  " << a << " -> " << b << ";\n";
+      emitted.emplace(e.from, e.to);
+    }
   }
 
   ofs << "}\n";
