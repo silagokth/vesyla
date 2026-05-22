@@ -60,4 +60,12 @@ def InterconnectPass: Pass<"interconnect-pass", "::mlir::ModuleOp"> {
     interconnect requires to realize the dependency.
   }];
 }
+
+def ExtractCellsPass: Pass<"extract-cells-pass", "::mlir::ModuleOp"> {
+  let summary = "Extract cells from each epoch.";
+  let description = [{
+    Walks every `pasm.epoch` op and extracts its cells.
+    TODO: describe behavior once implemented.
+  }];
+}
 #endif // VESYLA_PASM_PASSES

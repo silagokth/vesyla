@@ -76,13 +76,13 @@ std::vector<uint32_t> map_index(llvm::ArrayRef<uint32_t> idx,
   return out;
 }
 
-void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
-                     llvm::StringRef kind) {
+void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
+                     mlir::Block &cstr_block, llvm::StringRef kind) {
   int current_id = 1;
 
   // create two nodes for each datadependency one for the first use and one for
   // the last use
-  for (mlir::Operation &op : epoch.getBody().front()) {
+  for (mlir::Operation &op : icdep_block) {
     auto icdep = mlir::dyn_cast<IcDepOp>(op);
     if (!icdep) {
       continue;
@@ -91,17 +91,17 @@ void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
       continue;
     }
 
-    llvm::ArrayRef<int32_t> first_idx = icdep.getFirstIdx();
+    AnchorAttr first = icdep.getFirst();
+    llvm::ArrayRef<int32_t> first_idx = first.getIdx();
     std::vector<uint32_t> first_idx_v(first_idx.begin(), first_idx.end());
-    Anchor first_anchor{icdep.getFirstInstrAttr(), icdep.getFirstEvent().str(),
-                        std::move(first_idx_v),
-                        static_cast<int32_t>(icdep.getFirstDelay())};
+    Anchor first_anchor{first.getInstr(), first.getEvent().str(),
+                        std::move(first_idx_v), first.getDelay()};
 
-    llvm::ArrayRef<int32_t> last_idx = icdep.getLastIdx();
+    AnchorAttr last = icdep.getLast();
+    llvm::ArrayRef<int32_t> last_idx = last.getIdx();
     std::vector<uint32_t> last_idx_v(last_idx.begin(), last_idx.end());
-    Anchor last_anchor{icdep.getLastInstrAttr(), icdep.getLastEvent().str(),
-                       std::move(last_idx_v),
-                       static_cast<int32_t>(icdep.getLastDelay())};
+    Anchor last_anchor{last.getInstr(), last.getEvent().str(),
+                       std::move(last_idx_v), last.getDelay()};
 
     graph.insert_node(first_anchor, current_id, NodeKind::First);
     graph.insert_node(last_anchor, current_id, NodeKind::Last);
@@ -136,7 +136,7 @@ void populate_routes(RoutingDepGraph &graph, EpochOp epoch,
       }
 
       // check all constraints for possible matches
-      for (mlir::Operation &op : epoch.getBody().front()) {
+      for (mlir::Operation &op : cstr_block) {
         auto cstr = mlir::dyn_cast<CstrOp>(op);
         if (!cstr) {
           continue;
@@ -255,32 +255,40 @@ public:
 
   LogicalResult matchAndRewrite(EpochOp op,
                                 PatternRewriter &rewriter) const final {
-    auto build_and_dump = [&](llvm::StringRef kind, llvm::StringRef prefix) {
-      llvm::errs() << "\n========================================\n"
-                   << "=== " << kind << " graph for epoch " << op.getId()
-                   << " ===\n"
-                   << "========================================\n";
-      RoutingDepGraph graph;
-      populate_routes(graph, op, kind);
+    mlir::Block &epoch_block = op.getBody().front();
 
-      std::string dot_path = (prefix + "_" + op.getId().str() + ".dot").str();
-      std::string png_path = (prefix + "_" + op.getId().str() + ".png").str();
-      graph.transitive_reduce(); // this was implemented using claude maybe
-                                 // there is a more efficient algorithm
-      graph.dump_dot(dot_path);
+    for (CellOp cell : epoch_block.getOps<CellOp>()) {
+      std::string cell_label = op.getId().str() + "_r" +
+                               std::to_string(cell.getRow()) + "c" +
+                               std::to_string(cell.getCol());
 
-      // Best-effort PNG rendering via graphviz. Any failure is reported but
-      // does not abort the pass — the .dot file is always available.
-      std::string cmd = "dot -Tpng " + dot_path + " -o " + png_path;
-      int rc = std::system(cmd.c_str());
-      if (rc != 0) {
-        llvm::errs() << "graphviz rendering failed (rc=" << rc << "): " << cmd
-                     << "\n";
-      }
-    };
+      auto build_and_dump = [&](llvm::StringRef kind, llvm::StringRef prefix) {
+        llvm::errs() << "\n========================================\n"
+                     << "=== " << kind << " graph for cell " << cell_label
+                     << " ===\n"
+                     << "========================================\n";
+        RoutingDepGraph graph;
+        populate_routes(graph, cell.getBody().front(), epoch_block, kind);
+        graph.transitive_reduce();
 
-    build_and_dump("bulk", "routes");
-    build_and_dump("word", "swb");
+        std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
+        std::string png_path = (prefix + "_" + cell_label + ".png").str();
+        graph.dump_dot(dot_path);
+
+        // Best-effort PNG rendering via graphviz. Any failure is reported but
+        // does not abort the pass — the .dot file is always available.
+        std::string cmd = "dot -Tpng " + dot_path + " -o " + png_path;
+        int rc = std::system(cmd.c_str());
+        if (rc != 0) {
+          llvm::errs() << "graphviz rendering failed (rc=" << rc
+                       << "): " << cmd << "\n";
+        }
+      };
+
+      build_and_dump("bulk_send", "send");
+      build_and_dump("bulk_recv", "recv");
+      build_and_dump("word", "swb");
+    }
 
     return failure();
   }

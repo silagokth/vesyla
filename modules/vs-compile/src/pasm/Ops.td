@@ -101,6 +101,18 @@ def RawOp : Pasm_Op<"raw"> {
   }];
 }
 
+def CellOp : Pasm_Op<"cell", [SymbolTable, NoTerminator]> {
+  let summary = "Make cell";
+  let description = [{
+    Make cell located at a given (row, col) position in the architecture.
+  }];
+  let arguments = (ins I32Attr:$row, I32Attr:$col);
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    `<` attr-dict `>` $body
+  }];
+}
+
 def CstrOp : Pasm_Op<"cstr"> {
   let summary = "Delay constraint between two ROPs";
   let description = [{
@@ -133,19 +145,11 @@ def IcDepOp : Pasm_Op<"icdep"> {
   }];
 
   let arguments = (ins
-    ResourceAttr:$src,
-    ResourceArrayAttr:$dst,
+    AnyAttrOf<[ResourceAttr, I32Attr]>:$src,
+    AnyAttrOf<[ResourceArrayAttr, I32Attr]>:$dst,
     StrAttr:$kind,
-
-    FlatSymbolRefAttr:$first_instr,
-    DefaultValuedStrAttr<StrAttr, "">:$first_event,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$first_idx,
-    I32Attr:$first_delay,
-
-    FlatSymbolRefAttr:$last_instr,
-    DefaultValuedStrAttr<StrAttr, "">:$last_event,
-    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$last_idx,
-    I32Attr:$last_delay);
+    AnchorAttr:$first,
+    AnchorAttr:$last);
 
   let assemblyFormat = [{
     `<` attr-dict `>`

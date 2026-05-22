@@ -71,16 +71,49 @@ LogicalResult CstrOp::verify() {
 
 LogicalResult IcDepOp::verify() {
   StringRef kind = getKind();
-  if (kind != "word" && kind != "bulk")
-    return emitOpError("kind must be \"word\" or \"bulk\", got \"")
-           << kind << "\"";
-  auto dst = getDst();
-  if (dst.empty())
-    return emitOpError("dst must contain at least one receiver");
-  if (dst.size() > 1 && kind != "bulk")
-    return emitOpError(
-        "dst may contain more than one receiver only when kind = \"bulk\"");
-  return success();
+  Attribute src_attr = getSrc();
+  Attribute dst_attr = getDst();
+
+  if (kind == "word" || kind == "bulk") {
+    if (!mlir::isa<ResourceAttr>(src_attr)) {
+      return emitOpError("kind \"") << kind << "\" requires a resource src";
+    }
+    auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
+    if (!dst) {
+      return emitOpError("kind \"")
+             << kind << "\" requires a resource-array dst";
+    }
+    if (dst.empty()) {
+      return emitOpError("dst must contain at least one receiver");
+    }
+    if (dst.size() > 1 && kind != "bulk") {
+      return emitOpError(
+          "dst may contain more than one receiver only when kind = \"bulk\"");
+    }
+    return success();
+  }
+  if (kind == "bulk_send") {
+    if (!mlir::isa<ResourceAttr>(src_attr)) {
+      return emitOpError("bulk_send src must be a resource");
+    }
+    if (!mlir::isa<IntegerAttr>(dst_attr)) {
+      return emitOpError("bulk_send dst must be an integer direction code");
+    }
+    return success();
+  }
+  if (kind == "bulk_recv") {
+    if (!mlir::isa<IntegerAttr>(src_attr)) {
+      return emitOpError("bulk_recv src must be an integer direction code");
+    }
+    auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
+    if (!dst || dst.size() != 1) {
+      return emitOpError(
+          "bulk_recv dst must be a resource-array with exactly one entry");
+    }
+    return success();
+  }
+  return emitOpError("kind must be one of word|bulk|bulk_send|bulk_recv, got \"")
+         << kind << "\"";
 }
 
 // void MakeInstrOp::build(OpBuilder &builder, OperationState &state, StringRef

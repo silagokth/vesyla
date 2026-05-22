@@ -11,6 +11,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "pasm/Dialect.hpp"
+#include "pasm/ExtractCellsPass.hpp"
 #include "pasm/InterconnectPass.hpp"
 #include "pasm/Passes.hpp"
 
@@ -57,6 +58,14 @@ int run_mlir_mode(const std::string &mlir_file) {
   if (!module_uses_only_pasm_dialect(*module)) {
     return -1;
   }
+
+  mlir::PassManager extract_pm(&context);
+  extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
+  if (mlir::failed(extract_pm.run(*module))) {
+    LOG_FATAL << "Error: ExtractCellsPass failed.";
+    return -1;
+  }
+  module->print(llvm::errs());
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());

@@ -129,3 +129,87 @@ void DelayAttr::print(mlir::AsmPrinter &p) const {
   }
   p << "]>";
 }
+
+mlir::Attribute AnchorAttr::parse(mlir::AsmParser &p, mlir::Type) {
+  if (p.parseLess()) {
+    return {};
+  }
+
+  mlir::FlatSymbolRefAttr instr;
+  if (p.parseAttribute(instr)) {
+    return {};
+  }
+
+  std::string event;
+  llvm::SmallVector<int32_t> idx;
+  int32_t delay = 0;
+
+  // Optional trailing parts, each preceded by ','.
+  // Forms:
+  //   , "event", [idx0, idx1, ...]
+  //   , delay
+  //   , "event", [idx0, ...], delay
+  if (mlir::succeeded(p.parseOptionalComma())) {
+    std::string ev;
+    if (mlir::succeeded(p.parseOptionalString(&ev))) {
+      event = ev;
+      if (p.parseComma() || p.parseLSquare()) {
+        return {};
+      }
+      if (mlir::failed(p.parseOptionalRSquare())) {
+        int32_t v;
+        if (p.parseInteger(v)) {
+          return {};
+        }
+        idx.push_back(v);
+        while (mlir::succeeded(p.parseOptionalComma())) {
+          if (p.parseInteger(v)) {
+            return {};
+          }
+          idx.push_back(v);
+        }
+        if (p.parseRSquare()) {
+          return {};
+        }
+      }
+      if (mlir::succeeded(p.parseOptionalComma())) {
+        if (p.parseInteger(delay)) {
+          return {};
+        }
+      }
+    } else {
+      if (p.parseInteger(delay)) {
+        return {};
+      }
+    }
+  }
+
+  if (p.parseGreater()) {
+    return {};
+  }
+  return AnchorAttr::get(p.getContext(), instr, event, idx, delay);
+}
+
+void AnchorAttr::print(mlir::AsmPrinter &p) const {
+  p << "<";
+  p.printAttribute(getInstr());
+
+  bool has_event = !getEvent().empty();
+  bool has_delay = getDelay() != 0;
+
+  if (has_event) {
+    p << ", \"" << getEvent() << "\", [";
+    auto idx = getIdx();
+    for (std::size_t i = 0; i < idx.size(); ++i) {
+      if (i > 0) {
+        p << ", ";
+      }
+      p << idx[i];
+    }
+    p << "]";
+  }
+  if (has_delay) {
+    p << ", " << getDelay();
+  }
+  p << ">";
+}

@@ -45,6 +45,22 @@ def AnchorRangeAttr : Pasm_Attr<"AnchorRange", "anchor_range"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+def AnchorAttr : Pasm_Attr<"Anchor", "anchor"> {
+  let summary = "Single anchor (instr + optional event/indices + delay) for an icdep";
+  let description = [{
+    Bundles an icdep anchor's instruction symbol, optional event name, optional
+    multi-dimensional indices, and delay. Printed as
+    `#pasm.anchor<@instr[, "event", [idx0, idx1, ...]][, delay]>`.
+    Empty event and zero delay are omitted on print.
+  }];
+  let parameters = (ins
+    "::mlir::FlatSymbolRefAttr":$instr,
+    StringRefParameter<>:$event,
+    ArrayRefParameter<"int32_t">:$idx,
+    "int32_t":$delay);
+  let hasCustomAssemblyFormat = 1;
+}
+
 def DelayAttr : Pasm_Attr<"Delay", "delay"> {
   let summary = "Optional [min, max] delay pair";
   let description = [{
