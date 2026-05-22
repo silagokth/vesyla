@@ -148,6 +148,94 @@ def _balance(text, i, open_c="{", close_c="}"):
     return -1
 
 
+def parse_typed_attr(text, i):
+    nm = re.match(r"#[\w.]+", text[i:])
+    name = nm.group(0)
+    i += nm.end()
+    if i >= len(text) or text[i] != "<":
+        return {"_type": name}, i
+    j = _balance(text, i, "<", ">")
+    inner = text[i + 1:j - 1]
+    if name == "#pasm.anchor_range":
+        return _parse_anchor_range_inner(inner, name), j
+    if name == "#pasm.delay":
+        return _parse_delay_inner(inner, name), j
+    params = {}
+    for pm in re.finditer(r"(\w+)\s*=\s*(-?\d+)", inner):
+        params[pm.group(1)] = int(pm.group(2))
+    return {"_type": name, **params}, j
+
+
+def _parse_anchor_range_inner(inner, name):
+    out = {"_type": name, "instr": None, "event": "",
+           "idx_lo": [], "idx_hi": []}
+    k = 0
+    while k < len(inner) and inner[k] in " \t\n":
+        k += 1
+    mm = re.match(r"@([\w]+)", inner[k:])
+    if mm:
+        out["instr"] = mm.group(1)
+        k += mm.end()
+    while k < len(inner) and inner[k] in " \t\n,":
+        k += 1
+    if k < len(inner) and inner[k] == '"':
+        end = inner.find('"', k + 1)
+        if end != -1:
+            out["event"] = inner[k + 1:end]
+            k = end + 1
+    while k < len(inner):
+        while k < len(inner) and inner[k] in " \t\n,":
+            k += 1
+        if k >= len(inner) or inner[k] != "[":
+            break
+        end = inner.find("]", k)
+        if end == -1:
+            break
+        rng = inner[k + 1:end].strip()
+        if ":" in rng:
+            lo_s, hi_s = rng.split(":", 1)
+            lo, hi = int(lo_s.strip()), int(hi_s.strip())
+        else:
+            lo = int(rng)
+            hi = lo
+        out["idx_lo"].append(lo)
+        out["idx_hi"].append(hi)
+        k = end + 1
+    return out
+
+
+def _parse_delay_inner(inner, name):
+    out = {"_type": name, "min": None, "max": None}
+    mm = re.search(r"\[\s*(-?\d+)?\s*,\s*(-?\d+)?\s*\]", inner)
+    if mm:
+        if mm.group(1) is not None:
+            out["min"] = int(mm.group(1))
+        if mm.group(2) is not None:
+            out["max"] = int(mm.group(2))
+    return out
+
+
+def unwrap_cstr_attrs(c):
+    src = c.get("src")
+    if isinstance(src, dict):
+        c["src_event"] = src.get("event", "") or ""
+        c["src_idx_lo"] = src.get("idx_lo", []) or []
+        c["src_idx_hi"] = src.get("idx_hi", []) or []
+        c["src"] = src.get("instr")
+    dst = c.get("dst")
+    if isinstance(dst, dict):
+        c["dst_event"] = dst.get("event", "") or ""
+        c["dst_idx_lo"] = dst.get("idx_lo", []) or []
+        c["dst_idx_hi"] = dst.get("idx_hi", []) or []
+        c["dst"] = dst.get("instr")
+    delay = c.get("delay")
+    if isinstance(delay, dict):
+        if delay.get("min") is not None:
+            c["min_delay"] = delay["min"]
+        if delay.get("max") is not None:
+            c["max_delay"] = delay["max"]
+
+
 def parse_attr_dict(s):
     s = s.strip()
     assert s.startswith("{") and s.endswith("}"), s[:40]
@@ -178,6 +266,8 @@ def parse_attr_dict(s):
             j = _balance(body, i)
             out[key] = parse_attr_dict(body[i:j])
             i = j
+        elif body[i] == "#":
+            out[key], i = parse_typed_attr(body, i)
         elif body[i:i + 5] == "array":
             j = body.find(">", i)
             content = body[i:j + 1]
@@ -387,6 +477,7 @@ def build_graph(epoch_name, body):
     for attrs, _, c_start, _ in find_all_ops(body, "cstr"):
         if any(s <= c_start < e for s, e in rop_spans):
             continue
+        unwrap_cstr_attrs(attrs)
         cstrs.append(attrs)
 
     node_indices = {n: set() for n in nodes}
