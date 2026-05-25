@@ -82,11 +82,48 @@ RoutingDepGraph::RoutingDepGraph() {
 }
 
 void RoutingDepGraph::insert_node(const Anchor &anchor, int id, NodeKind kind,
-                                  llvm::StringRef dir) {
+                                  llvm::StringRef dir, ResourceAttr src,
+                                  mlir::ArrayAttr dst) {
   std::size_t idx = nodes_.size();
-  nodes_.push_back(Node{id, anchor, kind, dir.str()});
+  nodes_.push_back(Node{id, anchor, kind, dir.str(), src, dst});
   by_anchor_[anchor] = idx;
   by_key_[{id, kind}] = idx;
+}
+
+std::vector<Node> RoutingDepGraph::children_of(NodeKey k) const {
+  std::vector<Node> out;
+  auto it = outgoing_.find(k);
+  if (it == outgoing_.end()) {
+    return out;
+  }
+  for (std::size_t idx : it->second) {
+    NodeKey child = edges_[idx].to;
+    auto kit = by_key_.find(child);
+    if (kit != by_key_.end()) {
+      out.push_back(nodes_[kit->second]);
+    }
+  }
+  return out;
+}
+
+void RoutingDepGraph::remove_edge(NodeKey from, NodeKey to) {
+  std::size_t target = edges_.size();
+  for (std::size_t i = 0; i < edges_.size(); ++i) {
+    if (edges_[i].from == from && edges_[i].to == to) {
+      target = i;
+      break;
+    }
+  }
+  if (target == edges_.size()) {
+    return;
+  }
+  edges_.erase(edges_.begin() + target);
+  outgoing_.clear();
+  incoming_.clear();
+  for (std::size_t i = 0; i < edges_.size(); ++i) {
+    outgoing_[edges_[i].from].push_back(i);
+    incoming_[edges_[i].to].push_back(i);
+  }
 }
 
 void RoutingDepGraph::insert_edge(NodeKey from, NodeKey to) {

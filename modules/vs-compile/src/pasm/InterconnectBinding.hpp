@@ -1,0 +1,43 @@
+#ifndef __VESYLA_PASM_INTERCONNECT_BINDING_HPP__
+#define __VESYLA_PASM_INTERCONNECT_BINDING_HPP__
+
+#include "RoutingDepGraph.hpp"
+
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <array>
+#include <optional>
+
+namespace vesyla::pasm {
+
+struct Config {
+  ResourceAttr src;
+  mlir::ArrayAttr dst;
+  std::optional<int> sr;
+
+  bool operator==(const Config &o) const {
+    return src == o.src && dst == o.dst && sr == o.sr;
+  }
+};
+
+struct InterconnectBinding {
+  std::array<std::vector<Config>, 4> slots;
+  std::vector<int> sequence;
+};
+
+// 3x3 direction code: row-major in [-1..1] x [-1..1], NW=0..SE=8.
+// Sign-clamps any non-zero delta to the nearest neighbor direction.
+int direction_code(int dr, int dc);
+
+bool has_conflict(const Node &candidate, const std::vector<Config> &current,
+                  llvm::StringRef kind);
+
+InterconnectBinding bind_interconnect(RoutingDepGraph graph,
+                                      llvm::StringRef kind);
+
+void dump_binding(const InterconnectBinding &b, llvm::raw_ostream &os);
+
+} // namespace vesyla::pasm
+
+#endif // __VESYLA_PASM_INTERCONNECT_BINDING_HPP__

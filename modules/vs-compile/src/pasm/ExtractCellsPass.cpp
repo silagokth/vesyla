@@ -61,14 +61,6 @@ public:
       return cell;
     };
 
-    // 3x3 direction code: row-major in [-1..1] x [-1..1], NW=0..SE=8.
-    // Sign-clamps any non-zero delta to the nearest neighbor direction.
-    auto direction_code = [](int32_t dr, int32_t dc) -> int32_t {
-      int32_t sr = (dr > 0) - (dr < 0);
-      int32_t sc = (dc > 0) - (dc < 0);
-      return (sr + 1) * 3 + (sc + 1);
-    };
-
     for (RopOp rop : rops) {
       CellOp cell = find_or_create_cell(rop.getRow(), rop.getCol(),
                                         rop.getLoc());
@@ -105,24 +97,20 @@ public:
         }
         int32_t rr = dst_res.getRow();
         int32_t rc = dst_res.getCol();
-        mlir::IntegerAttr send_code =
-            rewriter.getI32IntegerAttr(direction_code(rr - sr, rc - sc));
-        mlir::IntegerAttr recv_code =
-            rewriter.getI32IntegerAttr(direction_code(sr - rr, sc - rc));
 
         AnchorAttr first = bulk.getFirst();
         AnchorAttr last = bulk.getLast();
+        mlir::ArrayAttr dst_one = rewriter.getArrayAttr({dst_res});
 
         CellOp send_cell = find_or_create_cell(sr, sc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&send_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), src_res, send_code, kind_bulk,
+        IcDepOp::create(rewriter, bulk.getLoc(), src_res, dst_one, kind_bulk,
                         first, last, dir_send);
 
         CellOp recv_cell = find_or_create_cell(rr, rc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&recv_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), recv_code,
-                        rewriter.getArrayAttr({dst_res}), kind_bulk, first,
-                        last, dir_recv);
+        IcDepOp::create(rewriter, bulk.getLoc(), src_res, dst_one, kind_bulk,
+                        first, last, dir_recv);
       }
       rewriter.eraseOp(bulk);
     }

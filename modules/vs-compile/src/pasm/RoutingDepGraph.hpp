@@ -1,6 +1,7 @@
 #ifndef __VESYLA_PASM_ROUTING_DEP_GRAPH_HPP__
 #define __VESYLA_PASM_ROUTING_DEP_GRAPH_HPP__
 
+#include "Attrs.hpp"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -32,6 +33,8 @@ struct Node {
   Anchor anchor;
   NodeKind kind;
   std::string dir;
+  ResourceAttr src;
+  mlir::ArrayAttr dst;
   NodeKey key() const { return {id, kind}; }
 };
 
@@ -47,13 +50,17 @@ public:
   RoutingDepGraph();
 
   void insert_node(const Anchor &anchor, int id, NodeKind kind,
-                   llvm::StringRef dir = {});
+                   llvm::StringRef dir = {}, ResourceAttr src = {},
+                   mlir::ArrayAttr dst = {});
   void insert_edge(NodeKey from, NodeKey to);
+  void remove_edge(NodeKey from, NodeKey to);
 
   const Node *find_by_anchor(const Anchor &anchor) const;
 
   bool has_incoming(const Node &n) const;
   bool has_outgoing(const Node &n) const;
+
+  std::vector<Node> children_of(NodeKey k) const;
 
   void transitive_reduce();
 

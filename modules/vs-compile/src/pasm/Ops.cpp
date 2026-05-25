@@ -96,44 +96,28 @@ LogicalResult IcDepOp::verify() {
     return success();
   }
   if (kind == "bulk") {
+    if (!mlir::isa<ResourceAttr>(src_attr)) {
+      return emitOpError("kind \"bulk\" requires a resource src");
+    }
+    auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
+    if (!dst) {
+      return emitOpError("kind \"bulk\" requires a resource-array dst");
+    }
+    if (dst.empty()) {
+      return emitOpError("dst must contain at least one receiver");
+    }
     if (!dir.has_value()) {
-      if (!mlir::isa<ResourceAttr>(src_attr)) {
-        return emitOpError("kind \"bulk\" requires a resource src");
-      }
-      auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
-      if (!dst) {
-        return emitOpError("kind \"bulk\" requires a resource-array dst");
-      }
-      if (dst.empty()) {
-        return emitOpError("dst must contain at least one receiver");
-      }
       return success();
     }
-    if (*dir == "send") {
-      if (!mlir::isa<ResourceAttr>(src_attr)) {
-        return emitOpError("bulk dir \"send\" src must be a resource");
-      }
-      if (!mlir::isa<IntegerAttr>(dst_attr)) {
-        return emitOpError(
-            "bulk dir \"send\" dst must be an integer direction code");
-      }
-      return success();
+    if (*dir != "send" && *dir != "recv") {
+      return emitOpError("bulk dir must be one of send|recv, got \"")
+             << *dir << "\"";
     }
-    if (*dir == "recv") {
-      if (!mlir::isa<IntegerAttr>(src_attr)) {
-        return emitOpError(
-            "bulk dir \"recv\" src must be an integer direction code");
-      }
-      auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
-      if (!dst || dst.size() != 1) {
-        return emitOpError(
-            "bulk dir \"recv\" dst must be a resource-array with exactly one "
-            "entry");
-      }
-      return success();
+    if (dst.size() != 1) {
+      return emitOpError("bulk dir \"") << *dir
+             << "\" dst must contain exactly one receiver";
     }
-    return emitOpError("bulk dir must be one of send|recv, got \"")
-           << *dir << "\"";
+    return success();
   }
   return emitOpError("kind must be one of word|bulk, got \"") << kind << "\"";
 }

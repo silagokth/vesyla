@@ -145,8 +145,8 @@ def IcDepOp : Pasm_Op<"icdep"> {
   }];
 
   let arguments = (ins
-    AnyAttrOf<[ResourceAttr, I32Attr]>:$src,
-    AnyAttrOf<[ResourceArrayAttr, I32Attr]>:$dst,
+    ResourceAttr:$src,
+    ResourceArrayAttr:$dst,
     StrAttr:$kind,
     AnchorAttr:$first,
     AnchorAttr:$last,

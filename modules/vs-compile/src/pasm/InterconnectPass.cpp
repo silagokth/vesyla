@@ -7,6 +7,7 @@
 #include <set>
 #include <tuple>
 
+#include "InterconnectBinding.hpp"
 #include "InterconnectPass.hpp"
 #include "RoutingDepGraph.hpp"
 
@@ -104,8 +105,10 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
                        std::move(last_idx_v), last.getDelay()};
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
-    graph.insert_node(first_anchor, current_id, NodeKind::First, dir);
-    graph.insert_node(last_anchor, current_id, NodeKind::Last, dir);
+    graph.insert_node(first_anchor, current_id, NodeKind::First, dir,
+                      icdep.getSrc(), icdep.getDst());
+    graph.insert_node(last_anchor, current_id, NodeKind::Last, dir,
+                      icdep.getSrc(), icdep.getDst());
     ++current_id;
   }
 
@@ -271,6 +274,10 @@ public:
         RoutingDepGraph graph;
         populate_routes(graph, cell.getBody().front(), epoch_block, kind);
         graph.transitive_reduce();
+
+        InterconnectBinding binding = bind_interconnect(graph, kind);
+        llvm::errs() << "binding (" << kind << "):\n";
+        dump_binding(binding, llvm::errs());
 
         std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
         std::string png_path = (prefix + "_" + cell_label + ".png").str();
