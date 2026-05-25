@@ -103,8 +103,9 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
     Anchor last_anchor{last.getInstr(), last.getEvent().str(),
                        std::move(last_idx_v), last.getDelay()};
 
-    graph.insert_node(first_anchor, current_id, NodeKind::First);
-    graph.insert_node(last_anchor, current_id, NodeKind::Last);
+    llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
+    graph.insert_node(first_anchor, current_id, NodeKind::First, dir);
+    graph.insert_node(last_anchor, current_id, NodeKind::Last, dir);
     ++current_id;
   }
 
@@ -280,13 +281,12 @@ public:
         std::string cmd = "dot -Tpng " + dot_path + " -o " + png_path;
         int rc = std::system(cmd.c_str());
         if (rc != 0) {
-          llvm::errs() << "graphviz rendering failed (rc=" << rc
-                       << "): " << cmd << "\n";
+          llvm::errs() << "graphviz rendering failed (rc=" << rc << "): " << cmd
+                       << "\n";
         }
       };
 
-      build_and_dump("bulk_send", "send");
-      build_and_dump("bulk_recv", "recv");
+      build_and_dump("bulk", "bulk");
       build_and_dump("word", "swb");
     }
 

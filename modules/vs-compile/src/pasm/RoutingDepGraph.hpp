@@ -31,6 +31,7 @@ struct Node {
   int id;
   Anchor anchor;
   NodeKind kind;
+  std::string dir;
   NodeKey key() const { return {id, kind}; }
 };
 
@@ -45,7 +46,8 @@ public:
   // between them.
   RoutingDepGraph();
 
-  void insert_node(const Anchor &anchor, int id, NodeKind kind);
+  void insert_node(const Anchor &anchor, int id, NodeKind kind,
+                   llvm::StringRef dir = {});
   void insert_edge(NodeKey from, NodeKey to);
 
   const Node *find_by_anchor(const Anchor &anchor) const;

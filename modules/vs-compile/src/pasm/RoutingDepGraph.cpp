@@ -81,9 +81,10 @@ RoutingDepGraph::RoutingDepGraph() {
   insert_edge({0, NodeKind::First}, {0, NodeKind::Last});
 }
 
-void RoutingDepGraph::insert_node(const Anchor &anchor, int id, NodeKind kind) {
+void RoutingDepGraph::insert_node(const Anchor &anchor, int id, NodeKind kind,
+                                  llvm::StringRef dir) {
   std::size_t idx = nodes_.size();
-  nodes_.push_back(Node{id, anchor, kind});
+  nodes_.push_back(Node{id, anchor, kind, dir.str()});
   by_anchor_[anchor] = idx;
   by_key_[{id, kind}] = idx;
 }
@@ -258,6 +259,9 @@ void RoutingDepGraph::dump_dot(const std::string &path) const {
       llvm::StringRef instr_name =
           n.anchor.instr_id ? n.anchor.instr_id.getValue() : llvm::StringRef();
       std::string header = std::to_string(n.id) + " " + kind_str(n.kind);
+      if (!n.dir.empty()) {
+        header += " (" + n.dir + ")";
+      }
       std::string body = "instr: " + escape_dot_label(instr_name) +
                          "\\nevent: " + escape_dot_label(n.anchor.event) +
                          "\\nindices: " + indices_to_str(n.anchor.indices) +

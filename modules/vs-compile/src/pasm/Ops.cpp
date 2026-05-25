@@ -73,47 +73,69 @@ LogicalResult IcDepOp::verify() {
   StringRef kind = getKind();
   Attribute src_attr = getSrc();
   Attribute dst_attr = getDst();
+  std::optional<StringRef> dir = getDir();
 
-  if (kind == "word" || kind == "bulk") {
+  if (kind == "word") {
+    if (dir.has_value()) {
+      return emitOpError("kind \"word\" must not carry a dir attribute");
+    }
     if (!mlir::isa<ResourceAttr>(src_attr)) {
-      return emitOpError("kind \"") << kind << "\" requires a resource src";
+      return emitOpError("kind \"word\" requires a resource src");
     }
     auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
     if (!dst) {
-      return emitOpError("kind \"")
-             << kind << "\" requires a resource-array dst";
+      return emitOpError("kind \"word\" requires a resource-array dst");
     }
     if (dst.empty()) {
       return emitOpError("dst must contain at least one receiver");
     }
-    if (dst.size() > 1 && kind != "bulk") {
+    if (dst.size() > 1) {
       return emitOpError(
           "dst may contain more than one receiver only when kind = \"bulk\"");
     }
     return success();
   }
-  if (kind == "bulk_send") {
-    if (!mlir::isa<ResourceAttr>(src_attr)) {
-      return emitOpError("bulk_send src must be a resource");
+  if (kind == "bulk") {
+    if (!dir.has_value()) {
+      if (!mlir::isa<ResourceAttr>(src_attr)) {
+        return emitOpError("kind \"bulk\" requires a resource src");
+      }
+      auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
+      if (!dst) {
+        return emitOpError("kind \"bulk\" requires a resource-array dst");
+      }
+      if (dst.empty()) {
+        return emitOpError("dst must contain at least one receiver");
+      }
+      return success();
     }
-    if (!mlir::isa<IntegerAttr>(dst_attr)) {
-      return emitOpError("bulk_send dst must be an integer direction code");
+    if (*dir == "send") {
+      if (!mlir::isa<ResourceAttr>(src_attr)) {
+        return emitOpError("bulk dir \"send\" src must be a resource");
+      }
+      if (!mlir::isa<IntegerAttr>(dst_attr)) {
+        return emitOpError(
+            "bulk dir \"send\" dst must be an integer direction code");
+      }
+      return success();
     }
-    return success();
+    if (*dir == "recv") {
+      if (!mlir::isa<IntegerAttr>(src_attr)) {
+        return emitOpError(
+            "bulk dir \"recv\" src must be an integer direction code");
+      }
+      auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
+      if (!dst || dst.size() != 1) {
+        return emitOpError(
+            "bulk dir \"recv\" dst must be a resource-array with exactly one "
+            "entry");
+      }
+      return success();
+    }
+    return emitOpError("bulk dir must be one of send|recv, got \"")
+           << *dir << "\"";
   }
-  if (kind == "bulk_recv") {
-    if (!mlir::isa<IntegerAttr>(src_attr)) {
-      return emitOpError("bulk_recv src must be an integer direction code");
-    }
-    auto dst = mlir::dyn_cast<ArrayAttr>(dst_attr);
-    if (!dst || dst.size() != 1) {
-      return emitOpError(
-          "bulk_recv dst must be a resource-array with exactly one entry");
-    }
-    return success();
-  }
-  return emitOpError("kind must be one of word|bulk|bulk_send|bulk_recv, got \"")
-         << kind << "\"";
+  return emitOpError("kind must be one of word|bulk, got \"") << kind << "\"";
 }
 
 // void MakeInstrOp::build(OpBuilder &builder, OperationState &state, StringRef

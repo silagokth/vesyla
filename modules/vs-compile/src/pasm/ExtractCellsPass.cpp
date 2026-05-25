@@ -87,8 +87,9 @@ public:
       icdep->moveBefore(&cell_block, cell_block.end());
     }
 
-    mlir::StringAttr kind_send = rewriter.getStringAttr("bulk_send");
-    mlir::StringAttr kind_recv = rewriter.getStringAttr("bulk_recv");
+    mlir::StringAttr kind_bulk = rewriter.getStringAttr("bulk");
+    mlir::StringAttr dir_send = rewriter.getStringAttr("send");
+    mlir::StringAttr dir_recv = rewriter.getStringAttr("recv");
     for (IcDepOp bulk : bulk_icdeps) {
       auto src_res = mlir::dyn_cast<ResourceAttr>(bulk.getSrc());
       auto dst_arr = mlir::dyn_cast<mlir::ArrayAttr>(bulk.getDst());
@@ -104,9 +105,9 @@ public:
         }
         int32_t rr = dst_res.getRow();
         int32_t rc = dst_res.getCol();
-        mlir::IntegerAttr send_dir =
+        mlir::IntegerAttr send_code =
             rewriter.getI32IntegerAttr(direction_code(rr - sr, rc - sc));
-        mlir::IntegerAttr recv_dir =
+        mlir::IntegerAttr recv_code =
             rewriter.getI32IntegerAttr(direction_code(sr - rr, sc - rc));
 
         AnchorAttr first = bulk.getFirst();
@@ -114,14 +115,14 @@ public:
 
         CellOp send_cell = find_or_create_cell(sr, sc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&send_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), src_res, send_dir, kind_send,
-                        first, last);
+        IcDepOp::create(rewriter, bulk.getLoc(), src_res, send_code, kind_bulk,
+                        first, last, dir_send);
 
         CellOp recv_cell = find_or_create_cell(rr, rc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&recv_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), recv_dir,
-                        rewriter.getArrayAttr({dst_res}), kind_recv, first,
-                        last);
+        IcDepOp::create(rewriter, bulk.getLoc(), recv_code,
+                        rewriter.getArrayAttr({dst_res}), kind_bulk, first,
+                        last, dir_recv);
       }
       rewriter.eraseOp(bulk);
     }

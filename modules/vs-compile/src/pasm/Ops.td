@@ -149,7 +149,8 @@ def IcDepOp : Pasm_Op<"icdep"> {
     AnyAttrOf<[ResourceArrayAttr, I32Attr]>:$dst,
     StrAttr:$kind,
     AnchorAttr:$first,
-    AnchorAttr:$last);
+    AnchorAttr:$last,
+    OptionalAttr<StrAttr>:$dir);
 
   let assemblyFormat = [{
     `<` attr-dict `>`
