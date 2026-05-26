@@ -74,6 +74,12 @@ bool Anchor::operator<(const Anchor &o) const {
   return delay < o.delay;
 }
 
+bool Anchor::operator==(const Anchor &o) const {
+  llvm::StringRef a = instr_id ? instr_id.getValue() : llvm::StringRef();
+  llvm::StringRef b = o.instr_id ? o.instr_id.getValue() : llvm::StringRef();
+  return a == b && event == o.event && indices == o.indices && delay == o.delay;
+}
+
 RoutingDepGraph::RoutingDepGraph() {
   Anchor sentinel{};
   insert_node(sentinel, 0, NodeKind::First);
@@ -90,6 +96,27 @@ void RoutingDepGraph::insert_node(const Anchor &anchor, int id, NodeKind kind,
   by_key_[{id, kind}] = idx;
 }
 
+void RoutingDepGraph::rebuild_adjacency() {
+  outgoing_.clear();
+  incoming_.clear();
+  for (std::size_t i = 0; i < edges_.size(); ++i) {
+    outgoing_[edges_[i].from].push_back(i);
+    incoming_[edges_[i].to].push_back(i);
+    if (edges_[i].bidir) {
+      outgoing_[edges_[i].to].push_back(i);
+      incoming_[edges_[i].from].push_back(i);
+    }
+  }
+}
+
+NodeKey RoutingDepGraph::edge_child(std::size_t edge_idx, NodeKey parent) const {
+  const Edge &e = edges_[edge_idx];
+  if (e.bidir && e.to == parent) {
+    return e.from;
+  }
+  return e.to;
+}
+
 std::vector<Node> RoutingDepGraph::children_of(NodeKey k) const {
   std::vector<Node> out;
   auto it = outgoing_.find(k);
@@ -97,7 +124,7 @@ std::vector<Node> RoutingDepGraph::children_of(NodeKey k) const {
     return out;
   }
   for (std::size_t idx : it->second) {
-    NodeKey child = edges_[idx].to;
+    NodeKey child = edge_child(idx, k);
     auto kit = by_key_.find(child);
     if (kit != by_key_.end()) {
       out.push_back(nodes_[kit->second]);
@@ -113,32 +140,44 @@ void RoutingDepGraph::remove_edge(NodeKey from, NodeKey to) {
       target = i;
       break;
     }
+    if (edges_[i].bidir && edges_[i].from == to && edges_[i].to == from) {
+      target = i;
+      break;
+    }
   }
   if (target == edges_.size()) {
     return;
   }
   edges_.erase(edges_.begin() + target);
-  outgoing_.clear();
-  incoming_.clear();
-  for (std::size_t i = 0; i < edges_.size(); ++i) {
-    outgoing_[edges_[i].from].push_back(i);
-    incoming_[edges_[i].to].push_back(i);
-  }
+  rebuild_adjacency();
 }
 
 void RoutingDepGraph::insert_edge(NodeKey from, NodeKey to) {
-  // Skip if a direct edge from->to already exists.
+  // Skip if from->to already exists (direct or via bidir).
   auto it = outgoing_.find(from);
   if (it != outgoing_.end()) {
     for (std::size_t i : it->second) {
-      if (edges_[i].to == to) {
+      if (edge_child(i, from) == to) {
+        return;
+      }
+    }
+  }
+
+  // If reverse edge to->from exists, upgrade it to bidir.
+  auto rev_it = outgoing_.find(to);
+  if (rev_it != outgoing_.end()) {
+    for (std::size_t i : rev_it->second) {
+      if (!edges_[i].bidir && edges_[i].from == to && edges_[i].to == from) {
+        edges_[i].bidir = true;
+        outgoing_[from].push_back(i);
+        incoming_[to].push_back(i);
         return;
       }
     }
   }
 
   std::size_t idx = edges_.size();
-  edges_.push_back(Edge{from, to});
+  edges_.push_back(Edge{from, to, false});
   outgoing_[from].push_back(idx);
   incoming_[to].push_back(idx);
 }
@@ -146,8 +185,6 @@ void RoutingDepGraph::insert_edge(NodeKey from, NodeKey to) {
 void RoutingDepGraph::transitive_reduce() {
   std::vector<bool> removed(edges_.size(), false);
 
-  // True iff `target` is reachable from `src` using only edges that are still
-  // in the graph (not in `removed`) and skipping the edge at `skip_edge`.
   auto reachable = [&](NodeKey src, NodeKey target, std::size_t skip_edge) {
     std::set<NodeKey> seen;
     std::queue<NodeKey> q;
@@ -164,7 +201,7 @@ void RoutingDepGraph::transitive_reduce() {
         if (i == skip_edge || removed[i]) {
           continue;
         }
-        NodeKey v = edges_[i].to;
+        NodeKey v = edge_child(i, u);
         if (v == target) {
           return true;
         }
@@ -176,8 +213,6 @@ void RoutingDepGraph::transitive_reduce() {
     return false;
   };
 
-  // BFS from the start sentinel. For each visited node's outgoing edges,
-  // drop the edge if its destination is still reachable without it.
   NodeKey start{0, NodeKind::First};
   std::set<NodeKey> visited;
   std::queue<NodeKey> q;
@@ -192,8 +227,9 @@ void RoutingDepGraph::transitive_reduce() {
     }
     std::vector<std::size_t> outs(it->second.begin(), it->second.end());
     for (std::size_t edge_idx : outs) {
-      NodeKey v = edges_[edge_idx].to;
-      if (!removed[edge_idx] && reachable(u, v, edge_idx)) {
+      NodeKey v = edge_child(edge_idx, u);
+      if (!removed[edge_idx] && !edges_[edge_idx].bidir &&
+          reachable(u, v, edge_idx)) {
         removed[edge_idx] = true;
       }
       if (visited.insert(v).second) {
@@ -202,7 +238,6 @@ void RoutingDepGraph::transitive_reduce() {
     }
   }
 
-  // Rebuild edges_ and the adjacency maps.
   std::vector<Edge> new_edges;
   new_edges.reserve(edges_.size());
   for (std::size_t i = 0; i < edges_.size(); ++i) {
@@ -211,12 +246,7 @@ void RoutingDepGraph::transitive_reduce() {
     }
   }
   edges_ = std::move(new_edges);
-  outgoing_.clear();
-  incoming_.clear();
-  for (std::size_t i = 0; i < edges_.size(); ++i) {
-    outgoing_[edges_[i].from].push_back(i);
-    incoming_[edges_[i].to].push_back(i);
-  }
+  rebuild_adjacency();
 }
 
 const Node *RoutingDepGraph::find_by_anchor(const Anchor &anchor) const {
@@ -232,19 +262,8 @@ bool RoutingDepGraph::has_incoming(const Node &n) const {
   if (it == incoming_.end()) {
     return false;
   }
-  auto out_it = outgoing_.find(n.key());
   for (std::size_t idx : it->second) {
-    NodeKey from = edges_[idx].from;
-    bool has_reverse = false;
-    if (out_it != outgoing_.end()) {
-      for (std::size_t j : out_it->second) {
-        if (edges_[j].to == from) {
-          has_reverse = true;
-          break;
-        }
-      }
-    }
-    if (!has_reverse) {
+    if (!edges_[idx].bidir) {
       return true;
     }
   }
@@ -256,19 +275,21 @@ bool RoutingDepGraph::has_outgoing(const Node &n) const {
   if (it == outgoing_.end()) {
     return false;
   }
-  auto in_it = incoming_.find(n.key());
   for (std::size_t idx : it->second) {
-    NodeKey to = edges_[idx].to;
-    bool has_reverse = false;
-    if (in_it != incoming_.end()) {
-      for (std::size_t j : in_it->second) {
-        if (edges_[j].from == to) {
-          has_reverse = true;
-          break;
-        }
-      }
+    if (!edges_[idx].bidir) {
+      return true;
     }
-    if (!has_reverse) {
+  }
+  return false;
+}
+
+bool RoutingDepGraph::is_bidir(NodeKey a, NodeKey b) const {
+  auto it = outgoing_.find(a);
+  if (it == outgoing_.end()) {
+    return false;
+  }
+  for (std::size_t i : it->second) {
+    if (edges_[i].bidir && edge_child(i, a) == b) {
       return true;
     }
   }
@@ -299,34 +320,37 @@ void RoutingDepGraph::dump_dot(const std::string &path) const {
       if (!n.dir.empty()) {
         header += " (" + n.dir + ")";
       }
+      std::string route;
+      if (n.src) {
+        route = std::to_string(n.src.getSlot());
+        if (n.dst) {
+          for (mlir::Attribute attr : n.dst) {
+            auto dst_res = mlir::dyn_cast<ResourceAttr>(attr);
+            if (dst_res) {
+              route += " -\\> " + std::to_string(dst_res.getSlot());
+            }
+          }
+        }
+      }
       std::string body = "instr: " + escape_dot_label(instr_name) +
                          "\\nevent: " + escape_dot_label(n.anchor.event) +
                          "\\nindices: " + indices_to_str(n.anchor.indices) +
                          "\\ndelay: " + std::to_string(n.anchor.delay);
+      if (!route.empty()) {
+        body += "\\nslot: " + route;
+      }
       ofs << "  " << id << " [shape=record, label=\"{"
           << escape_dot_label(header) << "|" << body << "}\"];\n";
     }
   }
 
-  std::set<std::pair<NodeKey, NodeKey>> emitted;
-  std::set<std::pair<NodeKey, NodeKey>> all_edges;
   for (const Edge &e : edges_) {
-    all_edges.emplace(e.from, e.to);
-  }
-  for (const Edge &e : edges_) {
-    if (emitted.count({e.from, e.to})) {
-      continue;
-    }
     std::string a = node_dot_id(e.from.first, e.from.second);
     std::string b = node_dot_id(e.to.first, e.to.second);
-    bool bilateral = e.from != e.to && all_edges.count({e.to, e.from});
-    if (bilateral) {
+    if (e.bidir) {
       ofs << "  " << a << " -> " << b << " [dir=both];\n";
-      emitted.emplace(e.from, e.to);
-      emitted.emplace(e.to, e.from);
     } else {
       ofs << "  " << a << " -> " << b << ";\n";
-      emitted.emplace(e.from, e.to);
     }
   }
 

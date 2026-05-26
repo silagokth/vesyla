@@ -273,7 +273,7 @@ public:
                      << "========================================\n";
         RoutingDepGraph graph;
         populate_routes(graph, cell.getBody().front(), epoch_block, kind);
-        graph.transitive_reduce();
+        // graph.transitive_reduce();
 
         InterconnectBinding binding = bind_interconnect(graph, kind);
         llvm::errs() << "binding (" << kind << "):\n";

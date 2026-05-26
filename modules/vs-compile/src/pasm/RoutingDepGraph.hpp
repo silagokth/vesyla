@@ -24,6 +24,7 @@ struct Anchor {
   int32_t delay;
 
   bool operator<(const Anchor &o) const;
+  bool operator==(const Anchor &o) const;
 };
 
 using NodeKey = std::pair<int, NodeKind>;
@@ -41,6 +42,7 @@ struct Node {
 struct Edge {
   NodeKey from;
   NodeKey to;
+  bool bidir = false;
 };
 
 class RoutingDepGraph {
@@ -59,8 +61,11 @@ public:
 
   bool has_incoming(const Node &n) const;
   bool has_outgoing(const Node &n) const;
+  bool is_bidir(NodeKey a, NodeKey b) const;
 
   std::vector<Node> children_of(NodeKey k) const;
+
+  std::size_t edge_count() const { return edges_.size(); }
 
   void transitive_reduce();
 
@@ -70,6 +75,9 @@ public:
   std::vector<Node>::const_iterator end() const { return nodes_.end(); }
 
 private:
+  void rebuild_adjacency();
+  NodeKey edge_child(std::size_t edge_idx, NodeKey parent) const;
+
   std::vector<Node> nodes_;
   std::map<Anchor, std::size_t> by_anchor_;
   std::map<NodeKey, std::size_t> by_key_;

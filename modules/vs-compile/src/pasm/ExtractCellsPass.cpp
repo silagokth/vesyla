@@ -53,17 +53,16 @@ public:
       }
       // New CellOp at the end of the epoch body (before its terminator).
       rewriter.setInsertionPoint(epoch_block.getTerminator());
-      CellOp cell =
-          CellOp::create(rewriter, loc, rewriter.getI32IntegerAttr(r),
-                         rewriter.getI32IntegerAttr(c));
+      CellOp cell = CellOp::create(rewriter, loc, rewriter.getI32IntegerAttr(r),
+                                   rewriter.getI32IntegerAttr(c));
       rewriter.createBlock(&cell.getBody());
       cells[{r, c}] = cell;
       return cell;
     };
 
     for (RopOp rop : rops) {
-      CellOp cell = find_or_create_cell(rop.getRow(), rop.getCol(),
-                                        rop.getLoc());
+      CellOp cell =
+          find_or_create_cell(rop.getRow(), rop.getCol(), rop.getLoc());
       mlir::Block &cell_block = cell.getBody().front();
       rop->moveBefore(&cell_block, cell_block.end());
     }
@@ -73,8 +72,8 @@ public:
       if (!src) {
         continue;
       }
-      CellOp cell = find_or_create_cell(src.getRow(), src.getCol(),
-                                        icdep.getLoc());
+      CellOp cell =
+          find_or_create_cell(src.getRow(), src.getCol(), icdep.getLoc());
       mlir::Block &cell_block = cell.getBody().front();
       icdep->moveBefore(&cell_block, cell_block.end());
     }

@@ -11,18 +11,24 @@
 
 namespace vesyla::pasm {
 
-struct Config {
+struct InterconnectConfig {
   ResourceAttr src;
   mlir::ArrayAttr dst;
   std::optional<int> sr;
 
-  bool operator==(const Config &o) const {
+  bool operator==(const InterconnectConfig &o) const {
     return src == o.src && dst == o.dst && sr == o.sr;
   }
 };
 
+struct InterconnectConfigOption {
+  std::vector<InterconnectConfig> configs;
+  std::vector<Anchor> first_anchors;
+  std::vector<Anchor> last_anchors;
+};
+
 struct InterconnectBinding {
-  std::array<std::vector<Config>, 4> slots;
+  std::array<std::vector<InterconnectConfigOption>, 4> slots;
   std::vector<int> sequence;
 };
 
@@ -30,7 +36,7 @@ struct InterconnectBinding {
 // Sign-clamps any non-zero delta to the nearest neighbor direction.
 int direction_code(int dr, int dc);
 
-bool has_conflict(const Node &candidate, const std::vector<Config> &current,
+bool has_conflict(const Node &candidate, const std::vector<InterconnectConfig> &current,
                   llvm::StringRef kind);
 
 InterconnectBinding bind_interconnect(RoutingDepGraph graph,
