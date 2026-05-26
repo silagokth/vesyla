@@ -289,10 +289,15 @@ public:
         llvm::errs() << "binding (" << kind << "):\n";
         dump_binding(binding, llvm::errs());
 
+        RopOp rop = nullptr;
         if (kind == "word") {
-          emit_swb_instructions(binding, cell, rewriter);
+          rop = emit_swb_instructions(binding, cell, rewriter);
         } else {
-          emit_route_instructions(binding, cell, rewriter);
+          rop = emit_route_instructions(binding, cell, rewriter);
+        }
+        if (rop) {
+          emit_sequence_instructions(binding, rop, rewriter);
+          emit_interconnect_constraints(binding, rop, rewriter);
         }
 
         // Best-effort PNG rendering via graphviz. Any failure is reported but

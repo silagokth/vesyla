@@ -46,11 +46,17 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
 
 void dump_binding(const InterconnectBinding &b, llvm::raw_ostream &os);
 
-void emit_swb_instructions(const InterconnectBinding &binding,
-                           CellOp cell, mlir::OpBuilder &builder);
+RopOp emit_swb_instructions(const InterconnectBinding &binding,
+                            CellOp cell, mlir::OpBuilder &builder);
 
-void emit_route_instructions(const InterconnectBinding &binding,
-                             CellOp cell, mlir::OpBuilder &builder);
+RopOp emit_route_instructions(const InterconnectBinding &binding,
+                              CellOp cell, mlir::OpBuilder &builder);
+
+void emit_sequence_instructions(const InterconnectBinding &binding,
+                                RopOp rop, mlir::OpBuilder &builder);
+
+void emit_interconnect_constraints(const InterconnectBinding &binding,
+                                   RopOp rop, mlir::OpBuilder &builder);
 
 } // namespace vesyla::pasm
 

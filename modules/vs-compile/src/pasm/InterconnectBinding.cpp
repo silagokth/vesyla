@@ -350,8 +350,8 @@ static RopOp create_interconnect_rop(CellOp cell, int32_t port,
       builder, cell.getLoc(),
       builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
       builder.getI32IntegerAttr(cell.getRow()),
-      builder.getI32IntegerAttr(cell.getCol()),
-      builder.getI32IntegerAttr(0), builder.getI32IntegerAttr(port));
+      builder.getI32IntegerAttr(cell.getCol()), builder.getI32IntegerAttr(0),
+      builder.getI32IntegerAttr(port));
 
   mlir::Block *body = builder.createBlock(&rop.getBody());
   builder.setInsertionPointToEnd(body);
@@ -367,10 +367,10 @@ static bool binding_empty(const InterconnectBinding &binding) {
   return true;
 }
 
-void emit_swb_instructions(const InterconnectBinding &binding,
-                           CellOp cell, mlir::OpBuilder &builder) {
+RopOp emit_swb_instructions(const InterconnectBinding &binding, CellOp cell,
+                            mlir::OpBuilder &builder) {
   if (binding_empty(binding)) {
-    return;
+    return nullptr;
   }
   auto rop = create_interconnect_rop(cell, 0, builder);
   mlir::Location loc = rop.getLoc();
@@ -394,21 +394,20 @@ void emit_swb_instructions(const InterconnectBinding &binding,
 
         InstrOp::create(
             builder, loc,
-            builder.getStringAttr(
-                vesyla::util::Common::gen_random_string(8)),
-            builder.getStringAttr("swb"),
-            builder.getDictionaryAttr(attrs));
+            builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+            builder.getStringAttr("swb"), builder.getDictionaryAttr(attrs));
       }
     }
   }
 
   YieldOp::create(builder, loc);
+  return rop;
 }
 
-void emit_route_instructions(const InterconnectBinding &binding,
-                             CellOp cell, mlir::OpBuilder &builder) {
+RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
+                              mlir::OpBuilder &builder) {
   if (binding_empty(binding)) {
-    return;
+    return nullptr;
   }
   auto rop = create_interconnect_rop(cell, 1, builder);
   mlir::Location loc = rop.getLoc();
@@ -427,12 +426,12 @@ void emit_route_instructions(const InterconnectBinding &binding,
           attrs.push_back(builder.getNamedAttr(
               "source", builder.getI32IntegerAttr(cfg.src.getSlot())));
           attrs.push_back(builder.getNamedAttr(
-              "dest", builder.getI32IntegerAttr(
-                          direction_code(cfg.src, dst_res))));
+              "dest",
+              builder.getI32IntegerAttr(direction_code(cfg.src, dst_res))));
         } else {
           attrs.push_back(builder.getNamedAttr(
-              "source", builder.getI32IntegerAttr(
-                            direction_code(dst_res, cfg.src))));
+              "source",
+              builder.getI32IntegerAttr(direction_code(dst_res, cfg.src))));
           int32_t dest_mask = 0;
           for (mlir::Attribute attr : cfg.dst) {
             auto r = mlir::dyn_cast<ResourceAttr>(attr);
@@ -446,15 +445,119 @@ void emit_route_instructions(const InterconnectBinding &binding,
 
         InstrOp::create(
             builder, loc,
-            builder.getStringAttr(
-                vesyla::util::Common::gen_random_string(8)),
-            builder.getStringAttr("route"),
-            builder.getDictionaryAttr(attrs));
+            builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+            builder.getStringAttr("route"), builder.getDictionaryAttr(attrs));
       }
     }
   }
 
   YieldOp::create(builder, loc);
+  return rop;
+}
+
+void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
+                                mlir::OpBuilder &builder) {
+  builder.setInsertionPoint(rop.getBody().front().getTerminator());
+
+  if (binding.sequence.size() <= 1) {
+    return;
+  }
+
+  std::vector<int> deltas;
+  for (std::size_t i = 1; i < binding.sequence.size(); ++i) {
+    deltas.push_back(binding.sequence[i] - binding.sequence[i - 1]);
+  }
+
+  llvm::errs() << "deltas: [";
+  for (std::size_t i = 0; i < deltas.size(); ++i) {
+    if (i) {
+      llvm::errs() << ", ";
+    }
+    llvm::errs() << deltas[i];
+  }
+  llvm::errs() << "]\n";
+
+  std::vector<std::pair<int, int>> runs;
+  int current = deltas[0];
+  int count = 1;
+  for (std::size_t i = 1; i < deltas.size(); ++i) {
+    if (deltas[i] == current) {
+      ++count;
+    } else {
+      runs.push_back({current, count});
+      current = deltas[i];
+      count = 1;
+    }
+  }
+  runs.push_back({current, count});
+
+  if (runs.size() != 1) {
+    llvm::errs() << "emit_sequence_instructions: multiple runs not implemented "
+                    "yet\n";
+    return;
+  }
+
+  mlir::Location loc = rop.getLoc();
+  int32_t port = rop.getPort();
+
+  llvm::SmallVector<mlir::NamedAttribute> evt_attrs;
+  evt_attrs.push_back(
+      builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
+  InstrOp::create(
+      builder, loc,
+      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder.getStringAttr("evt"), builder.getDictionaryAttr(evt_attrs));
+
+  std::string kind_str = (port == 0) ? "swb" : "route";
+  std::string delay_name = "t_" + kind_str + "_" +
+                           std::to_string(rop.getRow()) + "_" +
+                           std::to_string(rop.getCol());
+
+  llvm::SmallVector<mlir::NamedAttribute> rep_attrs;
+  rep_attrs.push_back(
+      builder.getNamedAttr("delay", builder.getStringAttr(delay_name)));
+  rep_attrs.push_back(
+      builder.getNamedAttr("iter",
+                          builder.getI32IntegerAttr(runs[0].second + 1)));
+  rep_attrs.push_back(
+      builder.getNamedAttr("step", builder.getI32IntegerAttr(runs[0].first)));
+  InstrOp::create(
+      builder, loc,
+      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder.getStringAttr("rep"), builder.getDictionaryAttr(rep_attrs));
+}
+
+void emit_interconnect_constraints(const InterconnectBinding &binding,
+                                   RopOp rop, mlir::OpBuilder &builder) {
+  builder.setInsertionPointAfter(rop);
+  mlir::Location loc = rop.getLoc();
+  mlir::MLIRContext *ctx = builder.getContext();
+  auto rop_ref = mlir::FlatSymbolRefAttr::get(ctx, rop.getSymName());
+  auto delay = DelayAttr::get(ctx, 1, std::nullopt);
+  bool has_sequence = binding.sequence.size() >= 2;
+
+  for (std::size_t i = 0; i < binding.slots.size(); ++i) {
+    for (const InterconnectConfigOption &opt : binding.slots[i]) {
+      for (const Anchor &a : opt.first_anchors) {
+        std::vector<uint32_t> src_indices;
+        std::string src_event;
+        if (has_sequence) {
+          src_event = "e0";
+          for (std::size_t j = 0; j < binding.sequence.size(); ++j) {
+            if (static_cast<std::size_t>(binding.sequence[j]) == i) {
+              src_indices.push_back(static_cast<uint32_t>(j));
+            }
+          }
+        }
+        auto src_ar = AnchorRangeAttr::get(ctx, rop_ref, src_event,
+                                           src_indices, src_indices);
+        auto dst_ar = AnchorRangeAttr::get(ctx, a.instr_id, a.event,
+                                           a.indices, a.indices);
+        CstrOp::create(builder, loc, src_ar, dst_ar, delay,
+                       builder.getBoolAttr(false));
+      }
+    }
+  }
 }
 
 } // namespace vesyla::pasm
