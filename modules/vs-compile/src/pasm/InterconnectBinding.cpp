@@ -1,10 +1,14 @@
 #include "InterconnectBinding.hpp"
 
+#include "util/Common.hpp"
+
 #include <cassert>
 
 namespace vesyla::pasm {
 
-int direction_code(int dr, int dc) {
+int direction_code(ResourceAttr from, ResourceAttr to) {
+  int dr = to.getRow() - from.getRow();
+  int dc = to.getCol() - from.getCol();
   int sr = (dr > 0) - (dr < 0);
   int sc = (dc > 0) - (dc < 0);
   return (sr + 1) * 3 + (sc + 1);
@@ -336,6 +340,121 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
   }
 
   return binding;
+}
+
+static RopOp create_interconnect_rop(CellOp cell, int32_t port,
+                                     mlir::OpBuilder &builder) {
+  builder.setInsertionPointToEnd(&cell.getBody().front());
+
+  auto rop = RopOp::create(
+      builder, cell.getLoc(),
+      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder.getI32IntegerAttr(cell.getRow()),
+      builder.getI32IntegerAttr(cell.getCol()),
+      builder.getI32IntegerAttr(0), builder.getI32IntegerAttr(port));
+
+  mlir::Block *body = builder.createBlock(&rop.getBody());
+  builder.setInsertionPointToEnd(body);
+  return rop;
+}
+
+static bool binding_empty(const InterconnectBinding &binding) {
+  for (const auto &slot : binding.slots) {
+    if (!slot.empty()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void emit_swb_instructions(const InterconnectBinding &binding,
+                           CellOp cell, mlir::OpBuilder &builder) {
+  if (binding_empty(binding)) {
+    return;
+  }
+  auto rop = create_interconnect_rop(cell, 0, builder);
+  mlir::Location loc = rop.getLoc();
+
+  for (std::size_t i = 0; i < binding.slots.size(); ++i) {
+    for (const InterconnectConfigOption &opt : binding.slots[i]) {
+      for (const InterconnectConfig &cfg : opt.configs) {
+        auto dst_res = mlir::dyn_cast<ResourceAttr>(cfg.dst[0]);
+        int32_t src_slot = cfg.src.getSlot();
+        int32_t dst_slot = dst_res.getSlot();
+
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+        attrs.push_back(builder.getNamedAttr(
+            "channel", builder.getI32IntegerAttr(dst_slot)));
+        attrs.push_back(builder.getNamedAttr(
+            "option", builder.getI32IntegerAttr(static_cast<int32_t>(i))));
+        attrs.push_back(builder.getNamedAttr(
+            "source", builder.getI32IntegerAttr(src_slot)));
+        attrs.push_back(builder.getNamedAttr(
+            "target", builder.getI32IntegerAttr(dst_slot)));
+
+        InstrOp::create(
+            builder, loc,
+            builder.getStringAttr(
+                vesyla::util::Common::gen_random_string(8)),
+            builder.getStringAttr("swb"),
+            builder.getDictionaryAttr(attrs));
+      }
+    }
+  }
+
+  YieldOp::create(builder, loc);
+}
+
+void emit_route_instructions(const InterconnectBinding &binding,
+                             CellOp cell, mlir::OpBuilder &builder) {
+  if (binding_empty(binding)) {
+    return;
+  }
+  auto rop = create_interconnect_rop(cell, 1, builder);
+  mlir::Location loc = rop.getLoc();
+
+  for (std::size_t i = 0; i < binding.slots.size(); ++i) {
+    for (const InterconnectConfigOption &opt : binding.slots[i]) {
+      for (const InterconnectConfig &cfg : opt.configs) {
+        auto dst_res = mlir::dyn_cast<ResourceAttr>(cfg.dst[0]);
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+        attrs.push_back(builder.getNamedAttr(
+            "option", builder.getI32IntegerAttr(static_cast<int32_t>(i))));
+        attrs.push_back(builder.getNamedAttr(
+            "sr", builder.getI32IntegerAttr(cfg.sr.value_or(0))));
+
+        if (cfg.sr.value_or(0) == 0) {
+          attrs.push_back(builder.getNamedAttr(
+              "source", builder.getI32IntegerAttr(cfg.src.getSlot())));
+          attrs.push_back(builder.getNamedAttr(
+              "dest", builder.getI32IntegerAttr(
+                          direction_code(cfg.src, dst_res))));
+        } else {
+          attrs.push_back(builder.getNamedAttr(
+              "source", builder.getI32IntegerAttr(
+                            direction_code(dst_res, cfg.src))));
+          int32_t dest_mask = 0;
+          for (mlir::Attribute attr : cfg.dst) {
+            auto r = mlir::dyn_cast<ResourceAttr>(attr);
+            if (r) {
+              dest_mask |= (1 << r.getSlot());
+            }
+          }
+          attrs.push_back(builder.getNamedAttr(
+              "dest", builder.getI32IntegerAttr(dest_mask)));
+        }
+
+        InstrOp::create(
+            builder, loc,
+            builder.getStringAttr(
+                vesyla::util::Common::gen_random_string(8)),
+            builder.getStringAttr("route"),
+            builder.getDictionaryAttr(attrs));
+      }
+    }
+  }
+
+  YieldOp::create(builder, loc);
 }
 
 } // namespace vesyla::pasm

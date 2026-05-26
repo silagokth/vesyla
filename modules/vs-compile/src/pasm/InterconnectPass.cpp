@@ -261,7 +261,12 @@ public:
                                 PatternRewriter &rewriter) const final {
     mlir::Block &epoch_block = op.getBody().front();
 
+    bool any_processed = false;
     for (CellOp cell : epoch_block.getOps<CellOp>()) {
+      if (cell->hasAttr("interconnect_done")) {
+        continue;
+      }
+      any_processed = true;
       std::string cell_label = op.getId().str() + "_r" +
                                std::to_string(cell.getRow()) + "c" +
                                std::to_string(cell.getCol());
@@ -273,15 +278,22 @@ public:
                      << "========================================\n";
         RoutingDepGraph graph;
         populate_routes(graph, cell.getBody().front(), epoch_block, kind);
-        // graph.transitive_reduce();
+
+        std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
+        std::string png_path = (prefix + "_" + cell_label + ".png").str();
+        RoutingDepGraph reduced = graph;
+        reduced.transitive_reduce();
+        reduced.dump_dot(dot_path);
 
         InterconnectBinding binding = bind_interconnect(graph, kind);
         llvm::errs() << "binding (" << kind << "):\n";
         dump_binding(binding, llvm::errs());
 
-        std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
-        std::string png_path = (prefix + "_" + cell_label + ".png").str();
-        graph.dump_dot(dot_path);
+        if (kind == "word") {
+          emit_swb_instructions(binding, cell, rewriter);
+        } else {
+          emit_route_instructions(binding, cell, rewriter);
+        }
 
         // Best-effort PNG rendering via graphviz. Any failure is reported but
         // does not abort the pass — the .dot file is always available.
@@ -295,9 +307,10 @@ public:
 
       build_and_dump("bulk", "bulk");
       build_and_dump("word", "swb");
+      cell->setAttr("interconnect_done", rewriter.getUnitAttr());
     }
 
-    return failure();
+    return any_processed ? success() : failure();
   }
 };
 
@@ -314,6 +327,7 @@ public:
     if (failed(applyPatternsGreedily(module, patternSet))) {
       signalPassFailure();
     }
+    module.dump();
   }
 };
 
