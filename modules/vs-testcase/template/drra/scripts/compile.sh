@@ -42,7 +42,7 @@ if [ ! -d "${workspace_path}/archive" ]; then
 fi
 
 # get all .pasm files as list
-pasm_files=$(ls ${input_dir}/*.pasm ${input_dir}/*.mlir 2>/dev/null)
+pasm_files=$(ls ${input_dir}/*.pasm ${input_dir}/*.mlir 2>/dev/null || true)
 
 # get the name of each file without extension, also remove the path
 ids=$(echo ${pasm_files} | tr ' ' '\n' | sed 's/\.\(pasm\|mlir\)//g' | sed 's/.*\///g' | sort -u)
