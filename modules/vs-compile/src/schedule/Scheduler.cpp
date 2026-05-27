@@ -80,8 +80,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   }
 
   std::string viz_script_grouped_no_slot0 =
-      vesyla::util::SysPath::prog_dir() +
-      "scripts/script_grouped_no_slot0.py";
+      vesyla::util::SysPath::prog_dir() + "scripts/script_grouped_no_slot0.py";
   if (std::filesystem::exists(viz_script_grouped_no_slot0)) {
     try {
       std::string cmd = "cd " + vis_dir + " && python3 " +
@@ -95,15 +94,16 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
       LOG_WARNING << "MLIR grouped (no slot0) visualization threw: "
                   << e.what();
     } catch (...) {
-      LOG_WARNING
-          << "MLIR grouped (no slot0) visualization threw an unknown exception.";
+      LOG_WARNING << "MLIR grouped (no slot0) visualization threw an unknown "
+                     "exception.";
     }
   } else {
     LOG_WARNING << "MLIR grouped (no slot0) visualization script not found: "
                 << viz_script_grouped_no_slot0;
   }
 
-  std::string viz_script = vesyla::util::SysPath::prog_dir() + "scripts/script.py";
+  std::string viz_script =
+      vesyla::util::SysPath::prog_dir() + "scripts/script.py";
   if (std::filesystem::exists(viz_script)) {
     std::string cmd =
         "cd " + vis_dir + " && python3 " + viz_script + " " + zero_mlir;

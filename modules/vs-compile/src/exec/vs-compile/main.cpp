@@ -12,6 +12,7 @@
 
 #include "pasm/Dialect.hpp"
 #include "pasm/ExtractCellsPass.hpp"
+#include "pasm/FlattenCellsPass.hpp"
 #include "pasm/InterconnectPass.hpp"
 #include "pasm/Passes.hpp"
 
@@ -36,7 +37,8 @@ bool module_uses_only_pasm_dialect(mlir::ModuleOp module) {
   return ok;
 }
 
-int run_mlir_mode(const std::string &mlir_file) {
+int run_mlir_mode(const std::string &mlir_file, const std::string &output_dir,
+                  bool allow_unsafe) {
   if (!std::filesystem::exists(mlir_file)) {
     LOG_FATAL << "Error: MLIR file does not exist: " << mlir_file;
     return -1;
@@ -73,6 +75,17 @@ int run_mlir_mode(const std::string &mlir_file) {
     LOG_FATAL << "Error: InterconnectPass failed.";
     return -1;
   }
+
+  mlir::PassManager flatten_pm(&context);
+  flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
+  if (mlir::failed(flatten_pm.run(*module))) {
+    LOG_FATAL << "Error: FlattenCellsPass failed.";
+    return -1;
+  }
+
+  mlir::ModuleOp mod = *module;
+  vesyla::schedule::Scheduler scheduler;
+  scheduler.run(mod, output_dir, allow_unsafe);
 
   return 0;
 }
@@ -132,16 +145,16 @@ int main(int argc, char **argv) {
   }
   vesyla::util::GlobalVar::puts("__OUTPUT_DIR__", output_dir);
 
+  vesyla::pasm::Config cfg;
+  cfg.set_arch_json(arch_file);
+  cfg.set_isa_json(isa_file);
+
   // MLIR-input mode: parse a pre-built pasm-dialect .mlir file, run only the
   // InterconnectPass on it, and exit.
   if (!mlir_file.empty()) {
     LOG_INFO << "Running mlir mode";
-    return run_mlir_mode(mlir_file);
+    return run_mlir_mode(mlir_file, output_dir, allow_unsafe);
   }
-
-  vesyla::pasm::Config cfg;
-  cfg.set_arch_json(arch_file);
-  cfg.set_isa_json(isa_file);
 
   if (!cpp_file.empty()) {
     LOG_FATAL << "Compilation from C++ model is not supported right now!";

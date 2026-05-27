@@ -61,6 +61,15 @@ def InterconnectPass: Pass<"interconnect-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def FlattenCellsPass: Pass<"flatten-cells-pass", "::mlir::ModuleOp"> {
+  let summary = "Flatten cell contents back into the epoch body.";
+  let description = [{
+    Walks every `pasm.epoch` op, iterates over all contained `pasm.cell`
+    ops, moves their body operations back into the epoch, and erases the
+    now-empty cells.
+  }];
+}
+
 def ExtractCellsPass: Pass<"extract-cells-pass", "::mlir::ModuleOp"> {
   let summary = "Extract cells from each epoch.";
   let description = [{

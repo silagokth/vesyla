@@ -312,6 +312,15 @@ public:
 
       build_and_dump("bulk", "bulk");
       build_and_dump("word", "swb");
+
+      llvm::SmallVector<IcDepOp> icdeps;
+      for (IcDepOp icdep : cell.getBody().front().getOps<IcDepOp>()) {
+        icdeps.push_back(icdep);
+      }
+      for (IcDepOp icdep : icdeps) {
+        rewriter.eraseOp(icdep);
+      }
+
       cell->setAttr("interconnect_done", rewriter.getUnitAttr());
     }
 

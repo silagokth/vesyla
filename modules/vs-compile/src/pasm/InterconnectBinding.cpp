@@ -346,9 +346,12 @@ static RopOp create_interconnect_rop(CellOp cell, int32_t port,
                                      mlir::OpBuilder &builder) {
   builder.setInsertionPointToEnd(&cell.getBody().front());
 
+  std::string prefix = (port == 0) ? "swb" : "route";
+  std::string sym_name = prefix + "_" + std::to_string(cell.getRow()) + "_" +
+                         std::to_string(cell.getCol());
+
   auto rop = RopOp::create(
-      builder, cell.getLoc(),
-      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder, cell.getLoc(), builder.getStringAttr(sym_name),
       builder.getI32IntegerAttr(cell.getRow()),
       builder.getI32IntegerAttr(cell.getCol()), builder.getI32IntegerAttr(0),
       builder.getI32IntegerAttr(port));
@@ -426,21 +429,21 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
           attrs.push_back(builder.getNamedAttr(
               "source", builder.getI32IntegerAttr(cfg.src.getSlot())));
           attrs.push_back(builder.getNamedAttr(
-              "dest",
-              builder.getI32IntegerAttr(direction_code(cfg.src, dst_res))));
+              "target",
+              builder.getI32IntegerAttr(1 << direction_code(cfg.src, dst_res))));
         } else {
           attrs.push_back(builder.getNamedAttr(
               "source",
               builder.getI32IntegerAttr(direction_code(dst_res, cfg.src))));
-          int32_t dest_mask = 0;
+          int32_t target_mask = 0;
           for (mlir::Attribute attr : cfg.dst) {
             auto r = mlir::dyn_cast<ResourceAttr>(attr);
             if (r) {
-              dest_mask |= (1 << r.getSlot());
+              target_mask |= (1 << r.getSlot());
             }
           }
           attrs.push_back(builder.getNamedAttr(
-              "dest", builder.getI32IntegerAttr(dest_mask)));
+              "target", builder.getI32IntegerAttr(target_mask)));
         }
 
         InstrOp::create(
@@ -536,6 +539,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   auto delay = DelayAttr::get(ctx, 1, std::nullopt);
   bool has_sequence = binding.sequence.size() >= 2;
 
+  // config -> first_use: rop sequence step must happen before first use
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
     for (const InterconnectConfigOption &opt : binding.slots[i]) {
       for (const Anchor &a : opt.first_anchors) {
@@ -553,6 +557,28 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
                                            src_indices, src_indices);
         auto dst_ar = AnchorRangeAttr::get(ctx, a.instr_id, a.event,
                                            a.indices, a.indices);
+        CstrOp::create(builder, loc, src_ar, dst_ar, delay,
+                       builder.getBoolAttr(false));
+      }
+    }
+  }
+
+  // last_use -> next config: previous config's last use must finish before
+  // the next reconfiguration step
+  if (has_sequence) {
+    for (std::size_t j = 1; j < binding.sequence.size(); ++j) {
+      int prev_slot = binding.sequence[j - 1];
+      int cur_slot = binding.sequence[j];
+      if (prev_slot == cur_slot) {
+        continue;
+      }
+      const InterconnectConfigOption &prev_opt = binding.slots[prev_slot][0];
+      for (const Anchor &a : prev_opt.last_anchors) {
+        auto src_ar = AnchorRangeAttr::get(ctx, a.instr_id, a.event,
+                                           a.indices, a.indices);
+        std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
+        auto dst_ar =
+            AnchorRangeAttr::get(ctx, rop_ref, "e0", dst_idx, dst_idx);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
                        builder.getBoolAttr(false));
       }
