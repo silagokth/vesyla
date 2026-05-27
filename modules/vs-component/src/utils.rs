@@ -10,6 +10,7 @@ use std::{
 
 use bs58::encode;
 use serde::Serialize;
+use walkdir::WalkDir;
 use which::which;
 
 pub fn get_library_path() -> Result<PathBuf> {
@@ -276,6 +277,27 @@ pub fn get_rtl_files_from_library(
     // Copy the component_path to a temporary directory in /tmp with random name
     let tmp_component_path = tmp_dir;
     copy_dir(&component_path, tmp_component_path)?;
+
+    // Create placeholder files for any Jinja/J2 templates so that bender >= 0.30
+    // does not fail when checking that the listed source files exist.
+    let template_extensions = [".jinja", ".j2"];
+    for entry in WalkDir::new(tmp_component_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        let file_name = path.to_string_lossy();
+        for ext in &template_extensions {
+            if let Some(base) = file_name.strip_suffix(ext) {
+                let placeholder = Path::new(base);
+                if !placeholder.exists() {
+                    fs::write(placeholder, "")?;
+                }
+                break;
+            }
+        }
+    }
 
     // Run the bender command to get the list of files
     let mut bender_cmd = std::process::Command::new("bender");
