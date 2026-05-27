@@ -112,10 +112,12 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
     mzn_file << "constraint op_start_vec[" +
                     std::to_string(op2idx[it->second.name]) +
                     "] == " + it->second.name + ";\n";
+    // +1 accounts for the act-issue controller cycle preceding background
+    // iteration; without it total_latency under-counts and halt fires mid-iter.
     mzn_file << "constraint op_end_vec[" +
                     std::to_string(op2idx[it->second.name]) +
                     "] == " + it->second.name + " + " +
-                    it->second.duration_expr + ";\n";
+                    it->second.duration_expr + " + 1;\n";
   }
 
   // add variables
