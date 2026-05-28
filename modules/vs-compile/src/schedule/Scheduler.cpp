@@ -14,21 +14,6 @@ void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
   ofs.close();
 }
 
-void Scheduler::run(std::string pasm_file, std::string output_dir,
-                    bool allow_unsafe = false) {
-  Parser parser;
-  mlir::MLIRContext context;
-  mlir::DialectRegistry registry;
-  registry.insert<vesyla::pasm::PasmDialect>();
-  context.appendDialectRegistry(registry);
-  context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
-  mlir::ModuleOp module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  parser.parse(pasm_file, &module);
-
-  run(module, output_dir, allow_unsafe);
-}
-
 void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
                     bool allow_unsafe = false) {
 

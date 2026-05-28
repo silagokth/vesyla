@@ -29,7 +29,6 @@ class Scheduler {
 
 public:
   void run(mlir::ModuleOp &module, std::string output_dir, bool allow_unsafe);
-  void run(std::string pasm_file, std::string output_dir, bool allow_unsafe);
 
 private:
   void save_mlir(mlir::ModuleOp &module, const std::string &filename);

@@ -1,7 +1,9 @@
 #include "plog/Log.h"
+#include "schedule/Parser.hpp"
 #include "schedule/Scheduler.hpp"
 #include <string>
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -18,54 +20,25 @@
 
 namespace {
 
-bool module_uses_only_pasm_dialect(mlir::ModuleOp module) {
-  llvm::StringRef pasm_ns = vesyla::pasm::PasmDialect::getDialectNamespace();
-  bool ok = true;
-  module.walk([&](mlir::Operation *op) {
-    if (op == module.getOperation()) {
-      return mlir::WalkResult::advance();
-    }
-    mlir::Dialect *dialect = op->getDialect();
-    if (!dialect || dialect->getNamespace() != pasm_ns) {
-      LOG_FATAL << "Error: op '" << op->getName().getStringRef().str()
-                << "' is not in the 'pasm' dialect.";
-      ok = false;
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  return ok;
-}
-
-int run_mlir_mode(const std::string &mlir_file, const std::string &output_dir,
-                  bool allow_unsafe) {
+mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
+                                                mlir::MLIRContext &context) {
   if (!std::filesystem::exists(mlir_file)) {
     LOG_FATAL << "Error: MLIR file does not exist: " << mlir_file;
-    return -1;
+    return nullptr;
   }
-
-  mlir::MLIRContext context;
-  context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
-  // Tolerate unknown dialect prefixes during parsing so that the membership
-  // check below can report them cleanly instead of MLIR aborting the process.
-  context.allowUnregisteredDialects(true);
 
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_file, &context);
   if (!module) {
     LOG_FATAL << "Error: Failed to parse MLIR file: " << mlir_file;
-    return -1;
-  }
-
-  if (!module_uses_only_pasm_dialect(*module)) {
-    return -1;
+    return nullptr;
   }
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
   if (mlir::failed(extract_pm.run(*module))) {
     LOG_FATAL << "Error: ExtractCellsPass failed.";
-    return -1;
+    return nullptr;
   }
   module->print(llvm::errs());
 
@@ -73,21 +46,33 @@ int run_mlir_mode(const std::string &mlir_file, const std::string &output_dir,
   pm.addPass(vesyla::pasm::createInterconnectPass());
   if (mlir::failed(pm.run(*module))) {
     LOG_FATAL << "Error: InterconnectPass failed.";
-    return -1;
+    return nullptr;
   }
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
   if (mlir::failed(flatten_pm.run(*module))) {
     LOG_FATAL << "Error: FlattenCellsPass failed.";
-    return -1;
+    return nullptr;
   }
 
-  mlir::ModuleOp mod = *module;
-  vesyla::schedule::Scheduler scheduler;
-  scheduler.run(mod, output_dir, allow_unsafe);
+  return module;
+}
 
-  return 0;
+mlir::OwningOpRef<mlir::ModuleOp> run_pasm_mode(const std::string &pasm_file,
+                                                mlir::MLIRContext &context) {
+  if (!std::filesystem::exists(pasm_file)) {
+    LOG_FATAL << "Error: PASM file does not exist: " << pasm_file;
+    return nullptr;
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module(
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
+  vesyla::schedule::Parser parser;
+  std::string pasm_file_copy = pasm_file;
+  mlir::ModuleOp module_ref = *module;
+  parser.parse(pasm_file_copy, &module_ref);
+  return module;
 }
 
 } // namespace
@@ -145,31 +130,39 @@ int main(int argc, char **argv) {
   }
   vesyla::util::GlobalVar::puts("__OUTPUT_DIR__", output_dir);
 
-  vesyla::pasm::Config cfg;
-  cfg.set_arch_json(arch_file);
-  cfg.set_isa_json(isa_file);
-
-  // MLIR-input mode: parse a pre-built pasm-dialect .mlir file, run only the
-  // InterconnectPass on it, and exit.
-  if (!mlir_file.empty()) {
-    LOG_INFO << "Running mlir mode";
-    return run_mlir_mode(mlir_file, output_dir, allow_unsafe);
-  }
-
   if (!cpp_file.empty()) {
     LOG_FATAL << "Compilation from C++ model is not supported right now!";
     return -1;
   }
 
-  if (!pasm_file.empty() && !std::filesystem::exists(pasm_file)) {
-    if (!std::filesystem::exists(pasm_file)) {
-      LOG_FATAL << "Error: PASM file does not exist: " << pasm_file;
-      return -1;
-    }
+  if (mlir_file.empty() && pasm_file.empty()) {
+    LOG_FATAL << "No input file provided. Pass --mlir FILE or --pasm FILE.";
+    return -1;
   }
 
+  mlir::MLIRContext context;
+  context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
+  context.getOrLoadDialect<mlir::affine::AffineDialect>();
+
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  if (!mlir_file.empty()) {
+    LOG_INFO << "Running mlir mode";
+    module = run_mlir_mode(mlir_file, context);
+  } else {
+    LOG_INFO << "Running pasm mode";
+    module = run_pasm_mode(pasm_file, context);
+  }
+  if (!module) {
+    return -1;
+  }
+
+  vesyla::pasm::Config cfg;
+  cfg.set_arch_json(arch_file);
+  cfg.set_isa_json(isa_file);
+
+  mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;
-  scheduler.run(pasm_file, output_dir, allow_unsafe);
+  scheduler.run(module_op, output_dir, allow_unsafe);
 
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {

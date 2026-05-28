@@ -62,7 +62,7 @@ def CondOp : Pasm_Op<"cond"> {
   }];
 }
 
-def RopOp : Pasm_Op<"rop", [Symbol]> {
+def RopOp : Pasm_Op<"rop"> {
   let summary = "Make resource operation";
   let description = [{
     Make resource operation.
