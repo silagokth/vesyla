@@ -313,7 +313,8 @@ private:
           rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
           rewriter.getI32IntegerAttr(op_json["col"].get<int>()),
           rewriter.getI32IntegerAttr(op_json["slot"].get<int>()),
-          rewriter.getI32IntegerAttr(op_json["port"].get<int>()));
+          rewriter.getI32IntegerAttr(op_json["port"].get<int>()),
+          /*map=*/mlir::AffineMapAttr());
 
       // get its internal block
       mlir::Region &ropBodyRegion = rop_op.getBody();

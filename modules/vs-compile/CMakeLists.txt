@@ -126,6 +126,39 @@ add_mlir_dialect_library(
   MLIRInferTypeOpInterface
   MLIRFuncDialect)
 
+# Tablegen + library wiring for a pass-only directory (no dialect, just
+# Passes.td next to the .cpp files).
+function(add_custom_mlir_pass_dir pass_path lib_name)
+  set(PASSES_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${pass_path})
+  set(PASSES_INCLUDE_DIR ../../../build/lib/src/${pass_path})
+  set(PASSES_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${pass_path})
+  file(MAKE_DIRECTORY ${PASSES_OUT_DIR})
+
+  set(LLVM_TARGET_DEFINITIONS ${PASSES_SRC_DIR}/Passes.td)
+  mlir_tablegen(${PASSES_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
+  add_public_tablegen_target(${lib_name}IncGen)
+  add_dependencies(mlir-headers ${lib_name}IncGen)
+endfunction()
+
+add_custom_mlir_pass_dir(conversion/affine_to_pasm VesylaAffineToPasm)
+file(GLOB SOURCE_AFFINE_TO_PASM "src/conversion/affine_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaAffineToPasm
+  ${SOURCE_AFFINE_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaAffineToPasmIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  MLIRAffineDialect
+  VesylaPasm)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -146,8 +179,8 @@ add_library(VesylaSchedule ${SOURCE_SCHEDULE} ${FLEX_PasmLexer_OUTPUTS}
 add_dependencies(VesylaSchedule VesylaPasmIncGen) # Ensure Pasm dialect is
                                                   # generated before schedule
 
-set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
-         ${conversion_libs})
+set(LIBS VesylaSchedule VesylaPasm VesylaAffineToPasm VesylaTm VesylaUtil
+         ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/script.py DESTINATION scripts)

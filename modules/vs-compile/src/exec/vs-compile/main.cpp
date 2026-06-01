@@ -12,6 +12,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "conversion/affine_to_pasm/AffineToInstrPass.hpp"
 #include "pasm/Dialect.hpp"
 #include "pasm/ExtractCellsPass.hpp"
 #include "pasm/FlattenCellsPass.hpp"
@@ -33,6 +34,15 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: Failed to parse MLIR file: " << mlir_file;
     return nullptr;
   }
+
+  mlir::PassManager affine_pm(&context);
+  affine_pm.addPass(
+      vesyla::conversion::affine_to_pasm::createAffineToInstrPass());
+  if (mlir::failed(affine_pm.run(*module))) {
+    LOG_FATAL << "Error: AffineToInstrPass failed.";
+    return nullptr;
+  }
+  module->print(llvm::errs());
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());

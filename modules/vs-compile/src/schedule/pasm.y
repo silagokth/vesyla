@@ -295,7 +295,8 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port));
+                builder.getIntegerAttr(builder.getI32Type(), port),
+                /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
             builder.setInsertionPointToEnd(&region.back());
@@ -358,7 +359,8 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port));
+                builder.getIntegerAttr(builder.getI32Type(), port),
+                /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
             builder.setInsertionPointToEnd(&region.back());

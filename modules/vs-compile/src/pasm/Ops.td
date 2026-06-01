@@ -65,15 +65,18 @@ def CondOp : Pasm_Op<"cond"> {
 def RopOp : Pasm_Op<"rop"> {
   let summary = "Make resource operation";
   let description = [{
-    Make resource operation.
+    Make resource operation. May optionally carry an affine map describing
+    per-iteration index math; the map is consumed and erased by the
+    affine-to-instr lowering pass.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,
                    I32Attr:$row, I32Attr:$col,
-                   I32Attr:$slot, I32Attr:$port);
+                   I32Attr:$slot, I32Attr:$port,
+                   OptionalAttr<AffineMapAttr>:$map);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
-    `<` attr-dict `>` $body 
+    `<` attr-dict `>` $body
   }];
 }
 

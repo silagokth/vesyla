@@ -354,7 +354,8 @@ static RopOp create_interconnect_rop(CellOp cell, int32_t port,
       builder, cell.getLoc(), builder.getStringAttr(sym_name),
       builder.getI32IntegerAttr(cell.getRow()),
       builder.getI32IntegerAttr(cell.getCol()), builder.getI32IntegerAttr(0),
-      builder.getI32IntegerAttr(port));
+      builder.getI32IntegerAttr(port),
+      /*map=*/mlir::AffineMapAttr());
 
   mlir::Block *body = builder.createBlock(&rop.getBody());
   builder.setInsertionPointToEnd(body);
