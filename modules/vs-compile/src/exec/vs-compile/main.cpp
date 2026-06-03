@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
 
   mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;
-  scheduler.run(module_op, output_dir, allow_unsafe);
+  scheduler.run(module_op, output_dir, allow_unsafe, keep_debug);
 
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {

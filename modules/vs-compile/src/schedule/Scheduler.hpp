@@ -28,7 +28,8 @@ namespace schedule {
 class Scheduler {
 
 public:
-  void run(mlir::ModuleOp &module, std::string output_dir, bool allow_unsafe);
+  void run(mlir::ModuleOp &module, std::string output_dir, bool allow_unsafe,
+           bool keep_debug_files = false);
 
 private:
   void save_mlir(mlir::ModuleOp &module, const std::string &filename);

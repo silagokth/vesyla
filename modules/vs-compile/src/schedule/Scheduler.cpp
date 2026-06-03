@@ -15,7 +15,7 @@ void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
 }
 
 void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
-                    bool allow_unsafe = false) {
+                    bool allow_unsafe = false, bool keep_debug_files) {
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
@@ -120,7 +120,8 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   std::filesystem::create_directories(mzn_dir);
   std::string temp_dir = mzn_dir + "/";
   pm.addPass(vesyla::pasm::createScheduleEpochPass(
-      {VESYLA_SUITE_PATH_COMPONENTS, temp_dir, allow_unsafe}));
+      {VESYLA_SUITE_PATH_COMPONENTS, temp_dir, allow_unsafe,
+       keep_debug_files}));
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: createScheduleEpochPass failed.\n";
     std::exit(EXIT_FAILURE);
