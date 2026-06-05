@@ -21,7 +21,7 @@ def ResourceAttr : Pasm_Attr<"Resource", "resource"> {
     "int32_t":$col,
     "int32_t":$slot,
     "int32_t":$port);
-  let assemblyFormat = "`<` struct(params) `>`";
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ResourceArrayAttr : TypedArrayAttrBase<ResourceAttr,

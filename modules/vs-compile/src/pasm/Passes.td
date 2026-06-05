@@ -52,6 +52,13 @@ def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def GenerateIcdepPass: Pass<"generate-icdep-pass", "::mlir::ModuleOp"> {
+  let summary = "Generate pasm.icdep ops.";
+  let description = [{
+    TODO: describe behavior once implemented.
+  }];
+}
+
 def InterconnectPass: Pass<"interconnect-pass", "::mlir::ModuleOp"> {
   let summary = "Lower pasm.icdep edges to pasm.rop and pasm.cstr ops.";
   let description = [{

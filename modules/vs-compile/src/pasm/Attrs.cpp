@@ -16,6 +16,61 @@ void PasmDialect::registerAttrs() {
       >();
 }
 
+mlir::Attribute ResourceAttr::parse(mlir::AsmParser &p, mlir::Type) {
+  if (p.parseLess()) {
+    return {};
+  }
+  int32_t row = 0, col = 0, slot = 0, port = 0;
+
+  auto assign_field = [&](llvm::StringRef k, int32_t v) -> mlir::LogicalResult {
+    if (k == "row") {
+      row = v;
+    } else if (k == "col") {
+      col = v;
+    } else if (k == "slot") {
+      slot = v;
+    } else if (k == "port") {
+      port = v;
+    } else {
+      return mlir::failure();
+    }
+    return mlir::success();
+  };
+
+  // Accept both the verbose "row = .., col = .., .." form and the short
+  // positional "<row, col, slot, port>" form.
+  llvm::StringRef key;
+  if (mlir::succeeded(p.parseOptionalKeyword(&key))) {
+    int32_t v;
+    if (p.parseEqual() || p.parseInteger(v) || mlir::failed(assign_field(key, v))) {
+      return {};
+    }
+    while (mlir::succeeded(p.parseOptionalComma())) {
+      llvm::StringRef k;
+      if (p.parseKeyword(&k) || p.parseEqual() || p.parseInteger(v) ||
+          mlir::failed(assign_field(k, v))) {
+        return {};
+      }
+    }
+  } else {
+    if (p.parseInteger(row) || p.parseComma() || p.parseInteger(col) ||
+        p.parseComma() || p.parseInteger(slot) || p.parseComma() ||
+        p.parseInteger(port)) {
+      return {};
+    }
+  }
+
+  if (p.parseGreater()) {
+    return {};
+  }
+  return ResourceAttr::get(p.getContext(), row, col, slot, port);
+}
+
+void ResourceAttr::print(mlir::AsmPrinter &p) const {
+  p << "<" << getRow() << ", " << getCol() << ", " << getSlot() << ", "
+    << getPort() << ">";
+}
+
 mlir::Attribute AnchorRangeAttr::parse(mlir::AsmParser &p, mlir::Type) {
   if (p.parseLess()) {
     return {};

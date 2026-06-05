@@ -4,6 +4,8 @@
 #include <string>
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -16,6 +18,7 @@
 #include "pasm/Dialect.hpp"
 #include "pasm/ExtractCellsPass.hpp"
 #include "pasm/FlattenCellsPass.hpp"
+#include "pasm/GenerateIcdepPass.hpp"
 #include "pasm/InterconnectPass.hpp"
 #include "pasm/Passes.hpp"
 
@@ -34,6 +37,14 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: Failed to parse MLIR file: " << mlir_file;
     return nullptr;
   }
+
+  mlir::PassManager generate_icdep_pm(&context);
+  generate_icdep_pm.addPass(vesyla::pasm::createGenerateIcdepPass());
+  if (mlir::failed(generate_icdep_pm.run(*module))) {
+    LOG_FATAL << "Error: GenerateIcdepPass failed.";
+    return nullptr;
+  }
+  module->print(llvm::errs());
 
   mlir::PassManager affine_pm(&context);
   affine_pm.addPass(
@@ -153,6 +164,8 @@ int main(int argc, char **argv) {
   mlir::MLIRContext context;
   context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
   context.getOrLoadDialect<mlir::affine::AffineDialect>();
+  context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+  context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
