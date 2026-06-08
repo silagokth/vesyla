@@ -12,6 +12,7 @@ use bs58::encode;
 use serde::Serialize;
 use walkdir::WalkDir;
 use which::which;
+use yaml_rust2::{Yaml, YamlEmitter, YamlLoader};
 
 pub fn get_library_path() -> Result<PathBuf> {
     let lib_path = match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -277,6 +278,48 @@ pub fn get_rtl_files_from_library(
     // Copy the component_path to a temporary directory in /tmp with random name
     let tmp_component_path = tmp_dir;
     copy_dir(&component_path, tmp_component_path)?;
+
+    // Strip the `dependencies` section from the copied Bender.yml before running
+    // bender. Dependencies (e.g. `../../common/agu_RTR`) use library-relative paths
+    // that cannot resolve from inside the flat temp dir, and bender >= 0.30 hard-errors
+    // (E32) on the missing paths instead of warning. We only need this component's own
+    // source list here; common dependencies are assembled separately (copy_common_files).
+    let tmp_bender_path = tmp_component_path.join("Bender.yml");
+    if tmp_bender_path.exists() {
+        let bender_str = fs::read_to_string(&tmp_bender_path)?;
+        let mut docs = YamlLoader::load_from_str(&bender_str).map_err(|e| {
+            Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Failed to parse Bender.yml for component \"{}\": {}",
+                    component_name, e
+                ),
+            )
+        })?;
+        if !docs.is_empty() {
+            let mut doc = docs.remove(0);
+            if let Yaml::Hash(ref mut map) = doc {
+                map.remove(&Yaml::String("dependencies".to_string()));
+            }
+            let mut out = String::new();
+            let mut emitter = YamlEmitter::new(&mut out);
+            emitter.dump(&doc).map_err(|e| {
+                Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Failed to emit Bender.yml for component \"{}\": {}",
+                        component_name, e
+                    ),
+                )
+            })?;
+            fs::write(&tmp_bender_path, out)?;
+        }
+    }
+    // Remove any stale Bender.lock that still references the stripped dependencies.
+    let tmp_lock_path = tmp_component_path.join("Bender.lock");
+    if tmp_lock_path.exists() {
+        fs::remove_file(&tmp_lock_path)?;
+    }
 
     // Create placeholder files for any Jinja/J2 templates so that bender >= 0.30
     // does not fail when checking that the listed source files exist.
