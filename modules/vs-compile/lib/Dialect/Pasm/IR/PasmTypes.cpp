@@ -1,0 +1,25 @@
+//===- StandaloneTypes.cpp - Standalone dialect types -----------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include "vesyla/Dialect/Pasm/IR/PasmTypes.hpp"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
+#include "llvm/ADT/TypeSwitch.h"
+
+using namespace vesyla::pasm;
+
+#define GET_TYPEDEF_CLASSES
+#include "vesyla/Dialect/Pasm/IR/PasmTypes.cpp.inc"
+
+void PasmDialect::registerTypes() {
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "vesyla/Dialect/Pasm/IR/PasmTypes.cpp.inc"
+      >();
+}
