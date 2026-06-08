@@ -29,7 +29,7 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh
           mkdir -p $HOME/.local/bin
-          mv bender $HOME/.local/bin/.
+          mv $HOME/.cargo/bin/bender $HOME/.local/bin/.
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check bender installation
