@@ -179,7 +179,7 @@ set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
 #==============================================================================
 # Executables
 #==============================================================================
-add_llvm_executable(vs-compile tools/vs-compile/main.cpp)
+add_llvm_executable(vs-compile src/main.cpp)
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
