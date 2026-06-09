@@ -117,7 +117,6 @@ impl Fabric {
 
 impl RTLComponent for Fabric {
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
-        let fingerprint = self.clone().get_fingerprint();
         let mut dependencies = LHashMap::new();
         for row in self.cells.iter() {
             for cell in row.iter() {
@@ -131,7 +130,11 @@ impl RTLComponent for Fabric {
             }
         }
 
-        self.generate_bender_default(output_folder, Some(fingerprint), Some(dependencies))
+        // Do not fingerprint the fabric package name: fabric is a singleton top
+        // module (no collision to avoid), and the testbench depends on it by the
+        // plain alias `fabric`. bender >= 0.32 drops dependencies whose alias does
+        // not match the target package name, so keep the name as `fabric`.
+        self.generate_bender_default(output_folder, None, Some(dependencies))
     }
 
     fn generate_hash(&mut self) -> String {

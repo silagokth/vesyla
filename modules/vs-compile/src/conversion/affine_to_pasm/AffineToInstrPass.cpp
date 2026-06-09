@@ -5,8 +5,8 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include "AffineToInstrPass.hpp"
-#include "pasm/Ops.hpp"
-#include "util/Common.hpp"
+#include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
+#include "vesyla/Support/Common.hpp"
 
 namespace vesyla::conversion::affine_to_pasm {
 #define GEN_PASS_DEF_AFFINETOINSTRPASS

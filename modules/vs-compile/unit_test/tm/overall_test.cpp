@@ -1,5 +1,5 @@
-#include "tm/Solver.hpp"
-#include "tm/TimingModel.hpp"
+#include "vesyla/Analysis/TimingModel/Solver.hpp"
+#include "vesyla/Analysis/TimingModel/TimingModel.hpp"
 #include <gtest/gtest.h>
 
 TEST(tm, overall_test_1) {

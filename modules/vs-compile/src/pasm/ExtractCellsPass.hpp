@@ -1,6 +1,0 @@
-#ifndef __VESYLA_PASM_EXTRACT_CELLS_PASS_HPP__
-#define __VESYLA_PASM_EXTRACT_CELLS_PASS_HPP__
-
-#include "Passes.hpp"
-
-#endif // __VESYLA_PASM_EXTRACT_CELLS_PASS_HPP__

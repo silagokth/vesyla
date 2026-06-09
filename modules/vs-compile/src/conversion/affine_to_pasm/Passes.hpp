@@ -2,8 +2,8 @@
 #define __VESYLA_CONVERSION_AFFINE_TO_PASM_PASSES_HPP__
 
 #include "mlir/Pass/Pass.h"
-#include "pasm/Dialect.hpp"
-#include "pasm/Ops.hpp"
+#include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
+#include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 #include <memory>
 
 namespace vesyla {
