@@ -1,0 +1,146 @@
+name: Synthesizability lint (Tier A)
+
+# Open-tool synthesizability check for the RTL emitted by THIS build of vesyla:
+# assemble a stdcell-only fabric and lint + elaborate it with Verible + slang on
+# a stock GitHub-hosted runner. No PDK, no self-hosted server — runs on every PR.
+# Cheap, broad complement to the gated Genus gate (ci-synth.yml). See
+# docs/SYNTH_LINT.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: vesyla version to fetch from pkg-artifacts (this run's build)
+        type: string
+        required: false
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      branch:
+        type: string
+        default: master
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Assemble + lint + elaborate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: 1   # run the vesyla AppImage without libfuse2
+    steps:
+      - name: Checkout vesyla (scripts + smoke arch)
+        uses: actions/checkout@v4
+
+      - name: Install Verible
+        run: |
+          set -e
+          url=$(curl -fsSL https://api.github.com/repos/chipsalliance/verible/releases/latest \
+                | jq -r '.assets[].browser_download_url' \
+                | grep -E 'linux-static-x86_64\.tar\.gz$' | head -1)
+          [ -n "$url" ] || { echo "no Verible linux asset found"; exit 1; }
+          echo "Verible: $url"
+          curl -fsSL "$url" -o verible.tar.gz
+          mkdir -p "$HOME/verible"
+          tar -xzf verible.tar.gz -C "$HOME/verible" --strip-components=1
+          echo "$HOME/verible/bin" >> "$GITHUB_PATH"
+
+      - name: Install slang (best-effort prebuilt)
+        continue-on-error: true
+        run: |
+          set -e
+          url=$(curl -fsSL https://api.github.com/repos/MikePopoloski/slang/releases/latest \
+                | jq -r '.assets[].browser_download_url' \
+                | grep -iE 'linux.*(x86_64|amd64).*(tar\.gz|zip)$' | head -1)
+          if [ -z "$url" ]; then
+            echo "No slang prebuilt linux asset published; skipping (verible remains the baseline)."
+            exit 0
+          fi
+          echo "slang: $url"
+          mkdir -p "$HOME/slang"
+          case "$url" in
+            *.zip) curl -fsSL "$url" -o slang.zip && unzip -q slang.zip -d "$HOME/slang" ;;
+            *)     curl -fsSL "$url" -o slang.tgz && tar -xzf slang.tgz -C "$HOME/slang" ;;
+          esac
+          bindir=$(dirname "$(find "$HOME/slang" -type f -name slang | head -1)")
+          [ -n "$bindir" ] && echo "$bindir" >> "$GITHUB_PATH" || echo "slang binary not located in archive"
+
+      - name: Install gh CLI
+        run: |
+          curl -sS https://webi.sh/gh | sh
+          source ~/.config/envman/PATH.env
+          gh --version
+
+      - name: Download DRRA components library
+        run: |
+          set -e
+          source ~/.config/envman/PATH.env
+          BRANCH="${{ inputs.branch }}"
+          REPO="silagokth/drra-components"
+          rm -f library.tar.gz
+          if [ -n "$BRANCH" ] && gh api "repos/$REPO/branches/$BRANCH" >/dev/null 2>&1; then
+            RUN_ID=$(gh run list --repo "$REPO" --branch "$BRANCH" \
+                       --workflow "PR workflow" --status success \
+                       --limit 1 --json databaseId -q '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              gh run download "$RUN_ID" --repo "$REPO" -n library -D .
+            fi
+          fi
+          if [ ! -f library.tar.gz ]; then
+            gh release download --repo "$REPO" --pattern "library.tar.gz"
+          fi
+          [ -f library.tar.gz ] || { echo "library.tar.gz not found"; exit 1; }
+        env:
+          GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
+
+      - name: Extract library
+        run: |
+          rm -rf library
+          tar -xzf library.tar.gz
+          rm library.tar.gz
+
+      - name: Get built vesyla artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pkg-artifacts
+          path: ${{ github.workspace }}/artifacts
+
+      - name: Install vesyla
+        run: |
+          set -e
+          file=("$GITHUB_WORKSPACE"/artifacts/vesyla-*.AppImage)
+          [ "${#file[@]}" -eq 1 ] || { echo "Expected one AppImage, got ${#file[@]}"; exit 1; }
+          cp "${file[0]}" vesyla
+          chmod a+x vesyla
+          mkdir -p "$HOME/.local/bin"
+          mv vesyla "$HOME/.local/bin/"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Assemble stdcell-only fabric
+        run: |
+          set -e
+          export VESYLA_SUITE_PATH_COMPONENTS="$(readlink -e library)"
+          vesyla --version
+          vesyla component assemble -i scripts/synth/arch_smoke_no_sram.json -o build
+          ls -R build/rtl/fabric
+
+      - name: Lint + elaborate fabric
+        run: |
+          fab="$(find build -type f -path '*/rtl/fabric/Bender.yml' -printf '%h\n' | head -1)"
+          [ -n "$fab" ] || { echo "no generated fabric found"; exit 1; }
+          rtl_root="$(dirname "$fab")"
+          TOP=fabric bash scripts/synth/lint_fabric.sh "$rtl_root" | tee lint.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Tier A synthesizability lint'
+            echo '```'
+            tail -n 40 lint.log 2>/dev/null || echo '(no lint output)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
