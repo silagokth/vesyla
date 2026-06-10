@@ -29,17 +29,27 @@ RTL_ROOT="${1:?usage: lint_fabric.sh <fabric_rtl_root>}"
 TOP="${TOP:-fabric}"
 STRICT="${STRICT:-0}"
 
-mapfile -t SV < <(find "$RTL_ROOT" -type f -name '*.sv' | sort)
+# Build the synthesizable file set. `vesyla component assemble` copies the whole
+# common/ library (incl. all three sram.{sim,gf22,tsmc28}.sv variants, which each
+# define `module sram`) and the testbenches, regardless of what the fabric
+# actually instantiates. For a no-SRAM fabric the sram macro is never wired in,
+# so exclude it (keeping it would feed slang three duplicate `sram` modules).
+# Also exclude testbenches and the AGU self-test files (sim-only, not synth).
+mapfile -t SV < <(find "$RTL_ROOT" -type f -name '*.sv' \
+  -not -path '*/common/sram/*' \
+  -not -path '*/test/*' \
+  -not -path '*/tb/*' | sort)
 if [[ ${#SV[@]} -eq 0 ]]; then
   echo "ERROR: no .sv files under $RTL_ROOT" >&2
   exit 2
 fi
-echo "==> ${#SV[@]} SystemVerilog files under $RTL_ROOT (top=$TOP)"
+echo "==> ${#SV[@]} SystemVerilog files (top=$TOP, sram/tb/test excluded)"
 
-# Stay stdcell-only: a real SRAM macro would need the confidential lib and is
-# out of scope for the open lint gate.
-if find "$RTL_ROOT" -path '*/common/sram/*' -name '*.sv' | grep -q .; then
-  echo "ERROR: fabric pulls in common/sram — Tier A expects a no-SRAM fabric." >&2
+# Stay stdcell-only: assert the fabric cone does not *instantiate* the sram
+# macro (an iosram fabric would, and that needs the confidential GF22 SRAM lib).
+if grep -lE '^[[:space:]]*sram[[:space:]]+(#|[A-Za-z_])' "${SV[@]}" >/dev/null 2>&1; then
+  echo "ERROR: fabric instantiates the sram macro — not stdcell-only." >&2
+  echo "       Tier A expects a no-SRAM (io) fabric." >&2
   exit 4
 fi
 

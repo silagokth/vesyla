@@ -1,24 +1,25 @@
 # Verible lint rules for the Tier A synthesizability gate.
-# Goal: surface substance, suppress pure-style noise on generated RTL.
-# Format: one `+rule` / `-rule` per line. See `verible-verilog-lint --help_rules`.
+# Goal: surface substance, suppress style noise inherent to generated RTL.
+# Format: one `+rule` / `-rule` per line. Validate names with
+#   verible-verilog-lint --help_rules=all
+# (an invalid name makes Verible discard the whole file and fall back to defaults).
 
-# --- silence high-noise / generated-code-unfriendly style rules ---
+# --- silence noise that generated/fingerprinted RTL always trips ---
 -line-length
 -no-trailing-spaces
 -posix-eof
 -explicit-parameter-storage-type
 -parameter-name-style
--module-filename
--package-filename-system
+-module-filename                       # module name carries a fingerprint, file does not
+-macro-name-style                      # `define names are fingerprinted (lowercase)
+-package-filename                      # package name is fingerprinted vs the file name
+-unpacked-dimensions-range-ordering    # generated [N] unpacked dims
 
-# --- keep substance: structural / lint rules worth enforcing ---
+# --- keep substance ---
 +case-missing-default
-+always-comb
-+always-comb-blocking
-+always-ff-non-blocking
 +enum-name-style
-+generate-label
-+module-begin-block
-+packed-dimensions-range-ordering
 +suspicious-semicolon
 +undersized-binary-literal
++always-comb
++always-ff-non-blocking
++forbid-line-continuations

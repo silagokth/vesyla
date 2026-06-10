@@ -49,25 +49,19 @@ jobs:
           tar -xzf verible.tar.gz -C "$HOME/verible" --strip-components=1
           echo "$HOME/verible/bin" >> "$GITHUB_PATH"
 
-      - name: Install slang (best-effort prebuilt)
-        continue-on-error: true
+      - name: Install slang
         run: |
           set -e
           url=$(curl -fsSL https://api.github.com/repos/MikePopoloski/slang/releases/latest \
                 | jq -r '.assets[].browser_download_url' \
-                | grep -iE 'linux.*(x86_64|amd64).*(tar\.gz|zip)$' | head -1)
-          if [ -z "$url" ]; then
-            echo "No slang prebuilt linux asset published; skipping (verible remains the baseline)."
-            exit 0
-          fi
+                | grep -iE 'linux-x86_64\.tar\.gz$' | head -1)
+          [ -n "$url" ] || { echo "no slang linux asset found"; exit 1; }
           echo "slang: $url"
-          mkdir -p "$HOME/slang"
-          case "$url" in
-            *.zip) curl -fsSL "$url" -o slang.zip && unzip -q slang.zip -d "$HOME/slang" ;;
-            *)     curl -fsSL "$url" -o slang.tgz && tar -xzf slang.tgz -C "$HOME/slang" ;;
-          esac
-          bindir=$(dirname "$(find "$HOME/slang" -type f -name slang | head -1)")
-          [ -n "$bindir" ] && echo "$bindir" >> "$GITHUB_PATH" || echo "slang binary not located in archive"
+          mkdir -p "$HOME/slang/bin"
+          curl -fsSL "$url" -o slang.tgz
+          tar -xzf slang.tgz -C "$HOME/slang/bin"   # tarball is a bare `slang` binary
+          chmod +x "$HOME/slang/bin/slang"
+          echo "$HOME/slang/bin" >> "$GITHUB_PATH"
 
       - name: Install gh CLI
         run: |
@@ -125,7 +119,7 @@ jobs:
           set -e
           export VESYLA_SUITE_PATH_COMPONENTS="$(readlink -e library)"
           vesyla --version
-          vesyla component assemble -i scripts/synth/arch_smoke_no_sram.json -o build
+          vesyla component assemble --arch-json scripts/synth/arch_smoke_no_sram.json --output build
           ls -R build/rtl/fabric
 
       - name: Lint + elaborate fabric
