@@ -31,6 +31,23 @@ instr_slot_bitwidth | {{isa.format.instr_slot_bitwidth}} | Instruction slot bitw
 {% for i in c.instructions %}
 
 #### {{i.name}} [opcode={{i.opcode}}]
+{% if i.variants %}
+The variant is selected by the top {{i.variant_opcode_bitwidth}} bit(s) of the instruction content (variant opcode).
+{% for v in i.variants %}
+
+##### {{v.name}} [variant_opcode={{v.opcode}}]
+
+Field | Position | Width | Default Value | Description
+------|----------|-------|---------------|-------------------------
+{% set start =useful_bitwidth-i.variant_opcode_bitwidth-1 %}
+{% for j in v.segments %}
+{% set end = start - j.bitwidth + 1 %}
+{{j.name}} | [{{start }}, {{end}}] | {{j.bitwidth}} | {% if j.default_val is defined %}{{j.default_val}}{% else %}0{% endif %} | {{j.comment}} {% if j.verbo_map %}{% for k in j.verbo_map %} [{{k.key}}]:{{k.val}};{% endfor %}{% endif %}
+{% set start = end - 1 %}
+
+{% endfor %}
+{% endfor %}
+{% else %}
 
 Field | Position | Width | Default Value | Description
 ------|----------|-------|---------------|-------------------------
@@ -41,6 +58,7 @@ Field | Position | Width | Default Value | Description
 {% set start = end - 1 %}
 
 {% endfor %}
+{% endif %}
 {% endfor %}
 
 {% endfor %}

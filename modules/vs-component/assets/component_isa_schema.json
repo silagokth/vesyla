@@ -1,6 +1,55 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "definitions": {
+    "segment": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "bitwidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "verbo_map": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "integer"
+              },
+              "val": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "val"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "comment": {
+          "type": "string"
+        },
+        "default_val": {
+          "type": "number"
+        },
+        "is_signed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "name",
+        "bitwidth",
+        "comment"
+      ]
+    }
+  },
   "properties": {
     "format": {
       "type": "object",
@@ -47,53 +96,40 @@
           "segments": {
             "type": "array",
             "items": {
+              "$ref": "#/definitions/segment"
+            },
+            "default": []
+          },
+          "variant_opcode_bitwidth": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "variants": {
+            "type": "array",
+            "items": {
               "type": "object",
               "properties": {
                 "name": {
                   "type": "string"
                 },
-                "bitwidth": {
+                "opcode": {
                   "type": "integer",
-                  "minimum": 1
+                  "minimum": 0
                 },
-                "verbo_map": {
+                "segments": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "properties": {
-                      "key": {
-                        "type": "integer"
-                      },
-                      "val": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "key",
-                      "val"
-                    ],
-                    "additionalProperties": false
+                    "$ref": "#/definitions/segment"
                   },
                   "default": []
-                },
-                "comment": {
-                  "type": "string"
-                },
-                "default_val": {
-                  "type": "number"
-                },
-                "is_signed": {
-                  "type": "boolean",
-                  "default": false
                 }
               },
               "required": [
                 "name",
-                "bitwidth",
-                "comment"
+                "opcode",
+                "segments"
               ]
-            },
-            "default": []
+            }
           }
         },
         "required": [
