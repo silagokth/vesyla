@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
+#include "vesyla/Support/Config.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_GENERATEICDEPPASS
@@ -142,10 +143,13 @@ public:
           if (dst.empty()) {
             continue;
           }
-          // kind hardcoded to "word" for now (TODO: derive later); dir empty.
+          // Derive the data kind (word/bulk) from the source port via the
+          // fabric config's port table; dir is left empty here.
+          Config cfg;
+          std::string kind = cfg.get_port_info(src.getPort()).kind;
           IcDepOp::create(builder, producer->getLoc(), src,
                           builder.getArrayAttr(dst),
-                          builder.getStringAttr("word"), first, last,
+                          builder.getStringAttr(kind), first, last,
                           /*dir=*/mlir::StringAttr());
         }
       }

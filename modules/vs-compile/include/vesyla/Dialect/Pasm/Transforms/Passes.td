@@ -59,6 +59,15 @@ def GenerateIcdepPass: Pass<"generate-icdep-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def CreateConstraintsPass: Pass<"create-constraints-pass", "::mlir::ModuleOp"> {
+  let summary = "Create pasm.cstr ops from per-epoch dataflow analysis.";
+  let description = [{
+    Walks every `pasm.epoch` op, analyses its dataflow, and creates the
+    `pasm.cstr` operations implied by it.
+    TODO: describe behavior once implemented.
+  }];
+}
+
 def InterconnectPass: Pass<"interconnect-pass", "::mlir::ModuleOp"> {
   let summary = "Lower pasm.icdep edges to pasm.rop and pasm.cstr ops.";
   let description = [{

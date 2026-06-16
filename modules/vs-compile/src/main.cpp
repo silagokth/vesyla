@@ -1,6 +1,7 @@
 #include "plog/Log.h"
 #include "vesyla/Parser/PasmTextParser.hpp"
 #include "vesyla/Pipeline/PasmPipeline.hpp"
+#include <cstdlib>
 #include <string>
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -15,12 +16,16 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "conversion/affine_to_pasm/AffineToInstrPass.hpp"
+#include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
+#include "vesyla/Dialect/Pasm/Transforms/CreateConstraintsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/FlattenCellsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/Passes.hpp"
+#include "vesyla/Support/Config.hpp"
+#include "vesyla/Support/SysPath.hpp"
 
 namespace {
 
@@ -54,6 +59,18 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
   module->print(llvm::errs());
+
+  mlir::PassManager create_constraints_pm(&context);
+  create_constraints_pm.addPass(vesyla::pasm::createCreateConstraintsPass());
+  if (mlir::failed(create_constraints_pm.run(*module))) {
+    LOG_FATAL << "Error: CreateConstraintsPass failed.";
+    return nullptr;
+  }
+  module->print(llvm::errs());
+
+  // TEMPORARY: stop the pipeline right after CreateConstraintsPass for
+  // inspection. Remove this single line to resume the rest of the pipeline.
+  std::exit(0);
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
@@ -114,15 +131,22 @@ int main(int argc, char **argv) {
 
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
-                "[--output DIR] [--allow-unsafe] [-d|--debug]";
+                "[--config FILE] [--output DIR] [--allow-unsafe] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
-                "[--output DIR]";
+                "[--config FILE] [--output DIR]";
     return 0;
   }
 
   std::string arch_file = args.get("arch", args.get("a"));
   std::string isa_file = args.get("isa", args.get("i"));
+  // Top-level config; defaults to the one shipped next to the executable
+  // (build/config or install/config). Currently it holds the port table.
+  std::string config_file = args.get("config");
+  bool config_explicit = !config_file.empty();
+  if (config_file.empty()) {
+    config_file = vesyla::util::SysPath::prog_dir() + "config/config.json";
+  }
   std::string pasm_file = args.get("pasm", args.get("p"));
   std::string cpp_file = args.get("cpp", args.get("c"));
   std::string mlir_file = args.get("mlir", args.get("m"));
@@ -144,6 +168,15 @@ int main(int argc, char **argv) {
     LOG_FATAL << "Error: ISA file does not exist: " << isa_file;
     return -1;
   }
+  if (!std::filesystem::exists(config_file)) {
+    if (config_explicit) {
+      LOG_FATAL << "Error: Config file does not exist: " << config_file;
+      return -1;
+    }
+    LOG_WARNING << "Default config file not found at " << config_file
+                << "; using built-in port defaults.";
+    config_file.clear();
+  }
 
   // Create output directory if it doesn't exist
   if (!std::filesystem::exists(output_dir)) {
@@ -163,9 +196,20 @@ int main(int argc, char **argv) {
 
   mlir::MLIRContext context;
   context.getOrLoadDialect<vesyla::pasm::PasmDialect>();
+  context.getOrLoadDialect<vesyla::drra::DrraDialect>();
   context.getOrLoadDialect<mlir::affine::AffineDialect>();
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
+
+  // Passes run during mlir mode read the config: GenerateIcdepPass needs the
+  // port table and CreateConstraintsPass needs the ISA, so both are loaded
+  // before the passes. arch is only consumed later by the scheduler (and its
+  // loader does unguarded traversal), so it stays after the passes.
+  vesyla::pasm::Config cfg;
+  if (!config_file.empty()) {
+    cfg.set_config_json(config_file);
+  }
+  cfg.set_isa_json(isa_file);
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
@@ -179,9 +223,7 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  vesyla::pasm::Config cfg;
   cfg.set_arch_json(arch_file);
-  cfg.set_isa_json(isa_file);
 
   mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;

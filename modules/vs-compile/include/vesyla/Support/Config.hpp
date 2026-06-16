@@ -7,14 +7,31 @@
 namespace vesyla {
 namespace pasm {
 
+// Direction and data kind carried by a port, looked up by port number.
+struct PortInfo {
+  // "input" or "output"
+  std::string dir;
+  // "word" or "bulk"
+  std::string kind;
+};
+
 // create a singlton class for configuration storage. It must be a static class
 class Config {
 public:
   void set_isa_json(std::string isa_json_path);
   void set_arch_json(std::string arch_json_path);
+  // Load the top-level vs-compile config. Currently it holds the "port_table"
+  // section (per-port direction and data kind).
+  void set_config_json(std::string config_json_path);
   nlohmann::json get_arch_json() const;
   nlohmann::json get_isa_json() const;
   nlohmann::json get_component_map_json() const;
+  nlohmann::json get_config_json() const;
+
+  // Look up the direction/kind for a port number from the config's
+  // "port_table" section. Falls back to the default mapping (bit0 = direction,
+  // bit1 = kind) when no config was loaded.
+  PortInfo get_port_info(int port) const;
 
   // architecture json
   static nlohmann::json arch_json;
@@ -22,6 +39,9 @@ public:
   static nlohmann::json isa_json;
   // component map json
   static nlohmann::json component_map_json;
+  // top-level vs-compile config json. Currently holds the "port_table" section
+  // (per-port direction and data kind).
+  static nlohmann::json config_json;
 };
 
 } // namespace pasm
