@@ -248,7 +248,7 @@ else
   printf "  ${BLUE}Compiling & Running${NC}"
 fi
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode" || exit 4
+  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" || exit 4
 else
   run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
 fi
