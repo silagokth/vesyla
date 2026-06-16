@@ -242,6 +242,17 @@ PARAM:
         $$->val = std::to_string($3);
         $$->kind = parameter_t::INT;
     }
+    | ID '=' STRING  {
+        LOG_DEBUG << "PARAM";
+        $$ = new parameter_t();
+        $$->key = $1;
+        std::string s = $3;            // STRING token includes surrounding quotes
+        if (s.size() >= 2) {
+            s = s.substr(1, s.size() - 2);
+        }
+        $$->val = s;
+        $$->kind = parameter_t::STRING;
+    }
     ;
 
 OP_LIST:

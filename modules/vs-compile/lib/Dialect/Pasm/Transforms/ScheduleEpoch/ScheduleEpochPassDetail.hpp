@@ -32,8 +32,7 @@ public:
                             std::string component_path, std::string tmp_path,
                             bool allow_unsafe, int row_, int col_)
       : ::mlir::OpRewritePattern<::vesyla::pasm::EpochOp>(context),
-        component_map(component_map),
-        component_path(std::move(component_path)),
+        component_map(component_map), component_path(std::move(component_path)),
         tmp_path(std::move(tmp_path)), allow_unsafe(allow_unsafe), _row(row_),
         _col(col_) {}
 
@@ -43,18 +42,17 @@ public:
                   ::mlir::PatternRewriter &rewriter) const final;
 
   // TimeTable.cpp
-  ::mlir::Block *
-  getOrCreateEntryBlock(::mlir::Region &region,
-                        ::mlir::PatternRewriter &rewriter) const;
+  ::mlir::Block *getOrCreateEntryBlock(::mlir::Region &region,
+                                       ::mlir::PatternRewriter &rewriter) const;
   ::mlir::Block *
   getEpochBodyEntryBlock(::vesyla::pasm::EpochOp epoch_op,
                          ::mlir::PatternRewriter &rewriter) const;
   std::map<int, ::mlir::Operation *> &getOrCreateCellTimeTable(
       std::map<std::string, std::map<int, ::mlir::Operation *>> &time_table,
       const std::string &label) const;
-  void create_time_table_entry(
-      std::map<int, ::mlir::Operation *> &cell_time_table, int t,
-      ::vesyla::pasm::InstrOp &instr_op) const;
+  void
+  create_time_table_entry(std::map<int, ::mlir::Operation *> &cell_time_table,
+                          int t, ::vesyla::pasm::InstrOp &instr_op) const;
   std::map<std::string, std::vector<::mlir::Operation *>> get_rop_ops_for_cycle(
       int currentCycle,
       std::unordered_map<::mlir::Operation *, int> time_table_rop) const;
@@ -101,8 +99,7 @@ public:
 
   // JsonOpBridge.cpp
   nlohmann::json op2json(::mlir::Operation *op) const;
-  void json2op(nlohmann::json op_json,
-               ::mlir::PatternRewriter &rewriter) const;
+  void json2op(nlohmann::json op_json, ::mlir::PatternRewriter &rewriter) const;
 
   // Synchronize.cpp
   void

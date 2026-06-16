@@ -1,10 +1,10 @@
+#include "vesyla/Dialect/Pasm/Transforms/ScheduleEpochPass.hpp"
 #include "ScheduleEpochPassDetail.hpp"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "vesyla/Analysis/TimingModel/Solver.hpp"
 #include "vesyla/Analysis/TimingModel/TimingModel.hpp"
-#include "vesyla/Dialect/Pasm/Transforms/ScheduleEpochPass.hpp"
 #include "vesyla/Support/Config.hpp"
 #include "llvm/Support/raw_ostream.h"
 
@@ -92,8 +92,8 @@ namespace vesyla::pasm::schedule_epoch_detail {
                              std::istreambuf_iterator<char>());
       output_file.close();
 
-      ::vesyla::tm::Operation operation =
-          ::vesyla::tm::Operation(rop_json["id"].get<std::string>(), output_str);
+      ::vesyla::tm::Operation operation = ::vesyla::tm::Operation(
+          rop_json["id"].get<std::string>(), output_str);
       operation.col = rop_json["col"].get<int>();
       operation.row = rop_json["row"].get<int>();
       operation.slot = rop_json["slot"].get<int>();
@@ -103,18 +103,15 @@ namespace vesyla::pasm::schedule_epoch_detail {
       std::filesystem::remove(input_filename);
       std::filesystem::remove(output_filename);
 
-      op_exprs.push_back(OpExprTuple{rop_json["id"].get<std::string>(),
-                                     rop_json["kind"].get<std::string>(),
-                                     rop_json["row"].get<int>(),
-                                     rop_json["col"].get<int>(),
-                                     rop_json["slot"].get<int>(),
-                                     rop_json["port"].get<int>(), output_str});
+      op_exprs.push_back(OpExprTuple{
+          rop_json["id"].get<std::string>(),
+          rop_json["kind"].get<std::string>(), rop_json["row"].get<int>(),
+          rop_json["col"].get<int>(), rop_json["slot"].get<int>(),
+          rop_json["port"].get<int>(), output_str});
 
-    } else if (auto cop_op =
-                   llvm::dyn_cast<::vesyla::pasm::CopOp>(&child_op)) {
+    } else if (auto cop_op = llvm::dyn_cast<::vesyla::pasm::CopOp>(&child_op)) {
       llvm::outs() << "CopOp ID: " << cop_op.getId() << "\n";
-    } else if (auto raw_op =
-                   llvm::dyn_cast<::vesyla::pasm::RawOp>(&child_op)) {
+    } else if (auto raw_op = llvm::dyn_cast<::vesyla::pasm::RawOp>(&child_op)) {
       if ((operation_type_set.find("pasm.rop") != operation_type_set.end()) ||
           operation_type_set.find("pasm.cop") != operation_type_set.end()) {
         llvm::outs() << "Error: RawOp cannot be used with RopOp or CopOp.\n";
@@ -198,7 +195,8 @@ namespace vesyla::pasm::schedule_epoch_detail {
         if (all_control_op_anchors.find(label) !=
             all_control_op_anchors.end()) {
           for (auto &ref : all_control_op_anchors[label]) {
-            ::vesyla::tm::Constraint c(/*src_id=*/ops[i], /*dst_id=*/ref.op_name,
+            ::vesyla::tm::Constraint c(/*src_id=*/ops[i],
+                                       /*dst_id=*/ref.op_name,
                                        /*min_delay=*/0, /*max_delay=*/0,
                                        /*src_anchor=*/std::nullopt,
                                        /*dst_anchor=*/ref.anchor);

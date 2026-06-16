@@ -395,11 +395,13 @@ RopOp emit_swb_instructions(const InterconnectBinding &binding, CellOp cell,
             "source", builder.getI32IntegerAttr(src_slot)));
         attrs.push_back(builder.getNamedAttr(
             "target", builder.getI32IntegerAttr(dst_slot)));
+        attrs.push_back(
+            builder.getNamedAttr("variant", builder.getStringAttr("swb")));
 
         InstrOp::create(
             builder, loc,
             builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-            builder.getStringAttr("swb"), builder.getDictionaryAttr(attrs));
+            builder.getStringAttr("conf"), builder.getDictionaryAttr(attrs));
       }
     }
   }
@@ -446,11 +448,13 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
           attrs.push_back(builder.getNamedAttr(
               "target", builder.getI32IntegerAttr(target_mask)));
         }
+        attrs.push_back(
+            builder.getNamedAttr("variant", builder.getStringAttr("route")));
 
         InstrOp::create(
             builder, loc,
             builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-            builder.getStringAttr("route"), builder.getDictionaryAttr(attrs));
+            builder.getStringAttr("conf"), builder.getDictionaryAttr(attrs));
       }
     }
   }

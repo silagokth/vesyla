@@ -52,7 +52,8 @@ cstr      { LOG_DEBUG << "CSTR"; return CSTR; }
 \>           { LOG_DEBUG << ">"; return '>'; }
 .           {
                 /* report error */
-                fprintf(stderr, "Unknown character: %s\n", yytext);
+                fprintf(stderr, "[ERROR]: unknown character in line %d: %s\n",
+                        yylineno, yytext);
                 return 1;
             }
 
