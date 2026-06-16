@@ -128,9 +128,33 @@ endfunction()
 add_vesyla_mlir_dialect(Pasm)
 
 #==============================================================================
+# Drra dialect: a single op (drra.rop), no custom types or attributes, so it
+# only needs Ops + Dialect tablegen (not the full add_vesyla_mlir_dialect).
+#==============================================================================
+set(DRRA_IR_TD_DIR ${PROJECT_SOURCE_DIR}/include/vesyla/Dialect/Drra/IR)
+set(DRRA_IR_OUT_REL include/vesyla/Dialect/Drra/IR)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${DRRA_IR_OUT_REL})
+
+set(LLVM_TARGET_DEFINITIONS ${DRRA_IR_TD_DIR}/DrraOps.td)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraOps.hpp.inc -gen-op-decls)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(VesylaDrraOpsIncGen)
+
+set(LLVM_TARGET_DEFINITIONS ${DRRA_IR_TD_DIR}/DrraDialect.td)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraDialect.hpp.inc -gen-dialect-decls)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraDialect.cpp.inc -gen-dialect-defs)
+add_public_tablegen_target(VesylaDrraDialectIncGen)
+
+add_custom_target(
+  VesylaDrraIncGen
+  DEPENDS VesylaDrraOpsIncGen VesylaDrraDialectIncGen)
+add_dependencies(mlir-headers VesylaDrraIncGen)
+
+#==============================================================================
 # Source globs (per layer)
 #==============================================================================
 file(GLOB SOURCES_DIALECT_PASM_IR        "lib/Dialect/Pasm/IR/*.cpp")
+file(GLOB SOURCES_DIALECT_DRRA_IR        "lib/Dialect/Drra/IR/*.cpp")
 file(GLOB SOURCES_DIALECT_PASM_TRANSFORMS
      "lib/Dialect/Pasm/Transforms/*.cpp"
      "lib/Dialect/Pasm/Transforms/ScheduleEpoch/*.cpp")
@@ -166,6 +190,19 @@ add_mlir_dialect_library(
   DISABLE_INSTALL
   DEPENDS
   VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRInferTypeOpInterface
+  MLIRFuncDialect)
+
+# Drra dialect (IR only)
+add_mlir_dialect_library(
+  VesylaDrra
+  ${SOURCES_DIALECT_DRRA_IR}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDrraIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR
@@ -217,7 +254,7 @@ add_library(VesylaSchedule
             ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
-set(LIBS VesylaSchedule VesylaPasm VesylaAffineToPasm VesylaTm VesylaUtil
+set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
