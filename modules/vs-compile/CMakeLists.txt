@@ -263,6 +263,8 @@ file(COPY scripts/script_icdep.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/script_icdep.py DESTINATION scripts)
 file(COPY scripts/script_grouped_no_slot0.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/script_grouped_no_slot0.py DESTINATION scripts)
+file(COPY scripts/timetable.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/timetable.py DESTINATION scripts)
 
 # Stage runtime config (e.g. the config holding the port table) next to the
 # executable so it can be found at the default path: prog_dir()/config/.

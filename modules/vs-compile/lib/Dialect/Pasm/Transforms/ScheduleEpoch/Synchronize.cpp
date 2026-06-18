@@ -117,7 +117,7 @@ void ScheduleEpochPassRewriter::insert_cop_instructions(
   }
 }
 
-void ScheduleEpochPassRewriter::synchronize(
+int ScheduleEpochPassRewriter::synchronize(
     ::vesyla::pasm::EpochOp &op,
     std::unordered_map<std::string, int> &schedule_table,
     ::mlir::PatternRewriter &rewriter, bool allow_unsafe) const {
@@ -479,6 +479,10 @@ void ScheduleEpochPassRewriter::synchronize(
   for (::mlir::Operation &child_op : *block) {
     llvm::outs() << "Operation type: " << child_op.getName() << "\n";
   }
+
+  // Return the uniform per-epoch shift applied above so callers (e.g. the
+  // timetable dump) can report absolute cycles matching the emitted code.
+  return min_shift_time;
 }
 
 } // namespace vesyla::pasm::schedule_epoch_detail

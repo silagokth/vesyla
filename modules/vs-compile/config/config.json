@@ -4,5 +4,7 @@
     { "port": 1, "dir": "output", "kind": "word" },
     { "port": 2, "dir": "input",  "kind": "bulk" },
     { "port": 3, "dir": "output", "kind": "bulk" }
-  ]
+  ],
+  "compile_dir": "compile",
+  "timetable_dir": "${compile_dir}/timetable"
 }
