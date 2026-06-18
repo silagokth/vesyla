@@ -106,14 +106,76 @@ def ctrl_bounds(instr):
     return s, e
 
 
-def build_lanes(resources, controllers):
+# Control instruction types that configure a resource (as opposed to act/wait).
+CONFIG_TYPES = {"conf", "rep", "evt", "trans"}
+
+
+def _cycle_set(intervals, total):
+    """Union of half-open [s, e) cycle ranges, clipped to [0, total)."""
+    cycles = set()
+    for s, e in intervals:
+        lo, hi = max(0, s), (min(total, e) if total else e)
+        if hi > lo:
+            cycles.update(range(lo, hi))
+    return cycles
+
+
+def compute_utilization(data):
+    """Per-resource cycle accounting over [0, total_latency).
+
+    acting = cycles with any ROP active on the resource; config = cycles with a
+    conf/rep/evt/trans targeting it; active = their union; stall = total - active.
+    acting and config are independent raw counts and may overlap. Percentages are
+    relative to total_latency. Only slots that appear as resources are reported."""
+    total = int(data.get("total_latency", 0) or 0)
+
+    # Config cycles per (row, col, slot) from the controller streams.
+    config_by_res = {}
+    for c in data.get("controllers", []):
+        rc = (c.get("row", 0), c.get("col", 0))
+        for instr in c.get("instructions", []):
+            if instr.get("type") in CONFIG_TYPES and "slot" in instr:
+                key = (rc[0], rc[1], instr["slot"])
+                config_by_res.setdefault(key, []).append(ctrl_bounds(instr))
+
+    def pct(n):
+        return round(100 * n / total) if total else 0
+
+    util = []
+    for res in data.get("resources", []):
+        key = (res.get("row", 0), res.get("col", 0), res.get("slot", 0))
+        acting = _cycle_set(
+            (op_bounds(op) for op in res.get("operations", [])), total)
+        config = _cycle_set(config_by_res.get(key, []), total)
+        active = acting | config
+        stall = max(total - len(active), 0)
+        util.append({
+            "row": key[0], "col": key[1], "slot": key[2], "total": total,
+            "acting": len(acting), "acting_pct": pct(len(acting)),
+            "config": len(config), "config_pct": pct(len(config)),
+            "active": len(active), "active_pct": pct(len(active)),
+            "stall": stall, "stall_pct": pct(stall),
+        })
+    util.sort(key=lambda u: (u["row"], u["col"], u["slot"]))
+    return util
+
+
+def util_label(u):
+    """Compact per-resource utilization annotation for the chart."""
+    return "act {} ({}%)  cfg {} ({}%)  stall {} ({}%)".format(
+        u["acting"], u["acting_pct"], u["config"], u["config_pct"],
+        u["stall"], u["stall_pct"])
+
+
+def build_lanes(resources, controllers, util_map):
     """Order lanes cell by cell: each cell's controller lane (if any) first, then
     its slot (resource) lanes, so the controller sits atop the ROPs it drives.
 
     All ops are normalized to {start, end, label, ...} so a single op_bounds
     reads them. A control instruction (evt/conf/rep) that names a target slot is
     additionally echoed as a box on that slot's resource lane, carrying the same
-    type/cycle info, so the target of each control instruction is visible."""
+    type/cycle info, so the target of each control instruction is visible. Each
+    resource lane is tagged with its utilization stats (util_map) for annotation."""
     cells = sorted(set(
         [(r.get("row", 0), r.get("col", 0)) for r in resources]
         + list(controllers.keys())
@@ -156,11 +218,12 @@ def build_lanes(resources, controllers):
             lanes.append({
                 "label": lane_label(res),
                 "ops": ops,
+                "util": util_map.get((cell[0], cell[1], slot)),
             })
     return lanes
 
 
-def render(data):
+def render(data, utilization=None):
     epoch = data.get("epoch", "epoch")
     total = int(data.get("total_latency", 0) or 0)
     resources = data.get("resources", [])
@@ -169,7 +232,11 @@ def render(data):
         for c in data.get("controllers", [])
     }
 
-    lanes = build_lanes(resources, controllers)
+    if utilization is None:
+        utilization = compute_utilization(data)
+    util_map = {(u["row"], u["col"], u["slot"]): u for u in utilization}
+
+    lanes = build_lanes(resources, controllers, util_map)
 
     # Span must cover the latency and the latest event end (ROP or controller).
     span = max(total, 1)
@@ -229,11 +296,18 @@ def render(data):
     chart_right = run_x[-1]
     chart_width = chart_right - LEFT_MARGIN
 
+    # Reserve a right-side gutter for the per-resource utilization annotation.
+    UTIL_GAP = 12
+    util_texts = [util_label(lane["util"]) for lane in lanes if lane.get("util")]
+    util_w = (int(max(len(t) for t in util_texts) * CHAR_W) + UTIL_GAP
+              if util_texts else 0)
+    util_x = chart_right + UTIL_GAP
+
     # Keep the canvas wide enough for the title so it is not clipped on short
     # charts (~9 px per char at font-size 16 bold, starting at LEFT_MARGIN).
     title = "Timetable: epoch {} (total_latency = {})".format(epoch, total)
     title_right = LEFT_MARGIN + int(len(title) * 9)
-    width = max(chart_right, title_right) + RIGHT_MARGIN
+    width = max(chart_right + util_w, title_right) + RIGHT_MARGIN
     height = TOP_MARGIN + total_rows * LANE_HEIGHT + BOTTOM_MARGIN
 
     out = []
@@ -301,12 +375,20 @@ def render(data):
     for li, lane in enumerate(lanes):
         track_of, ntracks = lane_tracks[li]
         group_top = group_top_of[li]
+        group_mid = group_top + ntracks * LANE_HEIGHT / 2 + 4
         out.append(
             '<text x="{}" y="{}" font-size="12" text-anchor="end">{}</text>'.format(
-                LEFT_MARGIN - 10, group_top + ntracks * LANE_HEIGHT / 2 + 4,
-                esc(lane["label"])
+                LEFT_MARGIN - 10, group_mid, esc(lane["label"])
             )
         )
+        # Per-resource utilization annotation in the right gutter.
+        if lane.get("util"):
+            out.append(
+                '<text x="{}" y="{}" font-size="10" fill="#555" '
+                'text-anchor="start">{}</text>'.format(
+                    util_x, group_mid, esc(util_label(lane["util"]))
+                )
+            )
 
         ops = lane["ops"]
         for oi, op in enumerate(ops):
@@ -420,9 +502,23 @@ def main():
             print("skipping {}: {}".format(path, exc), file=sys.stderr)
             continue
 
-        svg = render(data)
-        base = os.path.splitext(os.path.basename(path))[0]
         out_dir = args.output_dir or os.path.dirname(path) or "."
+        epoch = data.get("epoch", "epoch")
+
+        # Per-resource utilization (cycle accounting) as a sibling JSON file.
+        utilization = compute_utilization(data)
+        util_doc = {
+            "epoch": epoch,
+            "total_latency": int(data.get("total_latency", 0) or 0),
+            "resources": utilization,
+        }
+        util_path = os.path.join(out_dir, "utilization_{}.json".format(epoch))
+        with open(util_path, "w") as fh:
+            json.dump(util_doc, fh, indent=2)
+        print("wrote {}".format(util_path))
+
+        svg = render(data, utilization)
+        base = os.path.splitext(os.path.basename(path))[0]
         svg_path = os.path.join(out_dir, base + ".svg")
         with open(svg_path, "w") as fh:
             fh.write(svg)
