@@ -248,6 +248,7 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 # First-party libraries
 add_library(VesylaUtil ${SOURCES_SUPPORT})
 add_library(VesylaTm   ${SOURCES_ANALYSIS_TM})
+add_dependencies(VesylaTm VesylaPasmIncGen)
 add_library(VesylaSchedule
             ${SOURCES_SCHEDULE}
             ${FLEX_PasmLexer_OUTPUTS}
