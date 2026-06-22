@@ -1,0 +1,30 @@
+name: 'Install LLVM'
+description: 'Download and extract a prebuilt upstream LLVM release with MLIR'
+
+inputs:
+  llvm-version:
+    description: 'Upstream llvm/llvm-project release version (e.g. 22.1.8)'
+    required: true
+  llvm-install-path:
+    description: 'Directory to extract the prebuilt LLVM into'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      env:
+        LLVM_VERSION: ${{ inputs.llvm-version }}
+        LLVM_INSTALL_PATH: ${{ inputs.llvm-install-path }}
+      run: |
+        set -euo pipefail
+        asset="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+        url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${asset}"
+        echo "Downloading ${url}"
+        mkdir -p "${LLVM_INSTALL_PATH}"
+        curl -fL --retry 3 -o "${RUNNER_TEMP}/${asset}" "${url}"
+        echo "Extracting ${asset} into ${LLVM_INSTALL_PATH}"
+        tar -xf "${RUNNER_TEMP}/${asset}" -C "${LLVM_INSTALL_PATH}" --strip-components=1
+        echo "Installed LLVM ${LLVM_VERSION}:"
+        ls "${LLVM_INSTALL_PATH}"
+        test -d "${LLVM_INSTALL_PATH}/lib/cmake/mlir"

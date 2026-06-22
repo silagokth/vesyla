@@ -70,6 +70,13 @@ jobs:
         with:
           llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
 
+      - name: Install LLVM if not cached
+        if: steps.check-llvm.outputs.llvm_installed == 'false'
+        uses: ./vesyla-source/.github/actions/install-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
+
       - name: Check branch name
         id: check-branch
         run: |

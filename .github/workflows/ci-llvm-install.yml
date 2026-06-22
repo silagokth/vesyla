@@ -42,15 +42,7 @@ jobs:
 
     - name: Download and extract prebuilt LLVM release
       if: steps.check-llvm.outputs.llvm_installed == 'false'
-      run: |
-        set -euo pipefail
-        asset="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
-        url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${asset}"
-        echo "Downloading ${url}"
-        mkdir -p "${LLVM_INSTALL_PATH}"
-        curl -fL --retry 3 -o "${RUNNER_TEMP}/${asset}" "${url}"
-        echo "Extracting ${asset} into ${LLVM_INSTALL_PATH}"
-        tar -xf "${RUNNER_TEMP}/${asset}" -C "${LLVM_INSTALL_PATH}" --strip-components=1
-        echo "Installed LLVM ${LLVM_VERSION}:"
-        ls "${LLVM_INSTALL_PATH}"
-        test -d "${LLVM_INSTALL_PATH}/lib/cmake/mlir"
+      uses: ./vesyla/.github/actions/install-llvm
+      with:
+        llvm-version: ${{ env.LLVM_VERSION }}
+        llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
