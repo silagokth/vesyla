@@ -44,8 +44,15 @@ Make sure to give execution permissions to the binary.
 - CMake >= 3.22.1
 - Clang >= 5 or GCC >= 9.0 (C++17 support)
 - Flex and Bison (tested on 2.6.4 and 3.8.2, respectively)
-- MLIR (from [llvm/clangir](https://github.com/llvm/clangir), tested on commit `4820d600ed3362744372983068495f086c9a0659`)
-  - Use the provided script to build and install: `LLVM_CIR_COMMIT_HASH=4820d600ed3362744372983068495f086c9a0659 LLVM_SOURCE_PATH=<path> LLVM_BUILD_PATH=<path> LLVM_INSTALL_PATH=<path> bash scripts/llvm-cir-install.sh`
+- MLIR (from upstream [llvm/llvm-project](https://github.com/llvm/llvm-project), tested on release `22.1.8`)
+  - Download the prebuilt release and point `LLVM_HOME` at it:
+    ```bash
+    curl -fL -o LLVM-22.1.8-Linux-X64.tar.xz \
+      https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-Linux-X64.tar.xz
+    mkdir -p <path>/llvm-install
+    tar -xf LLVM-22.1.8-Linux-X64.tar.xz -C <path>/llvm-install --strip-components=1
+    export LLVM_HOME=<path>/llvm-install
+    ```
 
 ### Build
 
