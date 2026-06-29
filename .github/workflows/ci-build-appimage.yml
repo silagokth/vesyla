@@ -11,11 +11,8 @@ on:
         value: ${{ jobs.build.outputs.branch }}
 
 env:
-  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
-  LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
+  LLVM_VERSION: "22.1.8"
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
-  LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
-  LLVM_VERSION: "20.1.7"
 
 jobs:
   run-cargo-tests:
@@ -54,11 +51,9 @@ jobs:
         with:
           path: |
             ${{ env.LLVM_INSTALL_PATH }}
-            ${{ env.LLVM_SOURCE_PATH }}
-            ${{ env.LLVM_BUILD_PATH }}
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
           restore-keys: |
-            ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
+            ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
             ${{ runner.os }}-llvm-
 
       - name: Checkout code
@@ -74,8 +69,13 @@ jobs:
         uses: ./vesyla-source/.github/actions/check-llvm-install
         with:
           llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
-          llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
-          llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
+
+      - name: Install LLVM if not cached
+        if: steps.check-llvm.outputs.llvm_installed == 'false'
+        uses: ./vesyla-source/.github/actions/install-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
 
       - name: Check branch name
         id: check-branch
