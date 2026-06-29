@@ -190,11 +190,14 @@ add_mlir_dialect_library(
   DISABLE_INSTALL
   DEPENDS
   VesylaPasmIncGen
+  VesylaDrraIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR
   MLIRInferTypeOpInterface
-  MLIRFuncDialect)
+  MLIRFuncDialect
+  MLIRTransforms
+  VesylaDrra)
 
 # Drra dialect (IR only)
 add_mlir_dialect_library(
@@ -242,6 +245,26 @@ add_mlir_library(
   MLIRAffineDialect
   VesylaPasm)
 
+add_custom_mlir_pass_dir(conversion/drra_to_pasm VesylaDrraToPasm)
+file(GLOB SOURCE_DRRA_TO_PASM "src/conversion/drra_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaDrraToPasm
+  ${SOURCE_DRRA_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDrraToPasmIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  VesylaPasm
+  VesylaDrra)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -255,7 +278,7 @@ add_library(VesylaSchedule
             ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
-set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaTm VesylaUtil
+set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
