@@ -2,6 +2,7 @@
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/SmallVector.h"
 #include <algorithm>
+#include <optional>
 
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
 #include "vesyla/Support/Config.hpp"
@@ -62,12 +63,24 @@ get_enclosing_loops(mlir::Operation *op, EpochOp epoch) {
   return loops;
 }
 
+// Read the producer's `delay` attribute. Returns nullopt when it is absent or
+// not an integer; the caller treats that as a hard error. The delay is carried
+// on the originating drra.rop and copied onto the icdep anchors built from it.
+std::optional<int32_t> get_producer_delay(mlir::Operation *op) {
+  if (auto delay = mlir::dyn_cast_or_null<mlir::IntegerAttr>(
+          op->getAttr("delay"))) {
+    return static_cast<int32_t>(delay.getInt());
+  }
+  return std::nullopt;
+}
+
 // Build the first/last anchor for a producer. `first` uses each enclosing
 // loop's lower bound; `last` uses each upper bound minus one. Top-level
-// producers (no enclosing loops) get a bare anchor with no event/indices.
+// producers (no enclosing loops) get a bare anchor with no event/indices. The
+// `delay` is taken from the originating drra.rop.
 AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
                         llvm::ArrayRef<mlir::affine::AffineForOp> loops,
-                        bool is_last) {
+                        bool is_last, int32_t delay) {
   llvm::SmallVector<int32_t> idx;
   for (mlir::affine::AffineForOp loop : loops) {
     if (is_last) {
@@ -81,7 +94,7 @@ AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
     }
   }
   llvm::StringRef event = loops.empty() ? "" : "e0";
-  return AnchorAttr::get(ctx, instr, event, idx, /*delay=*/0);
+  return AnchorAttr::get(ctx, instr, event, idx, delay);
 }
 
 class GenerateIcdepPass
@@ -93,7 +106,7 @@ public:
     mlir::ModuleOp module = getOperation();
     mlir::MLIRContext *ctx = &getContext();
 
-    module.walk([&](EpochOp epoch) {
+    mlir::WalkResult result = module.walk([&](EpochOp epoch) {
       mlir::Block &block = epoch.getBody().front();
 
       // Gather every resourced producer in the epoch, including ops nested
@@ -117,8 +130,18 @@ public:
         }
         llvm::SmallVector<mlir::affine::AffineForOp> loops =
             get_enclosing_loops(producer, epoch);
-        AnchorAttr first = build_anchor(ctx, instr, loops, /*is_last=*/false);
-        AnchorAttr last = build_anchor(ctx, instr, loops, /*is_last=*/true);
+        std::optional<int32_t> delay = get_producer_delay(producer);
+        if (!delay) {
+          producer->emitError(
+              "icdep producer is missing an integer 'delay' attribute: ")
+              << *producer;
+          signalPassFailure();
+          return mlir::WalkResult::interrupt();
+        }
+        AnchorAttr first =
+            build_anchor(ctx, instr, loops, /*is_last=*/false, *delay);
+        AnchorAttr last =
+            build_anchor(ctx, instr, loops, /*is_last=*/true, *delay);
 
         for (mlir::OpResult result : producer->getResults()) {
           ResourceAttr src =
@@ -153,7 +176,9 @@ public:
                           /*dir=*/mlir::StringAttr());
         }
       }
+      return mlir::WalkResult::advance();
     });
+    (void)result;
   }
 };
 
