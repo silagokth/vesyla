@@ -15,10 +15,11 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "conversion/affine_to_pasm/AffineToInstrPass.hpp"
+#include "conversion/affine_to_pasm/AffineToRepPass.hpp"
+#include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
+#include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
-#include "vesyla/Dialect/Pasm/Transforms/CreateConstraintsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/FlattenCellsPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
@@ -29,7 +30,20 @@
 
 namespace {
 
+// Dump a module to a file, mirroring the scheduler's debug-mlir dumps.
+void save_mlir(mlir::ModuleOp module, const std::string &filename) {
+  std::error_code error_code;
+  llvm::raw_fd_ostream ofs(filename, error_code);
+  if (error_code) {
+    LOG_FATAL << "Error: Failed to open file for writing: " << filename;
+    return;
+  }
+  module.print(ofs);
+  ofs.close();
+}
+
 mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
+                                                const std::string &output_dir,
                                                 mlir::MLIRContext &context) {
   if (!std::filesystem::exists(mlir_file)) {
     LOG_FATAL << "Error: MLIR file does not exist: " << mlir_file;
@@ -43,34 +57,55 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
 
+  // Dump the module after each pass into a debug folder, mirroring the
+  // scheduler. scf_0.mlir is the parsed input; subsequent files follow the
+  // passes.
+  std::string module_debug_path = output_dir + "/debug/compile";
+  if (!std::filesystem::exists(module_debug_path)) {
+    std::filesystem::create_directories(module_debug_path);
+  }
+  save_mlir(*module, module_debug_path + "/scf_0.mlir");
+
+  // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
+  // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
+  // attributes. DrraToPasmPass lowers each drra.rop into a region-form pasm.rop
+  // that has no SSA results and splits `resource` into col/port/row/slot, so
+  // the icdep pass would find nothing if it ran afterwards. The pasm.icdep ops
+  // it inserts are left untouched by DrraToPasmPass.
   mlir::PassManager generate_icdep_pm(&context);
   generate_icdep_pm.addPass(vesyla::pasm::createGenerateIcdepPass());
   if (mlir::failed(generate_icdep_pm.run(*module))) {
     LOG_FATAL << "Error: GenerateIcdepPass failed.";
     return nullptr;
   }
-  module->print(llvm::errs());
-
-  mlir::PassManager affine_pm(&context);
-  affine_pm.addPass(
-      vesyla::conversion::affine_to_pasm::createAffineToInstrPass());
-  if (mlir::failed(affine_pm.run(*module))) {
-    LOG_FATAL << "Error: AffineToInstrPass failed.";
-    return nullptr;
-  }
-  module->print(llvm::errs());
+  save_mlir(*module, module_debug_path + "/scf_1.mlir");
 
   mlir::PassManager create_constraints_pm(&context);
-  create_constraints_pm.addPass(vesyla::pasm::createCreateConstraintsPass());
+  create_constraints_pm.addPass(
+      vesyla::conversion::drra_to_pasm::createCreateConstraintsPass());
   if (mlir::failed(create_constraints_pm.run(*module))) {
     LOG_FATAL << "Error: CreateConstraintsPass failed.";
     return nullptr;
   }
-  module->print(llvm::errs());
+  save_mlir(*module, module_debug_path + "/scf_2.mlir");
 
-  // TEMPORARY: stop the pipeline right after CreateConstraintsPass for
-  // inspection. Remove this single line to resume the rest of the pipeline.
-  std::exit(0);
+  mlir::PassManager drra_to_pasm_pm(&context);
+  drra_to_pasm_pm.addPass(
+      vesyla::conversion::drra_to_pasm::createDrraToPasmPass());
+  if (mlir::failed(drra_to_pasm_pm.run(*module))) {
+    LOG_FATAL << "Error: DrraToPasmPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, module_debug_path + "/scf_3.mlir");
+
+  mlir::PassManager affine_pm(&context);
+  affine_pm.addPass(
+      vesyla::conversion::affine_to_pasm::createAffineToRepPass());
+  if (mlir::failed(affine_pm.run(*module))) {
+    LOG_FATAL << "Error: AffineToRepPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, module_debug_path + "/scf_4.mlir");
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
@@ -78,7 +113,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: ExtractCellsPass failed.";
     return nullptr;
   }
-  module->print(llvm::errs());
+  save_mlir(*module, module_debug_path + "/scf_5.mlir");
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());
@@ -86,6 +121,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: InterconnectPass failed.";
     return nullptr;
   }
+  save_mlir(*module, module_debug_path + "/scf_6.mlir");
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
@@ -93,6 +129,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: FlattenCellsPass failed.";
     return nullptr;
   }
+  save_mlir(*module, module_debug_path + "/scf_7.mlir");
 
   return module;
 }
@@ -202,7 +239,7 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
-  // port table and CreateConstraintsPass needs the ISA, so both are loaded
+  // port table and AddDefaultValuePass needs the ISA, so both are loaded
   // before the passes. arch is only consumed later by the scheduler (and its
   // loader does unguarded traversal), so it stays after the passes.
   vesyla::pasm::Config cfg;
@@ -214,7 +251,7 @@ int main(int argc, char **argv) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
     LOG_INFO << "Running mlir mode";
-    module = run_mlir_mode(mlir_file, context);
+    module = run_mlir_mode(mlir_file, output_dir, context);
   } else {
     LOG_INFO << "Running pasm mode";
     module = run_pasm_mode(pasm_file, context);
