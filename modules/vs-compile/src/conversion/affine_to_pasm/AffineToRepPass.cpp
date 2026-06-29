@@ -4,12 +4,12 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include "AffineToInstrPass.hpp"
+#include "AffineToRepPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 #include "vesyla/Support/Common.hpp"
 
 namespace vesyla::conversion::affine_to_pasm {
-#define GEN_PASS_DEF_AFFINETOINSTRPASS
+#define GEN_PASS_DEF_AFFINETOREPPASS
 #include "conversion/affine_to_pasm/Passes.hpp.inc"
 
 namespace {
@@ -68,9 +68,22 @@ std::optional<int64_t> coefficient_of_dim(mlir::AffineExpr expr,
   }
 }
 
+// Number of affine.for ops enclosing `op`.
+unsigned enclosing_loop_count(mlir::Operation *op) {
+  unsigned count = 0;
+  for (mlir::Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (llvm::isa<mlir::affine::AffineForOp>(parent)) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 // Lower a single rop that sits directly inside `loop`: append a `rep` instr
-// derived from the loop's bounds and the rop's innermost map dim, then shrink
-// the map by dropping that dim. Does not move the rop or touch the loop.
+// derived from the loop's bounds and the rop's innermost map dim. Reads a local
+// copy of the map and leaves the rop's stored map untouched. Does not move the
+// rop or touch the loop.
 mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
                                          mlir::affine::AffineForOp loop,
                                          mlir::PatternRewriter &rewriter) {
@@ -78,12 +91,16 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
     return mlir::failure();
   }
 
-  // get the coefficient of the current dim and use it as a step
+  // Read a local copy of the map; never write it back. The dim consumed for
+  // this loop is the innermost still-enclosing one (depth - 1), derived from
+  // the current nesting rather than from a shrinking map, so the original map
+  // is preserved across sweeps.
   mlir::AffineMap map = rop.getMapAttr().getValue();
-  if (map.getNumDims() == 0) {
+  unsigned depth = enclosing_loop_count(rop);
+  if (depth == 0 || depth > map.getNumDims()) {
     return mlir::failure();
   }
-  unsigned target_dim = map.getNumDims() - 1;
+  unsigned target_dim = depth - 1;
   std::optional<int64_t> step = coefficient_of_dim(map.getResult(0), target_dim);
   if (!step) {
     rop.emitError("affine map contains operations other than add and mul");
@@ -122,20 +139,6 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
   pasm::InstrOp::create(rewriter, loop.getLoc(),
                         rewriter.getStringAttr(instr_id),
                         rewriter.getStringAttr("rep"), params);
-
-  // shrink the map by dropping the consumed innermost dim; any residual
-  // constant stays in the result expression of the now-smaller map
-  mlir::MLIRContext *ctx = map.getContext();
-  llvm::SmallVector<mlir::AffineExpr, 4> dim_replacements;
-  for (unsigned i = 0; i + 1 < map.getNumDims(); ++i) {
-    dim_replacements.push_back(mlir::getAffineDimExpr(i, ctx));
-  }
-  dim_replacements.push_back(mlir::getAffineConstantExpr(0, ctx));
-  mlir::AffineExpr new_expr = map.getResult(0).replaceDimsAndSymbols(
-      dim_replacements, /*symReplacements=*/{});
-  mlir::AffineMap new_map =
-      mlir::AffineMap::get(map.getNumDims() - 1, map.getNumSymbols(), new_expr);
-  rop.setMapAttr(mlir::AffineMapAttr::get(new_map));
 
   return mlir::success();
 }
@@ -183,10 +186,10 @@ public:
   }
 };
 
-class AffineToInstrPass
-    : public impl::AffineToInstrPassBase<AffineToInstrPass> {
+class AffineToRepPass
+    : public impl::AffineToRepPassBase<AffineToRepPass> {
 public:
-  using impl::AffineToInstrPassBase<AffineToInstrPass>::AffineToInstrPassBase;
+  using impl::AffineToRepPassBase<AffineToRepPass>::AffineToRepPassBase;
 
   // This pass works on the assumption that each affine.for body holds only rops
   // and nested affine.for ops, and that the depth of nesting enclosing a rop is

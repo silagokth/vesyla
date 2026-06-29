@@ -67,7 +67,7 @@ def RopOp : Pasm_Op<"rop"> {
   let description = [{
     Make resource operation. May optionally carry an affine map describing
     per-iteration index math; the map is consumed and erased by the
-    affine-to-instr lowering pass.
+    affine-to-rep lowering pass.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,

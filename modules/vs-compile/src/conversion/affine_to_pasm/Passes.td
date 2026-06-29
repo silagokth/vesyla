@@ -3,7 +3,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AffineToInstrPass : Pass<"affine-to-instr-pass", "::mlir::ModuleOp"> {
+def AffineToRepPass : Pass<"affine-to-rep-pass", "::mlir::ModuleOp"> {
   let summary = "Lower innermost affine.for loops over pasm.rop into rep instrs.";
   let description = [{
     Matches each innermost `affine.for` whose body contains only `pasm.rop`s
