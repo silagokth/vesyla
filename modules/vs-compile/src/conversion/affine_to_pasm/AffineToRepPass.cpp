@@ -128,6 +128,20 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(yield);
 
+  // The rep acts on the same port as the rop's resource. The port is carried on
+  // the existing instruction(s) in the rop body (the rop no longer holds it),
+  // so copy it across to the rep.
+  int32_t port = 0;
+  for (mlir::Operation &sibling : rop_body) {
+    if (auto instr = llvm::dyn_cast<pasm::InstrOp>(sibling)) {
+      if (auto port_attr =
+              llvm::dyn_cast_or_null<mlir::IntegerAttr>(instr.getParam().get("port"))) {
+        port = static_cast<int32_t>(port_attr.getInt());
+        break;
+      }
+    }
+  }
+
   // insert the rep instructions
   auto params = rewriter.getDictionaryAttr({
       rewriter.getNamedAttr("delay", rewriter.getStringAttr(delay_value)),
@@ -135,6 +149,7 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
           "iter", rewriter.getI32IntegerAttr(static_cast<int32_t>(iter))),
       rewriter.getNamedAttr(
           "step", rewriter.getI32IntegerAttr(static_cast<int32_t>(*step))),
+      rewriter.getNamedAttr("port", rewriter.getI32IntegerAttr(port)),
   });
   pasm::InstrOp::create(rewriter, loop.getLoc(),
                         rewriter.getStringAttr(instr_id),

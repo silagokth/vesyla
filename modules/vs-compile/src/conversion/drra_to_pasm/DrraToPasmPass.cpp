@@ -127,13 +127,23 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
 
   mlir::Location loc = rop.getLoc();
 
-  // Build the pasm.rop with the resource location and the drra.rop's id.
+  // Build the pasm.rop with the resource location and the drra.rop's id. The
+  // port is no longer carried on the rop; it is attached to the instr below so
+  // it only ends up on instructions that actually use it (see AddSlotPortPass).
   auto sym_name = builder.getStringAttr(id.getValue());
   auto pasm_rop = pasm::RopOp::create(
       builder, loc, sym_name, builder.getI32IntegerAttr(resource.getRow()),
       builder.getI32IntegerAttr(resource.getCol()),
-      builder.getI32IntegerAttr(resource.getSlot()),
-      builder.getI32IntegerAttr(resource.getPort()), map);
+      builder.getI32IntegerAttr(resource.getSlot()), map);
+
+  // Carry the resource port onto the instr's param dict. AddSlotPortPass later
+  // drops it from any instruction whose ISA definition has no port segment.
+  llvm::SmallVector<mlir::NamedAttribute> instr_params(param.begin(),
+                                                       param.end());
+  if (!param.get("port")) {
+    instr_params.push_back(builder.getNamedAttr(
+        "port", builder.getI32IntegerAttr(resource.getPort())));
+  }
 
   // Build the single pasm.instr inside the new pasm.rop body. The instr id is
   // the drra.rop id, an underscore, and the instr type.
@@ -142,7 +152,7 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
   pasm::InstrOp::create(
       builder, loc,
       builder.getStringAttr(id.getValue().str() + "_" + instr.str()), instr,
-      param);
+      builder.getDictionaryAttr(instr_params));
   pasm::YieldOp::create(builder, loc);
 
   // Outputs are ignored; drop any dangling uses before erasing.

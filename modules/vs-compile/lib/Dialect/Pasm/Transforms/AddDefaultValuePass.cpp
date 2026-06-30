@@ -37,9 +37,8 @@ public:
       int row = rop_op.getRow();
       int col = rop_op.getCol();
       int slot = rop_op.getSlot();
-      int port = rop_op.getPort();
       label = std::to_string(row) + "_" + std::to_string(col) + "_" +
-              std::to_string(slot) + "_" + std::to_string(port);
+              std::to_string(slot);
     } else if (auto cop_op = llvm::dyn_cast<CopOp>(parent_op)) {
       int row = cop_op.getRow();
       int col = cop_op.getCol();

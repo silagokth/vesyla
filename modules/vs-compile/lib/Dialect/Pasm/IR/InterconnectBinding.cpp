@@ -352,11 +352,13 @@ static RopOp create_interconnect_rop(CellOp cell, int32_t port,
   std::string sym_name = prefix + "_" + std::to_string(cell.getRow()) + "_" +
                          std::to_string(cell.getCol());
 
+  // The port is no longer carried on the rop. The swb/route distinction is
+  // recoverable from the sym_name prefix, and the individual instructions
+  // (evt/rep) carry their own port where the ISA needs it.
   auto rop = RopOp::create(
       builder, cell.getLoc(), builder.getStringAttr(sym_name),
       builder.getI32IntegerAttr(cell.getRow()),
       builder.getI32IntegerAttr(cell.getCol()), builder.getI32IntegerAttr(0),
-      builder.getI32IntegerAttr(port),
       /*map=*/mlir::AffineMapAttr());
 
   mlir::Block *body = builder.createBlock(&rop.getBody());
@@ -408,7 +410,11 @@ RopOp emit_swb_instructions(const InterconnectBinding &binding, CellOp cell,
     }
   }
 
+  // The swb rop addresses port 0; carry that onto the event explicitly (the
+  // rop no longer holds a port, and AddSlotPortPass no longer back-fills one).
   llvm::SmallVector<mlir::NamedAttribute> evt_attrs;
+  evt_attrs.push_back(
+      builder.getNamedAttr("port", builder.getI32IntegerAttr(0)));
   InstrOp::create(builder, loc,
                   builder.getStringAttr(rop.getSymName().str() + "_evt"),
                   builder.getStringAttr("evt"),
@@ -522,9 +528,13 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   }
 
   mlir::Location loc = rop.getLoc();
-  int32_t port = rop.getPort();
 
-  std::string kind_str = (port == 0) ? "swb" : "route";
+  // The rop no longer carries a port; recover the swb/route distinction (and
+  // the matching port index) from the sym_name prefix set in
+  // create_interconnect_rop.
+  bool is_swb = rop.getSymName().starts_with("swb");
+  int32_t port = is_swb ? 0 : 1;
+  std::string kind_str = is_swb ? "swb" : "route";
   std::string delay_name = "t_" + kind_str + "_" +
                            std::to_string(rop.getRow()) + "_" +
                            std::to_string(rop.getCol());
@@ -537,6 +547,8 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
                           builder.getI32IntegerAttr(runs[0].second + 1)));
   rep_attrs.push_back(
       builder.getNamedAttr("step", builder.getI32IntegerAttr(runs[0].first)));
+  rep_attrs.push_back(
+      builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
   InstrOp::create(
       builder, loc,
       builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),

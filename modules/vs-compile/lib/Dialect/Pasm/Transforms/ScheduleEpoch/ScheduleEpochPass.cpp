@@ -67,8 +67,7 @@ void dump_schedule_table(
       LOG_DEBUG << "Output filename: " << output_filename;
       std::string label = std::to_string(rop_json["row"].get<int>()) + "_" +
                           std::to_string(rop_json["col"].get<int>()) + "_" +
-                          std::to_string(rop_json["slot"].get<int>()) + "_" +
-                          std::to_string(rop_json["port"].get<int>());
+                          std::to_string(rop_json["slot"].get<int>());
       LOG_DEBUG << "Label: " << label;
       if (component_map.find(label) == component_map.end()) {
         llvm::outs() << "Error: Cannot find the component : " << label << "\n";

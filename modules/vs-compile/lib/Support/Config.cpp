@@ -42,11 +42,16 @@ void Config::set_arch_json(std::string arch_json_path) {
       int slot_start = resource.value()["slot"];
       for (auto i = 0; i < resource.value()["size"]; i++) {
         int slot = slot_start + i;
+        // The resource kind is the same for every port of a slot, so it is
+        // keyed by (row, col, slot). The per-port keys are kept too for any
+        // caller that still resolves a resource by its full (row, col, slot,
+        // port) location.
+        std::string slot_key = std::to_string(row) + "_" + std::to_string(col) +
+                               "_" + std::to_string(slot);
+        component_map_json[slot_key] = resource_kind;
         for (auto j = 0; j < 4; j++) {
           int port = j;
-          std::string key = std::to_string(row) + "_" + std::to_string(col) +
-                            "_" + std::to_string(slot) + "_" +
-                            std::to_string(port);
+          std::string key = slot_key + "_" + std::to_string(port);
           component_map_json[key] = resource_kind;
         }
       }

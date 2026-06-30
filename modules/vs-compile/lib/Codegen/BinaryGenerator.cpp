@@ -210,11 +210,15 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       }
                     }
 
+                    // Resource instructions carry a slot and resolve to a
+                    // resource kind keyed by (row, col, slot); control
+                    // instructions have no slot and resolve to the controller
+                    // keyed by (row, col). The port is no longer part of the
+                    // key (the kind is the same across a slot's ports).
                     std::string label =
                         std::to_string(row) + "_" + std::to_string(col);
-                    if (slot != -1 && port != -1) {
-                      label += "_" + std::to_string(slot) + "_" +
-                               std::to_string(port);
+                    if (slot != -1) {
+                      label += "_" + std::to_string(slot);
                     }
                     if (component_map_json.find(label) ==
                         component_map_json.end()) {

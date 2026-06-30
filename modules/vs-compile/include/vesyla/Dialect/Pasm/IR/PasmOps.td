@@ -72,7 +72,7 @@ def RopOp : Pasm_Op<"rop"> {
 
   let arguments = (ins SymbolNameAttr:$sym_name,
                    I32Attr:$row, I32Attr:$col,
-                   I32Attr:$slot, I32Attr:$port,
+                   I32Attr:$slot,
                    OptionalAttr<AffineMapAttr>:$map);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{

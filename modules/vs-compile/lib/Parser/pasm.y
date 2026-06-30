@@ -294,11 +294,14 @@ ROP_OP:
                     }
                 }
             }
-            if (row == -1 || col == -1 || slot == -1 || port == -1) {
-                yyerror("Missing required parameters: row, col, slot, port");
+            // port is optional on a rop: it is the resource port shared by the
+            // rop's instructions, but it may instead be given directly on the
+            // instruction(s) that use it.
+            if (row == -1 || col == -1 || slot == -1) {
+                yyerror("Missing required parameters: row, col, slot");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
@@ -306,7 +309,6 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port),
                 /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
@@ -315,6 +317,21 @@ ROP_OP:
                 // copy the instr to the new region
                 auto instr_op = instr->op;
                 auto new_instr_op = builder.clone(*instr_op);
+                // When the rop specifies a port, carry it onto each instruction
+                // that does not already give its own. AddSlotPortPass later
+                // drops it from any instruction whose ISA definition has no port
+                // segment.
+                if (port != -1) {
+                    if (auto new_instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(new_instr_op)) {
+                        auto param = new_instr.getParam();
+                        if (!param.get("port")) {
+                            llvm::SmallVector<mlir::NamedAttribute> attrs(param.begin(), param.end());
+                            attrs.push_back(builder.getNamedAttr("port",
+                                builder.getIntegerAttr(builder.getI32Type(), port)));
+                            new_instr->setAttr("param", builder.getDictionaryAttr(attrs));
+                        }
+                    }
+                }
                 // remove the old instr_op
                 instr_op->erase();
             }
@@ -358,11 +375,14 @@ ROP_OP:
                     }
                 }
             }
-            if (row == -1 || col == -1 || slot == -1 || port == -1) {
-                yyerror("Missing required parameters: row, col, slot, port");
+            // port is optional on a rop: it is the resource port shared by the
+            // rop's instructions, but it may instead be given directly on the
+            // instruction(s) that use it.
+            if (row == -1 || col == -1 || slot == -1) {
+                yyerror("Missing required parameters: row, col, slot");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
@@ -370,7 +390,6 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port),
                 /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
@@ -379,6 +398,21 @@ ROP_OP:
                 // copy the instr to the new region
                 auto instr_op = instr->op;
                 auto new_instr_op = builder.clone(*instr_op);
+                // When the rop specifies a port, carry it onto each instruction
+                // that does not already give its own. AddSlotPortPass later
+                // drops it from any instruction whose ISA definition has no port
+                // segment.
+                if (port != -1) {
+                    if (auto new_instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(new_instr_op)) {
+                        auto param = new_instr.getParam();
+                        if (!param.get("port")) {
+                            llvm::SmallVector<mlir::NamedAttribute> attrs(param.begin(), param.end());
+                            attrs.push_back(builder.getNamedAttr("port",
+                                builder.getIntegerAttr(builder.getI32Type(), port)));
+                            new_instr->setAttr("param", builder.getDictionaryAttr(attrs));
+                        }
+                    }
+                }
                 // remove the old instr_op
                 instr_op->erase();
             }
