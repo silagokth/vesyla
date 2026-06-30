@@ -7,6 +7,24 @@
 
 namespace vesyla::pasm::schedule_epoch_detail {
 
+// A ROP is triggered by an ACT only if it contains an event (evt) instruction.
+// A ROP made up exclusively of conf instructions is static configuration that
+// is written through the controller and must not receive an ACT signal.
+static bool rop_needs_act(::vesyla::pasm::RopOp rop_op) {
+  ::mlir::Region &rop_region = rop_op.getBody();
+  if (rop_region.empty()) {
+    return false;
+  }
+  for (::mlir::Operation &child_op : rop_region.front()) {
+    if (auto instr = llvm::dyn_cast<::vesyla::pasm::InstrOp>(&child_op)) {
+      if (instr.getType() == "evt") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void ScheduleEpochPassRewriter::insert_rop_instructions(
     std::vector<::mlir::Operation *> &rop_ops, int t,
     ::mlir::PatternRewriter &rewriter,
@@ -199,7 +217,20 @@ int ScheduleEpochPassRewriter::synchronize(
               ? cell_contains_act_mode2[label]
               : false;
       auto &cell_time_table = getOrCreateCellTimeTable(time_table, label);
-      std::vector<::mlir::Operation *> rop_ops = it->second;
+
+      // Only ROPs that contain an event need to be triggered by an ACT.
+      // conf-only ROPs are static configuration and are skipped here, so they
+      // do not produce a spurious ACT signal.
+      std::vector<::mlir::Operation *> rop_ops;
+      for (auto rop_op : it->second) {
+        if (rop_needs_act(llvm::dyn_cast<::vesyla::pasm::RopOp>(rop_op))) {
+          rop_ops.push_back(rop_op);
+        }
+      }
+      if (rop_ops.empty()) {
+        continue;
+      }
+
       std::vector<int> slot_port_index_list = get_absolute_port_indices(rop_ops);
 
       llvm::outs() << "  - cell " << label << ": [";

@@ -90,6 +90,25 @@ pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx, mlir::Operation 
   return pasm::AnchorRangeAttr::get(ctx, id, "e0", idx, idx);
 }
 
+// Build a single-point anchor fixed to the first iteration of each enclosing
+// loop (each dimension = lower_bound). Bare when there are no loops.
+pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
+                                         mlir::Operation *op,
+                                         mlir::FlatSymbolRefAttr id) {
+  llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
+  if (loops.empty()) {
+    return pasm::AnchorRangeAttr::get(ctx, id, "", {}, {});
+  }
+
+  llvm::SmallVector<uint32_t> idx;
+  for (mlir::affine::AffineForOp loop : loops) {
+    int64_t lb =
+        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
+    idx.push_back(static_cast<uint32_t>(lb));
+  }
+  return pasm::AnchorRangeAttr::get(ctx, id, "e0", idx, idx);
+}
+
 // Collect the (row, col, slot) of every resource an op touches (port ignored).
 // The op's `resource` attribute is either a single pasm::ResourceAttr or an array.
 void collect_resource_keys(
@@ -213,19 +232,35 @@ public:
               get_enclosing_loops(rop);
           llvm::SmallVector<mlir::affine::AffineForOp> consumer_loops =
               get_enclosing_loops(consumer);
-          // The src anchor carries only the loops shared with the consumer; the
-          // producer-only (collapsed) loops are already folded into the delay.
-          llvm::SmallVector<mlir::affine::AffineForOp> common;
-          for (mlir::affine::AffineForOp loop : rop_loops) {
-            for (mlir::affine::AffineForOp c : consumer_loops) {
-              if (c.getOperation() == loop.getOperation()) {
-                common.push_back(loop);
-                break;
+          // The src anchor carries every enclosing loop of the producer: loops
+          // shared with the consumer span their full range [lb, ub-1], while
+          // producer-only loops (the ones the dataflow leaves) are pinned to
+          // their first iteration [lb, lb] — the remaining iterations are
+          // already folded into the delay.
+          pasm::AnchorRangeAttr src;
+          auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+          if (rop_loops.empty()) {
+            src = pasm::AnchorRangeAttr::get(ctx, rop_id, "", {}, {});
+          } else {
+            llvm::SmallVector<uint32_t> src_lo;
+            llvm::SmallVector<uint32_t> src_hi;
+            for (mlir::affine::AffineForOp loop : rop_loops) {
+              bool shared = false;
+              for (mlir::affine::AffineForOp c : consumer_loops) {
+                if (c.getOperation() == loop.getOperation()) {
+                  shared = true;
+                  break;
+                }
               }
+              int64_t lb =
+                  loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
+              int64_t ub =
+                  loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
+              src_lo.push_back(static_cast<uint32_t>(lb));
+              src_hi.push_back(static_cast<uint32_t>(shared ? ub - 1 : lb));
             }
+            src = pasm::AnchorRangeAttr::get(ctx, rop_id, "e0", src_lo, src_hi);
           }
-          auto src = build_anchor(
-              ctx, rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id"), common);
           auto dst = build_anchor(
               ctx, consumer->getAttrOfType<mlir::FlatSymbolRefAttr>("id"),
               consumer_loops);
@@ -272,8 +307,9 @@ public:
 
     // Resource-contention constraints: two statements touching the same
     // (row, col, slot) resource (port ignored) must be at least one cycle apart
-    // (delay [1, ]), unless a dataflow constraint already orders them. Each
-    // anchor is fixed to its last loop iteration.
+    // (delay [1, ]), unless a dataflow constraint already orders them. The
+    // constraint runs from the first statement's last loop iteration to the
+    // second statement's first loop iteration.
     mlir::MLIRContext *ctx = &getContext();
     getOperation().walk([&](pasm::EpochOp epoch) {
       mlir::OpBuilder builder(ctx);
@@ -288,11 +324,16 @@ public:
       });
 
       llvm::SmallVector<mlir::Operation *> statements;
+      llvm::SmallVector<mlir::Operation *> configs;
       epoch.walk([&](mlir::Operation *op) {
         auto instr = op->getAttrOfType<mlir::StringAttr>("instr");
         bool is_conf = instr && instr.getValue() == "conf";
-        if (op->hasAttr("id") && op->hasAttr("resource") && !is_conf) {
-          statements.push_back(op);
+        if (op->hasAttr("id") && op->hasAttr("resource")) {
+          if (is_conf) {
+            configs.push_back(op);
+          } else {
+            statements.push_back(op);
+          }
         }
       });
       for (size_t i = 0; i < statements.size(); ++i) {
@@ -328,9 +369,56 @@ public:
             continue;
           }
           pasm::AnchorRangeAttr src = build_last_anchor(ctx, a, a_id);
-          pasm::AnchorRangeAttr dst = build_last_anchor(ctx, b, b_id);
+          pasm::AnchorRangeAttr dst = build_first_anchor(ctx, b, b_id);
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
           pasm::CstrOp::create(builder, a->getLoc(), src, dst, delay_attr,
+                         builder.getBoolAttr(false));
+        }
+      }
+
+      // Config first-use constraints: a config must be applied before the
+      // resource it configures is first used. A config can set up several
+      // resources at once, so each of its resource keys gets its own first use
+      // — the first later statement (in program order) touching that key. Each
+      // distinct use gets a delay [1, ] constraint. The config sits outside any
+      // loop, so its src anchor is bare (no event, no indices); the use's dst
+      // anchor still carries its enclosing loops.
+      for (mlir::Operation *cfg : configs) {
+        auto cfg_id =
+            mlir::dyn_cast_or_null<mlir::FlatSymbolRefAttr>(cfg->getAttr("id"));
+        if (!cfg_id) {
+          continue;
+        }
+        std::set<std::tuple<int32_t, int32_t, int32_t>> cfg_keys;
+        collect_resource_keys(cfg, cfg_keys);
+
+        // Earliest use of each configured key, deduplicated but kept in the
+        // order the keys are visited so the emitted constraints are stable.
+        llvm::SmallVector<mlir::Operation *> first_uses;
+        std::set<mlir::Operation *> seen;
+        for (const auto &key : cfg_keys) {
+          for (mlir::Operation *use : statements) {
+            std::set<std::tuple<int32_t, int32_t, int32_t>> use_keys;
+            collect_resource_keys(use, use_keys);
+            if (use_keys.count(key)) {
+              if (seen.insert(use).second) {
+                first_uses.push_back(use);
+              }
+              break;
+            }
+          }
+        }
+
+        for (mlir::Operation *use : first_uses) {
+          auto use_id =
+              mlir::dyn_cast_or_null<mlir::FlatSymbolRefAttr>(use->getAttr("id"));
+          if (!use_id) {
+            continue;
+          }
+          auto src = pasm::AnchorRangeAttr::get(ctx, cfg_id, "", {}, {});
+          pasm::AnchorRangeAttr dst = build_first_anchor(ctx, use, use_id);
+          auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
+          pasm::CstrOp::create(builder, cfg->getLoc(), src, dst, delay_attr,
                          builder.getBoolAttr(false));
         }
       }

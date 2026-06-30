@@ -1,11 +1,12 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include <algorithm>
 #include <optional>
 
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
-#include "vesyla/Support/Config.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_GENERATEICDEPPASS
@@ -45,6 +46,58 @@ ResourceAttr get_operand_resource(mlir::Operation *op,
     }
   }
   return nullptr;
+}
+
+// Forward-traverse the SSA value `value`, collecting the resource of every
+// resourced consumer reachable from it. Resourced consumers terminate a chain.
+// affine.for iter-args and affine.yield carry no resource attribute, so they are
+// "looked through" to follow loop-carried data flow:
+//   - a value used as an affine.for iter-arg init flows into the matching region
+//     iter-arg (iteration 0 and, via the yield back-edge, every later one);
+//   - a value yielded by affine.yield flows into both the matching loop result
+//     (the final value) and the matching region iter-arg (the next iteration).
+// `visited` guards against the iter-arg <-> yield cycle.
+void collect_consumer_resources(mlir::Value value,
+                                llvm::SmallVectorImpl<mlir::Attribute> &dst,
+                                llvm::SmallPtrSetImpl<void *> &visited) {
+  auto follow = [&](mlir::Value next) {
+    if (visited.insert(next.getAsOpaquePointer()).second) {
+      collect_consumer_resources(next, dst, visited);
+    }
+  };
+
+  for (mlir::OpOperand &use : value.getUses()) {
+    mlir::Operation *consumer = use.getOwner();
+    if (consumer->hasAttr("resource")) {
+      ResourceAttr dres =
+          get_operand_resource(consumer, use.getOperandNumber());
+      if (dres) {
+        dst.push_back(dres);
+      }
+      continue;
+    }
+    if (auto loop = mlir::dyn_cast<mlir::affine::AffineForOp>(consumer)) {
+      unsigned ctrl = loop.getNumControlOperands();
+      if (use.getOperandNumber() >= ctrl) {
+        unsigned i = use.getOperandNumber() - ctrl;
+        if (i < loop.getRegionIterArgs().size()) {
+          follow(loop.getRegionIterArgs()[i]);
+        }
+      }
+      continue;
+    }
+    if (auto yield = mlir::dyn_cast<mlir::affine::AffineYieldOp>(consumer)) {
+      if (auto loop =
+              mlir::dyn_cast<mlir::affine::AffineForOp>(yield->getParentOp())) {
+        unsigned i = use.getOperandNumber();
+        if (i < loop.getNumResults()) {
+          follow(loop.getResult(i));
+          follow(loop.getRegionIterArgs()[i]);
+        }
+      }
+      continue;
+    }
+  }
 }
 
 // Collect the affine.for loops enclosing `op` up to (but excluding) `epoch`,
@@ -149,31 +202,44 @@ public:
           if (!src) {
             continue;
           }
-          // Merge every resourced consumer of this value into a single
-          // icdep's dst array (consumers may be nested in loops).
+          // Collect every resourced consumer of this value. Consumers may be
+          // nested in loops and reached through affine.for iter-args /
+          // affine.yield back-edges.
           llvm::SmallVector<mlir::Attribute> dst;
-          for (mlir::OpOperand &use : result.getUses()) {
-            mlir::Operation *consumer = use.getOwner();
-            if (!consumer->hasAttr("resource")) {
-              continue;
-            }
-            ResourceAttr dres =
-                get_operand_resource(consumer, use.getOperandNumber());
-            if (dres) {
-              dst.push_back(dres);
-            }
-          }
+          llvm::SmallPtrSet<void *, 8> visited;
+          collect_consumer_resources(result, dst, visited);
+          // Drop receivers on the same physical resource (row, col, slot) as
+          // the source: such a dependency is internal to the module and needs
+          // no interconnect routing.
+          llvm::erase_if(dst, [&](mlir::Attribute attr) {
+            auto dres = mlir::dyn_cast<ResourceAttr>(attr);
+            return dres && dres.getRow() == src.getRow() &&
+                   dres.getCol() == src.getCol() &&
+                   dres.getSlot() == src.getSlot();
+          });
           if (dst.empty()) {
             continue;
           }
-          // Derive the data kind (word/bulk) from the source port via the
-          // fabric config's port table; dir is left empty here.
-          Config cfg;
-          std::string kind = cfg.get_port_info(src.getPort()).kind;
-          IcDepOp::create(builder, producer->getLoc(), src,
-                          builder.getArrayAttr(dst),
-                          builder.getStringAttr(kind), first, last,
-                          /*dir=*/mlir::StringAttr());
+          // Derive the data kind (word/bulk) from the routed value's type:
+          // a scalar (i16) is a word transfer, a vector (vector<16xi16>) is a
+          // bulk transfer. dir is left empty here.
+          std::string kind =
+              mlir::isa<mlir::ShapedType>(result.getType()) ? "bulk" : "word";
+          if (kind == "bulk") {
+            // bulk fans out: all receivers share one icdep.
+            IcDepOp::create(builder, producer->getLoc(), src,
+                            builder.getArrayAttr(dst),
+                            builder.getStringAttr(kind), first, last,
+                            /*dir=*/mlir::StringAttr());
+          } else {
+            // word is point-to-point: one icdep per receiver.
+            for (mlir::Attribute dres : dst) {
+              IcDepOp::create(builder, producer->getLoc(), src,
+                              builder.getArrayAttr(dres),
+                              builder.getStringAttr(kind), first, last,
+                              /*dir=*/mlir::StringAttr());
+            }
+          }
         }
       }
       return mlir::WalkResult::advance();

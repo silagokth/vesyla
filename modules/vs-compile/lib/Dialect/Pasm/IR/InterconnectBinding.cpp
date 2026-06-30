@@ -2,6 +2,8 @@
 
 #include "vesyla/Support/Common.hpp"
 
+#include "llvm/ADT/StringSet.h"
+
 #include <cassert>
 
 namespace vesyla::pasm {
@@ -406,6 +408,12 @@ RopOp emit_swb_instructions(const InterconnectBinding &binding, CellOp cell,
     }
   }
 
+  llvm::SmallVector<mlir::NamedAttribute> evt_attrs;
+  InstrOp::create(builder, loc,
+                  builder.getStringAttr(rop.getSymName().str() + "_evt"),
+                  builder.getStringAttr("evt"),
+                  builder.getDictionaryAttr(evt_attrs));
+
   YieldOp::create(builder, loc);
   return rop;
 }
@@ -459,6 +467,14 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
     }
   }
 
+  llvm::SmallVector<mlir::NamedAttribute> evt_attrs;
+  evt_attrs.push_back(
+      builder.getNamedAttr("port", builder.getI32IntegerAttr(1)));
+  InstrOp::create(builder, loc,
+                  builder.getStringAttr(rop.getSymName().str() + "_evt"),
+                  builder.getStringAttr("evt"),
+                  builder.getDictionaryAttr(evt_attrs));
+
   YieldOp::create(builder, loc);
   return rop;
 }
@@ -508,14 +524,6 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   mlir::Location loc = rop.getLoc();
   int32_t port = rop.getPort();
 
-  llvm::SmallVector<mlir::NamedAttribute> evt_attrs;
-  evt_attrs.push_back(
-      builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-  InstrOp::create(
-      builder, loc,
-      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-      builder.getStringAttr("evt"), builder.getDictionaryAttr(evt_attrs));
-
   std::string kind_str = (port == 0) ? "swb" : "route";
   std::string delay_name = "t_" + kind_str + "_" +
                            std::to_string(rop.getRow()) + "_" +
@@ -544,10 +552,26 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   auto delay = DelayAttr::get(ctx, 1, std::nullopt);
   bool has_sequence = binding.sequence.size() >= 2;
 
+  // Collect the rops whose instruction is a config. A config first-use is itself
+  // a configuration step and must not receive a config -> first_use constraint.
+  llvm::StringSet<> config_rops;
+  if (auto cell = rop->getParentOfType<CellOp>()) {
+    cell.walk([&](InstrOp instr) {
+      if (instr.getType() == "conf") {
+        if (auto r = instr->getParentOfType<RopOp>()) {
+          config_rops.insert(r.getSymName());
+        }
+      }
+    });
+  }
+
   // config -> first_use: rop sequence step must happen before first use
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
     for (const InterconnectConfigOption &opt : binding.slots[i]) {
       for (const Anchor &a : opt.first_anchors) {
+        if (a.instr_id && config_rops.contains(a.instr_id.getValue())) {
+          continue;
+        }
         std::vector<uint32_t> src_indices;
         std::string src_event;
         if (has_sequence) {
