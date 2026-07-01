@@ -73,10 +73,12 @@ void dump_schedule_table(
         llvm::outs() << "Error: Cannot find the component : " << label << "\n";
         std::exit(EXIT_FAILURE);
       }
+      ::vesyla::pasm::Config cfg;
       std::string command = component_path + "/resources/" +
-                            component_map[label].get<std::string>() +
-                            "/compile_util get_timing_model " + input_filename +
-                            " " + output_filename;
+                            component_map[label].get<std::string>() + "/" +
+                            cfg.tool_name("compile_util") +
+                            " get_timing_model " + input_filename + " " +
+                            output_filename;
 
       llvm::outs() << "Executing command: " << command << "\n";
 

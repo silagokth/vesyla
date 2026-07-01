@@ -290,9 +290,19 @@ install(FILES scripts/script_grouped_no_slot0.py DESTINATION scripts)
 file(COPY scripts/timetable.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/timetable.py DESTINATION scripts)
 
-# Stage runtime config (e.g. the config holding the port table) next to the
-# executable so it can be found at the default path: prog_dir()/config/.
-file(COPY config/ DESTINATION ${CMAKE_BINARY_DIR}/config)
+# Stage runtime config (e.g. the config holding the port table and output
+# layout) next to the executable so it can be found at the default path:
+# prog_dir()/config/. The staged copy depends on the source config, so editing
+# config/config.json re-stages it on the next build (a plain file(COPY) only
+# runs at configure time and would leave the staged copy stale).
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/config/config.json
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/config ${CMAKE_BINARY_DIR}/config
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/config/config.json
+  COMMENT "Staging runtime config next to vs-compile")
+add_custom_target(stage_config ALL
+                  DEPENDS ${CMAKE_BINARY_DIR}/config/config.json)
 install(DIRECTORY config/ DESTINATION config)
 
 #==============================================================================
@@ -302,6 +312,7 @@ add_llvm_executable(vs-compile src/main.cpp)
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
+add_dependencies(vs-compile stage_config)
 
 # Build the pasm MLIR LSP server
 add_executable(pasm-mlir-lsp-server tools/pasm-mlir-lsp-server/main.cpp)

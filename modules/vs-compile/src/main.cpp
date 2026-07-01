@@ -58,13 +58,22 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
 
   // Dump the module after each pass into a debug folder, mirroring the
-  // scheduler. scf_0.mlir is the parsed input; subsequent files follow the
-  // passes.
-  std::string module_debug_path = output_dir + "/debug/compile";
+  // scheduler. The <prefix>0 file is the parsed input; subsequent files follow
+  // the passes. The debug folder, stage-file prefix, and extension all come
+  // from the "output" section of config.json.
+  vesyla::pasm::Config cfg;
+  std::string module_debug_path =
+      output_dir + "/" + cfg.output_path("compile_debug_dir");
   if (!std::filesystem::exists(module_debug_path)) {
     std::filesystem::create_directories(module_debug_path);
   }
-  save_mlir(*module, module_debug_path + "/scf_0.mlir");
+  const std::string stage_prefix = cfg.output_path("compile_stage_prefix");
+  const std::string stage_ext = cfg.output_path("stage_ext");
+  auto stage_file = [&](int i) {
+    return module_debug_path + "/" + stage_prefix + std::to_string(i) +
+           stage_ext;
+  };
+  save_mlir(*module, stage_file(0));
 
   // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
   // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
@@ -78,7 +87,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: GenerateIcdepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_1.mlir");
+  save_mlir(*module, stage_file(1));
 
   mlir::PassManager create_constraints_pm(&context);
   create_constraints_pm.addPass(
@@ -87,7 +96,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: CreateConstraintsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_2.mlir");
+  save_mlir(*module, stage_file(2));
 
   mlir::PassManager drra_to_pasm_pm(&context);
   drra_to_pasm_pm.addPass(
@@ -96,7 +105,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: DrraToPasmPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_3.mlir");
+  save_mlir(*module, stage_file(3));
 
   mlir::PassManager affine_pm(&context);
   affine_pm.addPass(
@@ -105,7 +114,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: AffineToRepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_4.mlir");
+  save_mlir(*module, stage_file(4));
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
@@ -113,7 +122,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: ExtractCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_5.mlir");
+  save_mlir(*module, stage_file(5));
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());
@@ -121,7 +130,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: InterconnectPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_6.mlir");
+  save_mlir(*module, stage_file(6));
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
@@ -129,7 +138,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: FlattenCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_7.mlir");
+  save_mlir(*module, stage_file(7));
 
   return module;
 }
@@ -268,7 +277,7 @@ int main(int argc, char **argv) {
 
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {
-    std::string mzn_dir = output_dir + "/debug/minizinc";
+    std::string mzn_dir = output_dir + "/" + cfg.output_path("minizinc_dir");
     if (std::filesystem::exists(mzn_dir)) {
       std::filesystem::remove_all(mzn_dir);
     }

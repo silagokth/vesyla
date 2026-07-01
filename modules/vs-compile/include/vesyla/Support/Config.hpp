@@ -33,6 +33,21 @@ public:
   // bit1 = kind) when no config was loaded.
   PortInfo get_port_info(int port) const;
 
+  // Resolve an output path or filename token from the config's "output"
+  // section. The returned value is relative to the compile output directory
+  // (the --output DIR). "${key}" references to other "output" entries are
+  // substituted, so composed paths (e.g. "${debug_dir}/compile") stay in the
+  // config. Any key the config does not override falls back to a built-in
+  // default; an unknown key yields "".
+  std::string output_path(const std::string &key) const;
+  // Resolve a helper-script path from the config's "scripts" section. The
+  // returned value is relative to the program directory. Falls back to a
+  // built-in default.
+  std::string script_path(const std::string &key) const;
+  // Resolve an external tool name/path from the config's "tools" section.
+  // Falls back to a built-in default.
+  std::string tool_name(const std::string &key) const;
+
   // architecture json
   static nlohmann::json arch_json;
   // isa json

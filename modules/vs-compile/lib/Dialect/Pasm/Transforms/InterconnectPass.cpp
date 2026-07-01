@@ -4,12 +4,14 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
+#include <filesystem>
 #include <set>
 #include <tuple>
 
 #include "vesyla/Dialect/Pasm/IR/InterconnectBinding.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/RoutingDepGraph.hpp"
+#include "vesyla/Support/Config.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_INTERCONNECTPASS
@@ -261,6 +263,26 @@ public:
                                 PatternRewriter &rewriter) const final {
     mlir::Block &epoch_block = op.getBody().front();
 
+    // Interconnect routing graphs (.dot/.png) are written under the compile
+    // output directory in the configurable "interconnect_dir" (default
+    // "${debug_dir}/interconnect", a sibling of the timetable). The output
+    // directory comes from the __OUTPUT_DIR__ global set by main; fall back to
+    // the current working directory when it is not set.
+    std::string output_dir;
+    if (!vesyla::util::GlobalVar::gets("__OUTPUT_DIR__", output_dir) ||
+        output_dir.empty()) {
+      output_dir = ".";
+    }
+    ::vesyla::pasm::Config cfg;
+    std::string interconnect_dir =
+        output_dir + "/" + cfg.output_path("interconnect_dir");
+    std::error_code dir_ec;
+    std::filesystem::create_directories(interconnect_dir, dir_ec);
+    if (dir_ec) {
+      llvm::errs() << "Warning: could not create interconnect directory "
+                   << interconnect_dir << ": " << dir_ec.message() << "\n";
+    }
+
     bool any_processed = false;
     for (CellOp cell : epoch_block.getOps<CellOp>()) {
       if (cell->hasAttr("interconnect_done")) {
@@ -279,8 +301,10 @@ public:
         RoutingDepGraph graph;
         populate_routes(graph, cell.getBody().front(), epoch_block, kind);
 
-        std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
-        std::string png_path = (prefix + "_" + cell_label + ".png").str();
+        std::string dot_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".dot").str();
+        std::string png_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".png").str();
         RoutingDepGraph reduced = graph;
         reduced.transitive_reduce();
         reduced.dump_dot(dot_path);

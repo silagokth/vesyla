@@ -5,6 +5,28 @@
     { "port": 2, "dir": "input",  "kind": "bulk" },
     { "port": 3, "dir": "output", "kind": "bulk" }
   ],
-  "compile_dir": "compile",
-  "timetable_dir": "${compile_dir}/timetable"
+  "output": {
+    "debug_dir": "debug",
+    "compile_debug_dir": "${debug_dir}/schedule",
+    "schedule_debug_dir": "${debug_dir}/schedule",
+    "vis_dir": "${debug_dir}/vis",
+    "minizinc_dir": "${debug_dir}/minizinc",
+    "compile_dir": "compile",
+    "timetable_dir": "${debug_dir}/timetable",
+    "interconnect_dir": "${debug_dir}/interconnect",
+    "compile_stage_prefix": "mlir_",
+    "schedule_stage_prefix": "pasm_",
+    "stage_ext": ".mlir",
+    "instr_basename": "instr",
+    "schedule_dump_prefix": "schedule_"
+  },
+  "scripts": {
+    "vis": "scripts/script.py",
+    "vis_grouped": "scripts/script_grouped.py",
+    "vis_grouped_no_slot0": "scripts/script_grouped_no_slot0.py",
+    "timetable": "scripts/timetable.py"
+  },
+  "tools": {
+    "compile_util": "compile_util"
+  }
 }

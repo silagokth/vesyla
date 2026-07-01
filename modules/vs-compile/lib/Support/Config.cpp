@@ -10,6 +10,102 @@ nlohmann::json Config::config_json;
 
 using namespace std;
 
+namespace {
+
+// Built-in defaults for the config sections that describe where vs-compile
+// writes its output. Keeping the defaults here means config.json only needs to
+// list the keys a user wants to override; every unset key falls back to these.
+// "${key}" values compose one entry from another and are resolved on lookup.
+const std::map<std::string, std::string> &output_defaults() {
+  static const std::map<std::string, std::string> defaults = {
+      {"debug_dir", "debug"},
+      {"compile_debug_dir", "${debug_dir}/compile"},
+      {"schedule_debug_dir", "${debug_dir}/schedule"},
+      {"vis_dir", "${debug_dir}/vis"},
+      {"minizinc_dir", "${debug_dir}/minizinc"},
+      {"compile_dir", "compile"},
+      {"timetable_dir", "${compile_dir}/timetable"},
+      {"interconnect_dir", "${debug_dir}/interconnect"},
+      {"compile_stage_prefix", "scf_"},
+      {"schedule_stage_prefix", ""},
+      {"stage_ext", ".mlir"},
+      {"instr_basename", "instr"},
+      {"schedule_dump_prefix", "schedule_"},
+  };
+  return defaults;
+}
+
+// Helper scripts shipped next to the executable, relative to the program dir.
+const std::map<std::string, std::string> &script_defaults() {
+  static const std::map<std::string, std::string> defaults = {
+      {"vis", "scripts/script.py"},
+      {"vis_grouped", "scripts/script_grouped.py"},
+      {"vis_grouped_no_slot0", "scripts/script_grouped_no_slot0.py"},
+      {"timetable", "scripts/timetable.py"},
+  };
+  return defaults;
+}
+
+// External tools invoked by the compiler.
+const std::map<std::string, std::string> &tool_defaults() {
+  static const std::map<std::string, std::string> defaults = {
+      {"compile_util", "compile_util"},
+  };
+  return defaults;
+}
+
+// Return the raw (unresolved) value for `key` in `section`: the config override
+// if present and a string, otherwise the built-in default (or "" if the key is
+// unknown to both).
+std::string raw_value(const nlohmann::json &config_json,
+                      const std::string &section, const std::string &key,
+                      const std::map<std::string, std::string> &defaults) {
+  if (config_json.is_object() && config_json.contains(section) &&
+      config_json[section].is_object() && config_json[section].contains(key) &&
+      config_json[section][key].is_string()) {
+    return config_json[section][key].get<std::string>();
+  }
+  auto it = defaults.find(key);
+  return it != defaults.end() ? it->second : std::string();
+}
+
+// Substitute "${key}" references in `value` with other entries of the same
+// section (config override or default). The depth bound guards against a cyclic
+// reference in a hand-edited config.
+std::string resolve(const nlohmann::json &config_json,
+                    const std::string &section, const std::string &value,
+                    const std::map<std::string, std::string> &defaults,
+                    int depth) {
+  if (depth <= 0) {
+    return value;
+  }
+  std::string result = value;
+  std::string::size_type pos = 0;
+  while ((pos = result.find("${", pos)) != std::string::npos) {
+    std::string::size_type end = result.find('}', pos + 2);
+    if (end == std::string::npos) {
+      break;
+    }
+    std::string key = result.substr(pos + 2, end - (pos + 2));
+    std::string replacement =
+        resolve(config_json, section,
+                raw_value(config_json, section, key, defaults), defaults,
+                depth - 1);
+    result.replace(pos, end - pos + 1, replacement);
+    pos += replacement.size();
+  }
+  return result;
+}
+
+std::string lookup(const nlohmann::json &config_json, const std::string &section,
+                   const std::string &key,
+                   const std::map<std::string, std::string> &defaults) {
+  return resolve(config_json, section,
+                 raw_value(config_json, section, key, defaults), defaults, 16);
+}
+
+} // namespace
+
 void Config::set_isa_json(std::string isa_json_path) {
   std::ifstream ifs(isa_json_path);
   if (!ifs.is_open()) {
@@ -96,6 +192,16 @@ PortInfo Config::get_port_info(int port) const {
   std::string dir = (port & 1) ? "output" : "input";
   std::string kind = (port & 2) ? "bulk" : "word";
   return PortInfo{dir, kind};
+}
+
+std::string Config::output_path(const std::string &key) const {
+  return lookup(config_json, "output", key, output_defaults());
+}
+std::string Config::script_path(const std::string &key) const {
+  return lookup(config_json, "scripts", key, script_defaults());
+}
+std::string Config::tool_name(const std::string &key) const {
+  return lookup(config_json, "tools", key, tool_defaults());
 }
 
 } // namespace pasm
