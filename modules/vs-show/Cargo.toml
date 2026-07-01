@@ -1,0 +1,16 @@
+[package]
+name = "vs-show"
+edition = "2021"
+description = "Vesyla tool to display debug artifacts (e.g. schedule timetables) produced during compilation."
+
+[[bin]]
+name = "vs-show"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5.40", features = ["derive"] }
+dialoguer = "0.11.0"
+env_logger = "0.11.8"
+log = "0.4.27"
+log-panics = { version = "2.1.0", features = ["with-backtrace"] }
+serde_json = "1.0.140"

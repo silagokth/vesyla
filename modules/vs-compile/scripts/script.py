@@ -585,4 +585,5 @@ multi = len(epochs) > 1
 for name, body in epochs:
     dot = build_graph(name, body)
     out_name = f"{base}_{name}" if multi else base
+    dot.render(out_name, format="svg", view=False, cleanup=False)
     dot.render(out_name, format="png", view=False, cleanup=False)

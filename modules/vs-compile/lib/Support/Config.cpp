@@ -21,7 +21,7 @@ const std::map<std::string, std::string> &output_defaults() {
       {"debug_dir", "debug"},
       {"compile_debug_dir", "${debug_dir}/compile"},
       {"schedule_debug_dir", "${debug_dir}/schedule"},
-      {"vis_dir", "${debug_dir}/vis"},
+      {"constraint_dir", "${debug_dir}/constraint"},
       {"minizinc_dir", "${debug_dir}/minizinc"},
       {"compile_dir", "compile"},
       {"timetable_dir", "${compile_dir}/timetable"},

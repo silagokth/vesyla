@@ -52,14 +52,15 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
 
   std::string viz_script_grouped =
       vesyla::util::SysPath::prog_dir() + cfg.script_path("vis_grouped");
-  std::string vis_dir =
-      std::filesystem::absolute(output_dir + "/" + cfg.output_path("vis_dir"))
+  std::string constraint_dir =
+      std::filesystem::absolute(output_dir + "/" +
+                                cfg.output_path("constraint_dir"))
           .string();
-  std::filesystem::create_directories(vis_dir);
+  std::filesystem::create_directories(constraint_dir);
   if (std::filesystem::exists(viz_script_grouped)) {
     try {
-      std::string cmd = "cd " + vis_dir + " && python3 " + viz_script_grouped +
-                        " " + zero_mlir;
+      std::string cmd = "cd " + constraint_dir + " && python3 " +
+                        viz_script_grouped + " " + zero_mlir;
       int rc = std::system(cmd.c_str());
       if (rc != 0) {
         LOG_WARNING << "MLIR grouped visualization failed (exit " << rc
@@ -80,7 +81,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
       cfg.script_path("vis_grouped_no_slot0");
   if (std::filesystem::exists(viz_script_grouped_no_slot0)) {
     try {
-      std::string cmd = "cd " + vis_dir + " && python3 " +
+      std::string cmd = "cd " + constraint_dir + " && python3 " +
                         viz_script_grouped_no_slot0 + " " + zero_mlir;
       int rc = std::system(cmd.c_str());
       if (rc != 0) {
@@ -103,7 +104,7 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
       vesyla::util::SysPath::prog_dir() + cfg.script_path("vis");
   if (std::filesystem::exists(viz_script)) {
     std::string cmd =
-        "cd " + vis_dir + " && python3 " + viz_script + " " + zero_mlir;
+        "cd " + constraint_dir + " && python3 " + viz_script + " " + zero_mlir;
     int rc = std::system(cmd.c_str());
     if (rc != 0) {
       LOG_WARNING << "MLIR visualization failed (exit " << rc << "): " << cmd;

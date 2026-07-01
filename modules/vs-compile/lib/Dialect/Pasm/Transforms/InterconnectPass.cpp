@@ -305,6 +305,8 @@ public:
             interconnect_dir + "/" + (prefix + "_" + cell_label + ".dot").str();
         std::string png_path =
             interconnect_dir + "/" + (prefix + "_" + cell_label + ".png").str();
+        std::string svg_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".svg").str();
         RoutingDepGraph reduced = graph;
         reduced.transitive_reduce();
         reduced.dump_dot(dot_path);
@@ -324,13 +326,20 @@ public:
           emit_interconnect_constraints(binding, rop, rewriter);
         }
 
-        // Best-effort PNG rendering via graphviz. Any failure is reported but
-        // does not abort the pass — the .dot file is always available.
-        std::string cmd = "dot -Tpng " + dot_path + " -o " + png_path;
-        int rc = std::system(cmd.c_str());
-        if (rc != 0) {
-          llvm::errs() << "graphviz rendering failed (rc=" << rc << "): " << cmd
-                       << "\n";
+        // Best-effort rendering via graphviz, producing both an SVG (preferred,
+        // vector) and a PNG. Any failure is reported but does not abort the
+        // pass — the .dot file is always available.
+        std::string svg_cmd = "dot -Tsvg " + dot_path + " -o " + svg_path;
+        int svg_rc = std::system(svg_cmd.c_str());
+        if (svg_rc != 0) {
+          llvm::errs() << "graphviz rendering failed (rc=" << svg_rc
+                       << "): " << svg_cmd << "\n";
+        }
+        std::string png_cmd = "dot -Tpng " + dot_path + " -o " + png_path;
+        int png_rc = std::system(png_cmd.c_str());
+        if (png_rc != 0) {
+          llvm::errs() << "graphviz rendering failed (rc=" << png_rc
+                       << "): " << png_cmd << "\n";
         }
       };
 
