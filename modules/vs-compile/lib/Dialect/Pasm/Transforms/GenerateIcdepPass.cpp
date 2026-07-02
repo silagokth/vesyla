@@ -146,8 +146,8 @@ AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
       idx.push_back(static_cast<int32_t>(lb));
     }
   }
-  llvm::StringRef event = loops.empty() ? "" : "e0";
-  return AnchorAttr::get(ctx, instr, event, idx, delay);
+  // Loop dimensions map to IR indices; MT (event id) is 0 and there is no OR.
+  return AnchorAttr::get(ctx, instr, /*or_idx=*/{}, /*mt=*/0, idx, delay);
 }
 
 class GenerateIcdepPass

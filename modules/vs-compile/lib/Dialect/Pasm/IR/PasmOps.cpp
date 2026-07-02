@@ -28,41 +28,35 @@ void PasmDialect::registerOps() {
 }
 
 LogicalResult CstrOp::verify() {
-  auto src = getSrc();
-  if (src.getIdxLo().size() != src.getIdxHi().size()) {
-    return emitOpError("src idx_lo and idx_hi must have the same size");
-  }
-  if (src.getEvent().empty() != src.getIdxLo().empty()) {
-    return emitOpError("src must have both event and indices, or neither");
-  }
-  for (std::size_t i = 0; i < src.getIdxLo().size(); ++i) {
-    if (src.getIdxLo()[i] > src.getIdxHi()[i]) {
-      return emitOpError("src idx_lo must be <= idx_hi in every dimension");
+  // A range spans only IR indices; OR and MT are shared between lo and hi.
+  auto check = [&](AnchorRangeAttr a, const char *which) -> LogicalResult {
+    if (a.getOrLo() != a.getOrHi() || a.getMtLo() != a.getMtHi()) {
+      return emitOpError() << which << " range may span only IR indices";
     }
-  }
-  auto dst = getDst();
-  if (dst.getIdxLo().size() != dst.getIdxHi().size()) {
-    return emitOpError("dst idx_lo and idx_hi must have the same size");
-  }
-  if (dst.getEvent().empty() != dst.getIdxLo().empty()) {
-    return emitOpError("dst must have both event and indices, or neither");
-  }
-  for (std::size_t i = 0; i < dst.getIdxLo().size(); ++i) {
-    if (dst.getIdxLo()[i] > dst.getIdxHi()[i]) {
-      return emitOpError("dst idx_lo must be <= idx_hi in every dimension");
+    if (a.getIrLo().size() != a.getIrHi().size()) {
+      return emitOpError() << which << " ir_lo and ir_hi must have equal size";
     }
+    for (std::size_t i = 0; i < a.getIrLo().size(); ++i) {
+      if (a.getIrLo()[i] > a.getIrHi()[i]) {
+        return emitOpError()
+               << which << " ir_lo must be <= ir_hi in every dimension";
+      }
+    }
+    return success();
+  };
+  if (failed(check(getSrc(), "src")) || failed(check(getDst(), "dst"))) {
+    return failure();
   }
-  uint64_t src_count = 1;
-  for (std::size_t i = 0; i < src.getIdxLo().size(); ++i) {
-    src_count *=
-        static_cast<uint64_t>(src.getIdxHi()[i] - src.getIdxLo()[i] + 1);
-  }
-  uint64_t dst_count = 1;
-  for (std::size_t i = 0; i < dst.getIdxLo().size(); ++i) {
-    dst_count *=
-        static_cast<uint64_t>(dst.getIdxHi()[i] - dst.getIdxLo()[i] + 1);
-  }
-  if (src_count != dst_count) {
+
+  // Total elements = product of the per-dimension IR spans.
+  auto count = [](AnchorRangeAttr a) -> uint64_t {
+    uint64_t n = 1;
+    for (std::size_t i = 0; i < a.getIrLo().size(); ++i) {
+      n *= static_cast<uint64_t>(a.getIrHi()[i] - a.getIrLo()[i] + 1);
+    }
+    return n;
+  };
+  if (count(getSrc()) != count(getDst())) {
     return emitOpError(
         "src and dst must reference the same number of elements");
   }

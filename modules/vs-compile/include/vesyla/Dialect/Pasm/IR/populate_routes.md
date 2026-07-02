@@ -10,8 +10,8 @@ Builds the routing-dependency graph for one `epoch` and one `kind`
 id = 1
 for op in epoch.body:
     if op is not IcDepOp or op.kind != kind: skip
-    graph.insert_node(Anchor(first_instr, first_event, first_idx), id, First)
-    graph.insert_node(Anchor(last_instr,  last_event,  last_idx ), id, Last)
+    graph.insert_node(Anchor(first_instr, first_or, first_mt, first_ir), id, First)
+    graph.insert_node(Anchor(last_instr,  last_or,  last_mt,  last_ir ), id, Last)
     id += 1
 ```
 
@@ -21,8 +21,8 @@ for op in epoch.body:
 for node in graph:
     if node is a sentinel: skip
 
-    stack   = [ RangeRef(node.instr, node.event,
-                         lo=node.indices, hi=node.indices) ]
+    stack   = [ RangeRef(node.instr, node.mt,
+                         lo=node.ir, hi=node.ir) ]
     visited = {}            # cycle guard
 
     while stack not empty:
@@ -36,35 +36,35 @@ for node in graph:
             # If delay==[0,0] the cstr is bilateral; try src→dst then dst→src.
             for (src_ar, dst_ar) in directions(cstr):
                 if src_ar.instr != current.instr:  continue
-                if src_ar.event != current.event:  continue
+                if src_ar.mt != current.mt:  continue    # MT = event id
 
-                # Eventless cstrs carry no indices: just forward dst as-is.
-                if src_ar.event == "":
-                    stack.push(RangeRef(dst_ar.instr, dst_ar.event,
-                                        lo=dst_ar.idx_lo, hi=dst_ar.idx_hi))
+                # cstrs with no IR indices carry no range: forward dst as-is.
+                if src_ar.ir is empty:
+                    stack.push(RangeRef(dst_ar.instr, dst_ar.mt,
+                                        lo=dst_ar.ir_lo, hi=dst_ar.ir_hi))
                     continue
 
                 # Gate: drop only when src lies strictly in current's past
-                # on every dim that propagates to dst.
-                n = min(|src.dims|, |dst.dims|)
-                if range_strictly_after(current.lo[:n], src.hi[:n]):
+                # on every IR dim that propagates to dst.
+                n = min(|src.ir_dims|, |dst.ir_dims|)
+                if range_strictly_after(current.lo[:n], src.ir_hi[:n]):
                     continue
 
                 # Map current → matching src element → corresponding dst coord.
-                matched_src[i] = clamp(current.lo[i], src.lo[i], src.hi[i])
-                new_lo         = map_index(matched_src, src.lo, src.hi,
-                                                       dst.lo, dst.hi)
-                stack.push(RangeRef(dst_ar.instr, dst_ar.event,
-                                    lo=new_lo, hi=dst_ar.idx_hi))
+                matched_src[i] = clamp(current.lo[i], src.ir_lo[i], src.ir_hi[i])
+                new_lo         = map_index(matched_src, src.ir_lo, src.ir_hi,
+                                                       dst.ir_lo, dst.ir_hi)
+                stack.push(RangeRef(dst_ar.instr, dst_ar.mt,
+                                    lo=new_lo, hi=dst_ar.ir_hi))
 
         # --- emit: connect node to any candidate whose anchor lies at
-        #     or past current.lo in the same (instr, event) space ---
+        #     or past current.lo in the same (instr, MT) space ---
         for candidate in graph:
             if candidate == node: continue
             if candidate.instr != current.instr:  continue
-            if candidate.event != current.event:  continue
-            if |candidate.indices| != |current.lo|: continue
-            if all i: candidate.indices[i] >= current.lo[i]:
+            if candidate.mt != current.mt:  continue
+            if |candidate.ir| != |current.lo|: continue
+            if all i: candidate.ir[i] >= current.lo[i]:
                 graph.insert_edge(node.key, candidate.key)
 ```
 

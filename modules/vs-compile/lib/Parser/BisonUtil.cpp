@@ -24,37 +24,6 @@ void print_grammar(const std::string &grammar_) {
 } // namespace schedule
 } // namespace vesyla
 
-namespace {
-struct RepInfo {
-  mlir::Attribute iter;
-  mlir::Attribute delay;
-};
-
-std::vector<RepInfo> get_rop_reps(vesyla::pasm::EpochOp epoch_op,
-                                  llvm::StringRef rop_id) {
-  std::vector<RepInfo> reps;
-  if (epoch_op.getBody().empty())
-    return reps;
-  for (auto &op : epoch_op.getBody().front().getOperations()) {
-    auto rop = llvm::dyn_cast<vesyla::pasm::RopOp>(&op);
-    if (!rop || rop.getSymName() != rop_id)
-      continue;
-    if (rop.getBody().empty())
-      break;
-    for (auto &child : rop.getBody().front().getOperations()) {
-      auto instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(&child);
-      if (!instr || instr.getType() != "rep")
-        continue;
-      auto param = instr.getParam();
-      reps.push_back({param.get("iter"), param.get("delay")});
-    }
-    break;
-  }
-  return reps;
-}
-
-} // namespace
-
 mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
                             const std::string &cmp) {
   auto epoch_op =
@@ -70,38 +39,23 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   int alpha = lhs->offset;
   int beta = rhs->offset;
 
-  std::string src_id, src_event;
-  std::vector<idx_entry_t> src_indices;
-  std::string dst_id, dst_event;
-  std::vector<idx_entry_t> dst_indices;
+  ::vesyla::AnchorRange src, dst;
   std::optional<int> min_delay;
   std::optional<int> max_delay;
 
   if (cmp == "<") {
-    src_id = lhs->id;
-    src_event = lhs->event;
-    src_indices = lhs->indices;
-    dst_id = rhs->id;
-    dst_event = rhs->event;
-    dst_indices = rhs->indices;
+    src = lhs->range;
+    dst = rhs->range;
     min_delay = 1 + alpha - beta;
     // no upper bound
   } else if (cmp == ">") {
-    src_id = rhs->id;
-    src_event = rhs->event;
-    src_indices = rhs->indices;
-    dst_id = lhs->id;
-    dst_event = lhs->event;
-    dst_indices = lhs->indices;
+    src = rhs->range;
+    dst = lhs->range;
     min_delay = 1 + beta - alpha;
     // no upper bound
   } else { // "==" or "!="
-    src_id = lhs->id;
-    src_event = lhs->event;
-    src_indices = lhs->indices;
-    dst_id = rhs->id;
-    dst_event = rhs->event;
-    dst_indices = rhs->indices;
+    src = lhs->range;
+    dst = rhs->range;
     min_delay = alpha - beta;
     max_delay = alpha - beta;
   }
@@ -109,65 +63,12 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
 
   // Same-sign post-rule: if both bounds are present and negative, swap.
   if (min_delay && max_delay && *min_delay < 0 && *max_delay < 0) {
-    std::swap(src_id, dst_id);
-    std::swap(src_event, dst_event);
-    std::swap(src_indices, dst_indices);
+    std::swap(src, dst);
     int new_min = -*max_delay;
     int new_max = -*min_delay;
     min_delay = new_min;
     max_delay = new_max;
   }
-
-  // If event is missing and the rop has rep instructions, default to e0
-  // pinned at iteration 0 (one zero index per rep level).
-  auto src_reps = get_rop_reps(epoch_op, src_id);
-  if (src_event.empty() && !src_reps.empty()) {
-    src_event = "e0";
-    if (src_indices.empty()) {
-      src_indices.assign(src_reps.size(), idx_entry_t{false, false, 0, 0});
-    }
-  }
-  auto dst_reps = get_rop_reps(epoch_op, dst_id);
-  if (dst_event.empty() && !dst_reps.empty()) {
-    dst_event = "e0";
-    if (dst_indices.empty()) {
-      dst_indices.assign(dst_reps.size(), idx_entry_t{false, false, 0, 0});
-    }
-  }
-
-  auto lower_indices = [&](const std::vector<idx_entry_t> &entries,
-                           const std::vector<RepInfo> &reps,
-                           std::vector<int32_t> &out_lo,
-                           std::vector<int32_t> &out_hi) {
-    if (entries.size() > reps.size()) {
-      vesyla::schedule::print_error(
-          ("cstr: more indices (" + std::to_string(entries.size()) +
-           ") than rep levels (" + std::to_string(reps.size()) + ")")
-              .c_str());
-      exit(1);
-    }
-    // entries[k] pairs with reps[k] (instruction order): the first rep
-    // written is index [0], next is [1], ...
-    for (size_t k = 0; k < entries.size(); ++k) {
-      const auto &e = entries[k];
-      int32_t lo = e.lo_default ? 0 : e.lo;
-      int32_t hi = e.hi;
-      if (e.hi_default) {
-        if (auto iter_int =
-                llvm::dyn_cast_or_null<mlir::IntegerAttr>(reps[k].iter)) {
-          hi = static_cast<int32_t>(iter_int.getInt()) - 1;
-        } else {
-          hi = lo;
-        }
-      }
-      out_lo.push_back(lo);
-      out_hi.push_back(hi);
-    }
-  };
-
-  std::vector<int32_t> src_idx_lo, src_idx_hi, dst_idx_lo, dst_idx_hi;
-  lower_indices(src_indices, src_reps, src_idx_lo, src_idx_hi);
-  lower_indices(dst_indices, dst_reps, dst_idx_lo, dst_idx_hi);
 
   std::optional<int32_t> min_v;
   std::optional<int32_t> max_v;
@@ -180,66 +81,31 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   auto delay_attr =
       vesyla::pasm::DelayAttr::get(builder.getContext(), min_v, max_v);
 
-  std::vector<uint32_t> src_lo_u(src_idx_lo.begin(), src_idx_lo.end());
-  std::vector<uint32_t> src_hi_u(src_idx_hi.begin(), src_idx_hi.end());
-  std::vector<uint32_t> dst_lo_u(dst_idx_lo.begin(), dst_idx_lo.end());
-  std::vector<uint32_t> dst_hi_u(dst_idx_hi.begin(), dst_idx_hi.end());
+  auto to_u = [](const std::vector<int> &v) {
+    return std::vector<uint32_t>(v.begin(), v.end());
+  };
+  auto make_ar = [&](const ::vesyla::AnchorRange &r) {
+    return vesyla::pasm::AnchorRangeAttr::get(
+        builder.getContext(),
+        mlir::FlatSymbolRefAttr::get(builder.getContext(), r.lo.name),
+        to_u(r.lo.or_idx), static_cast<uint32_t>(r.lo.mt_idx), to_u(r.lo.ir_idx),
+        to_u(r.hi.or_idx), static_cast<uint32_t>(r.hi.mt_idx),
+        to_u(r.hi.ir_idx));
+  };
 
-  auto src_ar = vesyla::pasm::AnchorRangeAttr::get(
-      builder.getContext(),
-      mlir::FlatSymbolRefAttr::get(builder.getContext(), src_id), src_event,
-      src_lo_u, src_hi_u);
-  auto dst_ar = vesyla::pasm::AnchorRangeAttr::get(
-      builder.getContext(),
-      mlir::FlatSymbolRefAttr::get(builder.getContext(), dst_id), dst_event,
-      dst_lo_u, dst_hi_u);
-
-  auto cstr_op = vesyla::pasm::CstrOp::create(builder, loc, src_ar, dst_ar,
-                                              delay_attr,
+  auto cstr_op = vesyla::pasm::CstrOp::create(builder, loc, make_ar(src),
+                                              make_ar(dst), delay_attr,
                                               builder.getBoolAttr(is_neq));
 
   return cstr_op.getOperation();
 }
 
-static int32_t parse_nonneg_int(const std::string &s, const std::string &ctx) {
-  static const std::regex int_re(R"(^\d+$)");
-  if (!std::regex_match(s, int_re)) {
-    vesyla::schedule::print_error(
-        ("cstr: index must be a non-negative integer in " + ctx + ": " + s)
-            .c_str());
-    exit(1);
-  }
-  return static_cast<int32_t>(std::stoi(s));
-}
-
-static idx_entry_t parse_idx_entry(const std::string &raw) {
-  std::string content = raw;
-  content.erase(std::remove_if(content.begin(), content.end(), ::isspace),
-                content.end());
-  idx_entry_t e{false, false, 0, 0};
-  auto colon = content.find(':');
-  if (colon == std::string::npos) {
-    e.lo = e.hi = parse_nonneg_int(content, "[" + raw + "]");
-    return e;
-  }
-  std::string left = content.substr(0, colon);
-  std::string right = content.substr(colon + 1);
-  if (left.empty()) {
-    e.lo_default = true;
-  } else {
-    e.lo = parse_nonneg_int(left, "[" + raw + "]");
-  }
-  if (right.empty()) {
-    e.hi_default = true;
-  } else {
-    e.hi = parse_nonneg_int(right, "[" + raw + "]");
-  }
-  return e;
-}
-
 static rop_ref_t *parse_rop_ref(const std::string &s) {
+  // Anchor text (name + OR.MT.IR with an optional innermost-IR range) followed
+  // by an optional +N / -N cycle offset. The OR/MT/IR grammar and the
+  // "range only on the innermost IR" rule are enforced by AnchorRange::parse.
   static const std::regex re(
-      R"(^\s*(\w+)(?:\.(\w+))?((?:\s*\[[^\]]*\])*)\s*([+-]\s*\d+)?\s*$)");
+      R"(^\s*([A-Za-z_]\w*(?:\.|\[[0-9:]*\])*)\s*([+-]\s*\d+)?\s*$)");
   LOG_DEBUG << "parse_rop_ref input: [" << s << "]";
   std::smatch m;
   if (!std::regex_match(s, m, re)) {
@@ -249,28 +115,17 @@ static rop_ref_t *parse_rop_ref(const std::string &s) {
   }
 
   auto *ref = new rop_ref_t();
-  ref->id = m[1];
-  ref->event = m[2].matched ? m[2].str() : std::string();
+  auto range = ::vesyla::AnchorRange::parse(m[1].str());
+  if (!range) {
+    vesyla::schedule::print_error(
+        ("cstr: invalid anchor: " + m[1].str()).c_str());
+    exit(1);
+  }
+  ref->range = *range;
   ref->offset = 0;
 
-  std::string idx_str = m[3];
-  static const std::regex idx_re(R"(\[([^\]]*)\])");
-  for (auto it = std::sregex_iterator(idx_str.begin(), idx_str.end(), idx_re);
-       it != std::sregex_iterator(); ++it) {
-    ref->indices.push_back(parse_idx_entry((*it)[1].str()));
-  }
-
-  for (size_t k = 0; k + 1 < ref->indices.size(); ++k) {
-    const auto &e = ref->indices[k];
-    if (e.lo_default || e.hi_default || e.lo != e.hi) {
-      vesyla::schedule::print_error(
-          ("cstr: range allowed only on the innermost index in: " + s).c_str());
-      exit(1);
-    }
-  }
-
-  if (m[4].matched) {
-    std::string off_str = m[4];
+  if (m[2].matched) {
+    std::string off_str = m[2];
     off_str.erase(std::remove_if(off_str.begin(), off_str.end(), ::isspace),
                   off_str.end());
     ref->offset = std::stoi(off_str);

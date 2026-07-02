@@ -49,14 +49,24 @@ get_enclosing_loops(mlir::Operation *op) {
   return loops;
 }
 
-// Build an anchor for the given instruction symbol over `loops`: event "e0" and
-// one index dimension per loop, spanning [lower_bound, upper_bound - 1] (the
-// affine.for upper bound is exclusive). With no loops the anchor is bare (empty
-// event, no indices).
+// Build an anchor range from loop-derived indices. Loop dimensions map to IR
+// (inner repetition) indices; there is no outer repetition or transition, so
+// OR is empty and MT (the event id) is 0.
+pasm::AnchorRangeAttr make_ir_anchor(mlir::MLIRContext *ctx,
+                                     mlir::FlatSymbolRefAttr id,
+                                     llvm::ArrayRef<uint32_t> ir_lo,
+                                     llvm::ArrayRef<uint32_t> ir_hi) {
+  return pasm::AnchorRangeAttr::get(ctx, id, /*or_lo=*/{}, /*mt_lo=*/0, ir_lo,
+                                    /*or_hi=*/{}, /*mt_hi=*/0, ir_hi);
+}
+
+// Build an anchor for the given instruction symbol over `loops`: MT event 0 and
+// one IR index dimension per loop, spanning [lower_bound, upper_bound - 1] (the
+// affine.for upper bound is exclusive). With no loops the anchor is bare.
 pasm::AnchorRangeAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr id,
                              llvm::ArrayRef<mlir::affine::AffineForOp> loops) {
   if (loops.empty()) {
-    return pasm::AnchorRangeAttr::get(ctx, id, "", {}, {});
+    return make_ir_anchor(ctx, id, {}, {});
   }
 
   llvm::SmallVector<uint32_t> idx_lo;
@@ -69,7 +79,7 @@ pasm::AnchorRangeAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAt
     idx_lo.push_back(static_cast<uint32_t>(lb));
     idx_hi.push_back(static_cast<uint32_t>(ub - 1));
   }
-  return pasm::AnchorRangeAttr::get(ctx, id, "e0", idx_lo, idx_hi);
+  return make_ir_anchor(ctx, id, idx_lo, idx_hi);
 }
 
 // Build a single-point anchor fixed to the last iteration of each enclosing
@@ -78,7 +88,7 @@ pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx, mlir::Operation 
                                   mlir::FlatSymbolRefAttr id) {
   llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
   if (loops.empty()) {
-    return pasm::AnchorRangeAttr::get(ctx, id, "", {}, {});
+    return make_ir_anchor(ctx, id, {}, {});
   }
 
   llvm::SmallVector<uint32_t> idx;
@@ -87,7 +97,7 @@ pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx, mlir::Operation 
         loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
     idx.push_back(static_cast<uint32_t>(ub - 1));
   }
-  return pasm::AnchorRangeAttr::get(ctx, id, "e0", idx, idx);
+  return make_ir_anchor(ctx, id, idx, idx);
 }
 
 // Build a single-point anchor fixed to the first iteration of each enclosing
@@ -97,7 +107,7 @@ pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
                                          mlir::FlatSymbolRefAttr id) {
   llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
   if (loops.empty()) {
-    return pasm::AnchorRangeAttr::get(ctx, id, "", {}, {});
+    return make_ir_anchor(ctx, id, {}, {});
   }
 
   llvm::SmallVector<uint32_t> idx;
@@ -106,7 +116,7 @@ pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
         loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
     idx.push_back(static_cast<uint32_t>(lb));
   }
-  return pasm::AnchorRangeAttr::get(ctx, id, "e0", idx, idx);
+  return make_ir_anchor(ctx, id, idx, idx);
 }
 
 // Collect the (row, col, slot) of every resource an op touches (port ignored).
@@ -240,7 +250,7 @@ public:
           pasm::AnchorRangeAttr src;
           auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
           if (rop_loops.empty()) {
-            src = pasm::AnchorRangeAttr::get(ctx, rop_id, "", {}, {});
+            src = make_ir_anchor(ctx, rop_id, {}, {});
           } else {
             llvm::SmallVector<uint32_t> src_lo;
             llvm::SmallVector<uint32_t> src_hi;
@@ -259,7 +269,7 @@ public:
               src_lo.push_back(static_cast<uint32_t>(lb));
               src_hi.push_back(static_cast<uint32_t>(shared ? ub - 1 : lb));
             }
-            src = pasm::AnchorRangeAttr::get(ctx, rop_id, "e0", src_lo, src_hi);
+            src = make_ir_anchor(ctx, rop_id, src_lo, src_hi);
           }
           auto dst = build_anchor(
               ctx, consumer->getAttrOfType<mlir::FlatSymbolRefAttr>("id"),
@@ -415,7 +425,7 @@ public:
           if (!use_id) {
             continue;
           }
-          auto src = pasm::AnchorRangeAttr::get(ctx, cfg_id, "", {}, {});
+          auto src = make_ir_anchor(ctx, cfg_id, {}, {});
           pasm::AnchorRangeAttr dst = build_first_anchor(ctx, use, use_id);
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
           pasm::CstrOp::create(builder, cfg->getLoc(), src, dst, delay_attr,

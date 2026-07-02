@@ -21,7 +21,7 @@ namespace {
 
 struct RangeRef {
   mlir::FlatSymbolRefAttr instr_id;
-  std::string event;
+  uint32_t mt;
   std::vector<uint32_t> lo;
   std::vector<uint32_t> hi;
 };
@@ -94,17 +94,18 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       continue;
     }
 
+    auto to_u = [](llvm::ArrayRef<int32_t> v) {
+      return std::vector<uint32_t>(v.begin(), v.end());
+    };
     AnchorAttr first = icdep.getFirst();
-    llvm::ArrayRef<int32_t> first_idx = first.getIdx();
-    std::vector<uint32_t> first_idx_v(first_idx.begin(), first_idx.end());
-    Anchor first_anchor{first.getInstr(), first.getEvent().str(),
-                        std::move(first_idx_v), first.getDelay()};
+    Anchor first_anchor{first.getInstr(), to_u(first.getOrIdx()),
+                        static_cast<uint32_t>(first.getMt()),
+                        to_u(first.getIrIdx()), first.getDelay()};
 
     AnchorAttr last = icdep.getLast();
-    llvm::ArrayRef<int32_t> last_idx = last.getIdx();
-    std::vector<uint32_t> last_idx_v(last_idx.begin(), last_idx.end());
-    Anchor last_anchor{last.getInstr(), last.getEvent().str(),
-                       std::move(last_idx_v), last.getDelay()};
+    Anchor last_anchor{last.getInstr(), to_u(last.getOrIdx()),
+                       static_cast<uint32_t>(last.getMt()),
+                       to_u(last.getIrIdx()), last.getDelay()};
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,
@@ -122,11 +123,11 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
 
     // DFS stack of range frames yet to expand for this node.
     std::vector<RangeRef> stack;
-    stack.push_back(RangeRef{node.anchor.instr_id, node.anchor.event,
-                             node.anchor.indices, node.anchor.indices});
+    stack.push_back(RangeRef{node.anchor.instr_id, node.anchor.mt,
+                             node.anchor.ir_idx, node.anchor.ir_idx});
 
     // Cycle guard: delay-[0,0] reverse traversal can otherwise loop forever.
-    std::set<std::tuple<std::string, std::string, std::vector<uint32_t>,
+    std::set<std::tuple<std::string, uint32_t, std::vector<uint32_t>,
                         std::vector<uint32_t>>>
         visited;
 
@@ -136,7 +137,7 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       stack.pop_back();
 
       auto visit_key = std::make_tuple(current.instr_id.getValue().str(),
-                                       current.event, current.lo, current.hi);
+                                       current.mt, current.lo, current.hi);
       if (!visited.insert(visit_key).second) {
         continue;
       }
@@ -158,17 +159,19 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           if (src_ar.getInstr() != current.instr_id) {
             continue;
           }
-          std::string src_event = src_ar.getEvent().str();
-          if (src_event != current.event) {
+          // AnchorRangeAttr stores OR/MT/IR. Routing propagates over the IR
+          // range and matches on MT (the event id); OR is assumed empty here
+          // (true for generated anchors).
+          if (src_ar.getMtLo() != current.mt) {
             continue;
           }
 
           // constraints without indices should just be propagated
-          if (src_event.empty()) {
-            llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
-            llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
+          if (src_ar.getIrLo().empty()) {
+            llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
+            llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
             stack.push_back(
-                RangeRef{dst_ar.getInstr(), dst_ar.getEvent().str(),
+                RangeRef{dst_ar.getInstr(), dst_ar.getMtLo(),
                          std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
                          std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
             continue;
@@ -178,9 +181,9 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           // every propagated dim — clamp + map_index handles every other case.
           // Surplus src dims (beyond dst's arity) are filter dims and aren't
           // gated here.
-          llvm::ArrayRef<uint32_t> src_lo = src_ar.getIdxLo();
-          llvm::ArrayRef<uint32_t> src_hi = src_ar.getIdxHi();
-          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIdxLo();
+          llvm::ArrayRef<uint32_t> src_lo = src_ar.getIrLo();
+          llvm::ArrayRef<uint32_t> src_hi = src_ar.getIrHi();
+          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIrLo();
           llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
           std::size_t n = std::min(src_lo.size(), dst_lo_ar.size());
           if (range_strictly_after(current_lo_ar.take_front(n),
@@ -188,8 +191,8 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
             continue;
           }
 
-          llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
-          llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
+          llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
+          llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
 
           // Clamp current.lo into src's rectangle, then map that src coord to
           // the corresponding dst coord by row-major flat-index correspondence.
@@ -202,7 +205,7 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
               map_index(matched_src, src_lo, src_hi, dst_lo, dst_hi);
 
           stack.push_back(RangeRef{
-              dst_ar.getInstr(), dst_ar.getEvent().str(), std::move(dst_new_lo),
+              dst_ar.getInstr(), dst_ar.getMtLo(), std::move(dst_new_lo),
               std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
         }
       }
@@ -216,10 +219,10 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
         if (candidate.anchor.instr_id != current.instr_id) {
           continue;
         }
-        if (candidate.anchor.event != current.event) {
+        if (candidate.anchor.mt != current.mt) {
           continue;
         }
-        llvm::ArrayRef<uint32_t> point = candidate.anchor.indices;
+        llvm::ArrayRef<uint32_t> point = candidate.anchor.ir_idx;
         if (point.size() != current.lo.size()) {
           continue;
         }

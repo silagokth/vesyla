@@ -21,6 +21,7 @@
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/Passes.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmTypes.hpp"
+#include "vesyla/Support/Anchor.hpp"
 
 namespace vesyla {
 namespace schedule {
@@ -36,17 +37,8 @@ void print_grammar(const std::string &grammar_,
 } // namespace schedule
 } // namespace vesyla
 
-struct idx_entry_t {
-  bool lo_default;
-  bool hi_default;
-  int32_t lo;
-  int32_t hi;
-};
-
 struct rop_ref_t {
-  std::string id;
-  std::string event;
-  std::vector<idx_entry_t> indices;
+  ::vesyla::AnchorRange range;
   int offset;
 };
 

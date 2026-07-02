@@ -32,16 +32,13 @@ string Constraint::to_string() {
   if (!expr.empty())
     return expr;
 
-  // Flat MZN-friendly form: "read_a_seq_e0_0_29". Matches the names
+  // Flat MZN-friendly form (see ::vesyla::Anchor::flat_name). Matches the names
   // tm::Anchor produces in extractAnchors so to_mzn can emit directly.
   auto flat_ref = [](const std::string &id,
                      const std::optional<Anchor> &anchor) -> std::string {
     if (!anchor)
       return id;
-    std::string s = id + "_" + anchor->event_id;
-    for (int i : anchor->idx)
-      s += "_" + std::to_string(i);
-    return s;
+    return anchor->flat_name(id);
   };
   std::string sr = flat_ref(src_id, src_anchor);
   std::string dr = flat_ref(dst_id, dst_anchor);
@@ -76,14 +73,8 @@ std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
 
   auto src_ar = cstr_op.getSrc();
   auto dst_ar = cstr_op.getDst();
-  llvm::ArrayRef<uint32_t> src_lo = src_ar.getIdxLo();
-  llvm::ArrayRef<uint32_t> src_hi = src_ar.getIdxHi();
-  llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
-  llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
   std::string src_id = src_ar.getInstr().getValue().str();
   std::string dst_id = dst_ar.getInstr().getValue().str();
-  std::string src_event = src_ar.getEvent().str();
-  std::string dst_event = dst_ar.getEvent().str();
   std::optional<int> min_delay;
   std::optional<int> max_delay;
   auto d = cstr_op.getDelay();
@@ -95,20 +86,25 @@ std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
   }
   bool is_neq = cstr_op.getIsNeq();
 
-  auto make_anchor =
-      [](const std::string &event,
-         const std::vector<uint32_t> &idx) -> std::optional<Anchor> {
-    if (event.empty()) {
+  // A point anchor for endpoint `a` with the given IR indices. A fully bare
+  // endpoint (no OR, MT 0, no IR) references the operation's start directly
+  // rather than a specific event, so it yields no anchor (nullopt) — matching
+  // the pre-OR/MT/IR "no event" behavior.
+  auto point = [](vesyla::pasm::AnchorRangeAttr a,
+                  const std::vector<uint32_t> &ir) -> std::optional<Anchor> {
+    if (a.getOrLo().empty() && a.getMtLo() == 0 && a.getIrLo().empty()) {
       return std::nullopt;
     }
-    Anchor a;
-    a.event_id = event;
-    a.idx.assign(idx.begin(), idx.end());
-    return a;
+    Anchor anc;
+    anc.or_idx.assign(a.getOrLo().begin(), a.getOrLo().end());
+    anc.mt_idx = static_cast<int>(a.getMtLo());
+    anc.ir_idx.assign(ir.begin(), ir.end());
+    return anc;
   };
+  // Odometer over an IR range: advance the innermost dimension first.
   auto advance = [](std::vector<uint32_t> &cur, llvm::ArrayRef<uint32_t> lo,
                     llvm::ArrayRef<uint32_t> hi) {
-    for (size_t i = cur.size(); i-- > 0;) {
+    for (std::size_t i = cur.size(); i-- > 0;) {
       if (cur[i] < hi[i]) {
         cur[i]++;
         return true;
@@ -118,19 +114,22 @@ std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
     return false;
   };
 
-  std::vector<uint32_t> src_cur(src_lo.begin(), src_lo.end());
-  std::vector<uint32_t> dst_cur(dst_lo.begin(), dst_lo.end());
+  // The range spans the IR cross-product; src and dst element counts match
+  // (checked by CstrOp::verify), so they step in lockstep.
+  std::vector<uint32_t> src_cur(src_ar.getIrLo().begin(),
+                                src_ar.getIrLo().end());
+  std::vector<uint32_t> dst_cur(dst_ar.getIrLo().begin(),
+                                dst_ar.getIrLo().end());
   auto emit = [&]() {
     Constraint c(src_id, dst_id, min_delay, max_delay,
-                 make_anchor(src_event, src_cur),
-                 make_anchor(dst_event, dst_cur));
+                 point(src_ar, src_cur), point(dst_ar, dst_cur));
     c.is_neq = is_neq;
     c.kind = "linear";
     result.push_back(std::move(c));
   };
   emit();
-  while (advance(src_cur, src_lo, src_hi)) {
-    advance(dst_cur, dst_lo, dst_hi);
+  while (advance(src_cur, src_ar.getIrLo(), src_ar.getIrHi())) {
+    advance(dst_cur, dst_ar.getIrLo(), dst_ar.getIrHi());
     emit();
   }
   return result;

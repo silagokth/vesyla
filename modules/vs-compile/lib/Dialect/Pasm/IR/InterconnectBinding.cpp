@@ -1,5 +1,6 @@
 #include "vesyla/Dialect/Pasm/IR/InterconnectBinding.hpp"
 
+#include "vesyla/Support/Anchor.hpp"
 #include "vesyla/Support/Common.hpp"
 
 #include "llvm/ADT/StringSet.h"
@@ -16,23 +17,24 @@ int direction_code(ResourceAttr from, ResourceAttr to) {
   return (sr + 1) * 3 + (sc + 1);
 }
 
+// Build a point AnchorRangeAttr (lo == hi) from OR/MT/IR indices.
+static AnchorRangeAttr make_point_anchor_range(mlir::MLIRContext *ctx,
+                                               mlir::FlatSymbolRefAttr id,
+                                               llvm::ArrayRef<uint32_t> or_idx,
+                                               uint32_t mt,
+                                               llvm::ArrayRef<uint32_t> ir) {
+  return AnchorRangeAttr::get(ctx, id, or_idx, mt, ir, or_idx, mt, ir);
+}
+
 static void print_anchor(const Anchor &a, llvm::raw_ostream &os) {
   if (a.instr_id) {
     os << a.instr_id.getValue();
   }
-  if (!a.event.empty()) {
-    os << "." << a.event;
-  }
-  if (!a.indices.empty()) {
-    os << "[";
-    for (std::size_t i = 0; i < a.indices.size(); ++i) {
-      if (i) {
-        os << ",";
-      }
-      os << a.indices[i];
-    }
-    os << "]";
-  }
+  ::vesyla::Anchor va;
+  va.or_idx.assign(a.or_idx.begin(), a.or_idx.end());
+  va.mt_idx = static_cast<int>(a.mt);
+  va.ir_idx.assign(a.ir_idx.begin(), a.ir_idx.end());
+  os << va.to_string(); // empty name -> just the OR.MT.IR index text
   if (a.delay != 0) {
     os << "+" << a.delay;
   }
@@ -585,19 +587,18 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
           continue;
         }
         std::vector<uint32_t> src_indices;
-        std::string src_event;
         if (has_sequence) {
-          src_event = "e0";
           for (std::size_t j = 0; j < binding.sequence.size(); ++j) {
             if (static_cast<std::size_t>(binding.sequence[j]) == i) {
               src_indices.push_back(static_cast<uint32_t>(j));
             }
           }
         }
-        auto src_ar = AnchorRangeAttr::get(ctx, rop_ref, src_event,
-                                           src_indices, src_indices);
-        auto dst_ar = AnchorRangeAttr::get(ctx, a.instr_id, a.event,
-                                           a.indices, a.indices);
+        auto src_ar =
+            make_point_anchor_range(ctx, rop_ref, /*or=*/{}, /*mt=*/0,
+                                    src_indices);
+        auto dst_ar =
+            make_point_anchor_range(ctx, a.instr_id, a.or_idx, a.mt, a.ir_idx);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
                        builder.getBoolAttr(false));
       }
@@ -615,11 +616,11 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
       }
       const InterconnectConfigOption &prev_opt = binding.slots[prev_slot][0];
       for (const Anchor &a : prev_opt.last_anchors) {
-        auto src_ar = AnchorRangeAttr::get(ctx, a.instr_id, a.event,
-                                           a.indices, a.indices);
+        auto src_ar =
+            make_point_anchor_range(ctx, a.instr_id, a.or_idx, a.mt, a.ir_idx);
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
         auto dst_ar =
-            AnchorRangeAttr::get(ctx, rop_ref, "e0", dst_idx, dst_idx);
+            make_point_anchor_range(ctx, rop_ref, /*or=*/{}, /*mt=*/0, dst_idx);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
                        builder.getBoolAttr(false));
       }

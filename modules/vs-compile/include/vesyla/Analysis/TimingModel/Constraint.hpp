@@ -2,6 +2,7 @@
 #define __VESYLA_TM_CONSTRAINT_HPP__
 
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
+#include "vesyla/Support/Anchor.hpp"
 #include "vesyla/Support/Common.hpp"
 #include <optional>
 #include <regex>
@@ -14,10 +15,7 @@ namespace vesyla {
 namespace tm {
 
 struct Constraint {
-  struct Anchor {
-    std::string event_id;
-    std::vector<int> idx;
-  };
+  using Anchor = ::vesyla::Anchor;
 
   std::string src_id;
   std::string dst_id;
