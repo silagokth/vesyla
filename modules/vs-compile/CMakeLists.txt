@@ -265,6 +265,49 @@ add_mlir_library(
   VesylaPasm
   VesylaDrra)
 
+# Instruction selector: affine + arith -> drra, driven by PDLL patterns that are
+# compiled ahead-of-time into the pass with mlir-pdll.
+add_custom_mlir_pass_dir(conversion/select_instructions VesylaSelectInstr)
+
+find_program(MLIR_PDLL_EXE mlir-pdll HINTS ${LLVM_HOME}/bin REQUIRED)
+set(SEL_INSTR_DIR ${PROJECT_SOURCE_DIR}/src/conversion/select_instructions)
+set(SEL_INSTR_PDLL ${SEL_INSTR_DIR}/patterns.pdll)
+set(SEL_INSTR_PDLL_INC
+    ${CMAKE_BINARY_DIR}/lib/src/conversion/select_instructions/patterns.pdll.h.inc)
+add_custom_command(
+  OUTPUT ${SEL_INSTR_PDLL_INC}
+  COMMAND ${MLIR_PDLL_EXE} -x=cpp ${SEL_INSTR_PDLL} -o ${SEL_INSTR_PDLL_INC}
+  DEPENDS ${SEL_INSTR_PDLL}
+  COMMENT "Compiling select-instructions PDLL patterns")
+add_custom_target(VesylaSelectInstrPdll DEPENDS ${SEL_INSTR_PDLL_INC})
+
+file(GLOB SOURCE_SELECT_INSTR "src/conversion/select_instructions/*.cpp")
+add_mlir_library(
+  VesylaSelectInstr
+  ${SOURCE_SELECT_INSTR}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSelectInstrIncGen
+  VesylaSelectInstrPdll
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  MLIRPDLDialect
+  MLIRPDLInterpDialect
+  MLIRPDLToPDLInterp
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRMemRefDialect
+  VesylaPasm
+  VesylaDrra
+  VesylaUtil)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -278,7 +321,8 @@ add_library(VesylaSchedule
             ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
-set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm VesylaTm VesylaUtil
+set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
+         VesylaSelectInstr VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

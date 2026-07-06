@@ -1,0 +1,62 @@
+// Instruction-selection patterns: affine + arith  ->  drra.rop.
+//
+// Compiled ahead-of-time into SelectInstructionsPass with `mlir-pdll -x=cpp`
+// (see CMakeLists.txt). Op names are matched as strings, so no ODS include is
+// required. The inline [{ }] blocks forward to the native helpers in
+// NativeHelpers.hpp, which must be included before the generated .inc.
+//
+// Pattern benefits act as the (static) ranking function: the fused MAC (30)
+// outranks the plain RF access tiles (10), so maximal munch prefers it.
+
+//===----------------------------------------------------------------------===//
+// Native constraints / rewrites (implemented in NativeHelpers.cpp)
+//===----------------------------------------------------------------------===//
+
+// True when `acc` is an affine.for iter_args accumulator.
+Constraint IsReductionAcc(acc: Value) [{
+  return ::mlir::success(::vesyla::sel::is_iter_args_carry(acc));
+}];
+
+Rewrite EmitMac(mul: Op, add: Op, a: Value, b: Value) [{
+  ::vesyla::sel::emit_mac(rewriter, mul, add, a, b);
+}];
+
+Rewrite EmitRfLoad(load: Op) [{
+  ::vesyla::sel::emit_rf_load(rewriter, load);
+}];
+
+Rewrite EmitRfStore(store: Op) [{
+  ::vesyla::sel::emit_rf_store(rewriter, store);
+}];
+
+//===----------------------------------------------------------------------===//
+// Patterns
+//===----------------------------------------------------------------------===//
+
+// arith.muli feeding arith.addi over a loop-carried accumulator -> one DPU MAC.
+Pattern MacOnDpu with benefit(30) {
+  let mul = op<arith.muli>(a: Value, b: Value);
+  let add = op<arith.addi>(acc: Value, mul.0);
+  IsReductionAcc(acc);
+  rewrite add with { EmitMac(mul, add, a, b); };
+}
+
+Pattern RfLoad with benefit(10) {
+  let ld = op<affine.load>;
+  rewrite ld with { EmitRfLoad(ld); };
+}
+
+Pattern RfVectorLoad with benefit(10) {
+  let ld = op<affine.vector_load>;
+  rewrite ld with { EmitRfLoad(ld); };
+}
+
+Pattern RfStore with benefit(10) {
+  let st = op<affine.store>;
+  rewrite st with { EmitRfStore(st); };
+}
+
+Pattern RfVectorStore with benefit(10) {
+  let st = op<affine.vector_store>;
+  rewrite st with { EmitRfStore(st); };
+}

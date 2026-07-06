@@ -18,6 +18,7 @@
 #include "conversion/affine_to_pasm/AffineToRepPass.hpp"
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
+#include "conversion/select_instructions/SelectInstructionsPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
@@ -75,6 +76,19 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   };
   save_mlir(*module, stage_file(0));
 
+  // SelectInstructionsPass runs first: it selects drra.rop instructions from the
+  // upstream affine + arith ops (pattern-based, PDLL). Passes downstream all
+  // consume the drra form it produces. On input that is already in drra form
+  // (no arith/affine-access ops) it is a no-op.
+  mlir::PassManager select_pm(&context);
+  select_pm.addPass(
+      vesyla::conversion::select_instructions::createSelectInstructionsPass());
+  if (mlir::failed(select_pm.run(*module))) {
+    LOG_FATAL << "Error: SelectInstructionsPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, stage_file(1));
+
   // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
   // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
   // attributes. DrraToPasmPass lowers each drra.rop into a region-form pasm.rop
@@ -87,7 +101,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: GenerateIcdepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(1));
+  save_mlir(*module, stage_file(2));
 
   mlir::PassManager create_constraints_pm(&context);
   create_constraints_pm.addPass(
@@ -96,7 +110,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: CreateConstraintsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(2));
+  save_mlir(*module, stage_file(3));
 
   mlir::PassManager drra_to_pasm_pm(&context);
   drra_to_pasm_pm.addPass(
@@ -105,7 +119,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: DrraToPasmPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(3));
+  save_mlir(*module, stage_file(4));
 
   mlir::PassManager affine_pm(&context);
   affine_pm.addPass(
@@ -114,7 +128,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: AffineToRepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(4));
+  save_mlir(*module, stage_file(5));
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
@@ -122,7 +136,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: ExtractCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(5));
+  save_mlir(*module, stage_file(6));
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());
@@ -130,7 +144,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: InterconnectPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(6));
+  save_mlir(*module, stage_file(7));
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
@@ -138,7 +152,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: FlattenCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(7));
+  save_mlir(*module, stage_file(8));
 
   return module;
 }
