@@ -10,6 +10,8 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 
+mod heatmap;
+
 #[derive(Subcommand)]
 enum Command {
     #[command(
@@ -46,6 +48,33 @@ enum Command {
     ConflictGraph {
         /// Directory to search for conflict graph .dot files (default: current directory)
         #[arg(default_value = ".")]
+        directory: String,
+    },
+    #[command(
+        about = "Render and show a fabric utilization heatmap produced during compilation",
+        name = "heatmap"
+    )]
+    Heatmap {
+        /// Compile output directory (the one passed as --output to `vesyla compile`)
+        #[arg(short, long, default_value = ".")]
+        directory: String,
+        /// Resolved architecture JSON (the arch.json emitted by `vs-component`,
+        /// with per-cell coordinates) that supplies the fabric geometry. If
+        /// omitted (or if an input-form arch.json is given), the resolved
+        /// arch.json for the run is auto-discovered under --directory.
+        #[arg(short, long)]
+        arch: Option<String>,
+        /// Utilization figure to color slots by: active, acting, config, or stall
+        #[arg(short, long, default_value = "active")]
+        metric: String,
+    },
+    #[command(
+        about = "Show the fabric architecture diagram (fabric.svg) generated for the design",
+        name = "fabric"
+    )]
+    Fabric {
+        /// Directory to search for fabric.svg/.png (the compile/assembly output directory)
+        #[arg(short, long, default_value = ".")]
         directory: String,
     },
     #[command(
@@ -124,6 +153,12 @@ fn main() -> Result<(), io::Error> {
             "constraint graph",
         ),
         Command::ConflictGraph { directory } => show_conflict_graph(directory),
+        Command::Heatmap {
+            directory,
+            arch,
+            metric,
+        } => show_heatmap(directory, arch.as_deref(), metric),
+        Command::Fabric { directory } => show_fabric(directory),
         Command::Instructions { directory } => show_instructions(directory),
         Command::Wave { directory, save } => show_wave(directory, save),
     }
@@ -316,6 +351,231 @@ fn show_conflict_graph(directory: &str) -> Result<(), io::Error> {
     open_in_viewer(&svg)
 }
 
+// Render a fabric utilization heatmap for a chosen epoch and open it. The
+// utilization_<epoch>.json files are written next to the schedule timetables
+// (the "timetable_dir" configured for `vesyla compile`); the fabric geometry
+// comes from the resolved architecture JSON emitted by `vs-component`, passed
+// via --arch. One heatmap is produced per epoch (the selected utilization file).
+fn show_heatmap(directory: &str, arch: Option<&str>, metric: &str) -> Result<(), io::Error> {
+    let metric = match heatmap::Metric::from_arg(metric) {
+        Some(m) => m,
+        None => {
+            error!(
+                "Unknown metric '{}'. Choose one of: active, acting, config, stall.",
+                metric
+            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unknown metric '{}'", metric),
+            ));
+        }
+    };
+
+    // Discover the per-epoch utilization files under the timetable directory.
+    let dir_suffix = output_config("timetable_dir", "compile/timetable");
+    let root = Path::new(directory);
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_utilization(root, Path::new(&dir_suffix), &mut files)?;
+    files.sort();
+
+    if files.is_empty() {
+        error!(
+            "No utilization_*.json files found under {:?} (looked for '{}' \
+             directories). Did you run `vesyla compile` first?",
+            root, dir_suffix
+        );
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("No utilization files found under {:?}", root),
+        ));
+    }
+
+    let util_file = match pick_one(
+        &files,
+        root,
+        "Select an epoch's utilization to view (↑/↓ to move, Enter to open, Esc to cancel)",
+    )? {
+        Some(f) => f,
+        None => {
+            info!("Nothing selected.");
+            return Ok(());
+        }
+    };
+
+    let util_content = fs::read_to_string(util_file)?;
+    let util_json: Value = serde_json::from_str(&util_content)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    // Resolve the fabric geometry: the *resolved* arch.json (with per-cell
+    // coordinates) that `vs-component` emits. The input-form arch.json (cell
+    // templates, no coordinates) has no placement and would draw nothing.
+    let arch_json = load_geometry(arch, util_file, root)?;
+
+    let svg = heatmap::render(&arch_json, &util_json, metric);
+
+    // Write the heatmap SVG next to its utilization file, then open it.
+    let epoch = util_json
+        .get("epoch")
+        .and_then(Value::as_str)
+        .unwrap_or("epoch");
+    let out_path = util_file
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("heatmap_{}.svg", epoch));
+    fs::write(&out_path, svg)?;
+    info!("Wrote fabric heatmap: {}", out_path.display());
+
+    open_in_viewer(&out_path)
+}
+
+// Recursively walk `root`, collecting every "utilization_*.json" that lives in a
+// directory whose path ends with `suffix` (the configured timetable directory,
+// e.g. "compile/timetable"). file_type() is used instead of is_dir() so symlinks
+// are not followed, which avoids cycles.
+fn collect_utilization(
+    root: &Path,
+    suffix: &Path,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), io::Error> {
+    let entries = match fs::read_dir(root) {
+        Ok(e) => e,
+        // A directory we cannot read (permissions, races) should not abort the
+        // whole search; just skip it.
+        Err(_) => {
+            return Ok(());
+        }
+    };
+
+    for entry in entries {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path();
+
+        if path.ends_with(suffix) {
+            for e in fs::read_dir(&path)? {
+                let file = e?.path();
+                let is_util = file
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("utilization_") && n.ends_with(".json"))
+                    .unwrap_or(false);
+                if file.is_file() && is_util {
+                    out.push(file);
+                }
+            }
+        } else {
+            collect_utilization(&path, suffix, out)?;
+        }
+    }
+    Ok(())
+}
+
+// Resolve the fabric geometry document for the heatmap. An explicit --arch is
+// used when it is already the resolved form; otherwise (omitted, or an input-
+// form arch.json) the resolved arch.json for the run is auto-discovered.
+fn load_geometry(
+    arch: Option<&str>,
+    util_file: &Path,
+    root: &Path,
+) -> Result<Value, io::Error> {
+    if let Some(arch) = arch {
+        let path = Path::new(arch);
+        let content = fs::read_to_string(path).map_err(|e| {
+            error!("Could not read architecture file {:?}: {}", path, e);
+            e
+        })?;
+        let value: Value = serde_json::from_str(&content).map_err(|e| {
+            error!("Could not parse architecture file {:?}: {}", path, e);
+            io::Error::new(io::ErrorKind::InvalidData, e)
+        })?;
+        if is_resolved_arch(&value) {
+            return Ok(value);
+        }
+        warn!(
+            "{:?} is an input architecture description (its cells carry no \
+             coordinates), not the resolved fabric. Searching for the resolved \
+             arch.json produced by `vs-component`...",
+            path
+        );
+    }
+
+    match find_resolved_arch(util_file, root) {
+        Some(found) => {
+            info!("Using resolved architecture geometry: {}", found.display());
+            let content = fs::read_to_string(&found)?;
+            serde_json::from_str(&content)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }
+        None => {
+            error!(
+                "Could not find a resolved arch.json (with per-cell coordinates and \
+                 resources_list) under {:?}. Pass it with --arch; it is the arch.json \
+                 emitted by `vs-component` (e.g. work/system/arch/arch.json).",
+                root
+            );
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "no resolved architecture geometry found",
+            ))
+        }
+    }
+}
+
+// A resolved fabric has a top-level `cells` array whose entries carry a
+// `coordinates` object and a nested `cell` (the input-form arch.json instead
+// lists cell templates with a `resource_list` and no coordinates).
+fn is_resolved_arch(v: &Value) -> bool {
+    v.get("cells")
+        .and_then(Value::as_array)
+        .and_then(|cells| cells.first())
+        .map(|c0| c0.get("coordinates").is_some() && c0.get("cell").is_some())
+        .unwrap_or(false)
+}
+
+fn is_resolved_arch_file(path: &Path) -> bool {
+    match fs::read_to_string(path) {
+        Ok(content) => match serde_json::from_str::<Value>(&content) {
+            Ok(v) => is_resolved_arch(&v),
+            Err(_) => false,
+        },
+        Err(_) => false,
+    }
+}
+
+// Locate the resolved architecture JSON for the run that produced `util_file`.
+// Preference: the arch.json in the same work-tree as the utilization file (the
+// known `system/arch/arch.json` or `archive/assemble/arch/arch.json` above it);
+// failing that, any resolved arch.json found under `root`.
+fn find_resolved_arch(util_file: &Path, root: &Path) -> Option<PathBuf> {
+    let mut dir = util_file.parent();
+    while let Some(d) = dir {
+        for rel in ["system/arch/arch.json", "archive/assemble/arch/arch.json"] {
+            let candidate = d.join(rel);
+            if is_resolved_arch_file(&candidate) {
+                return Some(candidate);
+            }
+        }
+        if d == root {
+            break;
+        }
+        dir = d.parent();
+    }
+
+    // Fall back to any resolved arch.json under the search root.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if collect_named(root, "arch.json", &mut candidates).is_ok() {
+        candidates.sort();
+        for candidate in candidates {
+            if is_resolved_arch_file(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
 // Render a Graphviz .dot file to an SVG next to it using the `dot` binary,
 // returning the generated SVG path. A missing `dot` yields a clear, actionable
 // error instead of failing silently.
@@ -394,6 +654,46 @@ fn collect_dots(root: &Path, suffix: &Path, out: &mut Vec<PathBuf>) -> Result<()
         }
     }
     Ok(())
+}
+
+// Find the fabric architecture diagram(s) (fabric.svg / fabric.png) generated
+// by `vs-component` and open the chosen one. Unlike the debug graphs, the fabric
+// diagram is a plain named file living in the assembly arch output (e.g.
+// system/arch/fabric.svg), so it is discovered by name anywhere under
+// `directory`. The SVG is preferred over a sibling PNG.
+fn show_fabric(directory: &str) -> Result<(), io::Error> {
+    let root = Path::new(directory);
+
+    let mut images: Vec<PathBuf> = Vec::new();
+    collect_named(root, "fabric.svg", &mut images)?;
+    collect_named(root, "fabric.png", &mut images)?;
+    let images = prefer_svg(images);
+
+    if images.is_empty() {
+        error!(
+            "No fabric.svg/.png found under {:?}. Did you run `vesyla` (component \
+             assembly) first?",
+            root
+        );
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("No fabric diagram found under {:?}", root),
+        ));
+    }
+
+    let image = match pick_one(
+        &images,
+        root,
+        "Select a fabric diagram to open (↑/↓ to move, Enter to open, Esc to cancel)",
+    )? {
+        Some(f) => f,
+        None => {
+            info!("Nothing selected.");
+            return Ok(());
+        }
+    };
+
+    open_in_viewer(image)
 }
 
 // Find the assembly instruction file(s) (instr.asm) produced by compilation and
