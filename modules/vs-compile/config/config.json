@@ -14,6 +14,7 @@
     "compile_dir": "compile",
     "timetable_dir": "${debug_dir}/timetable",
     "interconnect_dir": "${debug_dir}/interconnect",
+    "conflict_graph_dir": "${debug_dir}/conflict_graph",
     "compile_stage_prefix": "mlir_",
     "schedule_stage_prefix": "pasm_",
     "stage_ext": ".mlir",

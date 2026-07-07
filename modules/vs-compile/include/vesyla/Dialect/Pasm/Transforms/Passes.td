@@ -52,6 +52,15 @@ def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def RessourceBindingPass: Pass<"ressource-binding-pass", "::mlir::ModuleOp"> {
+  let summary = "Bind selected instructions to concrete hardware resources.";
+  let description = [{
+    TODO: describe behavior once implemented. Runs after instruction
+    selection and before icdep generation, binding each selected
+    drra.rop instruction to a concrete hardware resource.
+  }];
+}
+
 def GenerateIcdepPass: Pass<"generate-icdep-pass", "::mlir::ModuleOp"> {
   let summary = "Generate pasm.icdep ops.";
   let description = [{

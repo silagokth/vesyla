@@ -26,6 +26,7 @@ const std::map<std::string, std::string> &output_defaults() {
       {"compile_dir", "compile"},
       {"timetable_dir", "${compile_dir}/timetable"},
       {"interconnect_dir", "${debug_dir}/interconnect"},
+      {"conflict_graph_dir", "${debug_dir}/conflict_graph"},
       {"compile_stage_prefix", "scf_"},
       {"schedule_stage_prefix", ""},
       {"stage_ext", ".mlir"},
