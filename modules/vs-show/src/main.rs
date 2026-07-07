@@ -40,6 +40,15 @@ enum Command {
         directory: String,
     },
     #[command(
+        about = "Render and show the resource conflict graph(s) produced during compilation",
+        name = "conflict-graph"
+    )]
+    ConflictGraph {
+        /// Directory to search for conflict graph .dot files (default: current directory)
+        #[arg(default_value = ".")]
+        directory: String,
+    },
+    #[command(
         about = "Print the assembly instructions (instr.asm) produced during compilation",
         name = "instructions"
     )]
@@ -114,6 +123,7 @@ fn main() -> Result<(), io::Error> {
             "debug/constraint",
             "constraint graph",
         ),
+        Command::ConflictGraph { directory } => show_conflict_graph(directory),
         Command::Instructions { directory } => show_instructions(directory),
         Command::Wave { directory, save } => show_wave(directory, save),
     }
@@ -263,6 +273,127 @@ fn show_artifact(
     };
 
     open_in_viewer(&images[index])
+}
+
+// Find the conflict-graph .dot file(s) produced during compilation, render the
+// chosen one to SVG with graphviz `dot`, and open it. Unlike the interconnect/
+// constraint graphs (which are rendered to images at compile time), the conflict
+// graph is emitted only as .dot, so it is rendered here on demand. The directory
+// suffix comes from config.json ("conflict_graph_dir").
+fn show_conflict_graph(directory: &str) -> Result<(), io::Error> {
+    let dir_suffix = output_config("conflict_graph_dir", "debug/conflict_graph");
+    let root = Path::new(directory);
+
+    let mut dots: Vec<PathBuf> = Vec::new();
+    collect_dots(root, Path::new(&dir_suffix), &mut dots)?;
+    dots.sort();
+
+    if dots.is_empty() {
+        error!(
+            "No conflict graph .dot files found under {:?} (looked for '{}' \
+             directories). Did you run `vesyla compile` first?",
+            root, dir_suffix
+        );
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("No conflict graph .dot files found under {:?}", root),
+        ));
+    }
+
+    let dot = match pick_one(
+        &dots,
+        root,
+        "Select a conflict graph to open (↑/↓ to move, Enter to open, Esc to cancel)",
+    )? {
+        Some(f) => f,
+        None => {
+            info!("Nothing selected.");
+            return Ok(());
+        }
+    };
+
+    let svg = render_dot(dot)?;
+    open_in_viewer(&svg)
+}
+
+// Render a Graphviz .dot file to an SVG next to it using the `dot` binary,
+// returning the generated SVG path. A missing `dot` yields a clear, actionable
+// error instead of failing silently.
+fn render_dot(dot: &Path) -> Result<PathBuf, io::Error> {
+    let svg = dot.with_extension("svg");
+    let result = process::Command::new("dot")
+        .arg("-Tsvg")
+        .arg(dot)
+        .arg("-o")
+        .arg(&svg)
+        .status();
+
+    match result {
+        Ok(status) if status.success() => {
+            info!("Rendered {} -> {}", dot.display(), svg.display());
+            Ok(svg)
+        }
+        Ok(status) => {
+            error!("`dot` failed to render {} ({})", dot.display(), status);
+            Err(io::Error::other(format!(
+                "dot failed to render {}",
+                dot.display()
+            )))
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            error!(
+                "`dot` is not available on this system. Please install it (e.g. the \
+                 graphviz package) or render the file manually: dot -Tsvg {} -o {}",
+                dot.display(),
+                svg.display()
+            );
+            Err(io::Error::new(io::ErrorKind::NotFound, "dot is not available"))
+        }
+        Err(e) => {
+            error!("Failed to run `dot` on {}: {}", dot.display(), e);
+            Err(e)
+        }
+    }
+}
+
+// Recursively walk `root`, collecting every ".dot" that lives in a directory
+// whose path ends with `suffix` (the configured conflict-graph directory, e.g.
+// "debug/conflict_graph"). file_type() is used instead of is_dir() so symlinks
+// are not followed, which avoids cycles.
+fn collect_dots(root: &Path, suffix: &Path, out: &mut Vec<PathBuf>) -> Result<(), io::Error> {
+    let entries = match fs::read_dir(root) {
+        Ok(e) => e,
+        // A directory we cannot read (permissions, races) should not abort the
+        // whole search; just skip it.
+        Err(_) => {
+            return Ok(());
+        }
+    };
+
+    for entry in entries {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path();
+
+        if path.ends_with(suffix) {
+            for e in fs::read_dir(&path)? {
+                let file = e?.path();
+                let is_dot = file
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("dot"))
+                    .unwrap_or(false);
+                if file.is_file() && is_dot {
+                    out.push(file);
+                }
+            }
+        } else {
+            collect_dots(&path, suffix, out)?;
+        }
+    }
+    Ok(())
 }
 
 // Find the assembly instruction file(s) (instr.asm) produced by compilation and
