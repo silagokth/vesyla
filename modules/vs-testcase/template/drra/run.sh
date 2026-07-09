@@ -116,6 +116,14 @@ for arg in "$@"; do
   esac
 done
 
+# Enable DRRA SST monitoring (per-cycle prints + JSON trace file) only in debug
+# mode. The instruction-level (SST) model reads VESYLA_DEBUG; leaving it unset
+# keeps the default fast path (monitoring off). Exported so child scripts
+# (instr_sim.sh -> sst) inherit it.
+if [ "$debug_mode" = true ]; then
+  export VESYLA_DEBUG=1
+fi
+
 # Function to run commands and check for errors
 run_and_check() {
   # Usage: run_and_check "description" command [args...]
