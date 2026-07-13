@@ -268,6 +268,36 @@ fi
 set -e
 stop_spinner 0
 
+# Timing validation: the instruction-level (SST) and RTL models must agree on
+# the realized cycle count. Both simulators write it to a file every run: the
+# SST controller writes `instr_sim_cycles.txt` (_currentSSTCycle/10) at
+# teardown, the RTL testbench writes `rtl_sim_cycles.txt`. A mismatch means the
+# compiler schedule, the SST model and the RTL hardware disagree on timing.
+printf "${BOLD}Timing:${NC} SST (instruction-level) vs RTL cycle count\n"
+start_spinner
+printf "  ${BLUE}Verifying${NC} (SST == RTL)"
+sst_cycles=""
+rtl_cycles=""
+if [ -f "instr_sim_cycles.txt" ]; then
+  sst_cycles=$(tr -d '[:space:]' <instr_sim_cycles.txt)
+fi
+rtl_cycles_file=$(find archive -name 'rtl_sim_cycles.txt' 2>/dev/null | head -1)
+if [ -n "$rtl_cycles_file" ] && [ -f "$rtl_cycles_file" ]; then
+  rtl_cycles=$(tr -d '[:space:]' <"$rtl_cycles_file")
+fi
+if [ -z "$sst_cycles" ] || [ -z "$rtl_cycles" ]; then
+  stop_spinner 1
+  printf " ${RED}-> ERROR:${NC} cycle count missing (SST='%s' RTL='%s')\n" "${sst_cycles:-N/A}" "${rtl_cycles:-N/A}"
+  exit 1
+fi
+if [ "$sst_cycles" -ne "$rtl_cycles" ]; then
+  stop_spinner 1
+  printf " ${RED}-> ERROR:${NC} cycle mismatch: SST=%s RTL=%s (diff=%s)\n" "$sst_cycles" "$rtl_cycles" "$((rtl_cycles - sst_cycles))"
+  exit 1
+fi
+stop_spinner 0
+printf "  ${CYAN}%s${NC} cycles (SST == RTL)\n" "$sst_cycles"
+
 printf "\n${GREEN}All models executed successfully!${NC}\n\n"
 
 cat <<"EOF"
