@@ -10,11 +10,25 @@ ScheduleEpochPassRewriter::op2json(::mlir::Operation *op) const {
   nlohmann::json op_json;
   if (auto rop_op = llvm::dyn_cast<::vesyla::pasm::RopOp>(op)) {
     op_json["kind"] = "rop";
-    op_json["id"] = rop_op.getId().str();
+    op_json["id"] = rop_op.getSymName().str();
     op_json["row"] = rop_op.getRow();
     op_json["col"] = rop_op.getCol();
     op_json["slot"] = rop_op.getSlot();
-    op_json["port"] = rop_op.getPort();
+    // The port is no longer carried on the rop; recover it from the port-bearing
+    // instruction(s) in the body so the timing model still sees a port per
+    // operation. Defaults to 0 for rops with no port-bearing instruction.
+    op_json["port"] = 0;
+    if (!rop_op.getBody().empty()) {
+      for (::mlir::Operation &body_op : rop_op.getBody().front()) {
+        if (auto instr = llvm::dyn_cast<::vesyla::pasm::InstrOp>(&body_op)) {
+          if (auto port_attr = llvm::dyn_cast_or_null<::mlir::IntegerAttr>(
+                  instr.getParam().get("port"))) {
+            op_json["port"] = port_attr.getInt();
+            break;
+          }
+        }
+      }
+    }
 
     // get its internal block
     ::mlir::Region &ropBodyRegion = rop_op.getBody();
@@ -140,7 +154,7 @@ void ScheduleEpochPassRewriter::json2op(
         rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
         rewriter.getI32IntegerAttr(op_json["col"].get<int>()),
         rewriter.getI32IntegerAttr(op_json["slot"].get<int>()),
-        rewriter.getI32IntegerAttr(op_json["port"].get<int>()));
+        /*map=*/mlir::AffineMapAttr());
 
     // get its internal block
     ::mlir::Region &ropBodyRegion = rop_op.getBody();

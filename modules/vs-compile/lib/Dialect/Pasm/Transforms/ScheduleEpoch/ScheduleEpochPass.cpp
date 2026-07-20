@@ -1,14 +1,16 @@
+#include "vesyla/Dialect/Pasm/Transforms/ScheduleEpochPass.hpp"
 #include "ScheduleEpochPassDetail.hpp"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "vesyla/Analysis/TimingModel/Solver.hpp"
 #include "vesyla/Analysis/TimingModel/TimingModel.hpp"
-#include "vesyla/Dialect/Pasm/Transforms/ScheduleEpochPass.hpp"
 #include "vesyla/Support/Config.hpp"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <set>
@@ -21,6 +23,17 @@ namespace vesyla::pasm {
 } // namespace vesyla::pasm
 
 namespace vesyla::pasm::schedule_epoch_detail {
+
+// Defined in TimetableDump.cpp. Writes the resolved per-epoch schedule to a
+// JSON timetable under the configured directory for visualization. The
+// min_shift_time (from synchronize) is added so absolute cycles match the
+// emitted code.
+void dump_schedule_table(
+    const std::string &tmp_path, const std::string &epoch_id,
+    const std::unordered_map<std::string, int> &schedule_table,
+    const std::unordered_map<std::string, std::string> &result,
+    const ::vesyla::tm::TimingModel &model, int min_shift_time,
+    const std::vector<CtrlInstr> &controller_instrs);
 
 ::mlir::LogicalResult ScheduleEpochPassRewriter::matchAndRewrite(
     ::vesyla::pasm::EpochOp op, ::mlir::PatternRewriter &rewriter) const {
@@ -54,8 +67,7 @@ namespace vesyla::pasm::schedule_epoch_detail {
       LOG_DEBUG << "Output filename: " << output_filename;
       std::string label = std::to_string(rop_json["row"].get<int>()) + "_" +
                           std::to_string(rop_json["col"].get<int>()) + "_" +
-                          std::to_string(rop_json["slot"].get<int>()) + "_" +
-                          std::to_string(rop_json["port"].get<int>());
+                          std::to_string(rop_json["slot"].get<int>());
       LOG_DEBUG << "Label: " << label;
       if (component_map.find(label) == component_map.end()) {
         llvm::outs() << "Error: Cannot find the component : " << label << "\n";
@@ -91,29 +103,26 @@ namespace vesyla::pasm::schedule_epoch_detail {
                              std::istreambuf_iterator<char>());
       output_file.close();
 
-      ::vesyla::tm::Operation operation =
-          ::vesyla::tm::Operation(rop_json["id"].get<std::string>(), output_str);
+      ::vesyla::tm::Operation operation = ::vesyla::tm::Operation(
+          rop_json["id"].get<std::string>(), output_str);
       operation.col = rop_json["col"].get<int>();
       operation.row = rop_json["row"].get<int>();
       operation.slot = rop_json["slot"].get<int>();
       operation.port = rop_json["port"].get<int>();
       model.add_operation(operation);
 
-      remove(input_filename.c_str());
-      remove(output_filename.c_str());
+      std::filesystem::remove(input_filename);
+      std::filesystem::remove(output_filename);
 
-      op_exprs.push_back(OpExprTuple{rop_json["id"].get<std::string>(),
-                                     rop_json["kind"].get<std::string>(),
-                                     rop_json["row"].get<int>(),
-                                     rop_json["col"].get<int>(),
-                                     rop_json["slot"].get<int>(),
-                                     rop_json["port"].get<int>(), output_str});
+      op_exprs.push_back(OpExprTuple{
+          rop_json["id"].get<std::string>(),
+          rop_json["kind"].get<std::string>(), rop_json["row"].get<int>(),
+          rop_json["col"].get<int>(), rop_json["slot"].get<int>(),
+          rop_json["port"].get<int>(), output_str});
 
-    } else if (auto cop_op =
-                   llvm::dyn_cast<::vesyla::pasm::CopOp>(&child_op)) {
+    } else if (auto cop_op = llvm::dyn_cast<::vesyla::pasm::CopOp>(&child_op)) {
       llvm::outs() << "CopOp ID: " << cop_op.getId() << "\n";
-    } else if (auto raw_op =
-                   llvm::dyn_cast<::vesyla::pasm::RawOp>(&child_op)) {
+    } else if (auto raw_op = llvm::dyn_cast<::vesyla::pasm::RawOp>(&child_op)) {
       if ((operation_type_set.find("pasm.rop") != operation_type_set.end()) ||
           operation_type_set.find("pasm.cop") != operation_type_set.end()) {
         llvm::outs() << "Error: RawOp cannot be used with RopOp or CopOp.\n";
@@ -122,9 +131,9 @@ namespace vesyla::pasm::schedule_epoch_detail {
       return ::mlir::failure();
     } else if (auto cstr_op =
                    llvm::dyn_cast<::vesyla::pasm::CstrOp>(&child_op)) {
-      std::string type = cstr_op.getType().str();
-      std::string expr = cstr_op.getExpr().str();
-      model.add_constraint(::vesyla::tm::Constraint(type, expr));
+      for (auto &c : ::vesyla::tm::Constraint::from_cstr_op(cstr_op)) {
+        model.add_constraint(c);
+      }
     } else if (auto yield_op =
                    llvm::dyn_cast<::vesyla::pasm::YieldOp>(&child_op)) {
       // DO NOTHING
@@ -138,7 +147,11 @@ namespace vesyla::pasm::schedule_epoch_detail {
 
   // add built-in constraints
   std::unordered_map<std::string, std::vector<std::string>> all_resource_op;
-  std::unordered_map<std::string, std::vector<std::string>>
+  struct CopAnchorRef {
+    std::string op_name;
+    ::vesyla::tm::Constraint::Anchor anchor;
+  };
+  std::unordered_map<std::string, std::vector<CopAnchorRef>>
       all_control_op_anchors;
   for (auto &op_expr : op_exprs) {
     if (op_expr.kind == "rop") {
@@ -151,13 +164,16 @@ namespace vesyla::pasm::schedule_epoch_detail {
     } else if (op_expr.kind == "cop") {
       std::string label =
           std::to_string(op_expr.row) + "_" + std::to_string(op_expr.col);
-      if (all_control_op_anchors.find(label) == all_control_op_anchors.end()) {
-        all_control_op_anchors[label] = std::vector<std::string>();
+      // OperationExpr::get_all_anchors yields (event_id, idx) pairs with
+      // indices in innermost-first order, matching tm::Constraint::Anchor.
+      auto cop_op_info = model.get_operation(op_expr.id);
+      for (auto &p : cop_op_info.expr.get_all_anchors()) {
+        CopAnchorRef ref;
+        ref.op_name = op_expr.id;
+        ref.anchor.event_id = p.first;
+        ref.anchor.idx = p.second;
+        all_control_op_anchors[label].push_back(std::move(ref));
       }
-      std::vector<std::string> anchors =
-          model.get_operation(op_expr.id).get_all_anchors();
-      all_control_op_anchors[label].insert(all_control_op_anchors[label].end(),
-                                           anchors.begin(), anchors.end());
     } else if (op_expr.kind == "raw") {
       // DO NOTHING
     } else if (op_expr.kind == "cstr") {
@@ -189,9 +205,15 @@ namespace vesyla::pasm::schedule_epoch_detail {
 
         if (all_control_op_anchors.find(label) !=
             all_control_op_anchors.end()) {
-          for (auto &anchor : all_control_op_anchors[label]) {
-            model.add_constraint(
-                ::vesyla::tm::Constraint("linear", ops[i] + " != " + anchor));
+          for (auto &ref : all_control_op_anchors[label]) {
+            ::vesyla::tm::Constraint c(/*src_id=*/ops[i],
+                                       /*dst_id=*/ref.op_name,
+                                       /*min_delay=*/0, /*max_delay=*/0,
+                                       /*src_anchor=*/std::nullopt,
+                                       /*dst_anchor=*/ref.anchor);
+            c.is_neq = true;
+            c.kind = "linear";
+            model.add_constraint(std::move(c));
           }
         }
       }
@@ -227,7 +249,67 @@ namespace vesyla::pasm::schedule_epoch_detail {
 
   replace_time_in_instr_param(op, schedule_table, rewriter);
   reshape_instr(op, rewriter);
-  synchronize(op, schedule_table, rewriter, allow_unsafe);
+  int min_shift_time = synchronize(op, schedule_table, rewriter, allow_unsafe);
+
+  // After synchronize the epoch body is just one pasm.raw block per cell, each
+  // holding the ordered controller instruction stream that becomes the .asm.
+  // Walk them to recover what every controller issues and over which cycles.
+  // Each instruction spans [cycle, cycle + advance): a wait(N) takes N+1 cycles
+  // (1 issue + N stall) and every other instruction one, so the issue clock
+  // advances by that amount and following instructions stay on their true
+  // absolute cycle (matching the ROP starts).
+  std::vector<CtrlInstr> controller_instrs;
+  for (::mlir::Operation &child_op : op.getBody().front()) {
+    auto raw_op = llvm::dyn_cast<::vesyla::pasm::RawOp>(&child_op);
+    if (!raw_op) {
+      continue;
+    }
+    int row = static_cast<int>(raw_op.getRow());
+    int col = static_cast<int>(raw_op.getCol());
+    ::mlir::Region &raw_body = raw_op.getBody();
+    if (raw_body.empty()) {
+      continue;
+    }
+    int cycle = 0;
+    for (::mlir::Operation &raw_child : raw_body.front()) {
+      auto instr_op = llvm::dyn_cast<::vesyla::pasm::InstrOp>(&raw_child);
+      if (!instr_op) {
+        continue;
+      }
+      std::string type = instr_op.getType().str();
+      ::mlir::DictionaryAttr params = instr_op.getParam();
+
+      // Read an i32 param, returning `dflt` if absent.
+      auto read_param = [&](const char *key, int dflt) -> int {
+        if (params && params.contains(key)) {
+          if (auto int_attr =
+                  llvm::dyn_cast<::mlir::IntegerAttr>(params.get(key))) {
+            return static_cast<int>(int_attr.getInt());
+          }
+        }
+        return dflt;
+      };
+
+      int advance = 1;
+      if (type == "wait") {
+        advance = read_param("cycle", 0) + 1;
+      }
+
+      // Slot-targeting control instructions (evt/conf/rep/trans, ...) carry the
+      // slot (and port) they act on; act/wait/calc do not. Read generically so
+      // any such instruction echoes onto its target resource and nothing has to
+      // be enumerated by name. Absent -> -1 (no target).
+      int slot = read_param("slot", -1);
+      int port = read_param("port", -1);
+
+      controller_instrs.push_back(
+          CtrlInstr{row, col, cycle, cycle + advance, slot, port, type});
+      cycle += advance;
+    }
+  }
+
+  dump_schedule_table(tmp_path, originalIdStr, schedule_table, result, model,
+                      min_shift_time, controller_instrs);
 
   return ::mlir::success();
 }

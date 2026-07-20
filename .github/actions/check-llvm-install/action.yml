@@ -5,12 +5,6 @@ inputs:
   llvm-install-path:
     description: 'Path to LLVM installation'
     required: true
-  llvm-build-path:
-    description: 'Path to LLVM build'
-    required: true
-  llvm-source-path:
-    description: 'Path to LLVM source'
-    required: true
 
 outputs:
   llvm_installed:
@@ -28,13 +22,8 @@ runs:
           echo "llvm_installed=false" >> $GITHUB_OUTPUT
           exit 0
         fi
-        if [ ! -d "${{ inputs.llvm-build-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-build-path }}")" ]; then
-          echo "LLVM build path does not exist or is empty"
-          echo "llvm_installed=false" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-        if [ ! -d "${{ inputs.llvm-source-path }}" ] || [ -z "$(ls -A "${{ inputs.llvm-source-path }}")" ]; then
-          echo "LLVM source path does not exist or is empty"
+        if [ ! -d "${{ inputs.llvm-install-path }}/lib/cmake/mlir" ]; then
+          echo "LLVM install path is missing the MLIR cmake package"
           echo "llvm_installed=false" >> $GITHUB_OUTPUT
           exit 0
         fi

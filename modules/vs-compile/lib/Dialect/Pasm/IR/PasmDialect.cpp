@@ -14,4 +14,5 @@ using namespace vesyla::pasm;
 void PasmDialect::initialize() {
   registerOps();
   registerTypes();
+  registerAttrs();
 }

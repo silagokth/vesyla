@@ -2,8 +2,8 @@
 set -e
 
 # check the number of arguments
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <input_dir>"
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <input_dir> [-d|--debug]"
   exit 1
 fi
 
@@ -14,6 +14,17 @@ workspace_path="${template_path}/work"
 
 # get the input directory
 input_dir=$1
+shift
+
+# parse remaining flags
+debug_flag=""
+for arg in "$@"; do
+  case "$arg" in
+  -d | --debug)
+    debug_flag="-d"
+    ;;
+  esac
+done
 
 # check the necessary directories
 if [ ! -d "${workspace_path}/system/arch" ]; then
@@ -31,10 +42,10 @@ if [ ! -d "${workspace_path}/archive" ]; then
 fi
 
 # get all .pasm files as list
-pasm_files=$(ls ${input_dir}/*.pasm)
+pasm_files=$(ls ${input_dir}/*.pasm ${input_dir}/*.mlir 2>/dev/null || true)
 
 # get the name of each file without extension, also remove the path
-ids=$(echo ${pasm_files} | sed 's/\.pasm//g' | sed 's/.*\///g')
+ids=$(echo ${pasm_files} | tr ' ' '\n' | sed 's/\.\(pasm\|mlir\)//g' | sed 's/.*\///g' | sort -u)
 
 # check if id in ids is number or not
 for id in ${ids}; do
@@ -50,11 +61,21 @@ for id in ${ids}; do
   mkdir -p ${workspace_path}/temp
 
   # schedule, assemble the code segment
-  vesyla compile \
-    -a ${workspace_path}/system/arch/arch.json \
-    -i ${workspace_path}/system/isa/isa.json \
-    -p ${template_path}/pasm/${id}.pasm \
-    -o ${workspace_path}/temp
+  if [ -f "${template_path}/pasm/${id}.mlir" ]; then
+    vesyla compile \
+      -a ${workspace_path}/system/arch/arch.json \
+      -i ${workspace_path}/system/isa/isa.json \
+      -m ${template_path}/pasm/${id}.mlir \
+      -o ${workspace_path}/temp \
+      ${debug_flag}
+  else
+    vesyla compile \
+      -a ${workspace_path}/system/arch/arch.json \
+      -i ${workspace_path}/system/isa/isa.json \
+      -p ${template_path}/pasm/${id}.pasm \
+      -o ${workspace_path}/temp \
+      ${debug_flag}
+  fi
 
   # preserve the instructions
   mkdir -p ${workspace_path}/system/instr/${id}

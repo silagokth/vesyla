@@ -126,9 +126,16 @@ fi
 
 # Function to run commands and check for errors
 run_and_check() {
-  # Usage: run_and_check "description" command [args...]
+  # Usage: run_and_check "description" [fail_code] command [args...]
+  # If the second argument is numeric, exit with it on failure; otherwise default to 1 (setup).
   desc="$1"
   shift
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    fail_code="$1"
+    shift
+  else
+    fail_code=1
+  fi
   set +e
   output=$("$@" 2>&1)
   status=$?
@@ -137,7 +144,7 @@ run_and_check() {
     stop_spinner $status
     printf " ${RED}-> ERROR:${NC} $desc failed!\n"
     echo "$output"
-    exit $status
+    exit "$fail_code"
   fi
 }
 
@@ -188,11 +195,13 @@ if [ ! -s "mem/sram_image_m0.bin" ]; then
   exit 1
 fi
 sort -n mem/sram_image_m0.bin -o mem/sram_image_m0.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m0.bin --data-type int16_t || true
 stop_spinner 0
 
 # Model 1
 printf "${BOLD}Model 1:${NC} ${YELLOW}Warning${NC} Not implemented. Skipping...\n"
 cp mem/sram_image_m0.bin mem/sram_image_m1.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m1.bin --data-type int16_t || true
 
 # Model 2
 printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
@@ -201,9 +210,9 @@ printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm
+  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
 else
-  run_and_check "Compilation" bash ${template_path}/scripts/compile.sh ${template_path}/pasm
+  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
 fi
 stop_spinner 0
 
@@ -214,9 +223,9 @@ if [ "$interactive_mode" = "all" ] || [ "$interactive_mode" = "sst" ]; then
 fi
 printf "  ${BLUE}Running${NC}"
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/instr_sim.sh 0
+  bash ${template_path}/scripts/instr_sim.sh 0 || exit 2
 else
-  run_and_check "Instruction-level simulation" bash ${template_path}/scripts/instr_sim.sh 0
+  run_and_check "Instruction-level simulation" 2 bash ${template_path}/scripts/instr_sim.sh 0
 fi
 stop_spinner 0
 
@@ -224,14 +233,15 @@ stop_spinner 0
 start_spinner
 printf "  ${BLUE}Verifying${NC} (mem/sram_image_m2.bin)"
 sort -n mem/sram_image_m2.bin -o mem/sram_image_m2.bin
+python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m2.bin --data-type int16_t || true
 set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m2.bin 2>&1)
 if [ $? -ne 0 ]; then
   stop_spinner 1
-  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m2.bin differ!"
+  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m2.bin differ!\n"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
-  exit 1
+  exit 3
 fi
 set -e
 stop_spinner 0
@@ -246,9 +256,9 @@ else
   printf "  ${BLUE}Compiling & Running${NC}"
 fi
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
+  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" || exit 4
 else
-  run_and_check "RTL simulation" bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
+  run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
 fi
 stop_spinner 0
 
@@ -260,10 +270,10 @@ set +e
 error_output=$(diff -q mem/sram_image_m0.bin mem/sram_image_m3.bin 2>&1)
 if [ $? -ne 0 ]; then
   stop_spinner 1
-  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m3.bin differ!"
+  printf " ${RED}-> ERROR:${NC} mem/sram_image_m0.bin and mem/sram_image_m3.bin differ!\n"
   printf "${RED}Error details:${NC}"
   echo "$error_output"
-  exit 1
+  exit 5
 fi
 set -e
 stop_spinner 0

@@ -164,7 +164,21 @@ std::vector<int> ScheduleEpochPassRewriter::get_absolute_port_indices(
   for (auto op : rop_ops) {
     auto rop_op = llvm::dyn_cast<::vesyla::pasm::RopOp>(op);
     int slot = rop_op.getSlot();
-    int port = rop_op.getPort();
+    // The port is no longer on the rop; read it from the port-bearing event
+    // instruction in the body (these rops are selected because they contain an
+    // evt, which carries the port the ACT signal must address).
+    int port = 0;
+    if (!rop_op.getBody().empty()) {
+      for (::mlir::Operation &body_op : rop_op.getBody().front()) {
+        if (auto instr = llvm::dyn_cast<::vesyla::pasm::InstrOp>(&body_op)) {
+          if (auto port_attr = llvm::dyn_cast_or_null<::mlir::IntegerAttr>(
+                  instr.getParam().get("port"))) {
+            port = port_attr.getInt();
+            break;
+          }
+        }
+      }
+    }
     slot_port_index_list.push_back(slot * 4 + port);
   }
   return slot_port_index_list;

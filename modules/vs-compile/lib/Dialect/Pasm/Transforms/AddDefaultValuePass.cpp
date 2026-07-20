@@ -37,9 +37,8 @@ public:
       int row = rop_op.getRow();
       int col = rop_op.getCol();
       int slot = rop_op.getSlot();
-      int port = rop_op.getPort();
       label = std::to_string(row) + "_" + std::to_string(col) + "_" +
-              std::to_string(slot) + "_" + std::to_string(port);
+              std::to_string(slot);
     } else if (auto cop_op = llvm::dyn_cast<CopOp>(parent_op)) {
       int row = cop_op.getRow();
       int col = cop_op.getCol();
@@ -71,12 +70,33 @@ public:
       instr_params_name_set.insert(attr_name.str());
     }
 
+    // determine the variant selector, if this InstrOp carries one
+    std::string variant_name;
+    if (auto variant_attr = current_instr_params.get("variant")) {
+      if (auto str_attr = llvm::dyn_cast<mlir::StringAttr>(variant_attr)) {
+        variant_name = str_attr.str();
+      }
+    }
+
     // get the complete field name and default value from the ISA JSON
     for (auto component : isa_json["components"]) {
       if (component["kind"] == resource_kind) {
         for (auto instr : component["instructions"]) {
           if (instr["name"] == instr_name) {
-            for (auto segment : instr["segments"]) {
+            // For variant-based instructions the segments live under the
+            // selected variant; otherwise they are listed directly.
+            nlohmann::json segments_json;
+            if (instr.contains("variants")) {
+              for (auto variant : instr["variants"]) {
+                if (variant["name"] == variant_name) {
+                  segments_json = variant["segments"];
+                  break;
+                }
+              }
+            } else {
+              segments_json = instr["segments"];
+            }
+            for (auto segment : segments_json) {
               if (instr_params_name_set.find(
                       segment["name"].get<std::string>()) ==
                   instr_params_name_set.end()) {

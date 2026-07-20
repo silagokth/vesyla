@@ -123,8 +123,14 @@ void ScheduleEpochPassRewriter::replace_time_in_instr_param(
             auto attr_name = named_attr_entry.getName();
             auto attr_value = named_attr_entry.getValue();
 
-            if (auto str_attr =
-                    llvm::dyn_cast<::mlir::StringAttr>(attr_value)) {
+            // The `variant` selector is a structural string, not a timing
+            // reference. It must never be substituted from the schedule table,
+            // even if its value coincides with a scheduled symbol name (e.g. a
+            // "swb" variant colliding with a rop named "swb").
+            if (attr_name == "variant") {
+              updated_attrs.push_back(named_attr_entry);
+            } else if (auto str_attr =
+                           llvm::dyn_cast<::mlir::StringAttr>(attr_value)) {
               std::string str_value = str_attr.getValue().str();
               auto it = schedule_table.find(str_value);
               if (it != schedule_table.end()) {
@@ -167,8 +173,14 @@ void ScheduleEpochPassRewriter::replace_time_in_instr_param(
             auto attr_name = named_attr_entry.getName();
             auto attr_value = named_attr_entry.getValue();
 
-            if (auto str_attr =
-                    llvm::dyn_cast<::mlir::StringAttr>(attr_value)) {
+            // The `variant` selector is a structural string, not a timing
+            // reference. It must never be substituted from the schedule table,
+            // even if its value coincides with a scheduled symbol name (e.g. a
+            // "swb" variant colliding with a rop named "swb").
+            if (attr_name == "variant") {
+              updated_attrs.push_back(named_attr_entry);
+            } else if (auto str_attr =
+                           llvm::dyn_cast<::mlir::StringAttr>(attr_value)) {
               std::string str_value = str_attr.getValue().str();
               auto it = schedule_table.find(str_value);
               if (it != schedule_table.end()) {

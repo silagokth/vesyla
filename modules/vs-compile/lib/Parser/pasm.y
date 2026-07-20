@@ -17,6 +17,7 @@
     struct operation_t {
         std::string kind;
         mlir::Operation* op;
+        std::vector<mlir::Operation*> extra_ops;
     };
     struct operation_vector_t {
         std::vector<operation_t*> ops;
@@ -136,6 +137,10 @@ EPOCH_REGION:
                 auto new_instr_op = builder.clone(*instr_op);
                 // remove the old instr_op
                 instr_op->erase();
+                for (auto* extra_op : instr->extra_ops) {
+                    builder.clone(*extra_op);
+                    extra_op->erase();
+                }
             }
             // Clean up instr_list
             delete $3;
@@ -149,7 +154,7 @@ EPOCH_REGION:
         }
         $$ = op;
     }
-        
+
     | EPOCH '<' ID '>' '{' OP_LIST '}' {
         LOG_DEBUG << "EPOCH_REGION";
         auto* op = new operation_t();
@@ -170,6 +175,10 @@ EPOCH_REGION:
                 auto new_instr_op = builder.clone(*instr_op);
                 // remove the old instr_op
                 instr_op->erase();
+                for (auto* extra_op : instr->extra_ops) {
+                    builder.clone(*extra_op);
+                    extra_op->erase();
+                }
             }
             // Clean up instr_list
             delete $6;
@@ -233,6 +242,17 @@ PARAM:
         $$->val = std::to_string($3);
         $$->kind = parameter_t::INT;
     }
+    | ID '=' STRING  {
+        LOG_DEBUG << "PARAM";
+        $$ = new parameter_t();
+        $$->key = $1;
+        std::string s = $3;            // STRING token includes surrounding quotes
+        if (s.size() >= 2) {
+            s = s.substr(1, s.size() - 2);
+        }
+        $$->val = s;
+        $$->kind = parameter_t::STRING;
+    }
     ;
 
 OP_LIST:
@@ -274,11 +294,14 @@ ROP_OP:
                     }
                 }
             }
-            if (row == -1 || col == -1 || slot == -1 || port == -1) {
-                yyerror("Missing required parameters: row, col, slot, port");
+            // port is optional on a rop: it is the resource port shared by the
+            // rop's instructions, but it may instead be given directly on the
+            // instruction(s) that use it.
+            if (row == -1 || col == -1 || slot == -1) {
+                yyerror("Missing required parameters: row, col, slot");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
@@ -286,7 +309,7 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port));
+                /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
             builder.setInsertionPointToEnd(&region.back());
@@ -294,6 +317,21 @@ ROP_OP:
                 // copy the instr to the new region
                 auto instr_op = instr->op;
                 auto new_instr_op = builder.clone(*instr_op);
+                // When the rop specifies a port, carry it onto each instruction
+                // that does not already give its own. AddSlotPortPass later
+                // drops it from any instruction whose ISA definition has no port
+                // segment.
+                if (port != -1) {
+                    if (auto new_instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(new_instr_op)) {
+                        auto param = new_instr.getParam();
+                        if (!param.get("port")) {
+                            llvm::SmallVector<mlir::NamedAttribute> attrs(param.begin(), param.end());
+                            attrs.push_back(builder.getNamedAttr("port",
+                                builder.getIntegerAttr(builder.getI32Type(), port)));
+                            new_instr->setAttr("param", builder.getDictionaryAttr(attrs));
+                        }
+                    }
+                }
                 // remove the old instr_op
                 instr_op->erase();
             }
@@ -337,11 +375,14 @@ ROP_OP:
                     }
                 }
             }
-            if (row == -1 || col == -1 || slot == -1 || port == -1) {
-                yyerror("Missing required parameters: row, col, slot, port");
+            // port is optional on a rop: it is the resource port shared by the
+            // rop's instructions, but it may instead be given directly on the
+            // instruction(s) that use it.
+            if (row == -1 || col == -1 || slot == -1) {
+                yyerror("Missing required parameters: row, col, slot");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
@@ -349,7 +390,7 @@ ROP_OP:
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
                 builder.getIntegerAttr(builder.getI32Type(), slot),
-                builder.getIntegerAttr(builder.getI32Type(), port));
+                /*map=*/mlir::AffineMapAttr());
             mlir::Region& region = rop_op.getBody();
             region.push_back(new mlir::Block());
             builder.setInsertionPointToEnd(&region.back());
@@ -357,6 +398,21 @@ ROP_OP:
                 // copy the instr to the new region
                 auto instr_op = instr->op;
                 auto new_instr_op = builder.clone(*instr_op);
+                // When the rop specifies a port, carry it onto each instruction
+                // that does not already give its own. AddSlotPortPass later
+                // drops it from any instruction whose ISA definition has no port
+                // segment.
+                if (port != -1) {
+                    if (auto new_instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(new_instr_op)) {
+                        auto param = new_instr.getParam();
+                        if (!param.get("port")) {
+                            llvm::SmallVector<mlir::NamedAttribute> attrs(param.begin(), param.end());
+                            attrs.push_back(builder.getNamedAttr("port",
+                                builder.getIntegerAttr(builder.getI32Type(), port)));
+                            new_instr->setAttr("param", builder.getDictionaryAttr(attrs));
+                        }
+                    }
+                }
                 // remove the old instr_op
                 instr_op->erase();
             }
@@ -598,23 +654,14 @@ CSTR_OP:
         LOG_DEBUG << "CSTR_OP";
         auto* op = new operation_t();
         op->kind = "CSTR";
-        if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(temp_epoch_op)) {
-            // create a InstrOp
-            mlir::OpBuilder builder(epoch_op.getBody());
-            auto loc = builder.getUnknownLoc();
-            std::string cstr_contents = $3;
-            // remove quotes from cstr_contents
-            if (cstr_contents.front() == '"' && cstr_contents.back() == '"') {
-                cstr_contents = cstr_contents.substr(1, cstr_contents.size() - 2);
-            }
-            auto cstr_op = builder.create<vesyla::pasm::CstrOp>(loc,
-                builder.getStringAttr("linear"),
-                builder.getStringAttr(cstr_contents));
-            op->op = cstr_op.getOperation();
-        }
-        else {
-            yyerror("EpochOp not found");
+        auto cstr_ops = parse_and_build_cstr(std::string($3));
+        if (cstr_ops.empty()) {
+            yyerror("cstr: parse_and_build_cstr returned no operations");
             exit(1);
+        }
+        op->op = cstr_ops[0];
+        for (size_t i = 1; i < cstr_ops.size(); ++i) {
+            op->extra_ops.push_back(cstr_ops[i]);
         }
         $$ = op;
     }

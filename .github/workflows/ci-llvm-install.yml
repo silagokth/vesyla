@@ -5,10 +5,11 @@ on:
   workflow_dispatch:
 
 env:
-  LLVM_CIR_COMMIT_HASH: 4820d600ed3362744372983068495f086c9a0659
-  LLVM_SOURCE_PATH: ${{ github.workspace }}/llvm-project
+  # Upstream llvm/llvm-project release to use. The prebuilt
+  # LLVM-<version>-Linux-X64.tar.xz asset ships clang, MLIR and the cmake
+  # config packages, so no source build is required.
+  LLVM_VERSION: "22.1.8"
   LLVM_INSTALL_PATH: ${{ github.workspace }}/llvm-install
-  LLVM_BUILD_PATH: ${{ github.workspace }}/llvm-build
 
 jobs:
   llvm-install:
@@ -20,9 +21,6 @@ jobs:
         submodules: true
         path: vesyla
 
-    - name: Setup cmake
-      uses: jwlawson/actions-setup-cmake@v2
-
     - name: Restore LLVM Cache if available
       id: cache-llvm
       uses: actions/cache@v4
@@ -31,11 +29,9 @@ jobs:
       with:
         path: |
           ${{ env.LLVM_INSTALL_PATH }}
-          ${{ env.LLVM_SOURCE_PATH }}
-          ${{ env.LLVM_BUILD_PATH }}
-        key: ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
+        key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
         restore-keys: |
-          ${{ runner.os }}-llvm-${{ env.LLVM_CIR_COMMIT_HASH }}
+          ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
           ${{ runner.os }}-llvm-
 
     - name: Check if LLVM is already installed
@@ -43,20 +39,10 @@ jobs:
       uses: ./vesyla/.github/actions/check-llvm-install
       with:
         llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}
-        llvm-source-path: ${{ env.LLVM_SOURCE_PATH }}
-        llvm-build-path: ${{ env.LLVM_BUILD_PATH }}
 
-    - name: Install dependencies
+    - name: Download and extract prebuilt LLVM release
       if: steps.check-llvm.outputs.llvm_installed == 'false'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git build-essential cmake python-is-python3 zlib1g-dev ninja-build clang lld wget
-        pip3 install PyYAML
-
-
-    - name: Install LLVM with CIR and MLIR
-      if: steps.check-llvm.outputs.llvm_installed == 'false'
-      run: |
-        echo $(ls ${{ github.workspace }}/vesyla/scripts/)
-        bash ${{ github.workspace }}/vesyla/scripts/llvm-cir-install.sh -y
-
+      uses: ./vesyla/.github/actions/install-llvm
+      with:
+        llvm-version: ${{ env.LLVM_VERSION }}
+        llvm-install-path: ${{ env.LLVM_INSTALL_PATH }}

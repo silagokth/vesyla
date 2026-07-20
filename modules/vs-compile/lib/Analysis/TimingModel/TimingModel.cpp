@@ -26,7 +26,7 @@ string TimingModel::to_string() {
     str += "  " + it->second.to_string() + "\n";
   }
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
-    str += "  " + it->to_string() + "\n";
+    str += "  constraint " + it->kind + " " + it->to_string() + ";\n";
   }
   return str;
 }
@@ -145,7 +145,7 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
 
   // add constraints
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
-    mzn_file << "constraint " + it->expr + ";\n";
+    mzn_file << "constraint " + it->to_string() + ";\n";
   }
 
   // add act modes
@@ -267,30 +267,28 @@ void TimingModel::extractVariables() {
 }
 
 void TimingModel::extractAnchors() {
+  // Register a tm::Anchor for every (op, event, idx) referenced by a
+  // Constraint's src_anchor / dst_anchor. The existing tm::Anchor constructor
+  // takes a dotted string, so we build one from the structured fields and
+  // let it derive op_name / event_id / indices / flat name itself.
+  auto register_anchor = [&](const std::string &id,
+                             const std::optional<Constraint::Anchor> &a) {
+    if (!a)
+      return;
+    std::string dotted = id + "." + a->event_id;
+    for (int i : a->idx)
+      dotted += "[" + std::to_string(i) + "]";
+    Anchor anchor(dotted);
+    anchors[anchor.name] = anchor;
+  };
+
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     if (it->kind != "linear") {
       LOG_FATAL << "Invalid constraint kind: " << it->kind;
       exit(EXIT_FAILURE);
     }
-
-    string pattern = "([a-zA-Z_][a-zA-Z0-9_]*\\.e[0-9]+)(\\s*\\[([0-9]+)\\])*";
-    std::regex regex(pattern);
-    std::smatch match;
-    while (std::regex_search(it->expr, match, regex)) {
-      Anchor anchor(match[0]);
-      anchors[anchor.name] = anchor;
-
-      // replace the event identifier in the expression with the anchor name
-      string anchor_string_pattern = match[0];
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\."), "\\.");
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\["), "\\[");
-      anchor_string_pattern =
-          std::regex_replace(anchor_string_pattern, std::regex("\\]"), "\\]");
-      it->expr = std::regex_replace(it->expr, std::regex(anchor_string_pattern),
-                                    anchor.name);
-    }
+    register_anchor(it->src_id, it->src_anchor);
+    register_anchor(it->dst_id, it->dst_anchor);
   }
 }
 

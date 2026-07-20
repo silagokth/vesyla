@@ -54,6 +54,10 @@ message(STATUS "MLIR_INCLUDE_DIRS: ${MLIR_INCLUDE_DIRS}")
 
 # First-party public headers
 include_directories(${PROJECT_SOURCE_DIR}/include)
+# Conversion subsystem still lives under src/ (src-relative includes) and emits
+# its tablegen output under build/lib/src/.
+include_directories(${PROJECT_SOURCE_DIR}/src)
+include_directories(${CMAKE_BINARY_DIR}/lib/src)
 # Tablegen-generated headers (mirror include/ layout under this subproject's
 # build dir so the build works whether vs-compile is configured standalone or
 # as a subdirectory of a parent project)
@@ -101,6 +105,12 @@ function(add_vesyla_mlir_dialect dialect)
   mlir_tablegen(${IR_OUT_REL}/${dialect}Types.cpp.inc -gen-typedef-defs)
   add_public_tablegen_target(Vesyla${dialect}TypesIncGen)
 
+  # Attrs
+  set(LLVM_TARGET_DEFINITIONS ${IR_TD_DIR}/${dialect}Attrs.td)
+  mlir_tablegen(${IR_OUT_REL}/${dialect}Attrs.hpp.inc -gen-attrdef-decls -attrdefs-dialect=pasm)
+  mlir_tablegen(${IR_OUT_REL}/${dialect}Attrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=pasm)
+  add_public_tablegen_target(Vesyla${dialect}AttrsIncGen)
+
   # Passes
   set(LLVM_TARGET_DEFINITIONS ${TR_TD_DIR}/Passes.td)
   mlir_tablegen(${TR_OUT_REL}/Passes.hpp.inc -gen-pass-decls)
@@ -109,7 +119,8 @@ function(add_vesyla_mlir_dialect dialect)
   add_custom_target(
     Vesyla${dialect}IncGen
     DEPENDS Vesyla${dialect}DialectIncGen Vesyla${dialect}OpsIncGen
-            Vesyla${dialect}TypesIncGen Vesyla${dialect}PassesIncGen)
+            Vesyla${dialect}TypesIncGen Vesyla${dialect}AttrsIncGen
+            Vesyla${dialect}PassesIncGen)
 
   add_dependencies(mlir-headers Vesyla${dialect}IncGen)
 endfunction()
@@ -117,9 +128,33 @@ endfunction()
 add_vesyla_mlir_dialect(Pasm)
 
 #==============================================================================
+# Drra dialect: a single op (drra.rop), no custom types or attributes, so it
+# only needs Ops + Dialect tablegen (not the full add_vesyla_mlir_dialect).
+#==============================================================================
+set(DRRA_IR_TD_DIR ${PROJECT_SOURCE_DIR}/include/vesyla/Dialect/Drra/IR)
+set(DRRA_IR_OUT_REL include/vesyla/Dialect/Drra/IR)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${DRRA_IR_OUT_REL})
+
+set(LLVM_TARGET_DEFINITIONS ${DRRA_IR_TD_DIR}/DrraOps.td)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraOps.hpp.inc -gen-op-decls)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(VesylaDrraOpsIncGen)
+
+set(LLVM_TARGET_DEFINITIONS ${DRRA_IR_TD_DIR}/DrraDialect.td)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraDialect.hpp.inc -gen-dialect-decls)
+mlir_tablegen(${DRRA_IR_OUT_REL}/DrraDialect.cpp.inc -gen-dialect-defs)
+add_public_tablegen_target(VesylaDrraDialectIncGen)
+
+add_custom_target(
+  VesylaDrraIncGen
+  DEPENDS VesylaDrraOpsIncGen VesylaDrraDialectIncGen)
+add_dependencies(mlir-headers VesylaDrraIncGen)
+
+#==============================================================================
 # Source globs (per layer)
 #==============================================================================
 file(GLOB SOURCES_DIALECT_PASM_IR        "lib/Dialect/Pasm/IR/*.cpp")
+file(GLOB SOURCES_DIALECT_DRRA_IR        "lib/Dialect/Drra/IR/*.cpp")
 file(GLOB SOURCES_DIALECT_PASM_TRANSFORMS
      "lib/Dialect/Pasm/Transforms/*.cpp"
      "lib/Dialect/Pasm/Transforms/ScheduleEpoch/*.cpp")
@@ -155,11 +190,80 @@ add_mlir_dialect_library(
   DISABLE_INSTALL
   DEPENDS
   VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRInferTypeOpInterface
+  MLIRFuncDialect
+  MLIRTransforms
+  VesylaDrra)
+
+# Drra dialect (IR only)
+add_mlir_dialect_library(
+  VesylaDrra
+  ${SOURCES_DIALECT_DRRA_IR}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDrraIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR
   MLIRInferTypeOpInterface
   MLIRFuncDialect)
+
+# Tablegen + library wiring for a pass-only directory (no dialect, just
+# Passes.td next to the .cpp files).
+function(add_custom_mlir_pass_dir pass_path lib_name)
+  set(PASSES_SRC_DIR ${PROJECT_SOURCE_DIR}/src/${pass_path})
+  set(PASSES_INCLUDE_DIR ../../../build/lib/src/${pass_path})
+  set(PASSES_OUT_DIR ${CMAKE_BINARY_DIR}/lib/src/${pass_path})
+  file(MAKE_DIRECTORY ${PASSES_OUT_DIR})
+
+  set(LLVM_TARGET_DEFINITIONS ${PASSES_SRC_DIR}/Passes.td)
+  mlir_tablegen(${PASSES_INCLUDE_DIR}/Passes.hpp.inc -gen-pass-decls)
+  add_public_tablegen_target(${lib_name}IncGen)
+  add_dependencies(mlir-headers ${lib_name}IncGen)
+endfunction()
+
+add_custom_mlir_pass_dir(conversion/affine_to_pasm VesylaAffineToPasm)
+file(GLOB SOURCE_AFFINE_TO_PASM "src/conversion/affine_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaAffineToPasm
+  ${SOURCE_AFFINE_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaAffineToPasmIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  MLIRAffineDialect
+  VesylaPasm)
+
+add_custom_mlir_pass_dir(conversion/drra_to_pasm VesylaDrraToPasm)
+file(GLOB SOURCE_DRRA_TO_PASM "src/conversion/drra_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaDrraToPasm
+  ${SOURCE_DRRA_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDrraToPasmIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  VesylaPasm
+  VesylaDrra)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -167,14 +271,29 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 # First-party libraries
 add_library(VesylaUtil ${SOURCES_SUPPORT})
 add_library(VesylaTm   ${SOURCES_ANALYSIS_TM})
+add_dependencies(VesylaTm VesylaPasmIncGen)
 add_library(VesylaSchedule
             ${SOURCES_SCHEDULE}
             ${FLEX_PasmLexer_OUTPUTS}
             ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
-set(LIBS VesylaSchedule VesylaPasm VesylaTm VesylaUtil ${dialect_libs}
-         ${conversion_libs})
+set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm VesylaTm VesylaUtil
+         ${dialect_libs} ${conversion_libs})
+
+file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script.py DESTINATION scripts)
+file(COPY scripts/script_icdep.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script_icdep.py DESTINATION scripts)
+file(COPY scripts/script_grouped_no_slot0.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/script_grouped_no_slot0.py DESTINATION scripts)
+file(COPY scripts/timetable.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
+install(FILES scripts/timetable.py DESTINATION scripts)
+
+# Stage runtime config (e.g. the config holding the port table) next to the
+# executable so it can be found at the default path: prog_dir()/config/.
+file(COPY config/ DESTINATION ${CMAKE_BINARY_DIR}/config)
+install(DIRECTORY config/ DESTINATION config)
 
 #==============================================================================
 # Executables
@@ -184,6 +303,7 @@ llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
 
+# Build the pasm MLIR LSP server
 add_executable(pasm-mlir-lsp-server tools/pasm-mlir-lsp-server/main.cpp)
 target_link_libraries(pasm-mlir-lsp-server PRIVATE ${LIBS} MLIRLspServerLib)
 add_dependencies(pasm-mlir-lsp-server vs-compile)

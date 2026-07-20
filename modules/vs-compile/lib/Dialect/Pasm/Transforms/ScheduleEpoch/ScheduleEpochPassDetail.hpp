@@ -17,6 +17,23 @@
 
 namespace vesyla::pasm::schedule_epoch_detail {
 
+// One controller instruction in a cell's post-synchronize stream (the same
+// stream that becomes the .asm). The controller is the cell (row, col) that
+// owns the stream. It spans [cycle, end): most instructions occupy a single
+// cycle (end == cycle + 1), while a wait(N) spans its full N+1 cycles (1 issue
+// + N stall) so it shows as a block. `slot`/`port` name the resource the
+// instruction targets, taken from its params for any slot-targeting control
+// instruction (evt/conf/rep/trans, ...); both are -1 when it targets none.
+struct CtrlInstr {
+  int row;
+  int col;
+  int cycle;
+  int end;
+  int slot;
+  int port;
+  std::string type;
+};
+
 class ScheduleEpochPassRewriter
     : public ::mlir::OpRewritePattern<::vesyla::pasm::EpochOp> {
 public:
@@ -32,8 +49,7 @@ public:
                             std::string component_path, std::string tmp_path,
                             bool allow_unsafe, int row_, int col_)
       : ::mlir::OpRewritePattern<::vesyla::pasm::EpochOp>(context),
-        component_map(component_map),
-        component_path(std::move(component_path)),
+        component_map(component_map), component_path(std::move(component_path)),
         tmp_path(std::move(tmp_path)), allow_unsafe(allow_unsafe), _row(row_),
         _col(col_) {}
 
@@ -43,18 +59,17 @@ public:
                   ::mlir::PatternRewriter &rewriter) const final;
 
   // TimeTable.cpp
-  ::mlir::Block *
-  getOrCreateEntryBlock(::mlir::Region &region,
-                        ::mlir::PatternRewriter &rewriter) const;
+  ::mlir::Block *getOrCreateEntryBlock(::mlir::Region &region,
+                                       ::mlir::PatternRewriter &rewriter) const;
   ::mlir::Block *
   getEpochBodyEntryBlock(::vesyla::pasm::EpochOp epoch_op,
                          ::mlir::PatternRewriter &rewriter) const;
   std::map<int, ::mlir::Operation *> &getOrCreateCellTimeTable(
       std::map<std::string, std::map<int, ::mlir::Operation *>> &time_table,
       const std::string &label) const;
-  void create_time_table_entry(
-      std::map<int, ::mlir::Operation *> &cell_time_table, int t,
-      ::vesyla::pasm::InstrOp &instr_op) const;
+  void
+  create_time_table_entry(std::map<int, ::mlir::Operation *> &cell_time_table,
+                          int t, ::vesyla::pasm::InstrOp &instr_op) const;
   std::map<std::string, std::vector<::mlir::Operation *>> get_rop_ops_for_cycle(
       int currentCycle,
       std::unordered_map<::mlir::Operation *, int> time_table_rop) const;
@@ -101,8 +116,7 @@ public:
 
   // JsonOpBridge.cpp
   nlohmann::json op2json(::mlir::Operation *op) const;
-  void json2op(nlohmann::json op_json,
-               ::mlir::PatternRewriter &rewriter) const;
+  void json2op(nlohmann::json op_json, ::mlir::PatternRewriter &rewriter) const;
 
   // Synchronize.cpp
   void
@@ -114,10 +128,12 @@ public:
       ::mlir::Block *copEntryBlock,
       const std::unordered_map<std::string, int> &schedule_table,
       std::map<int, ::mlir::Operation *> &cell_time_table) const;
-  void synchronize(::vesyla::pasm::EpochOp &op,
-                   std::unordered_map<std::string, int> &schedule_table,
-                   ::mlir::PatternRewriter &rewriter,
-                   bool allow_unsafe = false) const;
+  // Returns the uniform per-epoch time shift applied to make the earliest
+  // instruction land at cycle 0.
+  int synchronize(::vesyla::pasm::EpochOp &op,
+                  std::unordered_map<std::string, int> &schedule_table,
+                  ::mlir::PatternRewriter &rewriter,
+                  bool allow_unsafe = false) const;
 
   // ExternalReshape.cpp
   void reshape_instr(::vesyla::pasm::EpochOp &op,

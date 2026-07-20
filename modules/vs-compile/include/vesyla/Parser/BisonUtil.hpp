@@ -36,4 +36,27 @@ void print_grammar(const std::string &grammar_,
 } // namespace schedule
 } // namespace vesyla
 
+struct idx_entry_t {
+  bool lo_default;
+  bool hi_default;
+  int32_t lo;
+  int32_t hi;
+};
+
+struct rop_ref_t {
+  std::string id;
+  std::string event;
+  std::vector<idx_entry_t> indices;
+  int offset;
+};
+
+struct index_list_t {
+  std::vector<int32_t> indices;
+};
+
+mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
+                            const std::string &cmp);
+
+std::vector<mlir::Operation *> parse_and_build_cstr(const std::string &expr);
+
 #endif // __VESYLA_SCHEDULE_BISON_UTIL_HPP__

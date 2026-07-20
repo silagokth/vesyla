@@ -43,8 +43,6 @@ if [ ! -d "${workspace_path}/archive" ]; then
 fi
 
 # create folders to store the results
-mkdir -p "${workspace_path}/system/metric"
-mkdir -p "${workspace_path}/system/state"
 mkdir -p "${workspace_path}/temp"
 mkdir -p "${workspace_path}/archive/instr_sim_${id}"
 

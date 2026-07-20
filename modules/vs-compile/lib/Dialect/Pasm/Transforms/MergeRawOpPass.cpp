@@ -1,10 +1,14 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
 #include "vesyla/Dialect/Pasm/Transforms/MergeRawOpPass.hpp"
+
+#include <set>
+#include <string>
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_MERGERAWOP
@@ -162,6 +166,45 @@ public:
         }
       }
     }
+
+    // Merge the scheduling metadata from every merged epoch into the target:
+    // sum the total_latency values (the merged epochs run back-to-back in each
+    // cell stream) and union the per-epoch delay dictionaries.
+    int total_latency = 0;
+    if (auto lat_attr =
+            target_epoch_op->getAttrOfType<mlir::IntegerAttr>("total_latency")) {
+      total_latency = lat_attr.getInt();
+    }
+    llvm::SmallVector<mlir::NamedAttribute> merged_delays;
+    std::set<std::string> seen_delays;
+    if (auto delays_attr =
+            target_epoch_op->getAttrOfType<mlir::DictionaryAttr>("delays")) {
+      for (auto named : delays_attr) {
+        merged_delays.push_back(named);
+        seen_delays.insert(named.getName().str());
+      }
+    }
+    for (auto &child_op : epoch_op_list) {
+      if (auto lat_attr =
+              child_op->getAttrOfType<mlir::IntegerAttr>("total_latency")) {
+        total_latency += lat_attr.getInt();
+      }
+      if (auto delays_attr =
+              child_op->getAttrOfType<mlir::DictionaryAttr>("delays")) {
+        for (auto named : delays_attr) {
+          if (seen_delays.insert(named.getName().str()).second) {
+            merged_delays.push_back(named);
+          } else {
+            llvm::outs() << "Warning: duplicate delay name when merging epochs: "
+                         << named.getName().str() << "\n";
+          }
+        }
+      }
+    }
+    target_epoch_op->setAttr("total_latency",
+                             rewriter.getI32IntegerAttr(total_latency));
+    target_epoch_op->setAttr("delays",
+                             rewriter.getDictionaryAttr(merged_delays));
 
     // remove all the epoch ops
     for (auto &child_op : epoch_op_list) {

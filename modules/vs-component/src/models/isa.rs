@@ -48,6 +48,15 @@ pub struct Instruction {
     pub opcode: u8,
     pub instr_type: InstructionType,
     pub segments: Vec<Segment>,
+    pub variant_opcode_bitwidth: Option<u8>,
+    pub variants: Vec<InstructionVariant>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstructionVariant {
+    pub name: String,
+    pub opcode: u8,
+    pub segments: Vec<Segment>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -162,29 +171,106 @@ impl Instruction {
             }
         };
 
+        // An instruction is encoded either as a flat list of segments or, when
+        // a single opcode carries several sub-encodings, as a set of variants
+        // selected by a variant opcode. Variants take precedence when present.
         let mut segments = Vec::new();
-        let segments_json = instruction.get("segments");
-        if segments_json.is_none() {
+        let mut variant_opcode_bitwidth = None;
+        let mut variants = Vec::new();
+        if let Some(variants_json) = instruction.get("variants") {
+            if !variants_json.is_array() {
+                return Err(Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Variants must be an array in ISA JSON",
+                ));
+            }
+            variant_opcode_bitwidth = match instruction.get("variant_opcode_bitwidth") {
+                Some(bitwidth) => Some(bitwidth.as_u64().unwrap() as u8),
+                None => {
+                    return Err(Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Variant opcode bitwidth not found in ISA JSON",
+                    ));
+                }
+            };
+            for variant in variants_json.as_array().unwrap().iter() {
+                let variant_obj = InstructionVariant::from_json(variant.clone())?;
+                variants.push(variant_obj);
+            }
+        } else if let Some(segments_json) = instruction.get("segments") {
+            if !segments_json.is_array() {
+                return Err(Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Segments must be an array in ISA JSON",
+                ));
+            }
+            segments = parse_segments(segments_json.as_array().unwrap())?;
+        } else {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Segments not found in ISA JSON",
+                "Neither segments nor variants found in ISA JSON",
             ));
-        }
-        if !segments_json.unwrap().is_array() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Segments must be an array in ISA JSON",
-            ));
-        }
-        for segment in segments_json.unwrap().as_array().unwrap().iter() {
-            let segment_obj = Segment::from_json(segment.clone())?;
-            segments.push(segment_obj);
         }
 
         Ok(Instruction {
             name,
             opcode,
             instr_type,
+            segments,
+            variant_opcode_bitwidth,
+            variants,
+        })
+    }
+}
+
+fn parse_segments(segments_json: &[serde_json::Value]) -> Result<Vec<Segment>, Error> {
+    let mut segments = Vec::new();
+    for segment in segments_json.iter() {
+        let segment_obj = Segment::from_json(segment.clone())?;
+        segments.push(segment_obj);
+    }
+    Ok(segments)
+}
+
+impl InstructionVariant {
+    pub fn from_json(variant_json: serde_json::Value) -> Result<InstructionVariant, Error> {
+        let name = variant_json
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Name not found or not a string in instruction variant",
+                )
+            })?
+            .to_string();
+        let opcode = match variant_json.get("opcode") {
+            Some(opcode) => opcode.as_u64().unwrap() as u8,
+            None => {
+                return Err(Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Opcode not found in instruction variant",
+                ));
+            }
+        };
+        let segments_json = variant_json.get("segments");
+        if segments_json.is_none() {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Segments not found in instruction variant",
+            ));
+        }
+        if !segments_json.unwrap().is_array() {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Segments must be an array in instruction variant",
+            ));
+        }
+        let segments = parse_segments(segments_json.unwrap().as_array().unwrap())?;
+
+        Ok(InstructionVariant {
+            name,
+            opcode,
             segments,
         })
     }
@@ -486,10 +572,33 @@ impl Serialize for Instruction {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(4))?;
+        if !self.variants.is_empty() {
+            let mut map = serializer.serialize_map(Some(5))?;
+            map.serialize_entry("name", &self.name)?;
+            map.serialize_entry("opcode", &self.opcode)?;
+            map.serialize_entry("instr_type", &self.instr_type.to_u8())?;
+            map.serialize_entry("variant_opcode_bitwidth", &self.variant_opcode_bitwidth)?;
+            map.serialize_entry("variants", &self.variants)?;
+            map.end()
+        } else {
+            let mut map = serializer.serialize_map(Some(4))?;
+            map.serialize_entry("name", &self.name)?;
+            map.serialize_entry("opcode", &self.opcode)?;
+            map.serialize_entry("instr_type", &self.instr_type.to_u8())?;
+            map.serialize_entry("segments", &self.segments)?;
+            map.end()
+        }
+    }
+}
+
+impl Serialize for InstructionVariant {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("name", &self.name)?;
         map.serialize_entry("opcode", &self.opcode)?;
-        map.serialize_entry("instr_type", &self.instr_type.to_u8())?;
         map.serialize_entry("segments", &self.segments)?;
         map.end()
     }

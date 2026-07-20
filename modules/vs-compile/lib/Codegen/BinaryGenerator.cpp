@@ -62,10 +62,23 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                         instr_op.getParam();
 
                     bool is_first = true;
+                    // Emit the variant selector first, if present, so the
+                    // textual form reads conf(variant="...", ...).
+                    if (auto variant_attr =
+                            current_instr_params.get("variant")) {
+                      if (auto str_attr =
+                              llvm::dyn_cast<mlir::StringAttr>(variant_attr)) {
+                        output_file << "variant=\"" << str_attr.str() << "\"";
+                        is_first = false;
+                      }
+                    }
                     for (const mlir::NamedAttribute &named_attr_entry :
                          current_instr_params) {
                       auto attr_name = named_attr_entry.getName();
                       auto attr_value = named_attr_entry.getValue();
+                      if (attr_name.str() == "variant") {
+                        continue;
+                      }
 
                       if (auto int_attr =
                               llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
@@ -197,11 +210,15 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       }
                     }
 
+                    // Resource instructions carry a slot and resolve to a
+                    // resource kind keyed by (row, col, slot); control
+                    // instructions have no slot and resolve to the controller
+                    // keyed by (row, col). The port is no longer part of the
+                    // key (the kind is the same across a slot's ports).
                     std::string label =
                         std::to_string(row) + "_" + std::to_string(col);
-                    if (slot != -1 && port != -1) {
-                      label += "_" + std::to_string(slot) + "_" +
-                               std::to_string(port);
+                    if (slot != -1) {
+                      label += "_" + std::to_string(slot);
                     }
                     if (component_map_json.find(label) ==
                         component_map_json.end()) {
@@ -240,7 +257,50 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       instr_bin += int2bin(slot, instr_slot_bitwidth);
                     }
 
-                    for (const auto &segment : instr_json["segments"]) {
+                    // A variant-based instruction (e.g. conf) encodes the
+                    // variant opcode at the top of the instruction content,
+                    // followed by the selected variant's segments. A plain
+                    // instruction encodes its own segments directly.
+                    nlohmann::json segments_json;
+                    if (instr_json.contains("variants")) {
+                      std::string variant_name;
+                      if (current_instr_params.contains("variant")) {
+                        if (auto str_attr = llvm::dyn_cast<mlir::StringAttr>(
+                                current_instr_params.get("variant"))) {
+                          variant_name = str_attr.str();
+                        }
+                      }
+                      if (variant_name.empty()) {
+                        llvm::outs()
+                            << "Error: Missing 'variant' parameter for "
+                               "instruction: "
+                            << instr_type << "\n";
+                        std::exit(EXIT_FAILURE);
+                      }
+                      int variant_opcode_bitwidth =
+                          instr_json["variant_opcode_bitwidth"].get<int>();
+                      nlohmann::json variant_json;
+                      for (auto variant : instr_json["variants"]) {
+                        if (variant["name"] == variant_name) {
+                          variant_json = variant;
+                          break;
+                        }
+                      }
+                      if (variant_json.empty()) {
+                        llvm::outs()
+                            << "Error: Cannot find the variant definition for: "
+                            << variant_name
+                            << " in instruction: " << instr_type << "\n";
+                        std::exit(EXIT_FAILURE);
+                      }
+                      instr_bin += int2bin(variant_json["opcode"].get<int>(),
+                                           variant_opcode_bitwidth);
+                      segments_json = variant_json["segments"];
+                    } else {
+                      segments_json = instr_json["segments"];
+                    }
+
+                    for (const auto &segment : segments_json) {
                       std::string segment_name =
                           segment["name"].get<std::string>();
                       int segment_bitwidth = segment["bitwidth"].get<int>();
@@ -274,7 +334,10 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                       llvm::outs() << "Error: Instruction binary size "
                                    << instr_bin.size()
                                    << " exceeds the required bitwidth: "
-                                   << instr_bitwidth << "\n";
+                                   << instr_bitwidth
+                                   << " for instruction: " << instr_type
+                                   << " (id: " << instr_op.getId().str() << ")"
+                                   << "\n";
                       std::exit(EXIT_FAILURE);
                     }
 
