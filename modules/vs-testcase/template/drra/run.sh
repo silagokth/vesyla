@@ -308,6 +308,33 @@ fi
 stop_spinner 0
 printf "  ${CYAN}%s${NC} cycles (SST == RTL)\n" "$sst_cycles"
 
+# Cycle-accurate trace comparison (debug mode only). The RTL VCD (all resource
+# interface signals + cycle_count) and the SST Chrome-trace are both produced
+# only under -d, so this step is gated on debug_mode. It projects both onto a
+# canonical per-cycle event schema and reports where SST and RTL disagree,
+# tolerating a single constant skew (see scripts/trace_compare.py). It is a
+# report by default: the memory result and total cycle count are already gated
+# above; per-cycle micro-divergences are surfaced here for inspection, not
+# treated as run failures (use trace_compare.py --strict to gate on them).
+if [ "$debug_mode" = true ]; then
+  printf "${BOLD}Trace:${NC} cycle-accurate SST vs RTL comparison\n"
+  vcd_file=$(find archive -name 'trace.vcd' 2>/dev/null | head -1)
+  sst_trace="trace_complete.json"
+  if [ -f "$sst_trace" ] && [ -n "$vcd_file" ] && [ -f "$vcd_file" ]; then
+    python3 ${template_path}/scripts/trace_extract_sst.py "$sst_trace" \
+      -o trace_sst_canonical.json
+    python3 ${template_path}/scripts/trace_extract_rtl.py "$vcd_file" \
+      -o trace_rtl_canonical.json
+    printf "  ${BLUE}Comparing${NC}\n  "
+    python3 ${template_path}/scripts/trace_compare.py \
+      trace_sst_canonical.json trace_rtl_canonical.json \
+      -o trace_diff.json || true
+  else
+    printf "  ${YELLOW}Warning:${NC} trace artifacts missing (SST='%s' VCD='%s'); skipping\n" \
+      "${sst_trace}" "${vcd_file:-N/A}"
+  fi
+fi
+
 printf "\n${GREEN}All models executed successfully!${NC}\n\n"
 
 cat <<"EOF"

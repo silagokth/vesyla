@@ -58,3 +58,13 @@ sst "${workspace_path}/system/sst/sst_sim_conf.py" \
 
 # archive everything
 mv "${workspace_path}/temp" "${workspace_path}/archive/instr_sim_${id}"
+
+# Retain the SST debug artifacts (Chrome-trace + realized cycle count) for the
+# cycle-accurate trace comparison. The SST model writes them into the current
+# working directory (the workspace root) at teardown; copy them next to the
+# archived run so they are not lost on the next invocation.
+for f in trace_complete.json instr_sim_cycles.txt; do
+  if [ -f "${workspace_path}/${f}" ]; then
+    cp "${workspace_path}/${f}" "${workspace_path}/archive/instr_sim_${id}/${f}"
+  fi
+done
