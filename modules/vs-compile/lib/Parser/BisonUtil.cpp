@@ -1,5 +1,10 @@
 #include "vesyla/Parser/BisonUtil.hpp"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Region.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/Casting.h"
 
 #include <algorithm>
 #include <regex>
@@ -195,9 +200,8 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
       mlir::FlatSymbolRefAttr::get(builder.getContext(), dst_id), dst_event,
       dst_lo_u, dst_hi_u);
 
-  auto cstr_op = vesyla::pasm::CstrOp::create(builder, loc, src_ar, dst_ar,
-                                              delay_attr,
-                                              builder.getBoolAttr(is_neq));
+  auto cstr_op = vesyla::pasm::CstrOp::create(
+      builder, loc, src_ar, dst_ar, delay_attr, builder.getBoolAttr(is_neq));
 
   return cstr_op.getOperation();
 }
@@ -229,6 +233,35 @@ mlir::Operation *build_epoch(const std::string &id,
   // add a yield operation
   vesyla::pasm::YieldOp::create(builder, loc);
   return new_epoch.getOperation();
+}
+
+mlir::Operation *build_loop(const std::string &id, int iter,
+                            llvm::ArrayRef<mlir::Operation *> children) {
+  auto epoch_op =
+      llvm::dyn_cast<vesyla::pasm::EpochOp>(vesyla::schedule::temp_epoch_op);
+  if (!epoch_op) {
+    vesyla::schedule::print_error("EpochOp not found");
+  }
+
+  mlir::OpBuilder builder(epoch_op.getBody());
+  auto loc = builder.getUnknownLoc();
+  builder.setInsertionPointToEnd(vesyla::schedule::module->getBody());
+  auto loop_op = vesyla::pasm::LoopOp::create(
+      builder, loc,
+      builder.getStringAttr(
+          id.empty() ? vesyla::util::Common::gen_random_string(8) : id),
+      builder.getI32IntegerAttr(iter));
+
+  mlir::Region &region = loop_op.getBody();
+  region.push_back(new mlir::Block());
+  builder.setInsertionPointToEnd(&region.back());
+  for (auto *child : children) {
+    builder.clone(*child);
+    child->erase();
+  }
+  vesyla::pasm::YieldOp::create(builder, loc);
+
+  return loop_op.getOperation();
 }
 
 static int32_t parse_nonneg_int(const std::string &s, const std::string &ctx) {

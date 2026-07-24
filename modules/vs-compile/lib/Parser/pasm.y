@@ -150,8 +150,38 @@ EPOCH_REGION:
     ;
 
 FOR_REGION:
-    FOR '(' PARAM_MAP ')' '{' REGION_LIST '}' {LOG_DEBUG << "FOR_REGION";}
-    | FOR '<' ID '>' '(' PARAM_MAP ')' '{' REGION_LIST '}' {LOG_DEBUG << "FOR_REGION";}
+    FOR '(' PARAM_MAP ')' '{' REGION_LIST '}' {
+        LOG_DEBUG << "FOR_REGION";
+        int iter = 1;
+        for (auto &p : $3->params) if (p.key == "iter") iter = std::stoi(p.val);
+        std::vector<mlir::Operation *> children;
+        for (auto *c : $6->ops) {
+            children.push_back(c->op);
+            for (auto *ex : c->extra_ops) children.push_back(ex);
+        }
+        auto *op = new operation_t();
+        op->kind = "FOR";
+        op->op = build_loop("", iter, children);
+        delete $6;
+        delete $3;
+        $$ = op;
+    }
+    | FOR '<' ID '>' '(' PARAM_MAP ')' '{' REGION_LIST '}' {
+        LOG_DEBUG << "FOR_REGION";
+        int iter = 1;
+        for (auto &p : $6->params) if (p.key == "iter") iter = std::stoi(p.val);
+        std::vector<mlir::Operation *> children;
+        for (auto *c : $9->ops) {
+            children.push_back(c->op);
+            for (auto *ex : c->extra_ops) children.push_back(ex);
+        }
+        auto *op = new operation_t();
+        op->kind = "FOR";
+        op->op = build_loop($3, iter, children);
+        delete $9;
+        delete $6;
+        $$ = op;
+    }
     ;
 
 IF_REGION:
