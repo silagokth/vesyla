@@ -57,6 +57,12 @@ struct index_list_t {
 mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
                             const std::string &cmp);
 
+// Builds an EpochOp region from a flat list of instruction ops (each cloned
+// into the new region and erased from its source). An empty id generates a
+// random name.
+mlir::Operation *build_epoch(const std::string &id,
+                             llvm::ArrayRef<mlir::Operation *> instr_ops);
+
 std::vector<mlir::Operation *> parse_and_build_cstr(const std::string &expr);
 
 #endif // __VESYLA_SCHEDULE_BISON_UTIL_HPP__

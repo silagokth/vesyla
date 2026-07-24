@@ -1,4 +1,5 @@
 #include "vesyla/Parser/BisonUtil.hpp"
+#include "mlir/IR/Operation.h"
 
 #include <algorithm>
 #include <regex>
@@ -77,23 +78,23 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   std::optional<int> min_delay;
   std::optional<int> max_delay;
 
-  if (cmp == "<") {
+  if (cmp == "<" || cmp == "<=") {
     src_id = lhs->id;
     src_event = lhs->event;
     src_indices = lhs->indices;
     dst_id = rhs->id;
     dst_event = rhs->event;
     dst_indices = rhs->indices;
-    min_delay = 1 + alpha - beta;
+    min_delay = (cmp == "<" ? 1 : 0) + alpha - beta;
     // no upper bound
-  } else if (cmp == ">") {
+  } else if (cmp == ">" || cmp == ">=") {
     src_id = rhs->id;
     src_event = rhs->event;
     src_indices = rhs->indices;
     dst_id = lhs->id;
     dst_event = lhs->event;
     dst_indices = lhs->indices;
-    min_delay = 1 + beta - alpha;
+    min_delay = (cmp == ">" ? 1 : 0) + beta - alpha;
     // no upper bound
   } else { // "==" or "!="
     src_id = lhs->id;
@@ -201,6 +202,35 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   return cstr_op.getOperation();
 }
 
+mlir::Operation *build_epoch(const std::string &id,
+                             llvm::ArrayRef<mlir::Operation *> instr_ops) {
+  auto epoch_op =
+      llvm::dyn_cast<vesyla::pasm::EpochOp>(vesyla::schedule::temp_epoch_op);
+  if (!epoch_op) {
+    vesyla::schedule::print_error("EpochOp not found");
+    exit(1);
+  }
+
+  mlir::OpBuilder builder(epoch_op.getBody());
+  auto loc = builder.getUnknownLoc();
+  builder.setInsertionPointToEnd(vesyla::schedule::module->getBody());
+  auto new_epoch = vesyla::pasm::EpochOp::create(
+      builder, loc,
+      builder.getStringAttr(
+          id.empty() ? vesyla::util::Common::gen_random_string(8) : id));
+  mlir::Region &region = new_epoch.getBody();
+  region.push_back(new mlir::Block());
+  builder.setInsertionPointToEnd(&region.back());
+  for (auto *instr_op : instr_ops) {
+    // clone into the new region, then drop the original
+    builder.clone(*instr_op);
+    instr_op->erase();
+  }
+  // add a yield operation
+  vesyla::pasm::YieldOp::create(builder, loc);
+  return new_epoch.getOperation();
+}
+
 static int32_t parse_nonneg_int(const std::string &s, const std::string &ctx) {
   static const std::regex int_re(R"(^\d+$)");
   if (!std::regex_match(s, int_re)) {
@@ -293,6 +323,12 @@ std::vector<mlir::Operation *> parse_and_build_cstr(const std::string &expr) {
     cmp_len = 2;
   } else if ((pos = s.find("==")) != std::string::npos) {
     cmp = "==";
+    cmp_len = 2;
+  } else if ((pos = s.find("<=")) != std::string::npos) {
+    cmp = "<=";
+    cmp_len = 2;
+  } else if ((pos = s.find(">=")) != std::string::npos) {
+    cmp = ">=";
     cmp_len = 2;
   } else if ((pos = s.find('<')) != std::string::npos) {
     cmp = "<";
