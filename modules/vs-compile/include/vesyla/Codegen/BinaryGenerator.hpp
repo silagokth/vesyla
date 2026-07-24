@@ -19,6 +19,8 @@
 
 #include "vesyla/Support/Config.hpp"
 
+#include <fstream>
+
 namespace vesyla {
 namespace schedule {
 class Generator {
@@ -32,6 +34,17 @@ private:
                const std::string &filename);
   void gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                const std::string &filename);
+
+  // Emit the textual asm for a single epoch's body.
+  void emit_epoch_asm(vesyla::pasm::EpochOp epoch_op,
+                      std::ofstream &output_file);
+  // Emit the binary encoding for a single epoch's body.
+  void emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
+                      std::ofstream &output_file,
+                      nlohmann::json &component_map_json,
+                      nlohmann::json &isa_json, int instr_bitwidth,
+                      int instr_opcode_bitwidth, int instr_slot_bitwidth,
+                      int instr_type_bitwidth);
 };
 } // namespace schedule
 } // namespace vesyla
