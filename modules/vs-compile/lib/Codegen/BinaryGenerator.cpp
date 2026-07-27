@@ -32,26 +32,34 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
     std::exit(EXIT_FAILURE);
   }
 
-  mlir::Region &module_region = module.getBodyRegion();
-  if (!module_region.empty()) {
-    mlir::Block &module_block = module_region.front();
-    // Iterate through all operations in the module's block
-    for (mlir::Operation &child_op : module_block) {
-      if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
-        emit_epoch_asm(epoch_op, output_file);
-      } else if (auto yield_op =
-                     llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_op)) {
-        // DO NOTHING
-      } else {
-        llvm::outs() << "Error: Illegal operation type in ModuleOp: "
-                     << child_op.getName() << "\n";
-        std::exit(EXIT_FAILURE);
-      }
-    }
-  }
+  emit_program(module, [&](vesyla::pasm::EpochOp ep) {
+    emit_epoch_asm(ep, output_file);
+  });
 
   // close the file
   output_file.close();
+}
+
+void Generator::emit_program(
+    mlir::ModuleOp module,
+    const std::function<void(vesyla::pasm::EpochOp)> &emit_epoch) {
+  mlir::Region &module_region = module.getBodyRegion();
+  if (module_region.empty()) {
+    return;
+  }
+  // Loops have already been lowered to epochs (with their control instructions
+  // injected) by the ReplaceLoopOp pass, so only epochs reach codegen.
+  for (mlir::Operation &child_op : module_region.front()) {
+    if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
+      emit_epoch(epoch_op);
+    } else if (llvm::isa<vesyla::pasm::YieldOp>(&child_op)) {
+      // DO NOTHING
+    } else {
+      llvm::outs() << "Error: Illegal operation type in ModuleOp: "
+                   << child_op.getName() << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+  }
 }
 
 void Generator::emit_epoch_asm(vesyla::pasm::EpochOp epoch_op,
@@ -105,8 +113,9 @@ void Generator::emit_epoch_asm(vesyla::pasm::EpochOp epoch_op,
                 is_first = false;
                 output_file << attr_name.str() << "=" << int_attr.getInt();
               } else {
-                llvm::outs() << "Unsupported parameter type in InstrOp: "
-                             << attr_value << "\n";
+                llvm::outs()
+                    << "Unsupported parameter type in InstrOp: " << attr_value
+                    << "\n";
                 std::exit(EXIT_FAILURE);
               }
             }
@@ -154,25 +163,11 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
     std::exit(EXIT_FAILURE);
   }
 
-  mlir::Region &module_region = module.getBodyRegion();
-  if (!module_region.empty()) {
-    mlir::Block &module_block = module_region.front();
-    // Iterate through all operations in the module's block
-    for (mlir::Operation &child_op : module_block) {
-      if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
-        emit_epoch_bin(epoch_op, output_file, component_map_json, isa_json,
-                       instr_bitwidth, instr_opcode_bitwidth,
-                       instr_slot_bitwidth, instr_type_bitwidth);
-      } else if (auto yield_op =
-                     llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_op)) {
-        // DO NOTHING
-      } else {
-        llvm::outs() << "Error: Illegal operation type in ModuleOp: "
-                     << child_op.getName() << "\n";
-        std::exit(EXIT_FAILURE);
-      }
-    }
-  }
+  emit_program(module, [&](vesyla::pasm::EpochOp ep) {
+    emit_epoch_bin(ep, output_file, component_map_json, isa_json,
+                   instr_bitwidth, instr_opcode_bitwidth, instr_slot_bitwidth,
+                   instr_type_bitwidth);
+  });
 
   // close the file
   output_file.close();
@@ -218,8 +213,9 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
                         llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
                   slot = int_attr.getInt();
                 } else {
-                  llvm::outs() << "Unsupported parameter type in InstrOp: "
-                               << attr_value << "\n";
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
                   std::exit(EXIT_FAILURE);
                 }
               } else if (attr_name.str() == "port") {
@@ -227,8 +223,9 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
                         llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
                   port = int_attr.getInt();
                 } else {
-                  llvm::outs() << "Unsupported parameter type in InstrOp: "
-                               << attr_value << "\n";
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
                   std::exit(EXIT_FAILURE);
                 }
               }
@@ -239,8 +236,7 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
             // instructions have no slot and resolve to the controller
             // keyed by (row, col). The port is no longer part of the
             // key (the kind is the same across a slot's ports).
-            std::string label =
-                std::to_string(row) + "_" + std::to_string(col);
+            std::string label = std::to_string(row) + "_" + std::to_string(col);
             if (slot != -1) {
               label += "_" + std::to_string(slot);
             }
@@ -274,8 +270,8 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
             std::string instr_bin = "";
             instr_bin += int2bin(instr_json["instr_type"].get<int>(),
                                  instr_type_bitwidth);
-            instr_bin += int2bin(instr_json["opcode"].get<int>(),
-                                 instr_opcode_bitwidth);
+            instr_bin +=
+                int2bin(instr_json["opcode"].get<int>(), instr_opcode_bitwidth);
             if (slot != -1) {
               instr_bin += int2bin(slot, instr_slot_bitwidth);
             }
@@ -331,8 +327,9 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
                         llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
                   instr_bin += int2bin(int_attr.getInt(), segment_bitwidth);
                 } else {
-                  llvm::outs() << "Unsupported parameter type in InstrOp: "
-                               << attr_value << "\n";
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
                   std::exit(EXIT_FAILURE);
                 }
               } else {
@@ -350,9 +347,9 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
               llvm::outs() << "Error: Instruction binary size "
                            << instr_bin.size()
                            << " exceeds the required bitwidth: "
-                           << instr_bitwidth << " for instruction: "
-                           << instr_type << " (id: " << instr_op.getId().str()
-                           << ")" << "\n";
+                           << instr_bitwidth
+                           << " for instruction: " << instr_type
+                           << " (id: " << instr_op.getId().str() << ")" << "\n";
               std::exit(EXIT_FAILURE);
             }
 
