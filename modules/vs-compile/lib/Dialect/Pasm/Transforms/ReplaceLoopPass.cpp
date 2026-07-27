@@ -26,14 +26,32 @@ constexpr int CALC_MODE_LT = 21;
 constexpr int OPND_STATIC = 0;
 constexpr int OPND_DYNAMIC = 1;
 
-// Registers reserved for loop control. The counter also rides the act signal
-// (it is what act mode 2 forwards to the resources), so it must sit in the act
-// register window [r4..r11].
-// TODO: source these from register allocation once loop-scope liveness exists,
-// and reconcile with the act-mode-2 prep allocation in RegisterAllocator.cpp,
-// which currently also claims r4.
-constexpr int LOOP_COUNTER_REG = 4;
-constexpr int LOOP_FLAG_REG = 1;
+// Scalar registers reserved for loop control. Allocation is structural rather
+// than liveness-based (see below): the controller register file is small and
+// the live ranges of loop-control registers are determined by loop nesting, so
+// a fixed reservation is both correct and simple.
+//
+// Register map assumed here:
+//   r0        conventional zero (act-mode-2 prep in RegisterAllocator.cpp
+//             relies on it; init() zeroes all registers at reset)
+//   r1..r3    spare
+//   r4..r11   act-mode-2 port-map prep (two contiguous 4-register blocks)
+//   r12       loop flag (shared by all loops, see below)
+//   r13..r15  loop counters, indexed by nesting depth
+//
+// A loop counter is live across its entire body, so nested loops need distinct
+// counters; sibling loops never overlap and reuse the same register. The
+// counter for a loop at nesting depth d is LOOP_COUNTER_REG_TOP - d, bounded by
+// LOOP_COUNTER_REG_FLOOR. The flag register is written by the epilogue's bound
+// test and consumed immediately by the branch, so its live range is a single
+// epilogue and never overlaps another flag: one shared register suffices.
+//
+// Keeping the counters/flag disjoint from r0 and the act-mode-2 window means no
+// coordination with RegisterAllocator.cpp is required. A liveness-based
+// allocator can replace this later without changing the injection logic.
+constexpr int LOOP_FLAG_REG = 12;
+constexpr int LOOP_COUNTER_REG_TOP = 15;   // counter for nesting depth 0
+constexpr int LOOP_COUNTER_REG_FLOOR = 13; // deepest counter (depth 2)
 
 // The largest back-edge distance the brn offset field can encode. Derived from
 // the ISA so a wider target field lifts the limit with no code change.
@@ -95,6 +113,24 @@ public:
     }
     int iter = op.getIter();
     mlir::Block &body_block = op.getBody().front();
+
+    // Allocate the counter register from the loop's nesting depth (annotated by
+    // the pass before rewriting). Depth 0 uses the top of the counter pool;
+    // each enclosing loop takes the next register down. The flag register is
+    // shared across all loops (single-epilogue live range).
+    int depth = 0;
+    if (auto depth_attr = op->getAttrOfType<mlir::IntegerAttr>("loop_depth")) {
+      depth = depth_attr.getInt();
+    }
+    int counter_reg = LOOP_COUNTER_REG_TOP - depth;
+    int flag_reg = LOOP_FLAG_REG;
+    if (counter_reg < LOOP_COUNTER_REG_FLOOR) {
+      llvm::outs() << "Error: loop nesting depth " << depth
+                   << " exceeds the reserved counter registers (r"
+                   << LOOP_COUNTER_REG_FLOOR << "..r" << LOOP_COUNTER_REG_TOP
+                   << "). A liveness-based register allocator is needed.\n";
+      std::exit(EXIT_FAILURE);
+    }
 
     // Aggregate the loop body per cell across all of its epochs, in program
     // order, so the branch offset can be computed from the merged stream.
@@ -170,10 +206,10 @@ public:
       rewriter.setInsertionPointToStart(first_block);
       make_instr(rewriter, loc, "calc",
                  {i32_attr(rewriter, "mode", CALC_MODE_SUB),
-                  i32_attr(rewriter, "operand1", LOOP_COUNTER_REG),
+                  i32_attr(rewriter, "operand1", counter_reg),
                   i32_attr(rewriter, "operand2_sd", OPND_DYNAMIC),
-                  i32_attr(rewriter, "operand2", LOOP_COUNTER_REG),
-                  i32_attr(rewriter, "result", LOOP_COUNTER_REG)});
+                  i32_attr(rewriter, "operand2", counter_reg),
+                  i32_attr(rewriter, "result", counter_reg)});
 
       // Epilogue: increment, test i < iter, branch back while looping. Placed
       // at the end of the cell's last body slice, before its terminator.
@@ -181,18 +217,18 @@ public:
       rewriter.setInsertionPoint(last_block->getTerminator());
       make_instr(rewriter, loc, "calc",
                  {i32_attr(rewriter, "mode", CALC_MODE_ADD),
-                  i32_attr(rewriter, "operand1", LOOP_COUNTER_REG),
+                  i32_attr(rewriter, "operand1", counter_reg),
                   i32_attr(rewriter, "operand2_sd", OPND_STATIC),
                   i32_attr(rewriter, "operand2", 1),
-                  i32_attr(rewriter, "result", LOOP_COUNTER_REG)});
+                  i32_attr(rewriter, "result", counter_reg)});
       make_instr(rewriter, loc, "calc",
                  {i32_attr(rewriter, "mode", CALC_MODE_LT),
-                  i32_attr(rewriter, "operand1", LOOP_COUNTER_REG),
+                  i32_attr(rewriter, "operand1", counter_reg),
                   i32_attr(rewriter, "operand2_sd", OPND_STATIC),
                   i32_attr(rewriter, "operand2", iter),
-                  i32_attr(rewriter, "result", LOOP_FLAG_REG)});
+                  i32_attr(rewriter, "result", flag_reg)});
       make_instr(rewriter, loc, "brn",
-                 {i32_attr(rewriter, "reg", LOOP_FLAG_REG),
+                 {i32_attr(rewriter, "reg", flag_reg),
                   i32_attr(rewriter, "target_true", loop_start_offset),
                   i32_attr(rewriter, "target_false", fall_through_offset)});
     }
@@ -213,6 +249,22 @@ class ReplaceLoopOp : public impl::ReplaceLoopOpBase<ReplaceLoopOp> {
 public:
   using impl::ReplaceLoopOpBase<ReplaceLoopOp>::ReplaceLoopOpBase;
   void runOnOperation() final {
+    // Annotate every loop with its nesting depth before rewriting, so counter
+    // allocation is stable even as the greedy driver unwraps loops (which moves
+    // nested loops into the parent block). The attribute rides with the op.
+    mlir::OpBuilder builder(&getContext());
+    getOperation()->walk([&](LoopOp loop_op) {
+      int depth = 0;
+      mlir::Operation *parent = loop_op->getParentOp();
+      while (parent) {
+        if (llvm::isa<LoopOp>(parent)) {
+          ++depth;
+        }
+        parent = parent->getParentOp();
+      }
+      loop_op->setAttr("loop_depth", builder.getI32IntegerAttr(depth));
+    });
+
     RewritePatternSet patterns(&getContext());
     patterns.add<ReplaceLoopOpRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
