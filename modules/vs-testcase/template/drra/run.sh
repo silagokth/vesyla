@@ -16,6 +16,10 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Timer state, set by start_spinner and read by spin_animation/stop_spinner.
+SPIN_START=0 # Epoch seconds at which the current step started
+SPIN_TCOL=0  # Absolute terminal column where the (mm:ss) timer is drawn
+
 spin_animation() {
   tput civis
   (
@@ -24,7 +28,10 @@ spin_animation() {
     spinner=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
     while true; do
       for i in "${spinner[@]}"; do
-        printf "\\r${BLUE}%s${NC} " "$i"
+        el=$(($(date +%s) - SPIN_START))
+        # Glyph at col 0, then jump to SPIN_TCOL for the live timer. The label
+        # printed between them by the caller is left untouched.
+        printf "\\r${BLUE}%s${NC}\033[%dG${CYAN}(%02d:%02d)${NC}" "$i" "$SPIN_TCOL" $((el / 60)) $((el % 60))
         sleep 0.1
       done
     done
@@ -33,6 +40,8 @@ spin_animation() {
 }
 
 start_spinner() {
+  SPIN_START=$(date +%s)
+  SPIN_TCOL=$(( $(tput cols 2>/dev/null || echo 80) - 8 ))
   if [ "$debug_mode" = false ]; then
     spin_animation
   fi
@@ -48,11 +57,13 @@ stop_spinner() {
     wait "$SPIN_PID" 2>/dev/null
   fi
   tput cnorm # Show cursor
-  # If the first arg is empty print a checkmark
+  el=$(($(date +%s) - SPIN_START))
+  # Final line: mark at col 0, elapsed time at SPIN_TCOL. If the first arg is 0
+  # print a checkmark, otherwise a cross.
   if [ "$1" -eq 0 ]; then
-    printf "\\r${GREEN}✓${NC} \n"
+    printf "\\r${GREEN}✓${NC}\033[%dG${CYAN}(%02d:%02d)${NC}\n" "$SPIN_TCOL" $((el / 60)) $((el % 60))
   else
-    printf "\\r${RED}✗${NC} \n"
+    printf "\\r${RED}✗${NC}\033[%dG${CYAN}(%02d:%02d)${NC}\n" "$SPIN_TCOL" $((el / 60)) $((el % 60))
   fi
 }
 
@@ -177,7 +188,11 @@ stop_spinner 0
 ## Run
 start_spinner
 printf "  ${BLUE}Running${NC}"
-./run_model_0
+if [ "$debug_mode" = true ]; then
+  ./run_model_0
+else
+  run_and_check "Model 0 run" ./run_model_0
+fi
 stop_spinner 0
 
 ## Check that the output exists
