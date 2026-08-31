@@ -14,11 +14,25 @@ def RopOp : Drra_Op<"rop"> {
   let summary = "Generic resource operation with variadic inputs and outputs";
   let description = [{
     A rop carries zero or more input values and produces zero or more
-    output values. It does not fix any named attribute; all attributes are
-    variable and stored in the op's attribute dictionary.
+    output values.
+
+    `conf` and `evt` hold the instruction segments -- keyed by segment name, as
+    the resource's isa.json declares them -- that the later lowering needs to
+    build a pasm.instr. Either may be absent, meaning that resource needs no
+    instruction of that kind for this operation: a DPU mode is a conf with no
+    evt, an RF access is an evt with no conf, and an operation that has to be
+    configured and then triggered carries both. Note that the two do not stay
+    together downstream: DrraToPasmPass hoists a conf out of the enclosing loop
+    to before the earliest producer of its operands, while an evt stays where
+    the rop was.
+
+    Every other attribute is free-form and lives in the op's attribute
+    dictionary.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
+  let arguments = (ins Variadic<AnyType>:$inputs,
+                       OptionalAttr<DictionaryAttr>:$conf,
+                       OptionalAttr<DictionaryAttr>:$evt);
   let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{

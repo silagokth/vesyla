@@ -6,33 +6,44 @@ include "mlir/Pass/PassBase.td"
 def SelectInstructionsPass : Pass<"select-instructions-pass", "::mlir::ModuleOp"> {
   let summary = "Select drra instructions from affine + arith ops.";
   let description = [{
-    Pattern-based instruction selection: rewrites upstream `affine`/`arith`
-    fragments into `drra.rop` operations. The patterns are described in
-    `patterns.pdll` (compiled ahead-of-time into this pass with `mlir-pdll
-    -x=cpp`); native match/rewrite helpers live in `NativeHelpers.cpp`.
+    Instruction selection driven by the component library. Each resource ships a
+    functional description of itself as ordinary MLIR --
+    `<component-path>/resources/<kind>/<kind>.mlir` -- with one `func.func` per
+    ISA mode or port. The function's arguments are the wildcards, its body is
+    the shape to match, and attributes on it say which instruction a match
+    becomes (`conf` / `evt`, keyed by `isa.json` segment name) and how strongly
+    to prefer it (`benefit`).
 
-    Phase 1 scope:
-      - affine.load / affine.vector_load        -> drra.rop kind="rf" instr="evt"
-      - affine.store / affine.vector_store      -> drra.rop kind="rf" instr="evt"
-      - arith.muli feeding arith.addi (a loop   -> one drra.rop kind="dpu"
-        iter_args reduction accumulate)             instr="conf" (a MAC)
+    Matching walks the pattern body and the program at the same time, one
+    operand pair at a time. Patterns are applied highest benefit first, and
+    everything at one benefit is tried together; ops covered by an earlier match
+    are off limits to later ones, which is what makes it maximal munch. A fused
+    `mac` therefore takes the multiply and the add as a unit before the plain
+    `add` / `mult` patterns can take them apart.
 
-    `id` and `resource` are copied from the source op's annotations; `kind`,
-    `instr` and `param` come from the matched pattern; `map` is lifted from the
-    affine access. Loops (`affine.for`) and `memref` are left untouched; resource
-    binding/placement is handled by a separate later step.
+    This pass currently only *annotates*: a match records `select.kind`,
+    `select.pattern`, `select.benefit` and the emission dictionary on the root,
+    and `select.covered_by` on the rest of the match. Rewriting into the drra
+    dialect comes later. Ops that no pattern claimed are reported as warnings
+    rather than failing the pass, so one run shows every gap.
 
-    After the greedy rewrite, dead `affine.apply` ops (whose maps were lifted
-    onto the rops) are erased and a completeness check fails the pass if any
-    arith/affine-access op was left unselected.
+    Adding a resource is a matter of dropping a `.mlir` file into the component
+    library -- nothing here has to be recompiled.
   }];
+
+  let options = [
+    Option<"componentPath", "component-path", "std::string", /*default=*/"\"\"",
+           "Root of the built component library. Defaults to "
+           "$VESYLA_SUITE_PATH_COMPONENTS.">,
+  ];
+
   let dependentDialects = ["::vesyla::drra::DrraDialect",
                            "::vesyla::pasm::PasmDialect",
                            "::mlir::affine::AffineDialect",
                            "::mlir::arith::ArithDialect",
+                           "::mlir::func::FuncDialect",
                            "::mlir::memref::MemRefDialect",
-                           "::mlir::pdl::PDLDialect",
-                           "::mlir::pdl_interp::PDLInterpDialect"];
+                           "::mlir::vector::VectorDialect"];
 }
 
 #endif // VESYLA_CONVERSION_SELECT_INSTRUCTIONS_PASSES

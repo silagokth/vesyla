@@ -77,10 +77,9 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   };
   save_mlir(*module, stage_file(0));
 
-  // SelectInstructionsPass runs first: it selects drra.rop instructions from the
-  // upstream affine + arith ops (pattern-based, PDLL). Passes downstream all
-  // consume the drra form it produces. On input that is already in drra form
-  // (no arith/affine-access ops) it is a no-op.
+  // SelectInstructionsPass runs first: it matches the upstream affine + arith
+  // ops against the functional descriptions the resources ship in the component
+  // library, and annotates each match with the instruction it selected.
   mlir::PassManager select_pm(&context);
   select_pm.addPass(
       vesyla::conversion::select_instructions::createSelectInstructionsPass());
@@ -89,6 +88,13 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
   save_mlir(*module, stage_file(1));
+
+  // TEMPORARY: stop here and dump the annotated IR so the selector can be read
+  // on its own. Everything below consumes drra ops, which the selector does not
+  // emit yet -- it only annotates. Delete this block once it does.
+  module->print(llvm::outs());
+  llvm::outs() << "\n";
+  std::exit(EXIT_SUCCESS);
 
   // RessourceBindingPass runs after instruction selection and before icdep
   // generation: it binds each selected instruction to a concrete hardware
