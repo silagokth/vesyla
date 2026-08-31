@@ -96,6 +96,7 @@ set(CPACK_PACKAGE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pkg")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.31)")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "python3, graphviz")
 
 include(CPack)
 
@@ -103,5 +104,6 @@ include(CPack)
 set(CPACK_RPM_PACKAGE_LICENSE "MIT") # or your license
 set(CPACK_RPM_PACKAGE_GROUP "Development/Tools")
 set(CPACK_RPM_PACKAGE_REQUIRES "glibc >= 2.31")
+set(CPACK_RPM_PACKAGE_SUGGESTS "python3, graphviz")
 set(CPACK_RPM_SPEC_MORE_DEFINE %global __brp_check_rpaths %{nil})
 set(CPACK_RPM_SPEC_MORE_DEFINE %undefine __brp_check_rpaths)
