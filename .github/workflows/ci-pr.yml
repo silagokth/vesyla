@@ -17,3 +17,15 @@ jobs:
     with:
       version: ${{ needs.ci-build-vesyla.outputs.version }}
       branch: ${{ needs.ci-build-vesyla.outputs.branch }}
+
+  # Tier A: open-tool synthesizability lint (Verible + slang) on the fabric
+  # assembled by this build of vesyla. No PDK, GitHub-hosted, runs on every PR.
+  # Cheap complement to the gated Genus gate. See ci-synth-lint.yml.
+  ci-synth-lint:
+    name: Synthesizability lint
+    uses: ./.github/workflows/ci-synth-lint.yml
+    needs: ci-build-vesyla
+    secrets: inherit
+    with:
+      version: ${{ needs.ci-build-vesyla.outputs.version }}
+      branch: ${{ needs.ci-build-vesyla.outputs.branch }}
