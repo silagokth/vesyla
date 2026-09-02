@@ -296,6 +296,31 @@ add_mlir_library(
   VesylaDrra
   VesylaUtil)
 
+# Design space exploration: allocation, binding and scheduling over the module
+# instruction selection produced. Allocation is read from the architecture file;
+# binding and scheduling are still being written.
+add_custom_mlir_pass_dir(transformation/design_space_exploration VesylaDse)
+
+file(GLOB SOURCE_DSE "src/transformation/design_space_exploration/*.cpp")
+add_mlir_library(
+  VesylaDse
+  ${SOURCE_DSE}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDseIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  VesylaPasm
+  VesylaDrra
+  VesylaUtil)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -310,7 +335,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaSelectInstr VesylaTm VesylaUtil
+         VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

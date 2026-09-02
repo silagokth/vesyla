@@ -19,6 +19,7 @@
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
 #include "conversion/select_instructions/SelectInstructionsPass.hpp"
+#include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
@@ -26,7 +27,6 @@
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/Passes.hpp"
-#include "vesyla/Dialect/Pasm/Transforms/RessourceBindingPass.hpp"
 #include "vesyla/Support/Config.hpp"
 #include "vesyla/Support/SysPath.hpp"
 
@@ -89,23 +89,27 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
   save_mlir(*module, stage_file(1));
 
-  // TEMPORARY: stop here and dump the annotated IR so the selector can be read
-  // on its own. Everything below consumes drra ops, which the selector does not
-  // emit yet -- it only annotates. Delete this block once it does.
-  module->print(llvm::outs());
-  llvm::outs() << "\n";
-  std::exit(EXIT_SUCCESS);
-
-  // RessourceBindingPass runs after instruction selection and before icdep
-  // generation: it binds each selected instruction to a concrete hardware
-  // resource so downstream passes see the final resource assignment.
-  mlir::PassManager ressource_binding_pm(&context);
-  ressource_binding_pm.addPass(vesyla::pasm::createRessourceBindingPass());
-  if (mlir::failed(ressource_binding_pm.run(*module))) {
-    LOG_FATAL << "Error: RessourceBindingPass failed.";
+  // DesignSpaceExplorationPass runs after instruction selection and before
+  // icdep generation: selection says what each operation does, and this says
+  // where it runs. Allocation comes from the architecture file; binding and
+  // scheduling are decided here. It ends by checking that every operation came
+  // out bound, which is what the passes below rely on.
+  mlir::PassManager dse_pm(&context);
+  dse_pm.addPass(
+      vesyla::transformation::dse::createDesignSpaceExplorationPass());
+  if (mlir::failed(dse_pm.run(*module))) {
+    LOG_FATAL << "Error: DesignSpaceExplorationPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(2));
+
+  // TEMPORARY: stop here and dump the annotated IR so selection and design
+  // space exploration can be read on their own. The passes below consume the
+  // older instr/param form of drra.rop, which selection does not emit -- it
+  // writes conf/evt instead. Delete this block once DrraToPasmPass reads those.
+  module->print(llvm::outs());
+  llvm::outs() << "\n";
+  std::exit(EXIT_SUCCESS);
 
   // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
   // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
@@ -280,14 +284,16 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
-  // port table and AddDefaultValuePass needs the ISA, so both are loaded
-  // before the passes. arch is only consumed later by the scheduler (and its
-  // loader does unguarded traversal), so it stays after the passes.
+  // port table, AddDefaultValuePass needs the ISA, and
+  // DesignSpaceExplorationPass needs the architecture, since that file is what
+  // says which resources the design has. All three are loaded before the
+  // passes run.
   vesyla::pasm::Config cfg;
   if (!config_file.empty()) {
     cfg.set_config_json(config_file);
   }
   cfg.set_isa_json(isa_file);
+  cfg.set_arch_json(arch_file);
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
@@ -300,8 +306,6 @@ int main(int argc, char **argv) {
   if (!module) {
     return -1;
   }
-
-  cfg.set_arch_json(arch_file);
 
   mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;
