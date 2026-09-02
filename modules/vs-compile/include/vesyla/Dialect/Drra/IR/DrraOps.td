@@ -26,6 +26,30 @@ def RopOp : Drra_Op<"rop"> {
     to before the earliest producer of its operands, while an evt stays where
     the rop was.
 
+    `uses` names the parts of the resource this operation holds while it is
+    active -- an array of strings such as `["conf_reg:0", "input_narrow:0",
+    "input_narrow:1", "output_narrow:1"]` for a dpu mac, or `["agu:1"]` for a
+    dpu rst.
+    A resource is not indivisible, and two operations on one instance only
+    contend when they want the same part of it, so this is what the conflict
+    graph in design-space exploration intersects to decide whether they can
+    share. The strings are opaque to the compiler: two parts are the same part
+    when they are spelled the same, so the resource author owns the vocabulary.
+    It is written by the resource's own description in the component library --
+    the `@replace` rop declares it and instruction selection carries it over --
+    and an operation that declares none is read as holding the whole resource,
+    which conflicts with everything of its kind.
+
+    `storage` names the memref this operation lands in, for a resource that
+    holds its own -- an rf's registers, not an io's external buffer. It is the
+    `id` symbol of the memref's alloc, lifted by instruction selection, which is
+    the only place it is still known: the replacement leaves the memref argument
+    unused, because the AGU sweeps the address and the memref is not an
+    instruction operand. Design-space exploration binds every operation sharing
+    a `storage` to one instance, since every access to one register file has to
+    land on one register file. Absent on a resource that computes rather than
+    stores.
+
     Every other attribute is free-form and lives in the op's attribute
     dictionary.
   }];

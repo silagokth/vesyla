@@ -11,26 +11,63 @@ def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::
     instruction -- but nothing says *where* it runs. This pass answers that, and
     the module it leaves behind carries a `resource` on every operation.
 
-    The three classical decisions sit here together because they are not
-    independent: which resources exist (allocation), which instance each
-    operation runs on (binding), and in what order the operations sharing an
-    instance run (scheduling). Binding a register file fixes the endpoints of
-    every access to it, so choosing well means choosing them jointly -- which is
-    why they are one pass and not three, and why a search over whole solutions
-    is what this is built to grow into.
+    Which resources exist is not decided here: allocation is read from the
+    architecture file passed to the executable, since that file already fixes
+    which resources the design has and where they sit. What is decided is which
+    instance each operation runs on, and it is decided in two steps.
 
-    Scheduling here does not mean cycle assignment -- ScheduleEpochPass further
-    down already solves exact timing against each resource's timing model. It
-    means the relative order, and it is wanted for one reason: it is what says
-    which operations could share an instance. Two of them may go on the same
-    resource exactly when the schedule keeps them apart, so scheduling runs
-    before binding and hands it that answer.
+    First a *conflict graph* is built over each scope, and an edge in it says
+    two nodes cannot be put on the same instance.
 
-    As of now only allocation is real: it is read from the architecture file
-    passed to the executable rather than decided, since that file already fixes
-    which resources exist and where they sit. Scheduling is not written yet, so
-    binding has nothing telling it what is contended and falls back on putting
-    every operation on the first instance of its kind.
+    A node is not an operation -- it is what has to be bound as a unit. Every
+    access to one register file must land on the same register file, so the
+    operations sharing a `storage` are merged into one node before the graph is
+    built: a conflict graph can say two things must differ but never that two
+    things must agree, so what must agree is merged rather than constrained.
+
+    Two nodes conflict when they are of the same `kind` -- two of different
+    kinds cannot share an instance whatever the program does -- and then either
+    of the following:
+
+      * they hold different storage. One instance holds one storage, so these
+        never share, whether or not they ever run at the same time. Two arrays
+        could in principle sit in one register file if their lifetimes were
+        disjoint or their addresses could not collide, but neither is
+        established here, so the conservative reading stands.
+      * their occupancies overlap *and* they want the same part of the
+        resource. Occupancy runs from where an operation runs until the last
+        reader of its results has taken them, so two nodes whose stretches do
+        not meet are never both running. Parts are what of the resource a node
+        holds: a dpu has config registers, narrow inputs and outputs, and an AGU
+        per event port, an rf has four access paths each with its own AGU and
+        data wires, and a mac and a rst want none of the same ones. Each
+        operation declares its parts in `uses`, written by the resource's own
+        description in the component library; one that declares none is read as
+        holding the whole resource.
+
+    The graph is written out as Graphviz DOT under the `conflict_graph_dir`
+    output path, one file per scope. Each node is labelled with what it is, the
+    operations it was merged from, and the parts it holds; each edge with what
+    the two contend for. So the picture says why every conflict is there and not
+    only that it is.
+
+    Binding is then a colouring of that graph: the instances of a kind are the
+    colours, and two joined nodes must be given different ones. The colouring is
+    greedy, taking the most contended nodes first, which is not optimal but
+    never puts two conflicting operations together. When a kind runs out of
+    instances the pass says which one ran short, rather than overcommitting an
+    instance and letting it surface later as wrong results.
+
+    What the graph does not know is timing. Its edges come from data flow, which
+    orders operations only as far as their dependencies do, so two independent
+    operations it leaves unjoined may still overlap once ScheduleEpochPass
+    solves exact timing against each resource's timing model further down. It is
+    a lower bound on the conflicts a binding must respect -- exact for the
+    sequential reading of the program, and no stronger.
+
+    Each `pasm.epoch` is handled on its own, since an epoch is the region
+    downstream scheduling treats as a unit; a program with no epochs is handled
+    as a whole.
 
     Everything this pass decides is annotated onto the operations, so a run is
     read back from the module it leaves behind.

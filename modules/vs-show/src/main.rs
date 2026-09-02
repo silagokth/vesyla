@@ -46,8 +46,8 @@ enum Command {
         name = "conflict-graph"
     )]
     ConflictGraph {
-        /// Directory to search for conflict graph .dot files (default: current directory)
-        #[arg(default_value = ".")]
+        /// Compile output directory (the one passed as --output to `vesyla compile`)
+        #[arg(short, long, default_value = ".")]
         directory: String,
     },
     #[command(

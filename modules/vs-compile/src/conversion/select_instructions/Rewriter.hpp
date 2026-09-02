@@ -19,9 +19,10 @@ namespace select_instructions {
 // the component library, next to the shape it matches, and adding a resource
 // never touches this file.
 //
-// Two things the library cannot state, because they belong to the individual
+// Three things the library cannot state, because they belong to the individual
 // match rather than to the pattern, are attached here: `id`, copied from the
-// matched root, and `map`, lifted from the matched access.
+// matched root; `map`, lifted from the matched access; and `storage`, the
+// memref the access lands in, for a resource that holds its own.
 // Called immediately after the match that produced `match`, so the bindings name
 // values that are live right now. An earlier replacement's rop is an ordinary
 // IR user, so when its own root is later replaced, replaceAllUsesWith rewires

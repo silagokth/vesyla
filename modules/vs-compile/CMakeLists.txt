@@ -312,6 +312,7 @@ add_mlir_library(
   VesylaDrraIncGen
   LINK_LIBS
   PUBLIC
+  MLIRAnalysis
   MLIRIR
   MLIRPass
   MLIRTransforms

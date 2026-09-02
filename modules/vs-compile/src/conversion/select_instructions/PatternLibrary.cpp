@@ -124,6 +124,39 @@ mlir::LogicalResult validateSegments(const nlohmann::json &isa,
   return mlir::success();
 }
 
+// Check the shape of a replacement rop's `uses` list: the parts of the resource
+// the operation holds while it is active, which design-space exploration
+// intersects to decide whether two operations can share an instance.
+//
+// The strings themselves are not checked against anything. There is nothing to
+// check them against -- a resource's parts are its own business, and the
+// compiler only ever asks whether two of them are spelled the same. What is
+// worth catching is the shape, because a `uses` that is not an array of strings
+// reads as no parts at all, and no parts means the operation is taken to hold
+// the whole resource. That failure is silent and in the safe direction, so it
+// would show up as a binding that needs more instances than it should rather
+// than as anything obviously wrong.
+mlir::LogicalResult validateUses(drra::RopOp rop, llvm::StringRef where,
+                                 llvm::raw_ostream &diag) {
+  mlir::Attribute attr = rop->getAttr("uses");
+  if (!attr)
+    return mlir::success();
+
+  auto array = llvm::dyn_cast<mlir::ArrayAttr>(attr);
+  if (!array)
+    return diag << where
+                << ": \"uses\" must be an array of strings naming the parts "
+                   "of the resource the operation holds\n",
+           mlir::failure();
+
+  for (mlir::Attribute entry : array)
+    if (!llvm::isa<mlir::StringAttr>(entry))
+      return diag << where << ": \"uses\" must hold only strings\n",
+             mlir::failure();
+
+  return mlir::success();
+}
+
 // A rank-0 memref block argument is the resource's own register -- the dpu's
 // accumulate register is the only one today. Returns the argument, its
 // write-back, and whether the body also reads it.
@@ -299,6 +332,8 @@ mlir::LogicalResult PatternLibrary::loadResource(llvm::StringRef mlirPath,
             if (mlir::failed(validateSegments(isa, "evt", e, where, diag)))
               return mlir::WalkResult::interrupt();
           }
+          if (mlir::failed(validateUses(rop, where, diag)))
+            return mlir::WalkResult::interrupt();
           return mlir::WalkResult::advance();
         });
     if (walk.wasInterrupted())
