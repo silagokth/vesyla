@@ -4,7 +4,6 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include <algorithm>
-#include <optional>
 
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
 
@@ -116,15 +115,20 @@ get_enclosing_loops(mlir::Operation *op, EpochOp epoch) {
   return loops;
 }
 
-// Read the producer's `delay` attribute. Returns nullopt when it is absent or
-// not an integer; the caller treats that as a hard error. The delay is carried
-// on the originating drra.rop and copied onto the icdep anchors built from it.
-std::optional<int32_t> get_producer_delay(mlir::Operation *op) {
+// Read the producer's `delay` attribute, which is carried on the originating
+// drra.rop and copied onto the icdep anchors built from it.
+//
+// An absent one reads as no delay. The component library does not describe how
+// long an operation takes yet -- a resource's description says what it computes
+// and which of its parts it holds, not its latency -- so nothing on the
+// selection path writes a delay, and only hand-written input carries one.
+// CreateConstraintsPass already defaults the same way.
+int32_t get_producer_delay(mlir::Operation *op) {
   if (auto delay = mlir::dyn_cast_or_null<mlir::IntegerAttr>(
           op->getAttr("delay"))) {
     return static_cast<int32_t>(delay.getInt());
   }
-  return std::nullopt;
+  return 0;
 }
 
 // Build the first/last anchor for a producer. `first` uses each enclosing
@@ -183,18 +187,11 @@ public:
         }
         llvm::SmallVector<mlir::affine::AffineForOp> loops =
             get_enclosing_loops(producer, epoch);
-        std::optional<int32_t> delay = get_producer_delay(producer);
-        if (!delay) {
-          producer->emitError(
-              "icdep producer is missing an integer 'delay' attribute: ")
-              << *producer;
-          signalPassFailure();
-          return mlir::WalkResult::interrupt();
-        }
+        int32_t delay = get_producer_delay(producer);
         AnchorAttr first =
-            build_anchor(ctx, instr, loops, /*is_last=*/false, *delay);
+            build_anchor(ctx, instr, loops, /*is_last=*/false, delay);
         AnchorAttr last =
-            build_anchor(ctx, instr, loops, /*is_last=*/true, *delay);
+            build_anchor(ctx, instr, loops, /*is_last=*/true, delay);
 
         for (mlir::OpResult result : producer->getResults()) {
           ResourceAttr src =

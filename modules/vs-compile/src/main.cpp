@@ -103,14 +103,6 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
   save_mlir(*module, stage_file(2));
 
-  // TEMPORARY: stop here and dump the annotated IR so selection and design
-  // space exploration can be read on their own. The passes below consume the
-  // older instr/param form of drra.rop, which selection does not emit -- it
-  // writes conf/evt instead. Delete this block once DrraToPasmPass reads those.
-  module->print(llvm::outs());
-  llvm::outs() << "\n";
-  std::exit(EXIT_SUCCESS);
-
   // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
   // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
   // attributes. DrraToPasmPass lowers each drra.rop into a region-form pasm.rop

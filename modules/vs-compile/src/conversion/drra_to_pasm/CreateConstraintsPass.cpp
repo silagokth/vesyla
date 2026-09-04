@@ -136,6 +136,20 @@ void collect_resource_keys(
   }
 }
 
+// The symbol the conf of `op` lowers to. DrraToPasmPass splits a rop carrying
+// both a conf and an evt into two pasm.rops -- the conf suffixed, the evt
+// keeping the plain id, since they are placed differently and cannot share a
+// symbol -- so a constraint anchored at the conf has to name it the same way.
+mlir::FlatSymbolRefAttr conf_symbol(mlir::Operation *op,
+                                    mlir::FlatSymbolRefAttr id) {
+  auto rop = mlir::dyn_cast<vesyla::drra::RopOp>(op);
+  if (rop && rop.getConfAttr() && rop.getEvtAttr()) {
+    return mlir::FlatSymbolRefAttr::get(op->getContext(),
+                                        id.getValue().str() + "_conf");
+  }
+  return id;
+}
+
 // Order a pair of symbol names so it can be looked up regardless of order.
 std::pair<std::string, std::string> ordered_id_pair(llvm::StringRef a,
                                                     llvm::StringRef b) {
@@ -169,9 +183,9 @@ public:
       return mlir::failure();
     }
     // Only evts source a constraint; confs and other ops are walked through but
-    // never originate one.
-    auto rop_instr = rop->getAttrOfType<mlir::StringAttr>("instr");
-    if (!rop_instr || rop_instr.getValue() != "evt") {
+    // never originate one. A rop carrying both is an evt for this purpose --
+    // its conf is hoisted away and constrained separately, below.
+    if (!rop.getEvtAttr()) {
       return mlir::failure();
     }
 
@@ -234,8 +248,7 @@ public:
       // Visit every collected consumer.
       for (auto [consumer, consumer_delay] : consumers) {
         auto consumer_rop = mlir::dyn_cast<vesyla::drra::RopOp>(consumer);
-        auto instr = consumer->getAttrOfType<mlir::StringAttr>("instr");
-        if (consumer_rop && instr && instr.getValue() == "evt") {
+        if (consumer_rop && consumer_rop.getEvtAttr()) {
           // Reached an evt: emit a pasm.cstr carrying the delay walked to it.
           mlir::MLIRContext *ctx = rewriter.getContext();
           llvm::SmallVector<mlir::affine::AffineForOp> rop_loops =
@@ -336,15 +349,25 @@ public:
       llvm::SmallVector<mlir::Operation *> statements;
       llvm::SmallVector<mlir::Operation *> configs;
       epoch.walk([&](mlir::Operation *op) {
-        auto instr = op->getAttrOfType<mlir::StringAttr>("instr");
-        bool is_conf = instr && instr.getValue() == "conf";
-        if (op->hasAttr("id") && op->hasAttr("resource")) {
-          if (is_conf) {
+        if (!op->hasAttr("id") || !op->hasAttr("resource")) {
+          return;
+        }
+        // A rop is a config where it carries a conf and a statement where it
+        // carries an evt, so one carrying both is in both lists: its conf has
+        // to be applied before its own evt fires, which is exactly the
+        // first-use constraint below. Anything carrying neither is read as a
+        // statement, which is what everything without a conf was before.
+        auto rop = mlir::dyn_cast<vesyla::drra::RopOp>(op);
+        if (rop && (rop.getConfAttr() || rop.getEvtAttr())) {
+          if (rop.getConfAttr()) {
             configs.push_back(op);
-          } else {
+          }
+          if (rop.getEvtAttr()) {
             statements.push_back(op);
           }
+          return;
         }
+        statements.push_back(op);
       });
       for (size_t i = 0; i < statements.size(); ++i) {
         mlir::Operation *a = statements[i];
@@ -425,7 +448,7 @@ public:
           if (!use_id) {
             continue;
           }
-          auto src = make_ir_anchor(ctx, cfg_id, {}, {});
+          auto src = make_ir_anchor(ctx, conf_symbol(cfg, cfg_id), {}, {});
           pasm::AnchorRangeAttr dst = build_first_anchor(ctx, use, use_id);
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
           pasm::CstrOp::create(builder, cfg->getLoc(), src, dst, delay_attr,
