@@ -2,6 +2,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include <algorithm>
@@ -119,6 +120,81 @@ pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
   return make_ir_anchor(ctx, id, idx, idx);
 }
 
+// The loop an operation's result initialises, when that loop then makes nothing
+// of the value.
+//
+// A resource that accumulates holds the running total itself, so the operation
+// that clears it produces the value the program carries into the loop as the
+// iter_args initialiser, while the operation that accumulates takes no operand
+// for it -- the register is the resource's own state and not an instruction
+// operand. That leaves the region argument with no users, so the dataflow walk
+// has nothing to follow out of it and the clear ends up constrained against
+// nothing at all: the scheduler is then free to run every one of them back to
+// back, ahead of the accumulations they are meant to punctuate.
+//
+// Returns the loop when the rop has that shape, and null otherwise -- a region
+// argument that is used is an ordinary loop-carried value, which the dataflow
+// walk handles on its own.
+//
+// TODO: this recognises an accumulator by the shape it leaves in the IR rather
+// than by anything the resource says, which is the weak part. Nothing declares
+// that one operation clears state another accumulates into; what is matched is
+// that a value initialises a loop and the loop never reads it, and an unrelated
+// operation that happens to produce a dead loop-carried value would be timed as
+// if it were a clear. Two better answers were passed over for this one, both
+// costlier: bind the accumulator through instruction selection so the
+// dependency is an operand and every pass sees it, which needs the matcher to
+// bind the pattern's rank-0 memref to the program's loop-carried value and the
+// resulting operand to be kept out of `endpoints` and icdep generation; or let
+// the library name the state, so a dpu rst says it writes `accumulate:0` and a
+// mac says it reads it, the way `uses` already names the parts of a resource.
+// The second is the smaller of the two and fits what is already there.
+mlir::affine::AffineForOp accumulator_loop(vesyla::drra::RopOp rop) {
+  for (mlir::Value result : rop->getResults()) {
+    for (mlir::OpOperand &use : result.getUses()) {
+      auto loop = mlir::dyn_cast<mlir::affine::AffineForOp>(use.getOwner());
+      if (!loop) {
+        continue;
+      }
+      unsigned control = loop.getNumControlOperands();
+      if (use.getOperandNumber() < control) {
+        continue;
+      }
+      unsigned index = use.getOperandNumber() - control;
+      if (index >= loop.getRegionIterArgs().size()) {
+        continue;
+      }
+      if (loop.getRegionIterArgs()[index].use_empty()) {
+        return loop;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// An anchor over `op`'s enclosing loops in which the loops it shares with the
+// initialiser span their whole range and the loops inside those are pinned to
+// their first iteration. That names one point per pass through the shared
+// loops: the first time `op` runs within it, which is where the accumulation it
+// belongs to begins.
+pasm::AnchorRangeAttr
+build_first_within(mlir::MLIRContext *ctx, mlir::Operation *op,
+                   llvm::ArrayRef<mlir::affine::AffineForOp> shared,
+                   mlir::FlatSymbolRefAttr id) {
+  llvm::SmallVector<uint32_t> idx_lo;
+  llvm::SmallVector<uint32_t> idx_hi;
+  for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
+    int64_t lb =
+        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
+    int64_t ub =
+        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
+    idx_lo.push_back(static_cast<uint32_t>(lb));
+    idx_hi.push_back(
+        static_cast<uint32_t>(llvm::is_contained(shared, loop) ? ub - 1 : lb));
+  }
+  return make_ir_anchor(ctx, id, idx_lo, idx_hi);
+}
+
 // Collect the (row, col, slot) of every resource an op touches (port ignored).
 // The op's `resource` attribute is either a single pasm::ResourceAttr or an array.
 void collect_resource_keys(
@@ -166,6 +242,56 @@ int64_t trip_count(mlir::affine::AffineForOp loop) {
     return 0;
   }
   return (ub - lb) / step;
+}
+
+// Time a clear against the loop it initialises: it has to happen as each pass
+// through that loop begins, which is where the accumulation it clears starts.
+//
+// TODO: the timing here is fixed rather than derived. [0, 0] says the clear
+// lands exactly on the first event of the pass, which is what this resource
+// wants and what the hand-written pasm for it says, but a resource whose clear
+// takes a cycle to land would need it stated -- another thing the library is
+// the right place for.
+//
+// One constraint per event inside the loop rather than a chosen one of them.
+// They all begin the pass together -- the reads that feed the accumulation are
+// simultaneous -- so constraining the clear against each says the same thing
+// twice rather than two different things, and it does not depend on which of
+// them happens to be walked first. The operation that does the accumulating is
+// not among them: a resource configured rather than triggered carries only a
+// conf, which is lifted out of the loop entirely and has no per-pass event to
+// anchor at.
+void constrain_accumulator_clear(vesyla::drra::RopOp rop,
+                                 mlir::affine::AffineForOp loop,
+                                 mlir::PatternRewriter &rewriter) {
+  auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+  pasm::EpochOp epoch = rop->getParentOfType<pasm::EpochOp>();
+  if (!rop_id || !epoch) {
+    return;
+  }
+
+  mlir::MLIRContext *ctx = rewriter.getContext();
+  llvm::SmallVector<mlir::affine::AffineForOp> shared = get_enclosing_loops(rop);
+  pasm::AnchorRangeAttr src = build_anchor(ctx, rop_id, shared);
+
+  llvm::SmallVector<vesyla::drra::RopOp> events;
+  loop.walk([&](vesyla::drra::RopOp inner) {
+    if (inner.getEvtAttr()) {
+      events.push_back(inner);
+    }
+  });
+
+  rewriter.setInsertionPoint(epoch.getBody().front().getTerminator());
+  for (vesyla::drra::RopOp event : events) {
+    auto id = event->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+    if (!id) {
+      continue;
+    }
+    pasm::AnchorRangeAttr dst = build_first_within(ctx, event, shared, id);
+    pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst,
+                         pasm::DelayAttr::get(ctx, 0, 0),
+                         rewriter.getBoolAttr(false));
+  }
 }
 
 // Greedy rewrite pattern that triggers on every drra.rop. Each rop is processed
@@ -300,6 +426,13 @@ public:
           working_set.push_back({consumer_delay, consumer});
         }
       }
+    }
+
+    // A clear whose loop makes nothing of the value it carries in leaves the
+    // walk above with no consumer to reach, so it is timed against that loop
+    // instead of against a chain that is not there.
+    if (mlir::affine::AffineForOp loop = accumulator_loop(rop)) {
+      constrain_accumulator_clear(rop, loop, rewriter);
     }
 
     rewriter.modifyOpInPlace(
