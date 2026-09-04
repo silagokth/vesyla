@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <utility>
 
 namespace vesyla {
 namespace conversion {
@@ -154,6 +155,53 @@ mlir::LogicalResult validateUses(drra::RopOp rop, llvm::StringRef where,
       return diag << where << ": \"uses\" must hold only strings\n",
              mlir::failure();
 
+  return mlir::success();
+}
+
+// Check the shape of a replacement rop's `endpoints`: which slot of the
+// resource each operand and result travels on. What the offsets mean depends on
+// how wide the bound instance turns out to be, which is design-space
+// exploration's business and checked there; what can be checked here is that
+// there is one offset per operand and one per result, because a list that is
+// the wrong length is a library mistake rather than a program that cannot be
+// bound, and it should be caught when the library is read.
+mlir::LogicalResult validateEndpoints(drra::RopOp rop, llvm::StringRef where,
+                                      llvm::raw_ostream &diag) {
+  mlir::Attribute attr = rop->getAttr("endpoints");
+  if (!attr)
+    return mlir::success();
+
+  auto endpoints = llvm::dyn_cast<mlir::DictionaryAttr>(attr);
+  if (!endpoints)
+    return diag << where
+                << ": \"endpoints\" must be a dictionary of \"results\" and "
+                   "\"operands\" slot offsets\n",
+           mlir::failure();
+
+  const std::pair<llvm::StringRef, unsigned> expected[] = {
+      {"results", rop->getNumResults()},
+      {"operands", rop->getNumOperands()},
+  };
+  for (const auto &[which, count] : expected) {
+    auto array = endpoints.getAs<mlir::ArrayAttr>(which);
+    if (!array) {
+      if (count == 0)
+        continue;
+      return diag << where << ": \"endpoints\" declares no \"" << which
+                  << "\", but the rop has " << count << " of them\n",
+             mlir::failure();
+    }
+    if (array.size() != count)
+      return diag << where << ": \"endpoints\" gives " << array.size() << " \""
+                  << which << "\" slot offset(s) for a rop with " << count
+                  << "\n",
+             mlir::failure();
+    for (mlir::Attribute entry : array)
+      if (!llvm::isa<mlir::IntegerAttr>(entry))
+        return diag << where << ": \"endpoints\" slot offsets must be "
+                                "integers\n",
+               mlir::failure();
+  }
   return mlir::success();
 }
 
@@ -333,6 +381,8 @@ mlir::LogicalResult PatternLibrary::loadResource(llvm::StringRef mlirPath,
               return mlir::WalkResult::interrupt();
           }
           if (mlir::failed(validateUses(rop, where, diag)))
+            return mlir::WalkResult::interrupt();
+          if (mlir::failed(validateEndpoints(rop, where, diag)))
             return mlir::WalkResult::interrupt();
           return mlir::WalkResult::advance();
         });

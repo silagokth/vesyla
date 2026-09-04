@@ -40,6 +40,29 @@ def RopOp : Drra_Op<"rop"> {
     and an operation that declares none is read as holding the whole resource,
     which conflicts with everything of its kind.
 
+    `delay` is the cycles from the event that starts the operation to its result
+    being there to be taken. CreateConstraintsPass accumulates it along a
+    dataflow chain to time each operation against the next, and GenerateIcdepPass
+    copies it onto the icdep anchors built from the operation. It is a property
+    of the resource, so the library states it and instruction selection carries
+    it over; an operation that declares none is read as taking no time, which
+    times its consumer as simultaneous with it.
+
+    `endpoints` says which slot of the resource each of the operation's operands
+    and results travels on, as an offset from the first slot the instance
+    occupies -- `endpoints = {results = [0 : i32], operands = [0 : i32, 1 : i32]}`
+    for a dpu whose two narrow inputs are two different slots. A resource wider
+    than one slot spreads its endpoints across them, and the switchbox addresses
+    a channel by slot and knows nothing of ports, so two operands left on one
+    slot would share one channel and only one of them would arrive. `uses`
+    cannot answer this: those names belong to the resource author and are
+    compared only against each other. Design-space exploration reads it to write
+    the `resource` attribute as the [results..., operands...] array
+    GenerateIcdepPass indexes, rather than as a single endpoint. Absent means
+    every endpoint sits on the instance's first slot, which is what a
+    single-slot resource wants; an operation with several endpoints on a wider
+    one has to declare it, and is an error if it does not.
+
     `storage` names the memref this operation lands in, for a resource that
     holds its own -- an rf's registers, not an io's external buffer. It is the
     `id` symbol of the memref's alloc, lifted by instruction selection, which is

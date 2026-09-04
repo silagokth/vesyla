@@ -11,6 +11,8 @@
 #include "vesyla/Dialect/Pasm/IR/PasmAttrs.hpp"
 
 #include <memory>
+#include <optional>
+#include <utility>
 
 namespace vesyla {
 namespace transformation {
@@ -33,6 +35,137 @@ int resolve_port(mlir::Operation *rop) {
     }
   }
   return 0;
+}
+
+// The slot each value of an operation enters or leaves the resource by, given
+// as an offset from the instance's first slot.
+//
+// A resource wider than one slot spreads its endpoints across them. The dpu is
+// two slots, and its two narrow inputs are the target slots of two different
+// switchbox channels -- the switchbox addresses a channel by slot and knows
+// nothing of ports, so two operands that share a slot share a channel, and one
+// of them never arrives. Which offset each operand and result uses is the
+// resource's own business, so the library states it: `uses` cannot answer it,
+// because those names are the resource author's and are deliberately opaque to
+// the compiler, compared only against each other.
+//
+// The declaration is a dictionary of two integer arrays, in the operation's own
+// result and operand order:
+//
+//   endpoints = {results = [0 : i32], operands = [0 : i32, 1 : i32]}
+//
+// Absent means every endpoint sits at the instance's first slot, which is what
+// a single-slot resource wants and what all of them get.
+struct EndpointSlots {
+  llvm::SmallVector<int> results;
+  llvm::SmallVector<int> operands;
+};
+
+// Read one of the two arrays, checking it against the count it has to match and
+// against the slots the instance actually occupies.
+mlir::LogicalResult read_offsets(mlir::Operation *rop,
+                                 mlir::DictionaryAttr endpoints,
+                                 llvm::StringRef which, unsigned expected,
+                                 int size, llvm::SmallVectorImpl<int> &dst) {
+  auto array = endpoints.getAs<mlir::ArrayAttr>(which);
+  if (!array) {
+    if (expected == 0) {
+      return mlir::success();
+    }
+    mlir::InFlightDiagnostic diag =
+        rop->emitError("design-space-exploration: `endpoints` declares no `");
+    diag << which << "`, but the operation has " << expected << " of them";
+    return mlir::failure();
+  }
+  if (array.size() != expected) {
+    mlir::InFlightDiagnostic diag =
+        rop->emitError("design-space-exploration: `endpoints` gives ");
+    diag << array.size() << " " << which << " slot(s) for an operation with "
+         << expected;
+    return mlir::failure();
+  }
+
+  for (mlir::Attribute entry : array) {
+    auto offset = mlir::dyn_cast<mlir::IntegerAttr>(entry);
+    if (!offset) {
+      rop->emitError("design-space-exploration: `endpoints` slot offsets must "
+                     "be integers");
+      return mlir::failure();
+    }
+    int value = static_cast<int>(offset.getInt());
+    if (value < 0 || value >= size) {
+      mlir::InFlightDiagnostic diag = rop->emitError(
+          "design-space-exploration: `endpoints` names slot offset ");
+      diag << value << ", but the instance is " << size << " slot(s) wide";
+      return mlir::failure();
+    }
+    dst.push_back(value);
+  }
+  return mlir::success();
+}
+
+// What the operation declared. `slots` is left empty when it declared none,
+// which every single-slot resource does.
+mlir::LogicalResult read_endpoints(mlir::Operation *rop,
+                                   const ResourceInstance &instance,
+                                   std::optional<EndpointSlots> &slots) {
+  auto endpoints = rop->getAttrOfType<mlir::DictionaryAttr>("endpoints");
+  if (!endpoints) {
+    // An operation with several endpoints on a resource that has a slot for
+    // each of them has to say which goes where. Letting it through would give
+    // every endpoint the instance's first slot, which reads as a working
+    // binding and quietly routes two of them over one channel.
+    if (instance.size > 1 && rop->getNumResults() + rop->getNumOperands() > 1) {
+      mlir::InFlightDiagnostic diag =
+          rop->emitError("design-space-exploration: this operation has ");
+      diag << rop->getNumResults() + rop->getNumOperands()
+           << " endpoints on a resource that is " << instance.size
+           << " slots wide, but declares no `endpoints` -- the library has to "
+              "say which slot each operand and result uses, or they all land "
+              "on the first one";
+      return mlir::failure();
+    }
+    slots.reset();
+    return mlir::success();
+  }
+
+  EndpointSlots read;
+  if (mlir::failed(read_offsets(rop, endpoints, "results", rop->getNumResults(),
+                                instance.size, read.results)) ||
+      mlir::failed(read_offsets(rop, endpoints, "operands",
+                                rop->getNumOperands(), instance.size,
+                                read.operands))) {
+    return mlir::failure();
+  }
+  slots = std::move(read);
+  return mlir::success();
+}
+
+// The binding decision, written the way everything downstream reads it: a
+// single resource for an operation whose endpoints all sit on one slot, and the
+// [results..., operands...] array for one that spreads them, which is the
+// layout GenerateIcdepPass indexes.
+mlir::Attribute build_resource(mlir::Operation *rop,
+                               const ResourceInstance &instance,
+                               const std::optional<EndpointSlots> &slots) {
+  mlir::MLIRContext *ctx = rop->getContext();
+  const int port = resolve_port(rop);
+  auto at = [&](int offset) -> mlir::Attribute {
+    return pasm::ResourceAttr::get(ctx, instance.row, instance.col,
+                                   instance.slot + offset, port);
+  };
+  if (!slots) {
+    return at(0);
+  }
+
+  llvm::SmallVector<mlir::Attribute> endpoints;
+  for (int offset : slots->results) {
+    endpoints.push_back(at(offset));
+  }
+  for (int offset : slots->operands) {
+    endpoints.push_back(at(offset));
+  }
+  return mlir::ArrayAttr::get(ctx, endpoints);
 }
 
 class GreedyColoringBinder : public Binder {
@@ -124,14 +257,18 @@ public:
 
       assignment[node] = static_cast<int>(*chosen);
       const ResourceInstance &instance = arch.at(*chosen);
-      // The instance is the node's, but the port is each operation's own:
-      // selection fixed it when it chose the behaviour, so a bulk write and a
-      // word read on one register file keep their own ports.
+      // The instance is the node's, but the port and the endpoint slots are
+      // each operation's own: selection fixed the port when it chose the
+      // behaviour, so a bulk write and a word read on one register file keep
+      // theirs, and the library fixed which slot of the instance each operand
+      // and result uses.
       for (mlir::Operation *bound : ops) {
-        bound->setAttr("resource",
-                       pasm::ResourceAttr::get(bound->getContext(), instance.row,
-                                               instance.col, instance.slot,
-                                               resolve_port(bound)));
+        std::optional<EndpointSlots> slots;
+        if (mlir::failed(read_endpoints(bound, instance, slots))) {
+          failed = true;
+          continue;
+        }
+        bound->setAttr("resource", build_resource(bound, instance, slots));
       }
     }
 
