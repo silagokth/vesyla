@@ -5,6 +5,7 @@
 #include "Strategy.hpp"
 
 #include "mlir/IR/BuiltinAttributes.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FileSystem.h"
@@ -18,6 +19,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace vesyla::transformation::dse {
 #define GEN_PASS_DEF_DESIGNSPACEEXPLORATIONPASS
@@ -43,20 +45,11 @@ bool has_resource(mlir::Operation *op) {
   });
 }
 
-// What the scope is called, in diagnostics and in the name of its dumped
-// graph: the epoch's id, or "module" for a program with no epochs.
-std::string scope_name(mlir::Operation *scope) {
-  if (auto epoch = mlir::dyn_cast<pasm::EpochOp>(scope)) {
-    return epoch.getId().str();
-  }
-  return "module";
-}
-
-// Write the conflict graph as Graphviz DOT, one file per scope, under the
-// "conflict_graph_dir" output path. This is the pass's own reasoning made
-// readable: what it thought could not be put together, and why. Losing the
-// dump is not worth failing a compile over, so problems here are warnings.
-void dump_conflict_graph(const ConflictGraph &graph, mlir::Operation *scope) {
+// Write the conflict graph as Graphviz DOT under the "conflict_graph_dir"
+// output path. This is the pass's own reasoning made readable: what it thought
+// could not be put together, and why. Losing the dump is not worth failing a
+// compile over, so problems here are warnings.
+void dump_conflict_graph(const ConflictGraph &graph) {
   std::string output_dir;
   if (!::vesyla::util::GlobalVar::gets("__OUTPUT_DIR__", output_dir) ||
       output_dir.empty()) {
@@ -74,8 +67,7 @@ void dump_conflict_graph(const ConflictGraph &graph, mlir::Operation *scope) {
     return;
   }
 
-  std::string name = scope_name(scope);
-  std::string path = graph_dir + "/conflict_" + name + ".dot";
+  std::string path = graph_dir + "/conflict.dot";
   std::error_code file_ec;
   llvm::raw_fd_ostream os(path, file_ec, llvm::sys::fs::OF_Text);
   if (file_ec) {
@@ -83,7 +75,7 @@ void dump_conflict_graph(const ConflictGraph &graph, mlir::Operation *scope) {
                  << ": " << file_ec.message() << "\n";
     return;
   }
-  graph.write_dot(os, name);
+  graph.write_dot(os, "program");
 }
 
 // The check the pass ends on: nothing may leave here unbound.
@@ -110,6 +102,65 @@ mlir::LogicalResult verify_all_bound(mlir::ModuleOp module) {
   return mlir::success(ok);
 }
 
+// The other check the pass ends on: one storage, one instance.
+//
+// Every access to a register file has to land on the register file that access
+// is in, which is what the conflict graph merges storages for. It is worth
+// checking rather than assuming, because a storage that gets two instances
+// reads as a working binding and fails much later as a read of a register file
+// nothing ever wrote -- a program that produces zeroes rather than a compiler
+// that says anything.
+mlir::LogicalResult verify_storage_bindings(mlir::ModuleOp module) {
+  // Where each storage was bound, and by which operation, so a disagreement can
+  // name the two that disagree.
+  llvm::DenseMap<mlir::Attribute, std::pair<pasm::ResourceAttr, mlir::Operation *>>
+      bound;
+  bool ok = true;
+
+  module.walk([&](drra::RopOp rop) {
+    auto storage = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
+    if (!storage) {
+      return;
+    }
+    // Any endpoint will do: they are all on one instance, spread over the slots
+    // it occupies, and a register file access has one anyway.
+    auto resource = rop->getAttrOfType<pasm::ResourceAttr>("resource");
+    if (!resource) {
+      if (auto array = rop->getAttrOfType<mlir::ArrayAttr>("resource");
+          array && !array.empty()) {
+        resource = mlir::dyn_cast<pasm::ResourceAttr>(array[0]);
+      }
+    }
+    if (!resource) {
+      return;
+    }
+
+    auto [entry, fresh] = bound.try_emplace(storage, resource, rop.getOperation());
+    if (fresh) {
+      return;
+    }
+    pasm::ResourceAttr first = entry->second.first;
+    if (first.getRow() == resource.getRow() &&
+        first.getCol() == resource.getCol() &&
+        first.getSlot() == resource.getSlot()) {
+      return;
+    }
+    mlir::InFlightDiagnostic diag = rop.emitError(
+        "design-space-exploration: storage @");
+    diag << storage.getValue() << " was bound to (" << resource.getRow() << ", "
+         << resource.getCol() << ", " << resource.getSlot()
+         << ") here, and to (" << first.getRow() << ", " << first.getCol()
+         << ", " << first.getSlot()
+         << ") elsewhere -- every access to one register file has to land on "
+            "one register file";
+    diag.attachNote(entry->second.second->getLoc())
+        << "design-space-exploration: the other binding of @"
+        << storage.getValue();
+    ok = false;
+  });
+  return mlir::success(ok);
+}
+
 class DesignSpaceExplorationPass
     : public impl::DesignSpaceExplorationPassBase<DesignSpaceExplorationPass> {
 public:
@@ -119,29 +170,18 @@ public:
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
 
-    // Each pasm.epoch is handled on its own: an epoch is the region downstream
-    // scheduling treats as a unit, so it is also the scope a solution is
-    // searched over. A program with no epochs is handled as a whole.
-    llvm::SmallVector<mlir::Operation *> scopes;
-    module.walk([&](pasm::EpochOp epoch) { scopes.push_back(epoch); });
-    if (scopes.empty()) {
-      scopes.push_back(module.getOperation());
-    }
-
-    // The conflict graphs come first, and are written out before anything here
-    // can fail. They say which operations cannot be put on the same instance,
-    // which is what makes binding a question with an answer -- and they are
-    // read off the program alone, owing nothing to the architecture. So they
-    // are still worth having when the architecture turns out to be unreadable
-    // or too small for the program, which is exactly when someone wants to look
-    // at one.
-    // An explicit inline count: ConflictGraph is past the size SmallVector will
-    // pick one for on its own.
-    llvm::SmallVector<ConflictGraph, 2> graphs;
-    for (mlir::Operation *scope : scopes) {
-      graphs.push_back(ConflictGraph::build(scope));
-      dump_conflict_graph(graphs.back(), scope);
-    }
+    // The conflict graph comes first, and is written out before anything here
+    // can fail. It says which operations cannot be put on the same instance,
+    // which is what makes binding a question with an answer -- and it is read
+    // off the program alone, owing nothing to the architecture. So it is still
+    // worth having when the architecture turns out to be unreadable or too
+    // small for the program, which is exactly when someone wants to look at it.
+    //
+    // One graph for the program, not one per epoch: a register file keeps what
+    // was put into it, so which instance a storage lands on is a question the
+    // whole program asks at once. See ConflictGraph::build.
+    ConflictGraph graph = ConflictGraph::build(module);
+    dump_conflict_graph(graph);
 
     // Allocation. Read, not decided: the architecture file passed to the
     // executable already fixes which resources exist and where.
@@ -150,15 +190,18 @@ public:
       return signalPassFailure();
     }
 
-    // Binding: the colouring of each graph against the instances allocated.
+    // Binding: the colouring of the graph against the instances allocated.
     std::unique_ptr<Binder> binder = create_greedy_coloring_binder();
-    for (const ConflictGraph &graph : graphs) {
-      if (mlir::failed(binder->bind(graph, *arch))) {
-        return signalPassFailure();
-      }
+    if (mlir::failed(binder->bind(graph, *arch))) {
+      return signalPassFailure();
     }
 
-    if (mlir::failed(verify_all_bound(module))) {
+    // Both checks run, and both report everything they find: one rebuild should
+    // show every operation that needs attention rather than the first.
+    const bool all_bound = mlir::succeeded(verify_all_bound(module));
+    const bool storage_consistent =
+        mlir::succeeded(verify_storage_bindings(module));
+    if (!all_bound || !storage_consistent) {
       return signalPassFailure();
     }
   }

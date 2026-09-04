@@ -4,6 +4,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
+#include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
 #include <string>
 
@@ -66,8 +67,9 @@ intersect(llvm::ArrayRef<mlir::StringAttr> a,
 
 } // namespace
 
-ConflictGraph ConflictGraph::build(mlir::Operation *scope) {
+ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   ConflictGraph graph;
+  mlir::Operation *scope = module.getOperation();
 
   // The nodes. Operations that hold the same storage on the same kind are one
   // node, because they have to be bound together; everything else is a node of
@@ -237,12 +239,25 @@ std::optional<unsigned> ConflictGraph::node_of(mlir::Operation *op) const {
 
 namespace {
 
-// The operation's `id` symbol, or its position when selection gave it none.
+// The operation's `id` symbol, or its position when selection gave it none,
+// followed by the epoch it sits in.
+//
+// The epoch is worth the room: a node holding storage gathers every access to
+// it, and those run in whichever epochs touch that register file. Which epoch
+// each access is in is the thing the label would otherwise lose, and it is
+// what makes a storage node read as the load in one epoch and the use in the
+// next rather than as an undifferentiated list.
 std::string op_name(mlir::Operation *op, unsigned fallback) {
+  std::string name;
   if (auto id = op->getAttrOfType<mlir::FlatSymbolRefAttr>("id")) {
-    return id.getValue().str();
+    name = id.getValue().str();
+  } else {
+    name = "#" + std::to_string(fallback);
   }
-  return "#" + std::to_string(fallback);
+  if (auto epoch = op->getParentOfType<pasm::EpochOp>()) {
+    name += "(" + epoch.getId().str() + ")";
+  }
+  return name;
 }
 
 std::string join(llvm::ArrayRef<mlir::StringAttr> parts) {

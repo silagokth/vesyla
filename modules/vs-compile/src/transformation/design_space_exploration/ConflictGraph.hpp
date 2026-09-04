@@ -2,6 +2,7 @@
 #define __VESYLA_TRANSFORMATION_DSE_CONFLICT_GRAPH_HPP__
 
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -26,8 +27,8 @@ enum class ConflictReason : unsigned {
   // One node's result is a direct operand of the other, so the producer still
   // holds its value when the consumer runs.
   data_flow = 1u << 0,
-  // Their occupancies overlap: at some point in the scope both lay claim to an
-  // instance.
+  // Their occupancies overlap: at some point in the program both lay claim to
+  // an instance.
   live_overlap = 1u << 1,
   // They hold different storage, and one instance holds one storage.
   distinct_storage = 1u << 2,
@@ -42,7 +43,7 @@ inline bool has_reason(ConflictReason set, ConflictReason bit) {
   return (static_cast<unsigned>(set) & static_cast<unsigned>(bit)) != 0;
 }
 
-// Undirected conflict graph over the drra.rop operations of one scope.
+// Undirected conflict graph over the drra.rop operations of a program.
 //
 // An edge says two nodes cannot be put on the same resource instance, and
 // binding is then a colouring of this graph: one colour per instance, adjacent
@@ -104,10 +105,24 @@ inline bool has_reason(ConflictReason set, ConflictReason bit) {
 // program and no stronger.
 class ConflictGraph {
 public:
-  // Build the graph for `scope` -- one pasm.epoch, or the module when the
-  // program has no epochs. Operations outside the scope are not nodes and take
-  // no part in the occupancies.
-  static ConflictGraph build(mlir::Operation *scope);
+  // Build the graph for the whole program, and only ever for the whole program
+  // -- which is why this takes the module rather than any operation to scope
+  // itself to.
+  //
+  // A register file holds what was put into it until something else is, so
+  // which instance a storage is bound to is a question about the program and
+  // not about any one epoch. Building an epoch at a time would let the `@rf1`
+  // written in one epoch and the `@rf1` read in the next be two nodes, free to
+  // be bound to two different register files -- and the read would find an
+  // empty one. Two storages must likewise stay on different instances across
+  // the whole program, not merely within an epoch.
+  //
+  // Nothing is lost by widening the scope, because the conflicts that are about
+  // time bound themselves: an SSA value never crosses an epoch, so two
+  // operations in different epochs never lay claim to an instance at the same
+  // point and never draw an occupancy edge. Two epochs that use one resource in
+  // turn are still free to share it.
+  static ConflictGraph build(mlir::ModuleOp module);
 
   unsigned size() const { return nodes_.size(); }
   bool empty() const { return nodes_.empty(); }
@@ -154,7 +169,7 @@ public:
   llvm::ArrayRef<mlir::StringAttr> shared_parts(unsigned a, unsigned b) const;
 
   // The node `op` was bound as, or nothing when `op` is not a drra.rop of this
-  // scope.
+  // program.
   std::optional<unsigned> node_of(mlir::Operation *op) const;
 
   // The graph as Graphviz DOT, one cluster per resource kind, edges labelled
