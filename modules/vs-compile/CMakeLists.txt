@@ -157,6 +157,7 @@ file(GLOB SOURCES_DIALECT_PASM_IR        "lib/Dialect/Pasm/IR/*.cpp")
 file(GLOB SOURCES_DIALECT_DRRA_IR        "lib/Dialect/Drra/IR/*.cpp")
 file(GLOB SOURCES_DIALECT_PASM_TRANSFORMS
      "lib/Dialect/Pasm/Transforms/*.cpp"
+     "lib/Dialect/Pasm/Transforms/Loop/*.cpp"
      "lib/Dialect/Pasm/Transforms/ScheduleEpoch/*.cpp")
 file(GLOB SOURCES_ANALYSIS_TM            "lib/Analysis/TimingModel/*.cpp")
 file(GLOB SOURCES_PIPELINE               "lib/Pipeline/*.cpp")
