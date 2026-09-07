@@ -243,11 +243,24 @@ fn run(
         .status()
         .expect("Failed to run the testcase");
     if !status.success() {
-        let error = Err(io::Error::other("Testcase failed"));
+        // run.sh's exit codes are the suite's interface -- 1 setup, 2 SST run,
+        // 3 SST mismatch, 4 RTL run, 5 RTL mismatch -- and the generated Robot
+        // suite decodes them into named steps. Returning an io::Error here
+        // would let main flatten every one of them to 1, so that whatever stage
+        // a testcase actually reached, it was reported as "Setup failed".
         error!("Testcase failed");
-        return error;
+        process::exit(exit_code(status));
     }
     Ok(())
+}
+
+// The child's exit code. A process killed by a signal reports none, so use the
+// shell's 128 + signal for that rather than collapsing it into a real code.
+fn exit_code(status: process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
 }
 
 #[derive(Serialize)]
