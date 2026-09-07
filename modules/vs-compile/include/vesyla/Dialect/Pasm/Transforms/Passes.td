@@ -86,6 +86,22 @@ def FlattenCellsPass: Pass<"flatten-cells-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def CoalesceRopsPass: Pass<"coalesce-rops-pass", "::mlir::ModuleOp"> {
+  let summary = "Merge the single-event rops on one resource into one rop "
+                "whose events are separated by transitions.";
+  let description = [{
+    A resource asked for two things in succession wants one instruction stream
+    with a transition between them, not two instructions: on a second
+    instruction it retriggers, and the transfer the first one started is lost.
+    Instruction selection emits one rop per access, so a program with no loop
+    over them arrives here as several single-event rops on the same slot and
+    port. This moves their events into the first of those rops with a `trans`
+    between each pair, and re-anchors every constraint and interconnect
+    dependency that named the others onto the event it became -- the MT index
+    the anchor grammar already carries for exactly this.
+  }];
+}
+
 def ExtractCellsPass: Pass<"extract-cells-pass", "::mlir::ModuleOp"> {
   let summary = "Extract cells from each epoch.";
   let description = [{

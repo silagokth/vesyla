@@ -144,13 +144,26 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
   save_mlir(*module, stage_file(6));
 
+  // CoalesceRopsPass runs between the rep lowering and cell extraction. It
+  // wants the rops in their final region form with init_addr resolved, which
+  // is what AffineToRepPass leaves behind, and it has to run before the
+  // interconnect so routes and route options are built over the merged
+  // program rather than patched afterwards.
+  mlir::PassManager coalesce_pm(&context);
+  coalesce_pm.addPass(vesyla::pasm::createCoalesceRopsPass());
+  if (mlir::failed(coalesce_pm.run(*module))) {
+    LOG_FATAL << "Error: CoalesceRopsPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, stage_file(7));
+
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
   if (mlir::failed(extract_pm.run(*module))) {
     LOG_FATAL << "Error: ExtractCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(7));
+  save_mlir(*module, stage_file(8));
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());
@@ -158,7 +171,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: InterconnectPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(8));
+  save_mlir(*module, stage_file(9));
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
@@ -166,7 +179,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: FlattenCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, stage_file(9));
+  save_mlir(*module, stage_file(10));
 
   return module;
 }
