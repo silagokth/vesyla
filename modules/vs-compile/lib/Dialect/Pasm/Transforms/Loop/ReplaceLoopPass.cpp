@@ -274,6 +274,22 @@ public:
       loop_op->setAttr("loop_depth", builder.getI32IntegerAttr(depth));
     });
 
+    // Resolve an evt's "auto" loop_level to the innermost enclosing loop; an
+    // explicit level written in pasm is kept. Must run before the loops are
+    // unwrapped, while the ancestry is intact.
+    getOperation()->walk([&](InstrOp instr_op) {
+      if (instr_op.getType().str() != "evt")
+        return;
+
+      auto lv = llvm::dyn_cast_or_null<mlir::IntegerAttr>(
+          instr_op.getParam().get("loop_level"));
+      if (lv && lv.getInt() != LOOP_LEVEL_AUTO)
+        return;
+
+      update_params(instr_op, builder, /*remove=*/{},
+                    {{"loop_level", innermost_loop_level(instr_op)}});
+    });
+
     RewritePatternSet patterns(&getContext());
     patterns.add<ReplaceLoopOpRewriter>(&getContext());
     FrozenRewritePatternSet patternSet(std::move(patterns));
