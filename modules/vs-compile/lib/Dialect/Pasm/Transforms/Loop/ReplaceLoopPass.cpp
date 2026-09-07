@@ -9,6 +9,9 @@
 #include "vesyla/Support/Config.hpp"
 #include "vesyla/Support/RandName.hpp"
 
+#include "LoopLevelDetail.hpp"
+
+#include <cstdlib>
 #include <map>
 #include <utility>
 
@@ -17,6 +20,7 @@ namespace vesyla::pasm {
 #include "vesyla/Dialect/Pasm/Transforms/Passes.hpp.inc"
 
 namespace {
+using namespace loop_level_detail;
 
 // Sequencer calc modes (fabric ISA calc verbo_map keys).
 constexpr int CALC_MODE_ADD = 1;
@@ -198,8 +202,8 @@ public:
       int loop_start_offset = -(info.body_len + 2);
       int fall_through_offset = 1;
       if (info.body_len + 2 > max_offset) {
-        llvm::outs() << "Error: loop body of cell (" << entry.first.first << ", "
-                     << entry.first.second << ") has " << info.body_len
+        llvm::outs() << "Error: loop body of cell (" << entry.first.first
+                     << ", " << entry.first.second << ") has " << info.body_len
                      << " instructions; back-edge offset exceeds the brn "
                         "target range (+/-"
                      << max_offset << "). A branch trampoline is needed.\n";
@@ -263,15 +267,8 @@ public:
     // nested loops into the parent block). The attribute rides with the op.
     mlir::OpBuilder builder(&getContext());
     getOperation()->walk([&](LoopOp loop_op) {
-      int depth = 0;
-      mlir::Operation *parent = loop_op->getParentOp();
-      while (parent) {
-        if (llvm::isa<LoopOp>(parent)) {
-          ++depth;
-        }
-        parent = parent->getParentOp();
-      }
-      loop_op->setAttr("loop_depth", builder.getI32IntegerAttr(depth));
+      loop_op->setAttr("loop_depth",
+                       builder.getI32IntegerAttr(enclosing_loops(loop_op)));
     });
 
     // Resolve an evt's "auto" loop_level to the innermost enclosing loop; an
