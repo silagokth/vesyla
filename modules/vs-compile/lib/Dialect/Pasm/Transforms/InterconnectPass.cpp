@@ -241,6 +241,24 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
     }
   }
 
+  // A transfer cannot finish before it starts.
+  //
+  // Stated after the DFS rather than beside the nodes, because the DFS can
+  // find a path back from a transfer's Last anchor to its own First -- both
+  // are anchors on the same instruction -- and insert_edge reads an edge that
+  // already runs the other way as the two being mutually reachable and marks
+  // the pair bidir. Bidir says the order between them is free, has_incoming
+  // ignores it, and the Last is then wired to the start sentinel and comes
+  // free at the outset. The binding walk takes a Last over a First whenever it
+  // can, so it retires the route before anything has opened it: the route
+  // never closes, every later option inherits it, and the options come out
+  // cumulative. The reverse edge goes, since a transfer finishing before it
+  // starts is not an ordering the graph can mean.
+  for (int id = 1; id < current_id; ++id) {
+    graph.remove_edge({id, NodeKind::Last}, {id, NodeKind::First});
+    graph.insert_edge({id, NodeKind::First}, {id, NodeKind::Last});
+  }
+
   // Wire orphan nodes (no incoming/outgoing edges) to the start/end sentinels.
   NodeKey start_key{0, NodeKind::First};
   NodeKey end_key{0, NodeKind::Last};
