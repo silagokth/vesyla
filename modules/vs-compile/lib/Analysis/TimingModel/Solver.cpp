@@ -133,13 +133,28 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
   json_file.close();
 }
 
+// Bounds on one solver run. Neither is meant to be reached by a model that has
+// a schedule in it; they are there because a model that has not is otherwise
+// unbounded in both time and memory. cp-sat has been seen to grow to 29 GB on a
+// 30 GB machine, at which point the kernel's OOM killer takes down whatever
+// else is running: a compile that fails is a result, a machine that dies is
+// not.
+constexpr unsigned long mzn_time_limit_ms = 300000;
+constexpr unsigned long mzn_address_space_limit_kb = 16UL * 1024 * 1024;
+
 void run_minizinc(string mzn_filename, string dzn_filename,
                   string json_filename) {
   // run minizinc command and collect the json output
   LOG_DEBUG << "Running Minizinc command with input files: " << mzn_filename
             << " and " << dzn_filename;
-  string command = "minizinc --json-stream --solver cp-sat " + mzn_filename +
-                   " " + dzn_filename + " > " + json_filename;
+  // The address-space limit goes on the shell system() spawns so that
+  // minizinc's solver child inherits it; that child is the one that grows. The
+  // time limit is the gentler of the two: minizinc reports UNKNOWN and exits
+  // cleanly, which solve() already reads as a model it could not schedule.
+  string command = "ulimit -v " + to_string(mzn_address_space_limit_kb) +
+                   "; minizinc --time-limit " + to_string(mzn_time_limit_ms) +
+                   " --json-stream --solver cp-sat " + mzn_filename + " " +
+                   dzn_filename + " > " + json_filename;
   int result = system(command.c_str());
 
   LOG_DEBUG << "Minizinc command executed: " << command;
@@ -194,6 +209,10 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
 
     if (!check_mzn_solution_valid(json_output, solution)) {
       LOG_ERROR << "Minizinc command failed to find a solution.";
+      LOG_ERROR << "A model too big to schedule ends here too: minizinc "
+                   "reports UNKNOWN, having run past its "
+                << mzn_time_limit_ms << " ms limit or lost its solver to the "
+                << mzn_address_space_limit_kb << " kB address-space limit.";
       LOG_ERROR << "Input MZN file: " << mzn_filename;
       LOG_ERROR << "Input DZN file: " << dzn_filename;
       LOG_ERROR << "Output: " << json_output.dump(4);
