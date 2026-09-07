@@ -13,15 +13,38 @@
 
 namespace vesyla::pasm {
 
+// The fields a config turns into on the wire: sr (0 send, 1 recv, -1 for an
+// swb config, which has none) and the source and target the conf instruction
+// carries.
+struct ConfigKey {
+  int sr;
+  int source;
+  int target;
+
+  bool operator==(const ConfigKey &o) const {
+    return sr == o.sr && source == o.source && target == o.target;
+  }
+};
+
 struct InterconnectConfig {
   ResourceAttr src;
   mlir::ArrayAttr dst;
   std::optional<int> sr;
 
-  bool operator==(const InterconnectConfig &o) const {
-    return src == o.src && dst == o.dst && sr == o.sr;
-  }
+  // Two configs are the same configuration when the fabric is told the same
+  // thing, whatever endpoints they were derived from -- see config_key.
+  bool operator==(const InterconnectConfig &o) const;
 };
+
+// What `cfg` is emitted as. A send names the direction it leaves by rather
+// than the slot it reaches, so two transfers leaving the same slot for the
+// same neighbour are one route and not two; comparing the endpoints instead
+// splits them, and every config that is split forces a configuration option
+// that the fabric does not need.
+//
+// Emission reads the same key, so the identity used to bind and the
+// instruction that comes out of it cannot drift apart.
+ConfigKey config_key(const InterconnectConfig &cfg);
 
 struct InterconnectConfigOption {
   std::vector<InterconnectConfig> configs;

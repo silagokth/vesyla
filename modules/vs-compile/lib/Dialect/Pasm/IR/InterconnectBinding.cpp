@@ -17,6 +17,34 @@ int direction_code(ResourceAttr from, ResourceAttr to) {
   return (sr + 1) * 3 + (sc + 1);
 }
 
+ConfigKey config_key(const InterconnectConfig &cfg) {
+  auto dst_res = cfg.dst && !cfg.dst.empty()
+                     ? mlir::dyn_cast<ResourceAttr>(cfg.dst[0])
+                     : ResourceAttr();
+  if (!cfg.sr.has_value()) {
+    // An swb config names both ends by slot; the channel it is written on is
+    // the target slot, so the pair is the whole identity.
+    return ConfigKey{-1, cfg.src ? cfg.src.getSlot() : -1,
+                     dst_res ? dst_res.getSlot() : -1};
+  }
+  if (*cfg.sr == 0) {
+    return ConfigKey{0, cfg.src ? cfg.src.getSlot() : -1,
+                     dst_res ? 1 << direction_code(cfg.src, dst_res) : 0};
+  }
+  int target_mask = 0;
+  for (mlir::Attribute attr : cfg.dst) {
+    if (auto r = mlir::dyn_cast<ResourceAttr>(attr)) {
+      target_mask |= (1 << r.getSlot());
+    }
+  }
+  return ConfigKey{1, dst_res ? direction_code(dst_res, cfg.src) : -1,
+                   target_mask};
+}
+
+bool InterconnectConfig::operator==(const InterconnectConfig &o) const {
+  return config_key(*this) == config_key(o);
+}
+
 // Build a point AnchorRangeAttr (lo == hi) from OR/MT/IR indices.
 static AnchorRangeAttr make_point_anchor_range(mlir::MLIRContext *ctx,
                                                mlir::FlatSymbolRefAttr id,
@@ -102,6 +130,32 @@ void dump_binding(const InterconnectBinding &b, llvm::raw_ostream &os) {
   os << "]\n";
 }
 
+// Whether two option sets hold the same configs. A set rather than a sequence:
+// the walk builds an option in whatever order the transfers came free, and two
+// options that configure the fabric identically should share a slot rather
+// than take one each.
+static bool same_configs(const std::vector<InterconnectConfig> &a,
+                         const std::vector<InterconnectConfig> &b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  std::vector<bool> taken(b.size(), false);
+  for (const InterconnectConfig &x : a) {
+    bool found = false;
+    for (std::size_t i = 0; i < b.size(); ++i) {
+      if (!taken[i] && b[i] == x) {
+        taken[i] = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Stash `current` into a binding slot (existing match preferred, else first
 // empty slot), record the slot index in `binding.sequence`, and return it.
 // Returns nullopt if no free slot is available.
@@ -114,7 +168,8 @@ save_current(InterconnectBinding &binding,
   std::optional<std::size_t> free_slot;
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
     if (binding.slots[i].size() == 1 &&
-        binding.slots[i][0].configs == current && !existing_slot.has_value()) {
+        same_configs(binding.slots[i][0].configs, current) &&
+        !existing_slot.has_value()) {
       existing_slot = i;
     }
     if (binding.slots[i].empty() && !free_slot.has_value()) {
@@ -139,8 +194,148 @@ static std::string node_tag(const Node &n) {
   return std::to_string(n.id) + (n.kind == NodeKind::First ? "f" : "l");
 }
 
+// A route in flight, and how many transfers still need it. Several transfers
+// share one configuration once identity is what the fabric sees, so the first
+// of them to finish must not retire a route the others are still using.
+struct ActiveConfig {
+  InterconnectConfig config;
+  int uses;
+};
+
+// Whether `held` already carries what `cfg` asks for. The same thing as
+// equality everywhere but a recv, which names a set of slots: one that listens
+// on a direction for slots 2 and 3 is also the config a transfer into slot 3
+// needs, so it is taken up rather than opened beside it.
+static bool config_covers(const InterconnectConfig &held,
+                          const InterconnectConfig &cfg) {
+  ConfigKey h = config_key(held);
+  ConfigKey c = config_key(cfg);
+  if (h.sr != c.sr || h.source != c.source) {
+    return false;
+  }
+  if (h.sr != 1) {
+    return h.target == c.target;
+  }
+  return (h.target & c.target) == c.target;
+}
+
+// The route another transfer already has in flight, or null.
+static ActiveConfig *find_active(std::vector<ActiveConfig> &active,
+                                 const InterconnectConfig &cfg) {
+  for (ActiveConfig &a : active) {
+    if (config_covers(a.config, cfg)) {
+      return &a;
+    }
+  }
+  return nullptr;
+}
+
+// Add a transfer to a route in flight, opening it if it is not already.
+static void take_up(std::vector<ActiveConfig> &active,
+                    const InterconnectConfig &cfg) {
+  if (ActiveConfig *held = find_active(active, cfg)) {
+    held->uses++;
+    return;
+  }
+  active.push_back(ActiveConfig{cfg, 1});
+}
+
+static bool holds_config(const std::vector<InterconnectConfig> &configs,
+                         const InterconnectConfig &cfg) {
+  for (const InterconnectConfig &c : configs) {
+    if (config_covers(c, cfg)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The destination slots of both, without repeats.
+static mlir::ArrayAttr union_dst(mlir::ArrayAttr a, mlir::ArrayAttr b) {
+  llvm::SmallVector<mlir::Attribute> merged(a.begin(), a.end());
+  for (mlir::Attribute attr : b) {
+    auto r = mlir::dyn_cast<ResourceAttr>(attr);
+    if (!r) {
+      continue;
+    }
+    bool present = false;
+    for (mlir::Attribute existing : merged) {
+      auto e = mlir::dyn_cast<ResourceAttr>(existing);
+      if (e && e.getSlot() == r.getSlot()) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) {
+      merged.push_back(attr);
+    }
+  }
+  return mlir::ArrayAttr::get(a.getContext(), merged);
+}
+
+// Fold a recv into the config the current option already carries for that
+// direction, widening its mask to cover the new slot as well.
+//
+// The fabric takes one recv per direction, carrying the set of slots it feeds;
+// two transfers arriving from the same neighbour are that one config with two
+// slots in its mask, not two configs. Opening a second one instead makes them
+// conflict, which costs a configuration option per transfer and a switch
+// between them that the resource then has to be told about. What each
+// receiving slot keeps of the traffic is decided by its own event, not by the
+// route -- which is what makes the widened mask the same program.
+//
+// Only against the current option: two recvs that belong to phases that
+// exclude each other still take an option each.
+//
+// Returns false when there is nothing to fold into -- a send, the first recv
+// from that direction, or one the current config already covers, which the
+// ordinary take-up path handles.
+static bool merge_recv(std::vector<InterconnectConfig> &current,
+                       std::vector<ActiveConfig> &active,
+                       const InterconnectConfig &cfg) {
+  if (!cfg.sr.has_value() || *cfg.sr != 1) {
+    return false;
+  }
+  ConfigKey key = config_key(cfg);
+  for (InterconnectConfig &held : current) {
+    ConfigKey held_key = config_key(held);
+    if (held_key.sr != 1 || held_key.source != key.source) {
+      continue;
+    }
+    if ((held_key.target & key.target) == key.target) {
+      return false;
+    }
+    InterconnectConfig widened = held;
+    widened.dst = union_dst(held.dst, cfg.dst);
+    bool was_active = false;
+    for (ActiveConfig &a : active) {
+      if (config_key(a.config) == held_key) {
+        a.config = widened;
+        a.uses++;
+        was_active = true;
+      }
+    }
+    if (!was_active) {
+      active.push_back(ActiveConfig{widened, 1});
+    }
+    held = widened;
+    return true;
+  }
+  return false;
+}
+
+static std::vector<InterconnectConfig>
+active_configs(const std::vector<ActiveConfig> &active) {
+  std::vector<InterconnectConfig> configs;
+  configs.reserve(active.size());
+  for (const ActiveConfig &a : active) {
+    configs.push_back(a.config);
+  }
+  return configs;
+}
+
 static void log_pop(const Node &candidate, const std::vector<Node> &free_set,
-                    const std::vector<InterconnectConfig> &active) {
+                    const std::vector<ActiveConfig> &active) {
   llvm::errs() << "popped: " << node_tag(candidate) << "\n";
   llvm::errs() << "  free: [";
   for (std::size_t i = 0; i < free_set.size(); ++i) {
@@ -155,10 +350,10 @@ static void log_pop(const Node &candidate, const std::vector<Node> &free_set,
     if (i) {
       llvm::errs() << ", ";
     }
-    llvm::errs() << active[i].src.getSlot() << " -> ";
-    if (active[i].dst) {
+    llvm::errs() << active[i].config.src.getSlot() << " -> ";
+    if (active[i].config.dst) {
       bool first = true;
-      for (mlir::Attribute attr : active[i].dst) {
+      for (mlir::Attribute attr : active[i].config.dst) {
         if (!first) {
           llvm::errs() << " ";
         }
@@ -245,7 +440,7 @@ bool has_conflict(const Node &candidate,
 InterconnectBinding bind_interconnect(RoutingDepGraph graph,
                                       llvm::StringRef kind) {
   std::vector<Node> free_set;
-  std::vector<InterconnectConfig> active;
+  std::vector<ActiveConfig> active;
   std::vector<InterconnectConfig> current;
   std::vector<Anchor> current_first_anchors;
   std::vector<Anchor> current_last_anchors;
@@ -276,27 +471,16 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
       if (kind == "bulk") {
         cfg.sr = (candidate.dir == "send") ? 0 : 1;
       }
-      // check if the current route is already active in the current
-      // configuration
-      bool already_in_current = false;
-      for (const InterconnectConfig &c : current) {
-        if (c == cfg) {
-          already_in_current = true;
-          break;
-        }
+      // A recv from a direction the current option already listens to widens
+      // that config rather than opening one beside it.
+      if (merge_recv(current, active, cfg)) {
+        add_anchor(current_first_anchors, candidate.anchor);
+        continue;
       }
-      if (already_in_current) {
-        // if not in active it should be added
-        bool already_in_active = false;
-        for (const InterconnectConfig &c : active) {
-          if (c == cfg) {
-            already_in_active = true;
-            break;
-          }
-        }
-        if (!already_in_active) {
-          active.push_back(cfg);
-        }
+      // A route the current configuration already carries is taken up rather
+      // than opened a second time.
+      if (holds_config(current, cfg)) {
+        take_up(active, cfg);
         add_anchor(current_first_anchors, candidate.anchor);
         continue;
       }
@@ -308,12 +492,17 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
           llvm::errs() << "bind_interconnect: no free binding slot\n";
           return binding;
         }
-        current = active;
+        // What is still in flight has to stay configured across the switch.
+        current = active_configs(active);
         current_first_anchors.clear();
         current_last_anchors.clear();
       }
-      current.push_back(cfg);
-      active.push_back(cfg);
+      // The flush may have brought the route back with everything else still
+      // in flight, so ask again rather than listing it twice.
+      if (!holds_config(current, cfg)) {
+        current.push_back(cfg);
+      }
+      take_up(active, cfg);
       add_anchor(current_first_anchors, candidate.anchor);
     } else {
       // when end node encountered remove the route from the active ones
@@ -322,9 +511,13 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
         cfg.sr = (candidate.dir == "send") ? 0 : 1;
       }
       add_anchor(current_last_anchors, candidate.anchor);
+      // The route closes when the last transfer using it is done, not the
+      // first.
       for (auto it = active.begin(); it != active.end(); ++it) {
-        if (*it == cfg) {
-          active.erase(it);
+        if (config_covers(it->config, cfg)) {
+          if (--it->uses <= 0) {
+            active.erase(it);
+          }
           break;
         }
       }
@@ -388,19 +581,17 @@ RopOp emit_swb_instructions(const InterconnectBinding &binding, CellOp cell,
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
     for (const InterconnectConfigOption &opt : binding.slots[i]) {
       for (const InterconnectConfig &cfg : opt.configs) {
-        auto dst_res = mlir::dyn_cast<ResourceAttr>(cfg.dst[0]);
-        int32_t src_slot = cfg.src.getSlot();
-        int32_t dst_slot = dst_res.getSlot();
+        ConfigKey key = config_key(cfg);
 
         llvm::SmallVector<mlir::NamedAttribute> attrs;
         attrs.push_back(builder.getNamedAttr(
-            "channel", builder.getI32IntegerAttr(dst_slot)));
+            "channel", builder.getI32IntegerAttr(key.target)));
         attrs.push_back(builder.getNamedAttr(
             "option", builder.getI32IntegerAttr(static_cast<int32_t>(i))));
         attrs.push_back(builder.getNamedAttr(
-            "source", builder.getI32IntegerAttr(src_slot)));
+            "source", builder.getI32IntegerAttr(key.source)));
         attrs.push_back(builder.getNamedAttr(
-            "target", builder.getI32IntegerAttr(dst_slot)));
+            "target", builder.getI32IntegerAttr(key.target)));
         attrs.push_back(
             builder.getNamedAttr("variant", builder.getStringAttr("swb")));
 
@@ -437,33 +628,16 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
     for (const InterconnectConfigOption &opt : binding.slots[i]) {
       for (const InterconnectConfig &cfg : opt.configs) {
-        auto dst_res = mlir::dyn_cast<ResourceAttr>(cfg.dst[0]);
+        ConfigKey key = config_key(cfg);
         llvm::SmallVector<mlir::NamedAttribute> attrs;
         attrs.push_back(builder.getNamedAttr(
             "option", builder.getI32IntegerAttr(static_cast<int32_t>(i))));
         attrs.push_back(builder.getNamedAttr(
             "sr", builder.getI32IntegerAttr(cfg.sr.value_or(0))));
-
-        if (cfg.sr.value_or(0) == 0) {
-          attrs.push_back(builder.getNamedAttr(
-              "source", builder.getI32IntegerAttr(cfg.src.getSlot())));
-          attrs.push_back(builder.getNamedAttr(
-              "target",
-              builder.getI32IntegerAttr(1 << direction_code(cfg.src, dst_res))));
-        } else {
-          attrs.push_back(builder.getNamedAttr(
-              "source",
-              builder.getI32IntegerAttr(direction_code(dst_res, cfg.src))));
-          int32_t target_mask = 0;
-          for (mlir::Attribute attr : cfg.dst) {
-            auto r = mlir::dyn_cast<ResourceAttr>(attr);
-            if (r) {
-              target_mask |= (1 << r.getSlot());
-            }
-          }
-          attrs.push_back(builder.getNamedAttr(
-              "target", builder.getI32IntegerAttr(target_mask)));
-        }
+        attrs.push_back(builder.getNamedAttr(
+            "source", builder.getI32IntegerAttr(key.source)));
+        attrs.push_back(builder.getNamedAttr(
+            "target", builder.getI32IntegerAttr(key.target)));
         attrs.push_back(
             builder.getNamedAttr("variant", builder.getStringAttr("route")));
 
@@ -614,8 +788,31 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
       if (prev_slot == cur_slot) {
         continue;
       }
+      if (binding.slots[prev_slot].empty()) {
+        continue;
+      }
       const InterconnectConfigOption &prev_opt = binding.slots[prev_slot][0];
+
+      // A transfer that uses the option being switched to cannot also be
+      // asked to finish before the switch. The rule above already orders it
+      // after that option, and the two together are unsatisfiable however the
+      // rest of the schedule falls out. It arises wherever a route outlives a
+      // reconfiguration -- what is still in flight is carried into the next
+      // option -- so such a transfer genuinely spans the switch and only the
+      // first ordering has anything to say about it.
+      llvm::StringSet<> uses_next;
+      if (!binding.slots[cur_slot].empty()) {
+        for (const Anchor &a : binding.slots[cur_slot][0].first_anchors) {
+          if (a.instr_id) {
+            uses_next.insert(a.instr_id.getValue());
+          }
+        }
+      }
+
       for (const Anchor &a : prev_opt.last_anchors) {
+        if (a.instr_id && uses_next.contains(a.instr_id.getValue())) {
+          continue;
+        }
         auto src_ar =
             make_point_anchor_range(ctx, a.instr_id, a.or_idx, a.mt, a.ir_idx);
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
