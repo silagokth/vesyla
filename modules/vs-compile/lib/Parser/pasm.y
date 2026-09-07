@@ -110,48 +110,25 @@ REGION:
     | FOR_REGION {
         LOG_DEBUG << "REGION";
         $$ = $1;
-    } 
+    }
     | IF_REGION {LOG_DEBUG << "REGION";
-        $$ = $1;} 
+        $$ = $1;}
     ;
 
 EPOCH_REGION:
     EPOCH '{' OP_LIST '}' {
         LOG_DEBUG << "EPOCH_REGION";
-        LOG_DEBUG << "EPOCH_REGION";
         auto* op = new operation_t();
         op->kind = "EPOCH";
-        if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(temp_epoch_op)) {
-            // create a InstrOp
-            mlir::OpBuilder builder(epoch_op.getBody());
-            auto loc = builder.getUnknownLoc();
-            builder.setInsertionPointToEnd(module->getBody());
-            auto rop_op = builder.create<vesyla::pasm::EpochOp>(loc,
-                builder.getStringAttr(vesyla::util::Common::gen_random_string(8)));
-            mlir::Region& region = rop_op.getBody();
-            region.push_back(new mlir::Block());
-            builder.setInsertionPointToEnd(&region.back());
-            for (auto&& instr : $3->ops) {
-                // copy the instr to the new region
-                auto instr_op = instr->op;
-                auto new_instr_op = builder.clone(*instr_op);
-                // remove the old instr_op
-                instr_op->erase();
-                for (auto* extra_op : instr->extra_ops) {
-                    builder.clone(*extra_op);
-                    extra_op->erase();
-                }
+        std::vector<mlir::Operation*> instr_ops;
+        for (auto&& instr : $3->ops) {
+            instr_ops.push_back(instr->op);
+            for (auto* extra_op : instr->extra_ops) {
+                instr_ops.push_back(extra_op);
             }
-            // Clean up instr_list
-            delete $3;
-            // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
-            op->op = rop_op.getOperation();
         }
-        else {
-            yyerror("EpochOp not found");
-            exit(1);
-        }
+        delete $3;
+        op->op = build_epoch("", instr_ops);
         $$ = op;
     }
 
@@ -159,44 +136,52 @@ EPOCH_REGION:
         LOG_DEBUG << "EPOCH_REGION";
         auto* op = new operation_t();
         op->kind = "EPOCH";
-        if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(temp_epoch_op)) {
-            // create a InstrOp
-            mlir::OpBuilder builder(epoch_op.getBody());
-            auto loc = builder.getUnknownLoc();
-            builder.setInsertionPointToEnd(module->getBody());
-            auto rop_op = builder.create<vesyla::pasm::EpochOp>(loc,
-                builder.getStringAttr($3));
-            mlir::Region& region = rop_op.getBody();
-            region.push_back(new mlir::Block());
-            builder.setInsertionPointToEnd(&region.back());
-            for (auto&& instr : $6->ops) {
-                // copy the instr to the new region
-                auto instr_op = instr->op;
-                auto new_instr_op = builder.clone(*instr_op);
-                // remove the old instr_op
-                instr_op->erase();
-                for (auto* extra_op : instr->extra_ops) {
-                    builder.clone(*extra_op);
-                    extra_op->erase();
-                }
+        std::vector<mlir::Operation*> instr_ops;
+        for (auto&& instr : $6->ops) {
+            instr_ops.push_back(instr->op);
+            for (auto* extra_op : instr->extra_ops) {
+                instr_ops.push_back(extra_op);
             }
-            // Clean up instr_list
-            delete $6;
-            // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
-            op->op = rop_op.getOperation();
         }
-        else {
-            yyerror("EpochOp not found");
-            exit(1);
-        }
+        delete $6;
+        op->op = build_epoch($3, instr_ops);
         $$ = op;
     }
     ;
 
 FOR_REGION:
-    FOR '(' PARAM_MAP ')' '{' REGION_LIST '}' {LOG_DEBUG << "FOR_REGION";}
-    | FOR '<' ID '>' '(' PARAM_MAP ')' '{' REGION_LIST '}' {LOG_DEBUG << "FOR_REGION";}
+    FOR '(' PARAM_MAP ')' '{' REGION_LIST '}' {
+        LOG_DEBUG << "FOR_REGION";
+        int iter = 1;
+        for (auto &p : $3->params) if (p.key == "iter") iter = std::stoi(p.val);
+        std::vector<mlir::Operation *> children;
+        for (auto *c : $6->ops) {
+            children.push_back(c->op);
+            for (auto *ex : c->extra_ops) children.push_back(ex);
+        }
+        auto *op = new operation_t();
+        op->kind = "FOR";
+        op->op = build_loop("", iter, children);
+        delete $6;
+        delete $3;
+        $$ = op;
+    }
+    | FOR '<' ID '>' '(' PARAM_MAP ')' '{' REGION_LIST '}' {
+        LOG_DEBUG << "FOR_REGION";
+        int iter = 1;
+        for (auto &p : $6->params) if (p.key == "iter") iter = std::stoi(p.val);
+        std::vector<mlir::Operation *> children;
+        for (auto *c : $9->ops) {
+            children.push_back(c->op);
+            for (auto *ex : c->extra_ops) children.push_back(ex);
+        }
+        auto *op = new operation_t();
+        op->kind = "FOR";
+        op->op = build_loop($3, iter, children);
+        delete $9;
+        delete $6;
+        $$ = op;
+    }
     ;
 
 IF_REGION:
@@ -256,7 +241,7 @@ PARAM:
     ;
 
 OP_LIST:
-    OP_LIST OP {LOG_DEBUG << "OP_LIST"; $1->ops.push_back($2); $$ = $1;} 
+    OP_LIST OP {LOG_DEBUG << "OP_LIST"; $1->ops.push_back($2); $$ = $1;}
     | OP {LOG_DEBUG << "OP_LIST"; $$ = new operation_vector_t(); $$->ops.push_back($1);}
     ;
 OP:
@@ -456,7 +441,7 @@ COP_OP:
                 yyerror("Missing required parameters: row, col");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto cop_op = builder.create<vesyla::pasm::CopOp>(loc,
@@ -508,7 +493,7 @@ COP_OP:
                 yyerror("Missing required parameters: row, col");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto cop_op = builder.create<vesyla::pasm::CopOp>(loc,
@@ -564,7 +549,7 @@ RAW_OP:
                 yyerror("Missing required parameters: row, col");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto raw_op = builder.create<vesyla::pasm::RawOp>(loc,
@@ -618,7 +603,7 @@ RAW_OP:
                 yyerror("Missing required parameters: row, col, slot, port");
                 exit(1);
             }
-            
+
             // Clean up param_map
             delete param_map;
             auto raw_op = builder.create<vesyla::pasm::RawOp>(loc,

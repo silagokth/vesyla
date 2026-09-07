@@ -18,6 +18,15 @@ def ScheduleEpochPass: Pass<"schedule-epoch-pass", "::mlir::ModuleOp"> {
   ];
 }
 
+def ExpandEvtStridesPass: Pass<"expand-evt-strides-pass", "::mlir::ModuleOp"> {
+  let summary = "Expand an evt `strides` vector into evt + evts offset terms.";
+  let description = [{
+    An `evt` may carry a stride per loop level as `strides="s0,s1,.."`
+    (index = loop level, 0 = outermost, 0 entries skipped). This pass puts
+    one term on the `evt` itself and emits an `evts` for every other one.
+  }];
+}
+
 def ReplaceLoopOp: Pass<"replace-loop-op", "::mlir::ModuleOp"> {
   let summary = "Replace the for loop structure with normal epoch regions.";
   let description = [{

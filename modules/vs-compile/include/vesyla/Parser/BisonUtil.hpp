@@ -1,6 +1,7 @@
 #ifndef __VESYLA_SCHEDULE_BISON_UTIL_HPP__
 #define __VESYLA_SCHEDULE_BISON_UTIL_HPP__
 
+#include "mlir/IR/Operation.h"
 #include "vesyla/Parser/GlobalUtil.hpp"
 #include "vesyla/Support/Common.hpp"
 #include <iostream>
@@ -19,8 +20,9 @@
 #include "mlir/Transforms/Passes.h"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
-#include "vesyla/Dialect/Pasm/Transforms/Passes.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmTypes.hpp"
+#include "vesyla/Dialect/Pasm/Transforms/Passes.hpp"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace vesyla {
 namespace schedule {
@@ -56,6 +58,15 @@ struct index_list_t {
 
 mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
                             const std::string &cmp);
+
+// Builds an EpochOp region from a flat list of instruction ops (each cloned
+// into the new region and erased from its source). An empty id generates a
+// random name.
+mlir::Operation *build_epoch(const std::string &id,
+                             llvm::ArrayRef<mlir::Operation *> instr_ops);
+
+mlir::Operation *build_loop(const std::string &id, int iter,
+                            llvm::ArrayRef<mlir::Operation *> children);
 
 std::vector<mlir::Operation *> parse_and_build_cstr(const std::string &expr);
 
