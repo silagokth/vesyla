@@ -6,12 +6,8 @@
       "kind": "swb"
     },
     {
-      "name": "iosram_top_impl",
-      "kind": "iosram_top"
-    },
-    {
-      "name": "iosram_btm_impl",
-      "kind": "iosram_btm"
+      "name": "io_impl",
+      "kind": "io"
     },
     {
       "name": "rf_impl",
@@ -30,38 +26,21 @@
   ],
   "cells": [
     {
-      "name": "cell_top_impl",
-      "kind": "cell_top",
+      "name": "cell_single_row_impl",
+      "kind": "cell_single_row",
       "controller": "sequencer_impl",
       "resource_list": [
         "swb_impl",
-        "iosram_top_impl"
-      ]
-    },
-    {
-      "name": "cell_mid_impl",
-      "kind": "cell_mid",
-      "controller": "sequencer_impl",
-      "resource_list": [
-        "swb_impl",
+        "io_impl",
         "rf_impl",
         "rf_impl",
         "rf_impl",
         "dpu_impl"
       ]
-    },
-    {
-      "name": "cell_btm_impl",
-      "kind": "cell_btm",
-      "controller": "sequencer_impl",
-      "resource_list": [
-        "swb_impl",
-        "iosram_btm_impl"
-      ]
     }
   ],
   "fabric": {
-    "height": 3,
+    "height": 1,
     "width": 1,
     "cells_list": [
       {
@@ -71,25 +50,7 @@
             "col": 0
           }
         ],
-        "cell_name": "cell_top_impl"
-      },
-      {
-        "coordinates": [
-          {
-            "row": 1,
-            "col": 0
-          }
-        ],
-        "cell_name": "cell_mid_impl"
-      },
-      {
-        "coordinates": [
-          {
-            "row": 2,
-            "col": 0
-          }
-        ],
-        "cell_name": "cell_btm_impl"
+        "cell_name": "cell_single_row_impl"
       }
     ],
     "custom_properties": [
@@ -107,7 +68,7 @@
       },
       {
         "name": "ROWS",
-        "value": 3
+        "value": 1
       },
       {
         "name": "COLS",
@@ -119,7 +80,7 @@
       },
       {
         "name": "INSTR_ADDR_WIDTH",
-        "value": 6
+        "value": 8
       },
       {
         "name": "INSTR_HOPS_WIDTH",
@@ -128,6 +89,10 @@
       {
         "name": "INSTR_OPCODE_BITWIDTH",
         "value": 3
+      },
+      {
+        "name": "INSTR_PAYLOAD_BITWIDTH",
+        "value": 27
       },
       {
         "name": "BULK_WIDTH",
