@@ -5,6 +5,8 @@
 #include "mlir/IR/AffineMap.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <optional>
+
 namespace vesyla {
 namespace sel {
 
@@ -45,20 +47,54 @@ unsigned enclosing_loop_depth(mlir::Operation *op) {
   return depth;
 }
 
-mlir::AffineMapAttr lift_affine_map(mlir::Operation *access) {
-  unsigned depth = enclosing_loop_depth(access);
-  if (depth == 0) {
-    return {};
+// The address the access names outright, when it names a fixed one.
+//
+// An affine.load and its siblings carry their own map, whose first result is
+// the bulk the access starts at -- the remaining results index within the bulk,
+// which the AGU does not address. A constant there is the base; anything else
+// is a value some loop supplies and belongs to the stepping instead.
+static std::optional<int64_t> constant_base(mlir::Operation *access) {
+  mlir::AffineMap map;
+  if (auto read = llvm::dyn_cast<mlir::affine::AffineReadOpInterface>(access)) {
+    map = read.getAffineMap();
+  } else if (auto write =
+                 llvm::dyn_cast<mlir::affine::AffineWriteOpInterface>(access)) {
+    map = write.getAffineMap();
+  } else {
+    return std::nullopt;
   }
+  if (map.getNumResults() == 0) {
+    return std::nullopt;
+  }
+  auto constant = llvm::dyn_cast<mlir::AffineConstantExpr>(map.getResult(0));
+  if (!constant) {
+    return std::nullopt;
+  }
+  return constant.getValue();
+}
+
+mlir::AffineMapAttr lift_affine_map(mlir::Operation *access) {
   for (mlir::Value idx : access->getOperands()) {
     if (auto apply = idx.getDefiningOp<mlir::affine::AffineApplyOp>()) {
       return mlir::AffineMapAttr::get(apply.getAffineMap());
     }
   }
+
   mlir::MLIRContext *ctx = access->getContext();
+  unsigned depth = enclosing_loop_depth(access);
+  std::optional<int64_t> base = constant_base(access);
+
+  // No loop to step and no base to start from: there is no address to describe.
+  if (depth == 0 && (!base || *base == 0)) {
+    return {};
+  }
+
+  mlir::AffineExpr addr = mlir::getAffineConstantExpr(base.value_or(0), ctx);
+  if (depth > 0) {
+    addr = mlir::getAffineDimExpr(depth - 1, ctx) + addr;
+  }
   return mlir::AffineMapAttr::get(
-      mlir::AffineMap::get(depth, /*symbolCount=*/0,
-                           mlir::getAffineDimExpr(depth - 1, ctx)));
+      mlir::AffineMap::get(depth, /*symbolCount=*/0, addr));
 }
 
 } // namespace sel

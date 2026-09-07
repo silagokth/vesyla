@@ -27,13 +27,16 @@ unsigned enclosing_loop_depth(mlir::Operation *op);
 
 // Best-effort lift of the affine access map, describing the address the AGU
 // sweeps:
-//   - outside any affine.for: no map (returns null; the access is not iterated).
-//   - inside affine.for(s): reuse the map of the affine.apply that feeds an
-//     index operand, if any; otherwise fall back to identity onto the innermost
-//     loop dim.
+//   - an affine.apply feeding an index operand: reuse its map, which already
+//     carries both the stepping and the base.
+//   - otherwise: the innermost loop dim, if there is one, plus the base the
+//     access names outright. A load that says [1, 0] starts one bulk in, and
+//     that has to survive into the map because set_init_addr reads the base
+//     from here and nowhere else -- an access with no map at all lowers to the
+//     same instruction as one addressing bulk zero.
+//   - neither: no map (returns null).
 // A heuristic that matches the shapes in the reference IR; the exact
-// multi-index / symbol cases need revisiting once run end to end. Unused while
-// the pass only annotates, but it is what the drra emission will need.
+// multi-index / symbol cases need revisiting once run end to end.
 mlir::AffineMapAttr lift_affine_map(mlir::Operation *access);
 
 } // namespace sel
