@@ -77,7 +77,7 @@ public:
     // The claimed set is what makes this maximal munch: @mac (20) takes the
     // multiply and the add as one, so @mult and @add (10) cannot take them
     // apart on a later tier, and an IO-buffer access goes to io (12) before
-    // iosram (11) or rf (10) ever sees it.
+    // rf (10) ever sees it.
     for (const std::vector<const Pattern *> &tier : library.tiers()) {
       // Snapshot the tier's candidates before rewriting any of them: replacing
       // inserts ops, and walking a region while it grows is not safe. Nothing

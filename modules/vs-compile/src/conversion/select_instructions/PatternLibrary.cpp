@@ -35,12 +35,6 @@ const SkipRule kSkipRules[] = {
     {"rf", "conf",
      "writes a register from the instruction stream; its address and value are "
      "match-derived, which the emission attributes cannot yet express"},
-    {"iosram", "sram_read", "internal io<->sram staging, AGU-driven"},
-    {"iosram", "sram_write", "internal io<->sram staging, AGU-driven"},
-    {"iosram", "bulk_read",
-     "fabric path; needs a buffer identity the program does not yet give"},
-    {"iosram", "bulk_write",
-     "fabric path; needs a buffer identity the program does not yet give"},
 };
 
 llvm::StringRef skipReason(llvm::StringRef kind, llvm::StringRef function) {
@@ -53,11 +47,9 @@ llvm::StringRef skipReason(llvm::StringRef kind, llvm::StringRef function) {
   return {};
 }
 
-// The io resources address an external buffer rather than local storage, so
-// their patterns only apply where the program says it is touching one.
-bool isIoKind(llvm::StringRef kind) {
-  return kind == "io" || kind.starts_with("iosram");
-}
+// The io resource addresses an external buffer rather than local storage, so
+// its patterns only apply where the program says it is touching one.
+bool isIoKind(llvm::StringRef kind) { return kind == "io"; }
 
 // Resolve a segment value against the resource's own isa.json: the segment must
 // exist on that instruction, and a value that names a verbo_map entry must

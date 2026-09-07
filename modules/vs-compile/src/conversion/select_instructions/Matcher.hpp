@@ -38,8 +38,8 @@ struct MatchResult {
 //   4. A read of the pattern's rank-0 accumulator argument matches an
 //      affine.for iter_args carry -- the register in the pattern and the SSA
 //      loop carry in the program are the same thing.
-//   5. An io / iosram pattern only matches where the program says it is
-//      touching an IO buffer.
+//   5. An io pattern only matches where the program says it is touching an
+//      IO buffer.
 class Matcher {
 public:
   explicit Matcher(const Pattern &pattern) : pattern_(pattern) {}

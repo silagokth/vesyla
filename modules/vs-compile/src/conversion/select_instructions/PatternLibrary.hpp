@@ -62,8 +62,8 @@ struct Pattern {
     return accumulator && accumulatorStore && !readsAccumulator;
   }
 
-  // True for the io and iosram_* resources, whose patterns only apply to a
-  // memref allocated as an IO buffer.
+  // True for the io resource, whose patterns only apply to a memref allocated
+  // as an IO buffer.
   bool guardedByBufferRole() const;
 };
 

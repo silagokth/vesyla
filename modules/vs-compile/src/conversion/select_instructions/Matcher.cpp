@@ -70,8 +70,8 @@ bool Matcher::isAccumulatorRead(mlir::Value patternValue) const {
 
 bool Matcher::matchMemref(mlir::Value patternMemref, mlir::Value inputMemref,
                           MatchResult &result) const {
-  // An io / iosram pattern only applies to a memref the program declared as an
-  // IO buffer. rf carries no such guard, so it matches anything and picks up
+  // An io pattern only applies to a memref the program declared as an IO
+  // buffer. rf carries no such guard, so it matches anything and picks up
   // whatever the higher tiers left -- which is what makes it the fallback.
   if (pattern_.guardedByBufferRole() && !isIoBuffer(inputMemref))
     return false;
