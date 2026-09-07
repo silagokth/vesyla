@@ -114,6 +114,15 @@ public:
     int iter = op.getIter();
     mlir::Block &body_block = op.getBody().front();
 
+    // Lower leaf loops only; the greedy driver (applyPatternsGreedily) then
+    // peels nested loops inside-out; each lowered inner loop becoming plain
+    // body instructions of its parent
+    for (mlir::Operation &child : body_block) {
+      if (llvm::isa<LoopOp>(&child)) {
+        return mlir::failure();
+      }
+    }
+
     // Allocate the counter register from the loop's nesting depth (annotated by
     // the pass before rewriting). Depth 0 uses the top of the counter pool;
     // each enclosing loop takes the next register down. The flag register is
