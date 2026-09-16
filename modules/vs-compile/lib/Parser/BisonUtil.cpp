@@ -30,27 +30,58 @@ struct RepInfo {
   mlir::Attribute delay;
 };
 
+// The REP levels that nest event e0, innermost first. A rop can open several
+// lanes with EVT and join them with TRANS, so not every REP in the body wraps
+// e0 — only those applied while e0's segment is on top, plus those applied to
+// the segment a TRANS folded it into.
 std::vector<RepInfo> get_rop_reps(vesyla::pasm::EpochOp epoch_op,
                                   llvm::StringRef rop_id) {
-  std::vector<RepInfo> reps;
+  struct Segment {
+    bool has_e0 = false;
+    std::vector<RepInfo> reps;
+  };
+  std::vector<Segment> stack;
   if (epoch_op.getBody().empty())
-    return reps;
+    return {};
   for (auto &op : epoch_op.getBody().front().getOperations()) {
     auto rop = llvm::dyn_cast<vesyla::pasm::RopOp>(&op);
     if (!rop || rop.getSymName() != rop_id)
       continue;
     if (rop.getBody().empty())
       break;
+    int event_count = 0;
     for (auto &child : rop.getBody().front().getOperations()) {
       auto instr = llvm::dyn_cast<vesyla::pasm::InstrOp>(&child);
-      if (!instr || instr.getType() != "rep")
+      if (!instr)
         continue;
-      auto param = instr.getParam();
-      reps.push_back({param.get("iter"), param.get("delay")});
+      if (instr.getType() == "evt") {
+        Segment seg;
+        seg.has_e0 = (event_count++ == 0);
+        stack.push_back(std::move(seg));
+      } else if (instr.getType() == "rep") {
+        if (stack.empty())
+          continue;
+        auto param = instr.getParam();
+        stack.back().reps.push_back({param.get("iter"), param.get("delay")});
+      } else if (instr.getType() == "trans") {
+        if (stack.size() < 2)
+          continue;
+        Segment rhs = std::move(stack.back());
+        stack.pop_back();
+        Segment lhs = std::move(stack.back());
+        stack.pop_back();
+        Segment joined;
+        joined.has_e0 = lhs.has_e0 || rhs.has_e0;
+        joined.reps = lhs.has_e0 ? std::move(lhs.reps) : std::move(rhs.reps);
+        stack.push_back(std::move(joined));
+      }
     }
     break;
   }
-  return reps;
+  for (auto &seg : stack)
+    if (seg.has_e0)
+      return std::move(seg.reps);
+  return {};
 }
 
 } // namespace
