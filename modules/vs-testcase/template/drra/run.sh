@@ -20,6 +20,16 @@ NC='\033[0m' # No Color
 SPIN_START=0 # Epoch seconds at which the current step started
 SPIN_TCOL=0  # Absolute terminal column where the (mm:ss) timer is drawn
 
+# When stdout is not a terminal (redirected to a file or pipe), the spinner,
+# tput cursor control, and ANSI colors would leak as escape/`\r` noise (and
+# tput errors with TERM unset). Fall back to plain, line-oriented output.
+if [ -t 1 ]; then
+  use_tty=true
+else
+  use_tty=false
+  RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' NC=''
+fi
+
 spin_animation() {
   tput civis
   (
@@ -41,8 +51,12 @@ spin_animation() {
 
 start_spinner() {
   SPIN_START=$(date +%s)
-  SPIN_TCOL=$(( $(tput cols 2>/dev/null || echo 80) - 8 ))
-  if [ "$debug_mode" = false ]; then
+  if [ "$use_tty" = true ]; then
+    SPIN_TCOL=$(( $(tput cols 2>/dev/null || echo 80) - 8 ))
+  fi
+  # Only animate on an interactive terminal and outside debug mode (debug wants
+  # the child tools' raw output, not a spinner over it).
+  if [ "$use_tty" = true ] && [ "$debug_mode" = false ]; then
     spin_animation
   fi
 }
@@ -56,14 +70,22 @@ stop_spinner() {
     kill "$SPIN_PID" 2>/dev/null
     wait "$SPIN_PID" 2>/dev/null
   fi
-  tput cnorm # Show cursor
   el=$(($(date +%s) - SPIN_START))
-  # Final line: mark at col 0, elapsed time at SPIN_TCOL. If the first arg is 0
-  # print a checkmark, otherwise a cross.
+  local mark
+  # If the first arg is 0 print a checkmark, otherwise a cross.
   if [ "$1" -eq 0 ]; then
-    printf "\\r${GREEN}✓${NC}\033[%dG${CYAN}(%02d:%02d)${NC}\n" "$SPIN_TCOL" $((el / 60)) $((el % 60))
+    mark="${GREEN}✓${NC}"
   else
-    printf "\\r${RED}✗${NC}\033[%dG${CYAN}(%02d:%02d)${NC}\n" "$SPIN_TCOL" $((el / 60)) $((el % 60))
+    mark="${RED}✗${NC}"
+  fi
+  # Carriage-return overwrite, cursor restore and column jump only make sense on
+  # a TTY; on redirected output emit the status on its own line with no noise.
+  if [ "$use_tty" = true ]; then
+    tput cnorm # Show cursor
+    # Final line: mark at col 0, elapsed time at SPIN_TCOL.
+    printf "\\r${mark}\033[%dG${CYAN}(%02d:%02d)${NC}\n" "$SPIN_TCOL" $((el / 60)) $((el % 60))
+  else
+    printf "${mark} (%02d:%02d)\n" $((el / 60)) $((el % 60))
   fi
 }
 
