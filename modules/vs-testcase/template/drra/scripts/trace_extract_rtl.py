@@ -38,7 +38,6 @@ PORT_RE = re.compile(
 )
 SCOPE_RE = re.compile(r"cell_(\d+)_(\d+)_inst")
 RES_RE = re.compile(r"resource_(\d+)_inst")
-CYCLE_PATH = ("fabric_tb", "cycle_count")
 
 
 class Sig:
@@ -85,14 +84,14 @@ def parse_header(f):
             if not m:
                 continue
             width, ident, name = int(m.group(1)), m.group(2), m.group(3)
-            # cycle_count (top of tb)
+            # cycle_count is unique; accept it under `fabric_tb` (Questa) or the
+            # synthetic `TOP` scope Verilator wraps the design in.
             base = re.sub(r"\s*\[\d+(:\d+)?\]$", "", name)
-            if tuple(scope[-2:]) == CYCLE_PATH or (
-                scope and scope[-1] == "fabric_tb" and base == "cycle_count"
+            if base == "cycle_count" and (
+                "fabric_tb" in scope or (scope and scope[-1] == "TOP")
             ):
-                if base == "cycle_count":
-                    cycle_id = ident
-                    continue
+                cycle_id = ident
+                continue
             # resource interface ports
             pm = PORT_RE.match(base)
             if not pm:

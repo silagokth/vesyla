@@ -23,12 +23,20 @@ id=$1
 vsim_cli_mode="-c"
 debug_mode=0
 interactive_mode=0
+simulator=""
 
 for arg in "$@"; do
   case "$arg" in
   -h | --help)
-    echo "Usage: $0 <id> [--debug]"
+    echo "Usage: $0 <id> [--debug] [--sim=vsim|verilator]"
     exit 0
+    ;;
+  --sim=vsim | --sim=verilator)
+    simulator="${arg#--sim=}"
+    ;;
+  --sim=*)
+    echo "Error: unknown simulator '${arg#--sim=}' (use --sim=vsim or --sim=verilator)"
+    exit 1
     ;;
   -it | -interactive | -it=all | --interactive=all | -it=rtl | --interactive=rtl)
     # set the interactive mode
@@ -69,20 +77,21 @@ cp ${workspace_path}/system/instr/${id}/instr.bin temp
 cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
-# gather the dependencies using bender
-bender -d ${workspace_path}/system/rtl/tb script vsim -t sim >read_src.do
-echo "exit" >>read_src.do
+run_vsim() {
+  # gather the dependencies using bender
+  bender -d ${workspace_path}/system/rtl/tb script vsim -t sim >read_src.do
+  echo "exit" >>read_src.do
 
-# compile the library
-vsim -c -do read_src.do
+  # compile the library
+  vsim -c -do read_src.do
 
-# run the simulation
-if [ "$debug_mode" = "1" ]; then
-  mkdir -p ${workspace_path}/temp/debug
-  if [ "$vsim_cli_mode" = "-c" ]; then
-    vsim_cli_mode="-c -voptargs=+acc"
-  fi
-  cat >debug_capture.do <<'EOF'
+  # run the simulation
+  if [ "$debug_mode" = "1" ]; then
+    mkdir -p ${workspace_path}/temp/debug
+    if [ "$vsim_cli_mode" = "-c" ]; then
+      vsim_cli_mode="-c -voptargs=+acc"
+    fi
+    cat >debug_capture.do <<'EOF'
 vcd file debug/trace.vcd
 set ports [concat \
   [find signals -in    -r /*] \
@@ -100,24 +109,83 @@ vcd add /fabric_tb/cycle_count
 run -all
 vcd flush
 EOF
-  # Batch debug: quit after capturing. Interactive debug (-it): keep the GUI
-  # open at $finish (-onfinish stop, no quit -f, no "finish?" dialog).
-  vsim_onfinish=""
-  if [ "$interactive_mode" = "1" ]; then
-    vsim_onfinish="-onfinish stop"
+    # Batch debug: quit after capturing. Interactive debug (-it): keep the GUI
+    # open at $finish (-onfinish stop, no quit -f, no "finish?" dialog).
+    vsim_onfinish=""
+    if [ "$interactive_mode" = "1" ]; then
+      vsim_onfinish="-onfinish stop"
+    else
+      echo "quit -f" >>debug_capture.do
+    fi
+    vsim $vsim_cli_mode $vsim_onfinish -wlf debug/trace.wlf -do debug_capture.do work.fabric_tb
   else
-    echo "quit -f" >>debug_capture.do
+    # In interactive mode keep vsim open when the testbench calls $finish
+    # (default onfinish=ask pops a dialog and exits; -onfinish stop halts and
+    # keeps the GUI open). Use the command-line flag, not the -do command.
+    vsim_onfinish=""
+    if [ "$interactive_mode" = "1" ]; then
+      vsim_onfinish="-onfinish stop"
+    fi
+    vsim $vsim_cli_mode $vsim_onfinish -do "run -all" work.fabric_tb
   fi
-  vsim $vsim_cli_mode $vsim_onfinish -wlf debug/trace.wlf -do debug_capture.do work.fabric_tb
-else
-  # In interactive mode keep vsim open when the testbench calls $finish
-  # (default onfinish=ask pops a dialog and exits; -onfinish stop halts and
-  # keeps the GUI open). Use the command-line flag, not the -do command.
-  vsim_onfinish=""
+}
+
+run_verilator() {
+  # gather the source list using bender's verilator target (emits a -f flag
+  # file: +incdir/+define directives plus the ordered source paths).
+  bender -d ${workspace_path}/system/rtl/tb script verilator -t sim >verilator.f
+
+  # Verilator has no interactive waveform GUI; -it degrades to a batch run.
   if [ "$interactive_mode" = "1" ]; then
-    vsim_onfinish="-onfinish stop"
+    echo "Warning: Verilator has no interactive GUI; running in batch mode."
+    echo "         For waveforms, use debug mode (-d) and open"
+    echo "         debug/trace.vcd in GTKWave / Surfer."
   fi
-  vsim $vsim_cli_mode $vsim_onfinish -do "run -all" work.fabric_tb
+
+  # Debug mode: build the trace machinery (--trace) and enable the testbench
+  # dump via the +trace plusarg. Non-debug builds omit both for speed.
+  trace_build=""
+  run_plusargs=""
+  if [ "$debug_mode" = "1" ]; then
+    mkdir -p ${workspace_path}/temp/debug
+    trace_build="--trace"
+    run_plusargs="+trace"
+  fi
+
+  # Self-contained sim: `--binary` = `--main --exe --build --timing` (Verilator
+  # 5). `--timing` runs the delay/event-driven testbench (#5 clock, @(posedge),
+  # @(ret_all)) with no C++ harness. `--timescale` supplies the default the
+  # testbench lacks (it uses #5 but no `timescale); `-Wno-fatal` keeps RTL lint
+  # from aborting the build.
+  verilator --binary --timing -j 0 -Wno-fatal \
+    --timescale 1ns/1ps \
+    $trace_build \
+    --top-module fabric_tb \
+    -o fabric_sim \
+    -f verilator.f
+
+  # run the simulation (the executable lands in obj_dir/)
+  ./obj_dir/fabric_sim $run_plusargs
+}
+
+# use --sim if given, otherwise vsim if it is on PATH, otherwise verilator
+if [ -z "$simulator" ]; then
+  if command -v vsim >/dev/null 2>&1; then
+    simulator="vsim"
+  elif command -v verilator >/dev/null 2>&1; then
+    simulator="verilator"
+  else
+    echo "Error: no RTL simulator found (need 'vsim' or 'verilator' on PATH)."
+    exit 1
+  fi
+fi
+
+if [ "$simulator" = "vsim" ]; then
+  echo "RTL backend: vsim (QuestaSim/ModelSim)"
+  run_vsim
+else
+  echo "RTL backend: verilator"
+  run_verilator
 fi
 
 # copy the output file

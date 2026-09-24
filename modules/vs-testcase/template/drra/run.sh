@@ -78,6 +78,7 @@ trap 'cleanup $?' INT TERM
 # Variables
 interactive_mode=false
 debug_mode=false
+simulator=""
 
 # Get the script full path
 template_path=$(dirname "$(realpath "$0")")
@@ -115,11 +116,20 @@ for arg in "$@"; do
     debug_mode=true
     printf "${CYAN}INFO:${NC} Debug mode enabled\n"
     ;;
+  --sim=vsim | --sim=verilator)
+    simulator="${arg#--sim=}"
+    printf "${CYAN}INFO:${NC} RTL simulator: %s\n" "$simulator"
+    ;;
+  --sim=*)
+    printf "${RED}ERROR:${NC} unknown simulator '%s' (use --sim=vsim or --sim=verilator)\n" "${arg#--sim=}"
+    exit 1
+    ;;
   -h | --help)
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -it, --interactive=all|sst|rtl   Enable interactive mode for SST or RTL or both (all); default is off"
     echo "  -d, --debug                      Enable debug mode; default is off"
+    echo "  --sim=vsim|verilator             RTL simulator; default is vsim if on PATH, else verilator"
     echo "  -nc, --no-color                  Disable colored output; default is on"
     echo "  -h, --help                       Show this help message and exit"
     exit 0
@@ -271,9 +281,9 @@ else
   printf "  ${BLUE}Compiling & Running${NC}"
 fi
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" || exit 4
+  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" ${simulator:+--sim=$simulator} || exit 4
 else
-  run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
+  run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode" ${simulator:+--sim=$simulator}
 fi
 stop_spinner 0
 
