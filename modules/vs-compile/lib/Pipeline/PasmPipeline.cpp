@@ -80,6 +80,14 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
     LOG_WARNING << "MLIR visualization script not found: " << viz_script;
   }
 
+  // Must run before scheduling: its JSON round-trip int-izes string attrs.
+  pm.addPass(vesyla::pasm::createExpandEvtStridesPass());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: createExpandEvtStridesPass failed.\n";
+    std::exit(EXIT_FAILURE);
+  }
+  pm.clear();
+
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
   if (mlir::failed(pm.run(module))) {
     LOG_FATAL << "Error: createAddSlotPortPass failed.\n";

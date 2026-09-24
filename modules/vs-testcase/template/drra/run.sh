@@ -78,6 +78,7 @@ trap 'cleanup $?' INT TERM
 # Variables
 interactive_mode=false
 debug_mode=false
+models="0,2,3"
 
 # Get the script full path
 template_path=$(dirname "$(realpath "$0")")
@@ -111,6 +112,9 @@ for arg in "$@"; do
     interactive_mode=rtl
     printf "${CYAN}INFO:${NC} Interactive mode enabled for RTL\n"
     ;;
+  -m=* | --models=*)
+    models="${arg#*=}"
+    ;;
   -d | --debug)
     debug_mode=true
     printf "${CYAN}INFO:${NC} Debug mode enabled\n"
@@ -119,6 +123,9 @@ for arg in "$@"; do
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -it, --interactive=all|sst|rtl   Enable interactive mode for SST or RTL or both (all); default is off"
+    echo "  -m, --models=LIST                Models to run, comma-separated from 0,2,3; default 0,2,3."
+    echo "                                   Model 0 is required: it writes the input memory image"
+    echo "                                   (mem/sram_image_in.bin) and the reference output."
     echo "  -d, --debug                      Enable debug mode; default is off"
     echo "  -nc, --no-color                  Disable colored output; default is on"
     echo "  -h, --help                       Show this help message and exit"
@@ -126,6 +133,31 @@ for arg in "$@"; do
     ;;
   esac
 done
+
+# Models to run (--models). Model 0 always runs: its C++ model writes the input image
+# the simulators read and the output image they are checked against.
+run_m2=false
+run_m3=false
+IFS=',' read -ra model_list <<<"$models"
+has_m0=false
+for m in "${model_list[@]}"; do
+  case "$m" in
+  0) has_m0=true ;;
+  2) run_m2=true ;;
+  3) run_m3=true ;;
+  *)
+    printf "${RED}ERROR:${NC} unknown model '%s' in --models=%s (choose from 0,2,3)\n" "$m" "$models"
+    exit 1
+    ;;
+  esac
+done
+if [ "$has_m0" = false ]; then
+  printf "${RED}ERROR:${NC} --models=%s: model 0 is required (it writes the input and reference images)\n" "$models"
+  exit 1
+fi
+if [ "$models" != "0,2,3" ]; then
+  printf "${CYAN}INFO:${NC} Models: %s\n" "$models"
+fi
 
 # Enable DRRA SST monitoring (per-cycle prints + JSON trace file) only in debug
 # mode. The instruction-level (SST) model reads VESYLA_DEBUG; leaving it unset
@@ -219,6 +251,7 @@ cp mem/sram_image_m0.bin mem/sram_image_m1.bin
 python3 ${template_path}/scripts/dump_sram_image.py mem/sram_image_m1.bin --data-type int16_t || true
 
 # Model 2
+if [ "$run_m2" = true ]; then
 printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 ## Compile
 
@@ -260,9 +293,24 @@ if [ $? -ne 0 ]; then
 fi
 set -e
 stop_spinner 0
+else
+  printf "${BOLD}Model 2:${NC} skipped (--models=%s)\n" "$models"
+fi
 
 # Model 3
+if [ "$run_m3" = true ]; then
 printf "${BOLD}Model 3:${NC} RTL simulation\n"
+## Compile (done by model 2 when it runs)
+if [ "$run_m2" = false ]; then
+start_spinner
+printf "  ${BLUE}Compiling${NC}"
+if [ "$debug_mode" = true ]; then
+  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
+else
+  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
+fi
+stop_spinner 0
+fi
 ## Run
 start_spinner
 if [ "$interactive_mode" = "all" ] || [ "$interactive_mode" = "rtl" ]; then
@@ -292,12 +340,16 @@ if [ $? -ne 0 ]; then
 fi
 set -e
 stop_spinner 0
+else
+  printf "${BOLD}Model 3:${NC} skipped (--models=%s)\n" "$models"
+fi
 
 # Timing validation: the instruction-level (SST) and RTL models must agree on
 # the realized cycle count. Both simulators write it to a file every run: the
 # SST controller writes `instr_sim_cycles.txt` (_currentSSTCycle/10) at
 # teardown, the RTL testbench writes `rtl_sim_cycles.txt`. A mismatch means the
 # compiler schedule, the SST model and the RTL hardware disagree on timing.
+if [ "$run_m2" = true ] && [ "$run_m3" = true ]; then
 printf "${BOLD}Timing:${NC} SST (instruction-level) vs RTL cycle count\n"
 start_spinner
 printf "  ${BLUE}Verifying${NC} (SST == RTL)"
@@ -322,6 +374,12 @@ if [ "$sst_cycles" -ne "$rtl_cycles" ]; then
 fi
 stop_spinner 0
 printf "  ${CYAN}%s${NC} cycles (SST == RTL)\n" "$sst_cycles"
+else
+  printf "${BOLD}Timing:${NC} SST vs RTL check needs models 2 and 3; skipped\n"
+  for f in instr_sim_cycles.txt $(find archive -name 'rtl_sim_cycles.txt' 2>/dev/null | head -1); do
+    if [ -f "$f" ]; then printf "  ${CYAN}%s${NC} cycles (%s)\n" "$(tr -d '[:space:]' <"$f")" "$f"; fi
+  done
+fi
 
 # Cycle-accurate trace comparison (debug mode only). The RTL VCD (all resource
 # interface signals + cycle_count) and the SST Chrome-trace are both produced
@@ -331,7 +389,7 @@ printf "  ${CYAN}%s${NC} cycles (SST == RTL)\n" "$sst_cycles"
 # report by default: the memory result and total cycle count are already gated
 # above; per-cycle micro-divergences are surfaced here for inspection, not
 # treated as run failures (use trace_compare.py --strict to gate on them).
-if [ "$debug_mode" = true ]; then
+if [ "$debug_mode" = true ] && [ "$run_m2" = true ] && [ "$run_m3" = true ]; then
   printf "${BOLD}Trace:${NC} cycle-accurate SST vs RTL comparison\n"
   vcd_file=$(find archive -name 'trace.vcd' 2>/dev/null | head -1)
   sst_trace="trace_complete.json"

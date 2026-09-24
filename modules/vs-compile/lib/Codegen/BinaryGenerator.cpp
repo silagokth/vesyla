@@ -32,106 +32,116 @@ void Generator::gen_asm(mlir::ModuleOp module, const std::string &output_dir,
     std::exit(EXIT_FAILURE);
   }
 
-  mlir::Region &module_region = module.getBodyRegion();
-  if (!module_region.empty()) {
-    mlir::Block &module_block = module_region.front();
-    // Iterate through all operations in the module's block
-    for (mlir::Operation &child_op : module_block) {
-      if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
-        mlir::Region &epoch_region = epoch_op.getBody();
-        if (!epoch_region.empty()) {
-          mlir::Block &epoch_block = epoch_region.front();
-          // Iterate through all operations in the epoch's block
-          for (mlir::Operation &child_child_op : epoch_block) {
-            if (auto raw_op =
-                    llvm::dyn_cast<vesyla::pasm::RawOp>(&child_child_op)) {
-              int row = raw_op.getRow();
-              int col = raw_op.getCol();
-              output_file << "cell (row=" << row << ", col=" << col << ")\n";
-              mlir::Region &raw_region = raw_op.getBody();
-              if (!raw_region.empty()) {
-                mlir::Block &raw_block = raw_region.front();
-                // Iterate through all operations in the raw's block
-                for (mlir::Operation &child_child_child_op : raw_block) {
-                  if (auto instr_op = llvm::dyn_cast<vesyla::pasm::InstrOp>(
-                          &child_child_child_op)) {
-                    std::string type = instr_op.getType().str();
-                    output_file << type << "(";
-
-                    mlir::DictionaryAttr current_instr_params =
-                        instr_op.getParam();
-
-                    bool is_first = true;
-                    // Emit the variant selector first, if present, so the
-                    // textual form reads conf(variant="...", ...).
-                    if (auto variant_attr =
-                            current_instr_params.get("variant")) {
-                      if (auto str_attr =
-                              llvm::dyn_cast<mlir::StringAttr>(variant_attr)) {
-                        output_file << "variant=\"" << str_attr.str() << "\"";
-                        is_first = false;
-                      }
-                    }
-                    for (const mlir::NamedAttribute &named_attr_entry :
-                         current_instr_params) {
-                      auto attr_name = named_attr_entry.getName();
-                      auto attr_value = named_attr_entry.getValue();
-                      if (attr_name.str() == "variant") {
-                        continue;
-                      }
-
-                      if (auto int_attr =
-                              llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
-                        if (!is_first) {
-                          output_file << ", ";
-                        }
-                        is_first = false;
-                        output_file << attr_name.str() << "="
-                                    << int_attr.getInt();
-                      } else {
-                        llvm::outs()
-                            << "Unsupported parameter type in InstrOp: "
-                            << attr_value << "\n";
-                        std::exit(EXIT_FAILURE);
-                      }
-                    }
-
-                    output_file << ")\n";
-                  } else if (auto yield_op =
-                                 llvm::dyn_cast<vesyla::pasm::YieldOp>(
-                                     &child_child_child_op)) {
-                    // DO NOTHING
-                  } else {
-                    llvm::outs() << "Error: Illegal operation type in RawOp: "
-                                 << child_child_child_op.getName() << "\n";
-                    std::exit(EXIT_FAILURE);
-                  }
-                }
-              }
-            } else if (auto yield_op = llvm::dyn_cast<vesyla::pasm::YieldOp>(
-                           &child_child_op)) {
-              // DO NOTHING
-            } else {
-              llvm::outs() << "Error: Illegal operation type in EpochOp: "
-                           << child_op.getName() << "\n";
-              std::exit(EXIT_FAILURE);
-            }
-          }
-        }
-      } else if (auto yield_op =
-                     llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_op)) {
-        // DO NOTHING
-      } else {
-        llvm::outs() << "Error: Illegal operation type in ModuleOp: "
-                     << child_op.getName() << "\n";
-        std::exit(EXIT_FAILURE);
-      }
-    }
-  }
+  emit_program(module, [&](vesyla::pasm::EpochOp ep) {
+    emit_epoch_asm(ep, output_file);
+  });
 
   // close the file
   output_file.close();
 }
+
+void Generator::emit_program(
+    mlir::ModuleOp module,
+    const std::function<void(vesyla::pasm::EpochOp)> &emit_epoch) {
+  mlir::Region &module_region = module.getBodyRegion();
+  if (module_region.empty()) {
+    return;
+  }
+  // Loops have already been lowered to epochs (with their control instructions
+  // injected) by the ReplaceLoopOp pass, so only epochs reach codegen.
+  for (mlir::Operation &child_op : module_region.front()) {
+    if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
+      emit_epoch(epoch_op);
+    } else if (llvm::isa<vesyla::pasm::YieldOp>(&child_op)) {
+      // DO NOTHING
+    } else {
+      llvm::outs() << "Error: Illegal operation type in ModuleOp: "
+                   << child_op.getName() << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+  }
+}
+
+void Generator::emit_epoch_asm(vesyla::pasm::EpochOp epoch_op,
+                               std::ofstream &output_file) {
+  mlir::Region &epoch_region = epoch_op.getBody();
+  if (epoch_region.empty()) {
+    return;
+  }
+  mlir::Block &epoch_block = epoch_region.front();
+  // Iterate through all operations in the epoch's block
+  for (mlir::Operation &child_child_op : epoch_block) {
+    if (auto raw_op = llvm::dyn_cast<vesyla::pasm::RawOp>(&child_child_op)) {
+      int row = raw_op.getRow();
+      int col = raw_op.getCol();
+      output_file << "cell (row=" << row << ", col=" << col << ")\n";
+      mlir::Region &raw_region = raw_op.getBody();
+      if (!raw_region.empty()) {
+        mlir::Block &raw_block = raw_region.front();
+        // Iterate through all operations in the raw's block
+        for (mlir::Operation &child_child_child_op : raw_block) {
+          if (auto instr_op = llvm::dyn_cast<vesyla::pasm::InstrOp>(
+                  &child_child_child_op)) {
+            std::string type = instr_op.getType().str();
+            output_file << type << "(";
+
+            mlir::DictionaryAttr current_instr_params = instr_op.getParam();
+
+            bool is_first = true;
+            // Emit the variant selector first, if present, so the
+            // textual form reads conf(variant="...", ...).
+            if (auto variant_attr = current_instr_params.get("variant")) {
+              if (auto str_attr =
+                      llvm::dyn_cast<mlir::StringAttr>(variant_attr)) {
+                output_file << "variant=\"" << str_attr.str() << "\"";
+                is_first = false;
+              }
+            }
+            for (const mlir::NamedAttribute &named_attr_entry :
+                 current_instr_params) {
+              auto attr_name = named_attr_entry.getName();
+              auto attr_value = named_attr_entry.getValue();
+              if (attr_name.str() == "variant") {
+                continue;
+              }
+
+              if (auto int_attr =
+                      llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
+                if (!is_first) {
+                  output_file << ", ";
+                }
+                is_first = false;
+                output_file << attr_name.str() << "=" << int_attr.getInt();
+              } else {
+                llvm::outs()
+                    << "Unsupported parameter type in InstrOp: " << attr_value
+                    << "\n";
+                std::exit(EXIT_FAILURE);
+              }
+            }
+
+            output_file << ")\n";
+          } else if (auto yield_op = llvm::dyn_cast<vesyla::pasm::YieldOp>(
+                         &child_child_child_op)) {
+            // DO NOTHING
+          } else {
+            llvm::outs() << "Error: Illegal operation type in RawOp: "
+                         << child_child_child_op.getName() << "\n";
+            std::exit(EXIT_FAILURE);
+          }
+        }
+      }
+    } else if (auto yield_op =
+                   llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_child_op)) {
+      // DO NOTHING
+    } else {
+      llvm::outs() << "Error: Illegal operation type in EpochOp: "
+                   << child_child_op.getName() << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+  }
+}
+
 void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
                         const std::string &filename) {
   vesyla::pasm::Config cfg;
@@ -153,230 +163,217 @@ void Generator::gen_bin(mlir::ModuleOp module, const std::string &output_dir,
     std::exit(EXIT_FAILURE);
   }
 
-  mlir::Region &module_region = module.getBodyRegion();
-  if (!module_region.empty()) {
-    mlir::Block &module_block = module_region.front();
-    // Iterate through all operations in the module's block
-    for (mlir::Operation &child_op : module_block) {
-      if (auto epoch_op = llvm::dyn_cast<vesyla::pasm::EpochOp>(&child_op)) {
-        mlir::Region &epoch_region = epoch_op.getBody();
-        if (!epoch_region.empty()) {
-          mlir::Block &epoch_block = epoch_region.front();
-          // Iterate through all operations in the epoch's block
-          for (mlir::Operation &child_child_op : epoch_block) {
-            if (auto raw_op =
-                    llvm::dyn_cast<vesyla::pasm::RawOp>(&child_child_op)) {
-              int row = raw_op.getRow();
-              int col = raw_op.getCol();
-              output_file << "cell " << row << " " << col << "\n";
-              mlir::Region &raw_region = raw_op.getBody();
-              if (!raw_region.empty()) {
-                mlir::Block &raw_block = raw_region.front();
-                // Iterate through all operations in the raw's block
-                for (mlir::Operation &child_child_child_op : raw_block) {
-                  if (auto instr_op = llvm::dyn_cast<vesyla::pasm::InstrOp>(
-                          &child_child_child_op)) {
-                    // get instr name
-                    std::string instr_type = instr_op.getType().str();
-                    // check if it has the field "slot" and "port"
-                    mlir::DictionaryAttr current_instr_params =
-                        instr_op.getParam();
-                    int slot = -1;
-                    int port = -1;
-                    for (const mlir::NamedAttribute &named_attr_entry :
-                         current_instr_params) {
-                      auto attr_name = named_attr_entry.getName();
-                      auto attr_value = named_attr_entry.getValue();
-                      if (attr_name.str() == "slot") {
-                        if (auto int_attr =
-                                llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
-                          slot = int_attr.getInt();
-                        } else {
-                          llvm::outs()
-                              << "Unsupported parameter type in InstrOp: "
-                              << attr_value << "\n";
-                          std::exit(EXIT_FAILURE);
-                        }
-                      } else if (attr_name.str() == "port") {
-                        if (auto int_attr =
-                                llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
-                          port = int_attr.getInt();
-                        } else {
-                          llvm::outs()
-                              << "Unsupported parameter type in InstrOp: "
-                              << attr_value << "\n";
-                          std::exit(EXIT_FAILURE);
-                        }
-                      }
-                    }
-
-                    // Resource instructions carry a slot and resolve to a
-                    // resource kind keyed by (row, col, slot); control
-                    // instructions have no slot and resolve to the controller
-                    // keyed by (row, col). The port is no longer part of the
-                    // key (the kind is the same across a slot's ports).
-                    std::string label =
-                        std::to_string(row) + "_" + std::to_string(col);
-                    if (slot != -1) {
-                      label += "_" + std::to_string(slot);
-                    }
-                    if (component_map_json.find(label) ==
-                        component_map_json.end()) {
-                      llvm::outs() << "Error: Cannot find the component for "
-                                      "label: "
-                                   << label << "\n";
-                      std::exit(EXIT_FAILURE);
-                    }
-                    std::string component_kind =
-                        component_map_json[label].get<std::string>();
-
-                    nlohmann::json instr_json;
-                    for (auto component : isa_json["components"]) {
-                      if (component["kind"] == component_kind) {
-                        for (auto instr : component["instructions"]) {
-                          if (instr["name"] == instr_type) {
-                            instr_json = instr;
-                            break;
-                          }
-                        }
-                        break;
-                      }
-                    }
-                    if (instr_json.empty()) {
-                      llvm::outs() << "Error: Cannot find the instruction "
-                                      "definition for: "
-                                   << instr_type << "\n";
-                      std::exit(EXIT_FAILURE);
-                    }
-                    std::string instr_bin = "";
-                    instr_bin += int2bin(instr_json["instr_type"].get<int>(),
-                                         instr_type_bitwidth);
-                    instr_bin += int2bin(instr_json["opcode"].get<int>(),
-                                         instr_opcode_bitwidth);
-                    if (slot != -1) {
-                      instr_bin += int2bin(slot, instr_slot_bitwidth);
-                    }
-
-                    // A variant-based instruction (e.g. conf) encodes the
-                    // variant opcode at the top of the instruction content,
-                    // followed by the selected variant's segments. A plain
-                    // instruction encodes its own segments directly.
-                    nlohmann::json segments_json;
-                    if (instr_json.contains("variants")) {
-                      std::string variant_name;
-                      if (current_instr_params.contains("variant")) {
-                        if (auto str_attr = llvm::dyn_cast<mlir::StringAttr>(
-                                current_instr_params.get("variant"))) {
-                          variant_name = str_attr.str();
-                        }
-                      }
-                      if (variant_name.empty()) {
-                        llvm::outs()
-                            << "Error: Missing 'variant' parameter for "
-                               "instruction: "
-                            << instr_type << "\n";
-                        std::exit(EXIT_FAILURE);
-                      }
-                      int variant_opcode_bitwidth =
-                          instr_json["variant_opcode_bitwidth"].get<int>();
-                      nlohmann::json variant_json;
-                      for (auto variant : instr_json["variants"]) {
-                        if (variant["name"] == variant_name) {
-                          variant_json = variant;
-                          break;
-                        }
-                      }
-                      if (variant_json.empty()) {
-                        llvm::outs()
-                            << "Error: Cannot find the variant definition for: "
-                            << variant_name
-                            << " in instruction: " << instr_type << "\n";
-                        std::exit(EXIT_FAILURE);
-                      }
-                      instr_bin += int2bin(variant_json["opcode"].get<int>(),
-                                           variant_opcode_bitwidth);
-                      segments_json = variant_json["segments"];
-                    } else {
-                      segments_json = instr_json["segments"];
-                    }
-
-                    for (const auto &segment : segments_json) {
-                      std::string segment_name =
-                          segment["name"].get<std::string>();
-                      int segment_bitwidth = segment["bitwidth"].get<int>();
-                      if (current_instr_params.contains(segment_name)) {
-                        auto attr_value =
-                            current_instr_params.get(segment_name);
-                        if (auto int_attr =
-                                llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
-                          instr_bin +=
-                              int2bin(int_attr.getInt(), segment_bitwidth);
-                        } else {
-                          llvm::outs()
-                              << "Unsupported parameter type in InstrOp: "
-                              << attr_value << "\n";
-                          std::exit(EXIT_FAILURE);
-                        }
-                      } else {
-                        llvm::outs()
-                            << "Error: Missing parameter '" << segment_name
-                            << "' in InstrOp for instruction: " << instr_type
-                            << "\n";
-                        std::exit(EXIT_FAILURE);
-                      }
-                    }
-
-                    // pad the instruction binary to the required bitwidth
-                    if (instr_bin.size() < instr_bitwidth) {
-                      instr_bin +=
-                          std::string(instr_bitwidth - instr_bin.size(), '0');
-                    } else if (instr_bin.size() > instr_bitwidth) {
-                      llvm::outs() << "Error: Instruction binary size "
-                                   << instr_bin.size()
-                                   << " exceeds the required bitwidth: "
-                                   << instr_bitwidth
-                                   << " for instruction: " << instr_type
-                                   << " (id: " << instr_op.getId().str() << ")"
-                                   << "\n";
-                      std::exit(EXIT_FAILURE);
-                    }
-
-                    output_file << instr_bin << "\n";
-                  } else if (auto yield_op =
-                                 llvm::dyn_cast<vesyla::pasm::YieldOp>(
-                                     &child_child_child_op)) {
-                    // DO NOTHING
-                  } else {
-                    llvm::outs() << "Error: Illegal operation type in RawOp: "
-                                 << child_child_child_op.getName() << "\n";
-                    std::exit(EXIT_FAILURE);
-                  }
-                }
-              }
-
-            } else if (auto yield_op = llvm::dyn_cast<vesyla::pasm::YieldOp>(
-                           &child_child_op)) {
-              // DO NOTHING
-            } else {
-              llvm::outs() << "Error: Illegal operation type in EpochOp: "
-                           << child_op.getName() << "\n";
-              std::exit(EXIT_FAILURE);
-            }
-          }
-        }
-      } else if (auto yield_op =
-                     llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_op)) {
-        // DO NOTHING
-      } else {
-        llvm::outs() << "Error: Illegal operation type in ModuleOp: "
-                     << child_op.getName() << "\n";
-        std::exit(EXIT_FAILURE);
-      }
-    }
-  }
+  emit_program(module, [&](vesyla::pasm::EpochOp ep) {
+    emit_epoch_bin(ep, output_file, component_map_json, isa_json,
+                   instr_bitwidth, instr_opcode_bitwidth, instr_slot_bitwidth,
+                   instr_type_bitwidth);
+  });
 
   // close the file
   output_file.close();
+}
+
+void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
+                               std::ofstream &output_file,
+                               nlohmann::json &component_map_json,
+                               nlohmann::json &isa_json, int instr_bitwidth,
+                               int instr_opcode_bitwidth,
+                               int instr_slot_bitwidth,
+                               int instr_type_bitwidth) {
+  mlir::Region &epoch_region = epoch_op.getBody();
+  if (epoch_region.empty()) {
+    return;
+  }
+  mlir::Block &epoch_block = epoch_region.front();
+  // Iterate through all operations in the epoch's block
+  for (mlir::Operation &child_child_op : epoch_block) {
+    if (auto raw_op = llvm::dyn_cast<vesyla::pasm::RawOp>(&child_child_op)) {
+      int row = raw_op.getRow();
+      int col = raw_op.getCol();
+      output_file << "cell " << row << " " << col << "\n";
+      mlir::Region &raw_region = raw_op.getBody();
+      if (!raw_region.empty()) {
+        mlir::Block &raw_block = raw_region.front();
+        // Iterate through all operations in the raw's block
+        for (mlir::Operation &child_child_child_op : raw_block) {
+          if (auto instr_op = llvm::dyn_cast<vesyla::pasm::InstrOp>(
+                  &child_child_child_op)) {
+            // get instr name
+            std::string instr_type = instr_op.getType().str();
+            // check if it has the field "slot" and "port"
+            mlir::DictionaryAttr current_instr_params = instr_op.getParam();
+            int slot = -1;
+            int port = -1;
+            for (const mlir::NamedAttribute &named_attr_entry :
+                 current_instr_params) {
+              auto attr_name = named_attr_entry.getName();
+              auto attr_value = named_attr_entry.getValue();
+              if (attr_name.str() == "slot") {
+                if (auto int_attr =
+                        llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
+                  slot = int_attr.getInt();
+                } else {
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
+                  std::exit(EXIT_FAILURE);
+                }
+              } else if (attr_name.str() == "port") {
+                if (auto int_attr =
+                        llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
+                  port = int_attr.getInt();
+                } else {
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
+                  std::exit(EXIT_FAILURE);
+                }
+              }
+            }
+
+            // Resource instructions carry a slot and resolve to a
+            // resource kind keyed by (row, col, slot); control
+            // instructions have no slot and resolve to the controller
+            // keyed by (row, col). The port is no longer part of the
+            // key (the kind is the same across a slot's ports).
+            std::string label = std::to_string(row) + "_" + std::to_string(col);
+            if (slot != -1) {
+              label += "_" + std::to_string(slot);
+            }
+            if (component_map_json.find(label) == component_map_json.end()) {
+              llvm::outs() << "Error: Cannot find the component for "
+                              "label: "
+                           << label << "\n";
+              std::exit(EXIT_FAILURE);
+            }
+            std::string component_kind =
+                component_map_json[label].get<std::string>();
+
+            nlohmann::json instr_json;
+            for (auto component : isa_json["components"]) {
+              if (component["kind"] == component_kind) {
+                for (auto instr : component["instructions"]) {
+                  if (instr["name"] == instr_type) {
+                    instr_json = instr;
+                    break;
+                  }
+                }
+                break;
+              }
+            }
+            if (instr_json.empty()) {
+              llvm::outs() << "Error: Cannot find the instruction "
+                              "definition for: "
+                           << instr_type << "\n";
+              std::exit(EXIT_FAILURE);
+            }
+            std::string instr_bin = "";
+            instr_bin += int2bin(instr_json["instr_type"].get<int>(),
+                                 instr_type_bitwidth);
+            instr_bin +=
+                int2bin(instr_json["opcode"].get<int>(), instr_opcode_bitwidth);
+            if (slot != -1) {
+              instr_bin += int2bin(slot, instr_slot_bitwidth);
+            }
+
+            // A variant-based instruction (e.g. conf) encodes the
+            // variant opcode at the top of the instruction content,
+            // followed by the selected variant's segments. A plain
+            // instruction encodes its own segments directly.
+            nlohmann::json segments_json;
+            if (instr_json.contains("variants")) {
+              std::string variant_name;
+              if (current_instr_params.contains("variant")) {
+                if (auto str_attr = llvm::dyn_cast<mlir::StringAttr>(
+                        current_instr_params.get("variant"))) {
+                  variant_name = str_attr.str();
+                }
+              }
+              if (variant_name.empty()) {
+                llvm::outs() << "Error: Missing 'variant' parameter for "
+                                "instruction: "
+                             << instr_type << "\n";
+                std::exit(EXIT_FAILURE);
+              }
+              int variant_opcode_bitwidth =
+                  instr_json["variant_opcode_bitwidth"].get<int>();
+              nlohmann::json variant_json;
+              for (auto variant : instr_json["variants"]) {
+                if (variant["name"] == variant_name) {
+                  variant_json = variant;
+                  break;
+                }
+              }
+              if (variant_json.empty()) {
+                llvm::outs()
+                    << "Error: Cannot find the variant definition for: "
+                    << variant_name << " in instruction: " << instr_type
+                    << "\n";
+                std::exit(EXIT_FAILURE);
+              }
+              instr_bin += int2bin(variant_json["opcode"].get<int>(),
+                                   variant_opcode_bitwidth);
+              segments_json = variant_json["segments"];
+            } else {
+              segments_json = instr_json["segments"];
+            }
+
+            for (const auto &segment : segments_json) {
+              std::string segment_name = segment["name"].get<std::string>();
+              int segment_bitwidth = segment["bitwidth"].get<int>();
+              if (current_instr_params.contains(segment_name)) {
+                auto attr_value = current_instr_params.get(segment_name);
+                if (auto int_attr =
+                        llvm::dyn_cast<mlir::IntegerAttr>(attr_value)) {
+                  instr_bin += int2bin(int_attr.getInt(), segment_bitwidth);
+                } else {
+                  llvm::outs()
+                      << "Unsupported parameter type in InstrOp: " << attr_value
+                      << "\n";
+                  std::exit(EXIT_FAILURE);
+                }
+              } else {
+                llvm::outs()
+                    << "Error: Missing parameter '" << segment_name
+                    << "' in InstrOp for instruction: " << instr_type << "\n";
+                std::exit(EXIT_FAILURE);
+              }
+            }
+
+            // pad the instruction binary to the required bitwidth
+            if (instr_bin.size() < instr_bitwidth) {
+              instr_bin += std::string(instr_bitwidth - instr_bin.size(), '0');
+            } else if (instr_bin.size() > instr_bitwidth) {
+              llvm::outs() << "Error: Instruction binary size "
+                           << instr_bin.size()
+                           << " exceeds the required bitwidth: "
+                           << instr_bitwidth
+                           << " for instruction: " << instr_type
+                           << " (id: " << instr_op.getId().str() << ")" << "\n";
+              std::exit(EXIT_FAILURE);
+            }
+
+            output_file << instr_bin << "\n";
+          } else if (auto yield_op = llvm::dyn_cast<vesyla::pasm::YieldOp>(
+                         &child_child_child_op)) {
+            // DO NOTHING
+          } else {
+            llvm::outs() << "Error: Illegal operation type in RawOp: "
+                         << child_child_child_op.getName() << "\n";
+            std::exit(EXIT_FAILURE);
+          }
+        }
+      }
+
+    } else if (auto yield_op =
+                   llvm::dyn_cast<vesyla::pasm::YieldOp>(&child_child_op)) {
+      // DO NOTHING
+    } else {
+      llvm::outs() << "Error: Illegal operation type in EpochOp: "
+                   << child_child_op.getName() << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+  }
 }
 
 } // namespace schedule
