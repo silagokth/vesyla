@@ -55,31 +55,6 @@ std::unordered_map<int, int> parse_indexed_array(const std::string &s) {
   return out;
 }
 
-// Resolve "${key}" references in a config value by substituting the value of
-// the referenced string entry from the same config object. This keeps path
-// composition (e.g. "${compile_dir}/timetable") expressed in config.json
-// rather than hard-coded here.
-std::string resolve_config_refs(const std::string &value,
-                                const nlohmann::json &config_json) {
-  std::string result = value;
-  std::string::size_type pos = 0;
-  while ((pos = result.find("${", pos)) != std::string::npos) {
-    std::string::size_type end = result.find('}', pos + 2);
-    if (end == std::string::npos) {
-      break;
-    }
-    std::string key = result.substr(pos + 2, end - (pos + 2));
-    std::string replacement;
-    if (config_json.is_object() && config_json.contains(key) &&
-        config_json[key].is_string()) {
-      replacement = config_json[key].get<std::string>();
-    }
-    result.replace(pos, end - pos + 1, replacement);
-    pos += replacement.size();
-  }
-  return result;
-}
-
 } // namespace
 
 // Write the resolved schedule of one epoch to a JSON file for visualization.
@@ -113,16 +88,11 @@ void dump_schedule_table(
   std::filesystem::path output_dir =
       std::filesystem::path(trimmed).parent_path().parent_path();
 
-  // The timetable location is taken verbatim from config.json (with "${key}"
-  // references resolved), e.g. "${compile_dir}/timetable" -> "compile/timetable".
+  // The timetable location comes from the "output" section of config.json (with
+  // "${key}" references resolved), e.g. "${compile_dir}/timetable" ->
+  // "compile/timetable", relative to the compile output directory.
   ::vesyla::pasm::Config cfg;
-  nlohmann::json config_json = cfg.get_config_json();
-  std::string timetable_dir = "timetable";
-  if (config_json.is_object() && config_json.contains("timetable_dir") &&
-      config_json["timetable_dir"].is_string()) {
-    timetable_dir = config_json["timetable_dir"].get<std::string>();
-  }
-  timetable_dir = resolve_config_refs(timetable_dir, config_json);
+  std::string timetable_dir = cfg.output_path("timetable_dir");
 
   std::filesystem::path timetable_path = output_dir / timetable_dir;
   std::error_code ec;
@@ -233,7 +203,8 @@ void dump_schedule_table(
   doc["controllers"] = std::move(controllers);
 
   std::filesystem::path out_filename =
-      timetable_path / ("schedule_" + epoch_id + ".json");
+      timetable_path /
+      (cfg.output_path("schedule_dump_prefix") + epoch_id + ".json");
   std::ofstream out(out_filename);
   if (!out.is_open()) {
     llvm::outs() << "Warning: could not write timetable dump to "
@@ -248,7 +219,7 @@ void dump_schedule_table(
   // Best-effort render of the JSON just written to SVG/PNG. A missing script or
   // a failing render only logs a warning; it never aborts the compile.
   std::string timetable_script =
-      ::vesyla::util::SysPath::prog_dir() + "scripts/timetable.py";
+      ::vesyla::util::SysPath::prog_dir() + cfg.script_path("timetable");
   if (!std::filesystem::exists(timetable_script)) {
     llvm::outs() << "Warning: timetable visualization script not found: "
                  << timetable_script << "\n";

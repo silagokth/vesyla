@@ -18,6 +18,8 @@
 #include "conversion/affine_to_pasm/AffineToRepPass.hpp"
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
+#include "conversion/select_instructions/SelectInstructionsPass.hpp"
+#include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
@@ -58,13 +60,48 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
 
   // Dump the module after each pass into a debug folder, mirroring the
-  // scheduler. scf_0.mlir is the parsed input; subsequent files follow the
-  // passes.
-  std::string module_debug_path = output_dir + "/debug/compile";
+  // scheduler. The <prefix>0 file is the parsed input; subsequent files follow
+  // the passes. The debug folder, stage-file prefix, and extension all come
+  // from the "output" section of config.json.
+  vesyla::pasm::Config cfg;
+  std::string module_debug_path =
+      output_dir + "/" + cfg.output_path("compile_debug_dir");
   if (!std::filesystem::exists(module_debug_path)) {
     std::filesystem::create_directories(module_debug_path);
   }
-  save_mlir(*module, module_debug_path + "/scf_0.mlir");
+  const std::string stage_prefix = cfg.output_path("compile_stage_prefix");
+  const std::string stage_ext = cfg.output_path("stage_ext");
+  auto stage_file = [&](int i) {
+    return module_debug_path + "/" + stage_prefix + std::to_string(i) +
+           stage_ext;
+  };
+  save_mlir(*module, stage_file(0));
+
+  // SelectInstructionsPass runs first: it matches the upstream affine + arith
+  // ops against the functional descriptions the resources ship in the component
+  // library, and annotates each match with the instruction it selected.
+  mlir::PassManager select_pm(&context);
+  select_pm.addPass(
+      vesyla::conversion::select_instructions::createSelectInstructionsPass());
+  if (mlir::failed(select_pm.run(*module))) {
+    LOG_FATAL << "Error: SelectInstructionsPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, stage_file(1));
+
+  // DesignSpaceExplorationPass runs after instruction selection and before
+  // icdep generation: selection says what each operation does, and this says
+  // where it runs. Allocation comes from the architecture file; binding and
+  // scheduling are decided here. It ends by checking that every operation came
+  // out bound, which is what the passes below rely on.
+  mlir::PassManager dse_pm(&context);
+  dse_pm.addPass(
+      vesyla::transformation::dse::createDesignSpaceExplorationPass());
+  if (mlir::failed(dse_pm.run(*module))) {
+    LOG_FATAL << "Error: DesignSpaceExplorationPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, stage_file(2));
 
   // GenerateIcdepPass must run before DrraToPasmPass: it derives interconnect
   // dependencies from the drra.rop SSA def-use chains and their `resource`/`id`
@@ -78,7 +115,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: GenerateIcdepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_1.mlir");
+  save_mlir(*module, stage_file(3));
 
   mlir::PassManager create_constraints_pm(&context);
   create_constraints_pm.addPass(
@@ -87,7 +124,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: CreateConstraintsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_2.mlir");
+  save_mlir(*module, stage_file(4));
 
   mlir::PassManager drra_to_pasm_pm(&context);
   drra_to_pasm_pm.addPass(
@@ -96,7 +133,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: DrraToPasmPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_3.mlir");
+  save_mlir(*module, stage_file(5));
 
   mlir::PassManager affine_pm(&context);
   affine_pm.addPass(
@@ -105,7 +142,20 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: AffineToRepPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_4.mlir");
+  save_mlir(*module, stage_file(6));
+
+  // CoalesceRopsPass runs between the rep lowering and cell extraction. It
+  // wants the rops in their final region form with init_addr resolved, which
+  // is what AffineToRepPass leaves behind, and it has to run before the
+  // interconnect so routes and route options are built over the merged
+  // program rather than patched afterwards.
+  mlir::PassManager coalesce_pm(&context);
+  coalesce_pm.addPass(vesyla::pasm::createCoalesceRopsPass());
+  if (mlir::failed(coalesce_pm.run(*module))) {
+    LOG_FATAL << "Error: CoalesceRopsPass failed.";
+    return nullptr;
+  }
+  save_mlir(*module, stage_file(7));
 
   mlir::PassManager extract_pm(&context);
   extract_pm.addPass(vesyla::pasm::createExtractCellsPass());
@@ -113,7 +163,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: ExtractCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_5.mlir");
+  save_mlir(*module, stage_file(8));
 
   mlir::PassManager pm(&context);
   pm.addPass(vesyla::pasm::createInterconnectPass());
@@ -121,7 +171,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: InterconnectPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_6.mlir");
+  save_mlir(*module, stage_file(9));
 
   mlir::PassManager flatten_pm(&context);
   flatten_pm.addPass(vesyla::pasm::createFlattenCellsPass());
@@ -129,7 +179,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     LOG_FATAL << "Error: FlattenCellsPass failed.";
     return nullptr;
   }
-  save_mlir(*module, module_debug_path + "/scf_7.mlir");
+  save_mlir(*module, stage_file(10));
 
   return module;
 }
@@ -239,14 +289,16 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
-  // port table and AddDefaultValuePass needs the ISA, so both are loaded
-  // before the passes. arch is only consumed later by the scheduler (and its
-  // loader does unguarded traversal), so it stays after the passes.
+  // port table, AddDefaultValuePass needs the ISA, and
+  // DesignSpaceExplorationPass needs the architecture, since that file is what
+  // says which resources the design has. All three are loaded before the
+  // passes run.
   vesyla::pasm::Config cfg;
   if (!config_file.empty()) {
     cfg.set_config_json(config_file);
   }
   cfg.set_isa_json(isa_file);
+  cfg.set_arch_json(arch_file);
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
@@ -260,15 +312,13 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  cfg.set_arch_json(arch_file);
-
   mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;
   scheduler.run(module_op, output_dir, allow_unsafe, keep_debug);
 
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {
-    std::string mzn_dir = output_dir + "/debug/minizinc";
+    std::string mzn_dir = output_dir + "/" + cfg.output_path("minizinc_dir");
     if (std::filesystem::exists(mzn_dir)) {
       std::filesystem::remove_all(mzn_dir);
     }

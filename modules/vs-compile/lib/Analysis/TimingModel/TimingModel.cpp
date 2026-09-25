@@ -134,7 +134,7 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
       // print all anchors
       for (auto it2 = anchors.begin(); it2 != anchors.end(); ++it2) {
         LOG_ERROR << "Anchor " << it2->second.name
-                  << " with expr: " << it2->second.expr.to_string()
+                  << " with expr: " << it2->second.anchor.to_string()
                   << " and timing_expr: " << it2->second.timing_expr;
       }
       std::exit(EXIT_FAILURE);
@@ -267,18 +267,16 @@ void TimingModel::extractVariables() {
 }
 
 void TimingModel::extractAnchors() {
-  // Register a tm::Anchor for every (op, event, idx) referenced by a
-  // Constraint's src_anchor / dst_anchor. The existing tm::Anchor constructor
-  // takes a dotted string, so we build one from the structured fields and
-  // let it derive op_name / event_id / indices / flat name itself.
+  // Register a tm::Anchor for every anchor referenced by a Constraint's
+  // src_anchor / dst_anchor. The owning operation id becomes the anchor name,
+  // and tm::Anchor derives the flat MZN identifier from it.
   auto register_anchor = [&](const std::string &id,
                              const std::optional<Constraint::Anchor> &a) {
     if (!a)
       return;
-    std::string dotted = id + "." + a->event_id;
-    for (int i : a->idx)
-      dotted += "[" + std::to_string(i) + "]";
-    Anchor anchor(dotted);
+    ::vesyla::Anchor core = *a;
+    core.name = id;
+    Anchor anchor(core);
     anchors[anchor.name] = anchor;
   };
 
@@ -309,7 +307,7 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
                                           BinaryTree<BinaryTreeData> *tree) {
   std::vector<string> anchors_in_op;
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
-    if (it->second.expr.op_name == op.name) {
+    if (it->second.anchor.name == op.name) {
       anchors_in_op.push_back(it->first);
     }
   }
@@ -321,8 +319,13 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
     string anchor_name = *it2;
     string op_name = op.name;
     Anchor &anchor = anchors[anchor_name];
-    string event_id = std::to_string(anchor.expr.event_id);
-    std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
+    // MT is the event id (option B).
+    string event_id = std::to_string(anchor.anchor.mt_idx);
+    // OR indices (outer repeats) then IR indices (inner repeats), both
+    // outer-first, matching the outer-first repeat-ancestor stack below.
+    vector<int> indices = anchor.anchor.or_idx;
+    indices.insert(indices.end(), anchor.anchor.ir_idx.begin(),
+                   anchor.anchor.ir_idx.end());
     for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
          ++it3) {
       if (it3->first->data->expr.kind != OperationExpr::EVENT) {
@@ -334,6 +337,7 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
       }
 
       // go through all its parents and find the repeat operation
+      std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
       BinaryTree<BinaryTreeData> *parent = it3->second;
       while (parent) {
         if (parent->data->expr.kind == OperationExpr::REPEAT) {
@@ -349,7 +353,6 @@ void TimingModel::resolveAnchorTimingExpr(Operation &op,
 
       // reverse the stack
       std::reverse(r_op_stack.begin(), r_op_stack.end());
-      vector<int> indices = anchor.expr.indices;
 
       if (r_op_stack.size() < indices.size()) {
         LOG_ERROR << "r_op_stack size: " << r_op_stack.size();

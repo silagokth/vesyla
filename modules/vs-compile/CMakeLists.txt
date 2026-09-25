@@ -266,6 +266,63 @@ add_mlir_library(
   VesylaPasm
   VesylaDrra)
 
+# Instruction selector: affine + arith -> drra. The patterns are not compiled in
+# -- they are loaded at run time from the component library, so adding a
+# resource does not rebuild this.
+add_custom_mlir_pass_dir(conversion/select_instructions VesylaSelectInstr)
+
+file(GLOB SOURCE_SELECT_INSTR "src/conversion/select_instructions/*.cpp")
+add_mlir_library(
+  VesylaSelectInstr
+  ${SOURCE_SELECT_INSTR}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSelectInstrIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  MLIRVectorDialect
+  MLIRParser
+  VesylaPasm
+  VesylaDrra
+  VesylaUtil)
+
+# Design space exploration: allocation, binding and scheduling over the module
+# instruction selection produced. Allocation is read from the architecture file;
+# binding and scheduling are still being written.
+add_custom_mlir_pass_dir(transformation/design_space_exploration VesylaDse)
+
+file(GLOB SOURCE_DSE "src/transformation/design_space_exploration/*.cpp")
+add_mlir_library(
+  VesylaDse
+  ${SOURCE_DSE}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDseIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRAnalysis
+  MLIRIR
+  MLIRPass
+  MLIRTransforms
+  MLIRTransformUtils
+  MLIRRewrite
+  VesylaPasm
+  VesylaDrra
+  VesylaUtil)
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -279,7 +336,8 @@ add_library(VesylaSchedule
             ${BISON_PasmParser_OUTPUTS})
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
-set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm VesylaTm VesylaUtil
+set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
+         VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
@@ -291,9 +349,19 @@ install(FILES scripts/script_grouped_no_slot0.py DESTINATION scripts)
 file(COPY scripts/timetable.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(FILES scripts/timetable.py DESTINATION scripts)
 
-# Stage runtime config (e.g. the config holding the port table) next to the
-# executable so it can be found at the default path: prog_dir()/config/.
-file(COPY config/ DESTINATION ${CMAKE_BINARY_DIR}/config)
+# Stage runtime config (e.g. the config holding the port table and output
+# layout) next to the executable so it can be found at the default path:
+# prog_dir()/config/. The staged copy depends on the source config, so editing
+# config/config.json re-stages it on the next build (a plain file(COPY) only
+# runs at configure time and would leave the staged copy stale).
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/config/config.json
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_CURRENT_SOURCE_DIR}/config ${CMAKE_BINARY_DIR}/config
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/config/config.json
+  COMMENT "Staging runtime config next to vs-compile")
+add_custom_target(stage_config ALL
+                  DEPENDS ${CMAKE_BINARY_DIR}/config/config.json)
 install(DIRECTORY config/ DESTINATION config)
 
 #==============================================================================
@@ -303,6 +371,7 @@ add_llvm_executable(vs-compile src/main.cpp)
 llvm_update_compile_flags(vs-compile)
 target_link_libraries(vs-compile PRIVATE ${LIBS})
 mlir_check_all_link_libraries(vs-compile)
+add_dependencies(vs-compile stage_config)
 
 # Build the pasm MLIR LSP server
 add_executable(pasm-mlir-lsp-server tools/pasm-mlir-lsp-server/main.cpp)

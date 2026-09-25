@@ -4,12 +4,14 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
+#include <filesystem>
 #include <set>
 #include <tuple>
 
 #include "vesyla/Dialect/Pasm/IR/InterconnectBinding.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/RoutingDepGraph.hpp"
+#include "vesyla/Support/Config.hpp"
 
 namespace vesyla::pasm {
 #define GEN_PASS_DEF_INTERCONNECTPASS
@@ -19,7 +21,7 @@ namespace {
 
 struct RangeRef {
   mlir::FlatSymbolRefAttr instr_id;
-  std::string event;
+  uint32_t mt;
   std::vector<uint32_t> lo;
   std::vector<uint32_t> hi;
 };
@@ -92,17 +94,18 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       continue;
     }
 
+    auto to_u = [](llvm::ArrayRef<int32_t> v) {
+      return std::vector<uint32_t>(v.begin(), v.end());
+    };
     AnchorAttr first = icdep.getFirst();
-    llvm::ArrayRef<int32_t> first_idx = first.getIdx();
-    std::vector<uint32_t> first_idx_v(first_idx.begin(), first_idx.end());
-    Anchor first_anchor{first.getInstr(), first.getEvent().str(),
-                        std::move(first_idx_v), first.getDelay()};
+    Anchor first_anchor{first.getInstr(), to_u(first.getOrIdx()),
+                        static_cast<uint32_t>(first.getMt()),
+                        to_u(first.getIrIdx()), first.getDelay()};
 
     AnchorAttr last = icdep.getLast();
-    llvm::ArrayRef<int32_t> last_idx = last.getIdx();
-    std::vector<uint32_t> last_idx_v(last_idx.begin(), last_idx.end());
-    Anchor last_anchor{last.getInstr(), last.getEvent().str(),
-                       std::move(last_idx_v), last.getDelay()};
+    Anchor last_anchor{last.getInstr(), to_u(last.getOrIdx()),
+                       static_cast<uint32_t>(last.getMt()),
+                       to_u(last.getIrIdx()), last.getDelay()};
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,
@@ -120,11 +123,11 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
 
     // DFS stack of range frames yet to expand for this node.
     std::vector<RangeRef> stack;
-    stack.push_back(RangeRef{node.anchor.instr_id, node.anchor.event,
-                             node.anchor.indices, node.anchor.indices});
+    stack.push_back(RangeRef{node.anchor.instr_id, node.anchor.mt,
+                             node.anchor.ir_idx, node.anchor.ir_idx});
 
     // Cycle guard: delay-[0,0] reverse traversal can otherwise loop forever.
-    std::set<std::tuple<std::string, std::string, std::vector<uint32_t>,
+    std::set<std::tuple<std::string, uint32_t, std::vector<uint32_t>,
                         std::vector<uint32_t>>>
         visited;
 
@@ -134,7 +137,7 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       stack.pop_back();
 
       auto visit_key = std::make_tuple(current.instr_id.getValue().str(),
-                                       current.event, current.lo, current.hi);
+                                       current.mt, current.lo, current.hi);
       if (!visited.insert(visit_key).second) {
         continue;
       }
@@ -156,17 +159,19 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           if (src_ar.getInstr() != current.instr_id) {
             continue;
           }
-          std::string src_event = src_ar.getEvent().str();
-          if (src_event != current.event) {
+          // AnchorRangeAttr stores OR/MT/IR. Routing propagates over the IR
+          // range and matches on MT (the event id); OR is assumed empty here
+          // (true for generated anchors).
+          if (src_ar.getMtLo() != current.mt) {
             continue;
           }
 
           // constraints without indices should just be propagated
-          if (src_event.empty()) {
-            llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
-            llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
+          if (src_ar.getIrLo().empty()) {
+            llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
+            llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
             stack.push_back(
-                RangeRef{dst_ar.getInstr(), dst_ar.getEvent().str(),
+                RangeRef{dst_ar.getInstr(), dst_ar.getMtLo(),
                          std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
                          std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
             continue;
@@ -176,9 +181,9 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           // every propagated dim — clamp + map_index handles every other case.
           // Surplus src dims (beyond dst's arity) are filter dims and aren't
           // gated here.
-          llvm::ArrayRef<uint32_t> src_lo = src_ar.getIdxLo();
-          llvm::ArrayRef<uint32_t> src_hi = src_ar.getIdxHi();
-          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIdxLo();
+          llvm::ArrayRef<uint32_t> src_lo = src_ar.getIrLo();
+          llvm::ArrayRef<uint32_t> src_hi = src_ar.getIrHi();
+          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIrLo();
           llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
           std::size_t n = std::min(src_lo.size(), dst_lo_ar.size());
           if (range_strictly_after(current_lo_ar.take_front(n),
@@ -186,8 +191,8 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
             continue;
           }
 
-          llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIdxLo();
-          llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIdxHi();
+          llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
+          llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
 
           // Clamp current.lo into src's rectangle, then map that src coord to
           // the corresponding dst coord by row-major flat-index correspondence.
@@ -200,7 +205,7 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
               map_index(matched_src, src_lo, src_hi, dst_lo, dst_hi);
 
           stack.push_back(RangeRef{
-              dst_ar.getInstr(), dst_ar.getEvent().str(), std::move(dst_new_lo),
+              dst_ar.getInstr(), dst_ar.getMtLo(), std::move(dst_new_lo),
               std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
         }
       }
@@ -214,10 +219,10 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
         if (candidate.anchor.instr_id != current.instr_id) {
           continue;
         }
-        if (candidate.anchor.event != current.event) {
+        if (candidate.anchor.mt != current.mt) {
           continue;
         }
-        llvm::ArrayRef<uint32_t> point = candidate.anchor.indices;
+        llvm::ArrayRef<uint32_t> point = candidate.anchor.ir_idx;
         if (point.size() != current.lo.size()) {
           continue;
         }
@@ -234,6 +239,24 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
         graph.insert_edge(node.key(), candidate.key());
       }
     }
+  }
+
+  // A transfer cannot finish before it starts.
+  //
+  // Stated after the DFS rather than beside the nodes, because the DFS can
+  // find a path back from a transfer's Last anchor to its own First -- both
+  // are anchors on the same instruction -- and insert_edge reads an edge that
+  // already runs the other way as the two being mutually reachable and marks
+  // the pair bidir. Bidir says the order between them is free, has_incoming
+  // ignores it, and the Last is then wired to the start sentinel and comes
+  // free at the outset. The binding walk takes a Last over a First whenever it
+  // can, so it retires the route before anything has opened it: the route
+  // never closes, every later option inherits it, and the options come out
+  // cumulative. The reverse edge goes, since a transfer finishing before it
+  // starts is not an ordering the graph can mean.
+  for (int id = 1; id < current_id; ++id) {
+    graph.remove_edge({id, NodeKind::Last}, {id, NodeKind::First});
+    graph.insert_edge({id, NodeKind::First}, {id, NodeKind::Last});
   }
 
   // Wire orphan nodes (no incoming/outgoing edges) to the start/end sentinels.
@@ -261,6 +284,26 @@ public:
                                 PatternRewriter &rewriter) const final {
     mlir::Block &epoch_block = op.getBody().front();
 
+    // Interconnect routing graphs (.dot/.png) are written under the compile
+    // output directory in the configurable "interconnect_dir" (default
+    // "${debug_dir}/interconnect", a sibling of the timetable). The output
+    // directory comes from the __OUTPUT_DIR__ global set by main; fall back to
+    // the current working directory when it is not set.
+    std::string output_dir;
+    if (!vesyla::util::GlobalVar::gets("__OUTPUT_DIR__", output_dir) ||
+        output_dir.empty()) {
+      output_dir = ".";
+    }
+    ::vesyla::pasm::Config cfg;
+    std::string interconnect_dir =
+        output_dir + "/" + cfg.output_path("interconnect_dir");
+    std::error_code dir_ec;
+    std::filesystem::create_directories(interconnect_dir, dir_ec);
+    if (dir_ec) {
+      llvm::errs() << "Warning: could not create interconnect directory "
+                   << interconnect_dir << ": " << dir_ec.message() << "\n";
+    }
+
     bool any_processed = false;
     for (CellOp cell : epoch_block.getOps<CellOp>()) {
       if (cell->hasAttr("interconnect_done")) {
@@ -279,8 +322,12 @@ public:
         RoutingDepGraph graph;
         populate_routes(graph, cell.getBody().front(), epoch_block, kind);
 
-        std::string dot_path = (prefix + "_" + cell_label + ".dot").str();
-        std::string png_path = (prefix + "_" + cell_label + ".png").str();
+        std::string dot_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".dot").str();
+        std::string png_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".png").str();
+        std::string svg_path =
+            interconnect_dir + "/" + (prefix + "_" + cell_label + ".svg").str();
         RoutingDepGraph reduced = graph;
         reduced.transitive_reduce();
         reduced.dump_dot(dot_path);
@@ -300,13 +347,20 @@ public:
           emit_interconnect_constraints(binding, rop, rewriter);
         }
 
-        // Best-effort PNG rendering via graphviz. Any failure is reported but
-        // does not abort the pass — the .dot file is always available.
-        std::string cmd = "dot -Tpng " + dot_path + " -o " + png_path;
-        int rc = std::system(cmd.c_str());
-        if (rc != 0) {
-          llvm::errs() << "graphviz rendering failed (rc=" << rc << "): " << cmd
-                       << "\n";
+        // Best-effort rendering via graphviz, producing both an SVG (preferred,
+        // vector) and a PNG. Any failure is reported but does not abort the
+        // pass — the .dot file is always available.
+        std::string svg_cmd = "dot -Tsvg " + dot_path + " -o " + svg_path;
+        int svg_rc = std::system(svg_cmd.c_str());
+        if (svg_rc != 0) {
+          llvm::errs() << "graphviz rendering failed (rc=" << svg_rc
+                       << "): " << svg_cmd << "\n";
+        }
+        std::string png_cmd = "dot -Tpng " + dot_path + " -o " + png_path;
+        int png_rc = std::system(png_cmd.c_str());
+        if (png_rc != 0) {
+          llvm::errs() << "graphviz rendering failed (rc=" << png_rc
+                       << "): " << png_cmd << "\n";
         }
       };
 

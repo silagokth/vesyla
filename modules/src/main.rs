@@ -19,6 +19,15 @@ fn get_drra_components_version() -> Result<String, std::io::Error> {
     Ok(version_content.trim().to_string())
 }
 
+// The child's exit code. A process killed by a signal reports none, so use the
+// shell's 128 + signal for that rather than collapsing it into a real code.
+fn exit_code(status: process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
+}
+
 fn main() {
     // set logger level to be debug
     env_logger::builder()
@@ -34,6 +43,8 @@ fn main() {
          \tcompile     Compile the source code\n\
          \tcomponent   Assemble the system\n\
          \ttestcase    Test the system\n\
+         \tverify      Run one testcase through every model and check they agree\n\
+         \tshow        Show debug artifacts (e.g. timetables)\n\
          Options:\n\
          \t-h, --help     Show this help message\n\
          \t-V, --version  Show version information",
@@ -47,7 +58,7 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = ["compile", "component", "testcase"];
+    let tools_list = ["compile", "component", "testcase", "verify", "show"];
     match command.as_str() {
         "-h" | "--help" => {
             println!("{}", help_message);
@@ -77,10 +88,18 @@ fn main() {
                 .stderr(process::Stdio::inherit())
                 .status()
                 .unwrap_or_else(|_| panic!("Failed to execute command: vs-{}", command));
-            if !status.success() && status.code() != Some(2) {
+            // Forward the child's status unchanged. The tools' exit codes are
+            // an interface, not a detail: vs-verify uses 1 setup, 2 SST run,
+            // 3 SST mismatch, 4 RTL run, 5 RTL mismatch, and the generated
+            // Robot suite decodes them into named steps. This used to make an
+            // exception for 2, which is exactly "SST failed to run", so a
+            // failed verify printed FAILED and still exited 0 -- every caller
+            // that checks the status recorded it as a pass.
+            if !status.success() {
+                let code = exit_code(status);
                 error!("{} command failed", command);
-                error!("Exit code: {}", status.code().unwrap_or(-1));
-                process::exit(status.code().unwrap_or(-1));
+                error!("Exit code: {}", code);
+                process::exit(code);
             }
         }
         _ => {

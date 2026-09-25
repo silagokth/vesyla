@@ -61,6 +61,15 @@ def AddDefaultValuePass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def RessourceBindingPass: Pass<"ressource-binding-pass", "::mlir::ModuleOp"> {
+  let summary = "Bind selected instructions to concrete hardware resources.";
+  let description = [{
+    TODO: describe behavior once implemented. Runs after instruction
+    selection and before icdep generation, binding each selected
+    drra.rop instruction to a concrete hardware resource.
+  }];
+}
+
 def GenerateIcdepPass: Pass<"generate-icdep-pass", "::mlir::ModuleOp"> {
   let summary = "Generate pasm.icdep ops.";
   let description = [{
@@ -83,6 +92,22 @@ def FlattenCellsPass: Pass<"flatten-cells-pass", "::mlir::ModuleOp"> {
     Walks every `pasm.epoch` op, iterates over all contained `pasm.cell`
     ops, moves their body operations back into the epoch, and erases the
     now-empty cells.
+  }];
+}
+
+def CoalesceRopsPass: Pass<"coalesce-rops-pass", "::mlir::ModuleOp"> {
+  let summary = "Merge the single-event rops on one resource into one rop "
+                "whose events are separated by transitions.";
+  let description = [{
+    A resource asked for two things in succession wants one instruction stream
+    with a transition between them, not two instructions: on a second
+    instruction it retriggers, and the transfer the first one started is lost.
+    Instruction selection emits one rop per access, so a program with no loop
+    over them arrives here as several single-event rops on the same slot and
+    port. This moves their events into the first of those rops with a `trans`
+    between each pair, and re-anchors every constraint and interconnect
+    dependency that named the others onto the event it became -- the MT index
+    the anchor grammar already carries for exactly this.
   }];
 }
 

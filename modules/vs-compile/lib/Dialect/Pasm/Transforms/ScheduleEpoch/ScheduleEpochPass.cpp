@@ -73,10 +73,12 @@ void dump_schedule_table(
         llvm::outs() << "Error: Cannot find the component : " << label << "\n";
         std::exit(EXIT_FAILURE);
       }
+      ::vesyla::pasm::Config cfg;
       std::string command = component_path + "/resources/" +
-                            component_map[label].get<std::string>() +
-                            "/compile_util get_timing_model " + input_filename +
-                            " " + output_filename;
+                            component_map[label].get<std::string>() + "/" +
+                            cfg.tool_name("compile_util") +
+                            " get_timing_model " + input_filename + " " +
+                            output_filename;
 
       llvm::outs() << "Executing command: " << command << "\n";
 
@@ -164,14 +166,13 @@ void dump_schedule_table(
     } else if (op_expr.kind == "cop") {
       std::string label =
           std::to_string(op_expr.row) + "_" + std::to_string(op_expr.col);
-      // OperationExpr::get_all_anchors yields (event_id, idx) pairs with
-      // indices in innermost-first order, matching tm::Constraint::Anchor.
+      // OperationExpr::get_all_anchors yields ::vesyla::Anchor values (MT event
+      // id plus OR/IR repeat indices). The owning op id is tracked separately.
       auto cop_op_info = model.get_operation(op_expr.id);
-      for (auto &p : cop_op_info.expr.get_all_anchors()) {
+      for (auto &anc : cop_op_info.expr.get_all_anchors()) {
         CopAnchorRef ref;
         ref.op_name = op_expr.id;
-        ref.anchor.event_id = p.first;
-        ref.anchor.idx = p.second;
+        ref.anchor = anc;
         all_control_op_anchors[label].push_back(std::move(ref));
       }
     } else if (op_expr.kind == "raw") {
