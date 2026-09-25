@@ -50,31 +50,11 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   std::string zero_mlir = std::filesystem::absolute(stage_file(0)).string();
   save_mlir(module, zero_mlir);
 
-  std::string viz_script_grouped =
-      vesyla::util::SysPath::prog_dir() + cfg.script_path("vis_grouped");
   std::string constraint_dir =
       std::filesystem::absolute(output_dir + "/" +
                                 cfg.output_path("constraint_dir"))
           .string();
   std::filesystem::create_directories(constraint_dir);
-  if (std::filesystem::exists(viz_script_grouped)) {
-    try {
-      std::string cmd = "cd " + constraint_dir + " && python3 " +
-                        viz_script_grouped + " " + zero_mlir;
-      int rc = std::system(cmd.c_str());
-      if (rc != 0) {
-        LOG_WARNING << "MLIR grouped visualization failed (exit " << rc
-                    << "): " << cmd;
-      }
-    } catch (const std::exception &e) {
-      LOG_WARNING << "MLIR grouped visualization threw: " << e.what();
-    } catch (...) {
-      LOG_WARNING << "MLIR grouped visualization threw an unknown exception.";
-    }
-  } else {
-    LOG_WARNING << "MLIR grouped visualization script not found: "
-                << viz_script_grouped;
-  }
 
   std::string viz_script_grouped_no_slot0 =
       vesyla::util::SysPath::prog_dir() +
@@ -112,6 +92,14 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   } else {
     LOG_WARNING << "MLIR visualization script not found: " << viz_script;
   }
+
+  // Must run before scheduling: its JSON round-trip int-izes string attrs.
+  pm.addPass(vesyla::pasm::createExpandEvtStridesPass());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: createExpandEvtStridesPass failed.\n";
+    std::exit(EXIT_FAILURE);
+  }
+  pm.clear();
 
   pm.addPass(vesyla::pasm::createAddSlotPortPass());
   if (mlir::failed(pm.run(module))) {

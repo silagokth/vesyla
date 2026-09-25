@@ -37,6 +37,10 @@ enum Command {
         /// Output directory
         #[arg(short, long, default_value = ".")]
         output_dir: String,
+        /// Models to run, comma-separated from 0,2,3 (0 = C++, 2 = SST, 3 = RTL); model 0
+        /// is required, it writes the input and reference memory images
+        #[arg(short, long, default_value = "0,2,3", value_parser = parse_models)]
+        models: String,
     },
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
@@ -110,6 +114,7 @@ fn main() -> Result<(), io::Error> {
             template_dir,
             directory,
             output_dir,
+            models,
         } => {
             let template_dir = if template_dir.is_none() {
                 None
@@ -117,7 +122,7 @@ fn main() -> Result<(), io::Error> {
                 let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
-            run(template_dir, directory, output_dir)
+            run(template_dir, directory, output_dir, models)
         }
         Command::Generate {
             directory,
@@ -203,10 +208,25 @@ fn init(
     Ok(())
 }
 
+/// Validate --models: a comma-separated subset of 0, 2, 3 that contains 0.
+fn parse_models(s: &str) -> Result<String, String> {
+    let list: Vec<&str> = s.split(',').map(|m| m.trim()).collect();
+    for m in &list {
+        if !["0", "2", "3"].contains(m) {
+            return Err(format!("unknown model '{}' (choose from 0,2,3)", m));
+        }
+    }
+    if !list.contains(&"0") {
+        return Err("model 0 is required: it writes the input and reference memory images".into());
+    }
+    Ok(list.join(","))
+}
+
 fn run(
     template_dir: Option<PathBuf>,
     directory: &String,
     output_dir: &String,
+    models: &String,
 ) -> Result<(), io::Error> {
     let test_dir = get_testcase_dir(Path::new(directory).to_path_buf())
         .expect("Failed to get testcase directory");
@@ -238,8 +258,12 @@ fn run(
     info!("Copying and running testcase in {:?}", temp_dir_path);
     copy_dir_all(test_dir, temp_dir_path).expect("Failed to copy testcase directory");
     let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
-    let status = process::Command::new("bash")
-        .arg(testcase_script_path)
+    let mut command = process::Command::new("bash");
+    command.arg(testcase_script_path);
+    if models != "0,2,3" {
+        command.arg(format!("--models={}", models));
+    }
+    let status = command
         .status()
         .expect("Failed to run the testcase");
     if !status.success() {
@@ -523,6 +547,14 @@ mod tests {
         fs::create_dir_all(&testcase2).unwrap();
         let testcase2 = testcases_dir.join("type2/bar");
         fs::create_dir_all(&testcase2).unwrap();
+    }
+
+    #[test]
+    fn test_parse_models() {
+        assert_eq!(parse_models("0,2,3").unwrap(), "0,2,3");
+        assert_eq!(parse_models("0, 3").unwrap(), "0,3");
+        assert!(parse_models("2,3").is_err());
+        assert!(parse_models("0,1").is_err());
     }
 
     #[test]

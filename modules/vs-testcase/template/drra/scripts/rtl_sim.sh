@@ -22,6 +22,7 @@ fi
 id=$1
 vsim_cli_mode="-c"
 debug_mode=0
+interactive_mode=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -32,6 +33,7 @@ for arg in "$@"; do
   -it | -interactive | -it=all | --interactive=all | -it=rtl | --interactive=rtl)
     # set the interactive mode
     vsim_cli_mode="-voptargs=+acc -debugDB"
+    interactive_mode=1
     ;;
   -d | --debug)
     debug_mode=1
@@ -90,13 +92,32 @@ foreach s $ports {
   log $s
   vcd add $s
 }
+# Capture the testbench cycle counter (a plain int reg, not a port, so it is
+# not matched by the -in/-out/-inout search above). It provides the cycle axis
+# used to resample the trace for cycle-accurate SST<->RTL comparison.
+log /fabric_tb/cycle_count
+vcd add /fabric_tb/cycle_count
 run -all
 vcd flush
-quit -f
 EOF
-  vsim $vsim_cli_mode -wlf debug/trace.wlf -do debug_capture.do work.fabric_tb
+  # Batch debug: quit after capturing. Interactive debug (-it): keep the GUI
+  # open at $finish (-onfinish stop, no quit -f, no "finish?" dialog).
+  vsim_onfinish=""
+  if [ "$interactive_mode" = "1" ]; then
+    vsim_onfinish="-onfinish stop"
+  else
+    echo "quit -f" >>debug_capture.do
+  fi
+  vsim $vsim_cli_mode $vsim_onfinish -wlf debug/trace.wlf -do debug_capture.do work.fabric_tb
 else
-  vsim $vsim_cli_mode -do "run -all" work.fabric_tb
+  # In interactive mode keep vsim open when the testbench calls $finish
+  # (default onfinish=ask pops a dialog and exits; -onfinish stop halts and
+  # keeps the GUI open). Use the command-line flag, not the -do command.
+  vsim_onfinish=""
+  if [ "$interactive_mode" = "1" ]; then
+    vsim_onfinish="-onfinish stop"
+  fi
+  vsim $vsim_cli_mode $vsim_onfinish -do "run -all" work.fabric_tb
 fi
 
 # copy the output file
