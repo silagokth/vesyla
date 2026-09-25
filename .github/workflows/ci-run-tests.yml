@@ -191,17 +191,18 @@ jobs:
                       ['vesyla', 'testcase', 'run', '-d', path, '-o', str(run_dir)],
                       stdout=log, stderr=subprocess.STDOUT,
                   )
-                  script = run_dir / 'run.sh'
-                  if script.exists():
-                      log.write('\n===== bash run.sh -d (debug) =====\n')
-                      log.flush()
-                      subprocess.run(
-                          ['bash', 'run.sh', '-d'],
-                          cwd=str(run_dir),
-                          stdout=log, stderr=subprocess.STDOUT,
-                      )
-                  else:
-                      log.write(f'\nNo run.sh generated at {script}\n')
+                  # Disabled: the debug rerun takes too long on the big testcases.
+                  # script = run_dir / 'run.sh'
+                  # if script.exists():
+                  #     log.write('\n===== bash run.sh -d (debug) =====\n')
+                  #     log.flush()
+                  #     subprocess.run(
+                  #         ['bash', 'run.sh', '-d'],
+                  #         cwd=str(run_dir),
+                  #         stdout=log, stderr=subprocess.STDOUT,
+                  #     )
+                  # else:
+                  #     log.write(f'\nNo run.sh generated at {script}\n')
           summary.close()
           PY
           tar czf ../failed-test-logs.tar.gz failed_logs
