@@ -20,7 +20,6 @@
 #include "vesyla/Support/Config.hpp"
 
 #include <fstream>
-#include <functional>
 
 namespace vesyla {
 namespace schedule {
@@ -35,13 +34,6 @@ private:
                const std::string &filename);
   void gen_asm(mlir::ModuleOp module, const std::string &output_dir,
                const std::string &filename);
-
-  // Walk the module's top-level ops, invoking emit_epoch on each epoch. Loops
-  // have already been lowered to epochs (with their control instructions
-  // injected) by the ReplaceLoopOp pass, so only epochs reach codegen.
-  void emit_program(
-      mlir::ModuleOp module,
-      const std::function<void(vesyla::pasm::EpochOp)> &emit_epoch);
 
   // Emit the textual asm for a single epoch's body.
   void emit_epoch_asm(vesyla::pasm::EpochOp epoch_op,
