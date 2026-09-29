@@ -1,4 +1,4 @@
-use clap::{error::ErrorKind, Parser, Subcommand};
+use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use log::{error, info, warn, LevelFilter};
 use serde::Serialize;
 use std::env;
@@ -41,6 +41,9 @@ enum Command {
         /// is required, it writes the input and reference memory images
         #[arg(short, long, default_value = "0,2,3", value_parser = parse_models)]
         models: String,
+        /// Front end to compile the testcase with: its pasm/*.pasm or its mlir/*.mlir programs
+        #[arg(short, long, value_enum, default_value_t = Frontend::Pasm)]
+        frontend: Frontend,
     },
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
@@ -51,6 +54,24 @@ enum Command {
         #[arg(short, long, default_value = ".")]
         output_dir: String,
     },
+}
+
+/// Which of a testcase's programs is compiled: the hand-written PASM under pasm/
+/// or the MLIR under mlir/. Both describe the same problem and are checked
+/// against the same model 0 reference.
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Frontend {
+    Pasm,
+    Mlir,
+}
+
+impl Frontend {
+    fn name(self) -> &'static str {
+        match self {
+            Frontend::Pasm => "pasm",
+            Frontend::Mlir => "mlir",
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -115,6 +136,7 @@ fn main() -> Result<(), io::Error> {
             directory,
             output_dir,
             models,
+            frontend,
         } => {
             let template_dir = if template_dir.is_none() {
                 None
@@ -122,7 +144,7 @@ fn main() -> Result<(), io::Error> {
                 let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
-            run(template_dir, directory, output_dir, models)
+            run(template_dir, directory, output_dir, models, *frontend)
         }
         Command::Generate {
             directory,
@@ -227,6 +249,7 @@ fn run(
     directory: &String,
     output_dir: &String,
     models: &String,
+    frontend: Frontend,
 ) -> Result<(), io::Error> {
     let test_dir = get_testcase_dir(Path::new(directory).to_path_buf())
         .expect("Failed to get testcase directory");
@@ -257,6 +280,9 @@ fn run(
     // run the testcase, if the testcase fails, the process will exit with non-zero status
     info!("Copying and running testcase in {:?}", temp_dir_path);
     copy_dir_all(test_dir, temp_dir_path).expect("Failed to copy testcase directory");
+    if frontend == Frontend::Mlir {
+        use_mlir_programs(temp_dir_path)?;
+    }
     let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
     let mut command = process::Command::new("bash");
     command.arg(testcase_script_path);
@@ -278,6 +304,45 @@ fn run(
     Ok(())
 }
 
+// Replace the testcase's PASM programs with its MLIR ones. run.sh hands
+// compile.sh the pasm/ directory, and compile.sh takes <id>.mlir there over
+// <id>.pasm, so copying mlir/*.mlir into a cleared pasm/ is what switches every
+// program segment to the MLIR front end without touching the template.
+fn use_mlir_programs(root: &Path) -> Result<(), io::Error> {
+    let programs = mlir_programs(&root.join("mlir"));
+    if programs.is_empty() {
+        error!("Testcase has no mlir/*.mlir programs");
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Testcase has no mlir/*.mlir programs",
+        ));
+    }
+    let pasm_dir = root.join("pasm");
+    if pasm_dir.exists() {
+        fs::remove_dir_all(&pasm_dir)?;
+    }
+    fs::create_dir_all(&pasm_dir)?;
+    for program in programs {
+        fs::copy(&program, pasm_dir.join(program.file_name().unwrap()))?;
+    }
+    Ok(())
+}
+
+// The .mlir files directly under dir, sorted; empty if dir does not exist.
+fn mlir_programs(dir: &Path) -> Vec<PathBuf> {
+    let mut programs: Vec<PathBuf> = fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "mlir"))
+                .collect()
+        })
+        .unwrap_or_default();
+    programs.sort();
+    programs
+}
+
 // The child's exit code. A process killed by a signal reports none, so use the
 // shell's 128 + signal for that rather than collapsing it into a real code.
 fn exit_code(status: process::ExitStatus) -> i32 {
@@ -292,6 +357,7 @@ struct TestcaseEntry {
     name: String,
     tags: String,
     path: String,
+    frontend: String,
 }
 
 fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
@@ -315,8 +381,21 @@ fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
             .unwrap()
             .to_string();
 
-        // Add the TestcaseEntry to the vector
-        testcase_entries.push(TestcaseEntry { name, tags, path });
+        // One entry per front end the testcase has programs for: PASM always,
+        // MLIR only when it carries mlir/*.mlir. The run.sh suite script picks
+        // between them by the frontend:<name> tag.
+        let mut frontends = vec![Frontend::Pasm];
+        if !mlir_programs(&Path::new(&path).join("mlir")).is_empty() {
+            frontends.push(Frontend::Mlir);
+        }
+        for frontend in frontends {
+            testcase_entries.push(TestcaseEntry {
+                name: format!("{}::{}", name, frontend.name()),
+                tags: tags.clone(),
+                path: path.clone(),
+                frontend: frontend.name().to_string(),
+            });
+        }
     }
 
     // Return the vector of TestcaseEntry
@@ -388,7 +467,7 @@ fn generate(directory: &String, output_dir: &String) -> Result<(), io::Error> {
             "No testcases found in the directory",
         ));
     }
-    info!("Found {} testcases", testcase_entries.len());
+    info!("Found {} testcase entries (one per testcase and front end)", testcase_entries.len());
 
     // generate the testcase scripts: run.sh
     let output_path = format!("{}/run.sh", output_dir);
@@ -547,6 +626,9 @@ mod tests {
         fs::create_dir_all(&testcase2).unwrap();
         let testcase2 = testcases_dir.join("type2/bar");
         fs::create_dir_all(&testcase2).unwrap();
+        // Only type1/foo carries an MLIR program.
+        fs::create_dir_all(testcases_dir.join("type1/foo/mlir")).unwrap();
+        File::create(testcases_dir.join("type1/foo/mlir/0.mlir")).unwrap();
     }
 
     #[test]
@@ -575,9 +657,47 @@ mod tests {
         let content = fs::read_to_string(robot_path).unwrap();
         assert!(content.contains("*** Comments ***"));
 
-        assert!(content.contains("style0::type1::bar"));
-        assert!(content.contains("style0::type1::foo"));
-        assert!(content.contains("style0::type2::bar"));
-        assert!(content.contains("style0::type2::foo"));
+        assert!(content.contains("style0::type1::bar::pasm"));
+        assert!(content.contains("style0::type1::foo::pasm"));
+        assert!(content.contains("style0::type2::bar::pasm"));
+        assert!(content.contains("style0::type2::foo::pasm"));
+        assert!(content.contains("frontend:pasm"));
+
+        // An MLIR entry only for the testcase that has mlir/*.mlir.
+        assert!(content.contains("style0::type1::foo::mlir"));
+        assert!(content.contains("frontend:mlir"));
+        assert!(!content.contains("style0::type1::bar::mlir"));
+        assert!(!content.contains("style0::type2::foo::mlir"));
+    }
+
+    #[test]
+    fn test_use_mlir_programs_replaces_pasm() {
+        let temp_dir = tempdir().unwrap();
+        let root = temp_dir.path();
+        fs::create_dir_all(root.join("pasm")).unwrap();
+        fs::create_dir_all(root.join("mlir")).unwrap();
+        File::create(root.join("pasm/0.pasm")).unwrap();
+        File::create(root.join("mlir/0.mlir")).unwrap();
+        File::create(root.join("mlir/1.mlir")).unwrap();
+        File::create(root.join("mlir/notes.txt")).unwrap();
+
+        use_mlir_programs(root).unwrap();
+
+        assert!(!root.join("pasm/0.pasm").exists());
+        assert!(root.join("pasm/0.mlir").exists());
+        assert!(root.join("pasm/1.mlir").exists());
+        assert!(!root.join("pasm/notes.txt").exists());
+    }
+
+    #[test]
+    fn test_use_mlir_programs_requires_mlir() {
+        let temp_dir = tempdir().unwrap();
+        let root = temp_dir.path();
+        fs::create_dir_all(root.join("pasm")).unwrap();
+        File::create(root.join("pasm/0.pasm")).unwrap();
+
+        assert!(use_mlir_programs(root).is_err());
+        // The PASM programs are left alone when there is nothing to swap in.
+        assert!(root.join("pasm/0.pasm").exists());
     }
 }

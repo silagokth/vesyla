@@ -5,15 +5,15 @@ Library           String
 Suite Teardown    Terminate All Processes    kill=True
 Test Template     Autotest Template
 
-*** Test Cases ***  testcase_path
+*** Test Cases ***  testcase_path    frontend
 {% for testcase in testcases %}
-{{ testcase.name }}    {{ testcase.path }}
-    [Tags]    {{ testcase.tags }}
+{{ testcase.name }}    {{ testcase.path }}    {{ testcase.frontend }}
+    [Tags]    {{ testcase.tags }}    frontend:{{ testcase.frontend }}
 {% endfor %}
 
 *** Keywords ***
 Autotest Template
-    [Arguments]    ${testcase_path}
+    [Arguments]    ${testcase_path}    ${frontend}
     ${random_string} =    Generate Random String    12    [LOWER]
     ${testcase_name} =    Set Variable    ${TEST_NAME}
     # Clean the testcase name so it can be safely used as a directory name by replacing any character
@@ -22,7 +22,7 @@ Autotest Template
     ${output_dir} =    Set Variable    work/${clean_testcase_name}_${random_string}
     Create Directory    ${output_dir}
 
-    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}"    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
+    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}" --frontend ${frontend}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
 
     Verify Setup            ${result.rc}    ${output_dir}
     Verify Model 2 Run      ${result.rc}    ${output_dir}
