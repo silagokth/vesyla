@@ -28,7 +28,10 @@ spin_animation() {
     spinner=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
     while true; do
       for i in "${spinner[@]}"; do
-        el=$(($(date +%s) - SPIN_START))
+        # EPOCHSECONDS, not $(date +%s): a TERM trap firing while bash parses a
+        # command substitution corrupts the parser, making the subshell exit
+        # non-zero ("trap: unexpected EOF while looking for matching `)'").
+        el=$((EPOCHSECONDS - SPIN_START))
         # Glyph at col 0, then jump to SPIN_TCOL for the live timer. The label
         # printed between them by the caller is left untouched.
         printf "\\r${BLUE}%s${NC}\033[%dG${CYAN}(%02d:%02d)${NC}" "$i" "$SPIN_TCOL" $((el / 60)) $((el % 60))
@@ -40,7 +43,7 @@ spin_animation() {
 }
 
 start_spinner() {
-  SPIN_START=$(date +%s)
+  SPIN_START=$EPOCHSECONDS
   SPIN_TCOL=$(( $(tput cols 2>/dev/null || echo 80) - 8 ))
   if [ "$debug_mode" = false ]; then
     spin_animation
@@ -54,10 +57,11 @@ stop_spinner() {
   fi
   if [ -n "$SPIN_PID" ] && kill -0 "$SPIN_PID" 2>/dev/null; then
     kill "$SPIN_PID" 2>/dev/null
-    wait "$SPIN_PID" 2>/dev/null
+    # The spinner's exit status is irrelevant; never let it trip `set -e`.
+    wait "$SPIN_PID" 2>/dev/null || true
   fi
   tput cnorm # Show cursor
-  el=$(($(date +%s) - SPIN_START))
+  el=$((EPOCHSECONDS - SPIN_START))
   # Final line: mark at col 0, elapsed time at SPIN_TCOL. If the first arg is 0
   # print a checkmark, otherwise a cross.
   if [ "$1" -eq 0 ]; then
