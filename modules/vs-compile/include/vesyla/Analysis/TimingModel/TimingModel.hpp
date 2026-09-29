@@ -36,7 +36,7 @@ public:
   void compile();
   string to_string();
   int to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
-             bool allow_act_mode_2 = false);
+             bool allow_act_mode_2 = false, bool feasibility_only = false);
   string add_operation(Operation op) {
     operations[op.name] = op;
     return op.name;

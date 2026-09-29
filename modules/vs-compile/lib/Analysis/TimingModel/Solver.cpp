@@ -102,7 +102,8 @@ bool check_mzn_solution_valid(nlohmann::json &json_output, string &solution) {
 
 void write_minizinc_files(TimingModel &tm, string mzn_filename,
                           string dzn_filename, string json_filename,
-                          bool allow_act_mode_2 = false) {
+                          bool allow_act_mode_2 = false,
+                          bool feasibility_only = false) {
   // Create the MiniZinc model file
   std::ofstream mzn_file(mzn_filename);
   if (!mzn_file.is_open()) {
@@ -125,7 +126,7 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
   }
 
   // Write the MiniZinc model content
-  tm.to_mzn(mzn_file, dzn_file, allow_act_mode_2);
+  tm.to_mzn(mzn_file, dzn_file, allow_act_mode_2, feasibility_only);
 
   // Close all files
   mzn_file.close();
@@ -142,8 +143,15 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
 constexpr unsigned long mzn_time_limit_ms = 300000;
 constexpr unsigned long mzn_address_space_limit_kb = 16UL * 1024 * 1024;
 
+// Bound on the feasibility check solve() runs first. That model has no act
+// modes and no objective, so cp-sat settles it in well under a second either
+// way on the testcases seen so far; a check that runs out of time proves
+// nothing and the full solve goes ahead as before.
+constexpr unsigned long mzn_feasibility_time_limit_ms = 30000;
+
 void run_minizinc(string mzn_filename, string dzn_filename,
-                  string json_filename) {
+                  string json_filename,
+                  unsigned long time_limit_ms = mzn_time_limit_ms) {
   // run minizinc command and collect the json output
   LOG_DEBUG << "Running Minizinc command with input files: " << mzn_filename
             << " and " << dzn_filename;
@@ -152,7 +160,7 @@ void run_minizinc(string mzn_filename, string dzn_filename,
   // time limit is the gentler of the two: minizinc reports UNKNOWN and exits
   // cleanly, which solve() already reads as a model it could not schedule.
   string command = "ulimit -v " + to_string(mzn_address_space_limit_kb) +
-                   "; minizinc --time-limit " + to_string(mzn_time_limit_ms) +
+                   "; minizinc --time-limit " + to_string(time_limit_ms) +
                    " --json-stream --solver cp-sat " + mzn_filename + " " +
                    dzn_filename + " > " + json_filename;
   int result = system(command.c_str());
@@ -190,6 +198,37 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
   string dzn_filename = tmp_path + random_id + ".dzn";
   string json_filename = tmp_path + random_id + ".json";
   string edited_json_filename = tmp_path + random_id + "_fixed.json";
+
+  // Check that the timing constraints admit any schedule at all before paying
+  // for the act-mode solves. Those encode the act modes as pairwise and
+  // triple-wise conditions on start times, over which cp-sat cannot prove a
+  // model infeasible: one whose dependencies contradict each other ran both
+  // solves out to their time limit, ten minutes, before failing. Without the
+  // act modes the same contradiction is found in under a second.
+  {
+    string check_id = random_id + "_feasibility";
+    string check_mzn = tmp_path + check_id + ".mzn";
+    string check_dzn = tmp_path + check_id + ".dzn";
+    string check_json = tmp_path + check_id + ".json";
+    string check_fixed_json = tmp_path + check_id + "_fixed.json";
+    write_minizinc_files(tm, check_mzn, check_dzn, check_json, false, true);
+    run_minizinc(check_mzn, check_dzn, check_json,
+                 mzn_feasibility_time_limit_ms);
+    turn_to_valid_json(check_json, check_fixed_json);
+    nlohmann::json check_output = get_json_from_file(check_fixed_json);
+    string check_solution;
+    check_mzn_solution_valid(check_output, check_solution);
+    if (check_solution == "UNSATISFIABLE") {
+      LOG_ERROR << "No schedule exists: the timing constraints contradict "
+                   "each other, whatever act mode is chosen.";
+      LOG_ERROR << "Look for a dependency that orders one operation after "
+                   "every iteration of another it also runs in step with.";
+      LOG_ERROR << "Input MZN file: " << check_mzn;
+      LOG_ERROR << "Input DZN file: " << check_dzn;
+      LOG_FATAL << "Minizinc command failed.";
+      exit(EXIT_FAILURE);
+    }
+  }
 
   write_minizinc_files(tm, mzn_filename, dzn_filename, json_filename);
   run_minizinc(mzn_filename, dzn_filename, json_filename);

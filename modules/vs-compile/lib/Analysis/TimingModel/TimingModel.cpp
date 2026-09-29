@@ -32,7 +32,7 @@ string TimingModel::to_string() {
 }
 
 int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
-                        bool allow_act_mode_2) {
+                        bool allow_act_mode_2, bool feasibility_only) {
   if (state != COMPILED) {
     LOG_WARNING << "Timing model is not compiled. Compiling...";
     compile();
@@ -146,6 +146,15 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
   // add constraints
   for (auto it = constraints.begin(); it != constraints.end(); ++it) {
     mzn_file << "constraint " + it->to_string() + ";\n";
+  }
+
+  // A feasibility-only model stops at the timing constraints: the act modes
+  // only ever forbid schedules, so if this relaxation has none, no act mode
+  // can have one either. Asking for any schedule rather than the shortest
+  // lets the solver stop at the first one it finds.
+  if (feasibility_only) {
+    mzn_file << "solve satisfy;\n";
+    return 0;
   }
 
   // add act modes
