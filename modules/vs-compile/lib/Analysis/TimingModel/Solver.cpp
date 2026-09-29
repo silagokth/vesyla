@@ -149,6 +149,14 @@ constexpr unsigned long mzn_address_space_limit_kb = 16UL * 1024 * 1024;
 // nothing and the full solve goes ahead as before.
 constexpr unsigned long mzn_feasibility_time_limit_ms = 30000;
 
+// Exit codes for a program that cannot be scheduled, kept apart from the
+// EXIT_FAILURE every other compiler error uses. The testcase template's run.sh
+// and vs-verify pass these two through as the testcase's own exit code, and
+// the generated Robot suite names them, so they are an interface: 7 is a model
+// proven to have no schedule, 8 one the solver gave up on within its limits.
+constexpr int exit_no_schedule = 7;
+constexpr int exit_scheduler_gave_up = 8;
+
 void run_minizinc(string mzn_filename, string dzn_filename,
                   string json_filename,
                   unsigned long time_limit_ms = mzn_time_limit_ms) {
@@ -226,7 +234,7 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
       LOG_ERROR << "Input MZN file: " << check_mzn;
       LOG_ERROR << "Input DZN file: " << check_dzn;
       LOG_FATAL << "Minizinc command failed.";
-      exit(EXIT_FAILURE);
+      exit(exit_no_schedule);
     }
   }
 
@@ -247,16 +255,24 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
     json_output = get_json_from_file(edited_json_filename);
 
     if (!check_mzn_solution_valid(json_output, solution)) {
-      LOG_ERROR << "Minizinc command failed to find a solution.";
-      LOG_ERROR << "A model too big to schedule ends here too: minizinc "
-                   "reports UNKNOWN, having run past its "
-                << mzn_time_limit_ms << " ms limit or lost its solver to the "
-                << mzn_address_space_limit_kb << " kB address-space limit.";
+      // The feasibility check passed or ran out of time, so the act modes are
+      // what rule a schedule out here -- or the solver never got an answer.
+      bool proven = solution == "UNSATISFIABLE";
+      if (proven) {
+        LOG_ERROR << "No schedule exists: the timing constraints admit one, "
+                     "but no act mode does.";
+      } else {
+        LOG_ERROR << "Minizinc command failed to find a solution.";
+        LOG_ERROR << "A model too big to schedule ends here too: minizinc "
+                     "reports UNKNOWN, having run past its "
+                  << mzn_time_limit_ms << " ms limit or lost its solver to the "
+                  << mzn_address_space_limit_kb << " kB address-space limit.";
+      }
       LOG_ERROR << "Input MZN file: " << mzn_filename;
       LOG_ERROR << "Input DZN file: " << dzn_filename;
       LOG_ERROR << "Output: " << json_output.dump(4);
       LOG_FATAL << "Minizinc command failed.";
-      exit(EXIT_FAILURE);
+      exit(proven ? exit_no_schedule : exit_scheduler_gave_up);
     }
   }
 

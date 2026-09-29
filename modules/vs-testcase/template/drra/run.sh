@@ -195,6 +195,34 @@ run_and_check() {
   fi
 }
 
+# Compile the programs under pasm/. compile.sh passes the compiler's exit status
+# through, and two of the compiler's codes name why a program could not be
+# scheduled: 7, no schedule exists; 8, the scheduler gave up within its limits.
+# Those are kept as this script's exit code; any other compile failure is 6.
+compile_programs() {
+  set +e
+  if [ "$debug_mode" = true ]; then
+    bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d
+    status=$?
+    output=""
+  else
+    output=$(bash ${template_path}/scripts/compile.sh ${template_path}/pasm 2>&1)
+    status=$?
+  fi
+  set -e
+  if [ $status -ne 0 ]; then
+    case $status in
+    7) fail_code=7 reason="no schedule exists" ;;
+    8) fail_code=8 reason="the scheduler gave up" ;;
+    *) fail_code=6 reason="compiler error" ;;
+    esac
+    stop_spinner $status
+    printf " ${RED}-> ERROR:${NC} Compilation failed (%s)!\n" "$reason"
+    [ -n "$output" ] && echo "$output"
+    exit "$fail_code"
+  fi
+}
+
 # Prepare environment
 rm -rf ${template_path}/work
 mkdir -p ${template_path}/work
@@ -261,11 +289,7 @@ printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
-if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
-else
-  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
-fi
+compile_programs
 stop_spinner 0
 
 ## Run
@@ -308,11 +332,7 @@ printf "${BOLD}Model 3:${NC} RTL simulation\n"
 if [ "$run_m2" = false ]; then
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
-if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
-else
-  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
-fi
+compile_programs
 stop_spinner 0
 fi
 ## Run

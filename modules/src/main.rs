@@ -90,7 +90,8 @@ fn main() {
                 .unwrap_or_else(|_| panic!("Failed to execute command: vs-{}", command));
             // Forward the child's status unchanged. The tools' exit codes are
             // an interface, not a detail: vs-verify uses 1 setup, 2 SST run,
-            // 3 SST mismatch, 4 RTL run, 5 RTL mismatch, and the generated
+            // 3 SST mismatch, 4 RTL run, 5 RTL mismatch, 6 compile, 7 no
+            // schedule exists, 8 scheduler gave up, and the generated
             // Robot suite decodes them into named steps. This used to make an
             // exception for 2, which is exactly "SST failed to run", so a
             // failed verify printed FAILED and still exited 0 -- every caller

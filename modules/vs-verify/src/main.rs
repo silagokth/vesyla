@@ -25,14 +25,29 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // Exit codes, as run.sh set them. The generated Robot suite decodes these into
-// named steps -- Setup, Model 2 run, Model 2 output, RTL run, RTL output -- so
-// they are an interface rather than an implementation detail, and a testcase
-// run through either entry point has to fail the same way.
+// named steps -- Setup, Model 2 run, Model 2 output, RTL run, RTL output,
+// Compile, Schedule exists, Schedule found -- so they are an interface rather
+// than an implementation detail, and a testcase run through either entry point
+// has to fail the same way.
 const EXIT_SETUP: i32 = 1;
 const EXIT_SST_RUN: i32 = 2;
 const EXIT_SST_MISMATCH: i32 = 3;
 const EXIT_RTL_RUN: i32 = 4;
 const EXIT_RTL_MISMATCH: i32 = 5;
+const EXIT_COMPILE: i32 = 6;
+// These two are the compiler's own codes, passed through unchanged: the
+// program has no schedule, or the scheduler gave up looking for one.
+const EXIT_NO_SCHEDULE: i32 = 7;
+const EXIT_SCHEDULER_GAVE_UP: i32 = 8;
+
+// The exit code for a failed compile, from the status compile.sh exited with.
+fn compile_exit_code(status: Option<i32>) -> i32 {
+    match status {
+        Some(EXIT_NO_SCHEDULE) => EXIT_NO_SCHEDULE,
+        Some(EXIT_SCHEDULER_GAVE_UP) => EXIT_SCHEDULER_GAVE_UP,
+        _ => EXIT_COMPILE,
+    }
+}
 
 // The word width the memory images are decoded at when reporting a mismatch.
 // dump_sram_image.py defaults to the same, and a row is read most significant
@@ -375,30 +390,39 @@ fn lay_out(args: &Args) -> Result<PathBuf, String> {
 // In debug mode the subprocess keeps this process's streams instead, so a
 // simulator's progress is visible as it happens rather than arriving in one
 // block at the end.
-fn run(mut command: Command, verbose: bool) -> Result<(), String> {
+fn run(command: Command, verbose: bool) -> Result<(), String> {
+    run_status(command, verbose).map_err(|(_, detail)| detail)
+}
+
+// run(), but a failure also carries the exit status, for the stages whose exit
+// code depends on why the command failed. None when it did not exit normally.
+fn run_status(mut command: Command, verbose: bool) -> Result<(), (Option<i32>, String)> {
     let program = command.get_program().to_string_lossy().into_owned();
 
     if verbose {
         let status = command
             .status()
-            .map_err(|e| format!("cannot run {}: {}", program, e))?;
+            .map_err(|e| (None, format!("cannot run {}: {}", program, e)))?;
         if status.success() {
             return Ok(());
         }
-        return Err(format!("exited with status {}", status.code().unwrap_or(-1)));
+        return Err((
+            status.code(),
+            format!("exited with status {}", status.code().unwrap_or(-1)),
+        ));
     }
 
     let output = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("cannot run {}: {}", program, e))?;
+        .map_err(|e| (None, format!("cannot run {}: {}", program, e)))?;
     if output.status.success() {
         return Ok(());
     }
     let mut detail = String::from_utf8_lossy(&output.stdout).into_owned();
     detail.push_str(&String::from_utf8_lossy(&output.stderr));
-    Err(detail)
+    Err((output.status.code(), detail))
 }
 
 // Run one of the testcase's helper scripts from the work directory. They derive
@@ -406,6 +430,16 @@ fn run(mut command: Command, verbose: bool) -> Result<(), String> {
 // relative to the working directory, so that has to be `work` -- run.sh cds
 // there before it calls any of them.
 fn script(root: &Path, name: &str, args: &[&str], debug: bool) -> Result<(), String> {
+    script_status(root, name, args, debug).map_err(|(_, detail)| detail)
+}
+
+// script(), but a failure also carries the script's exit status.
+fn script_status(
+    root: &Path,
+    name: &str,
+    args: &[&str],
+    debug: bool,
+) -> Result<(), (Option<i32>, String)> {
     let mut command = Command::new("bash");
     command.arg(root.join("scripts").join(name));
     command.args(args);
@@ -415,7 +449,7 @@ fn script(root: &Path, name: &str, args: &[&str], debug: bool) -> Result<(), Str
         // and its JSON trace; leaving it unset keeps the fast path.
         command.env("VESYLA_DEBUG", "1");
     }
-    run(command, debug)
+    run_status(command, debug)
 }
 
 // Write the .hex and .txt siblings of a memory image. Best effort: the dump is
@@ -684,14 +718,14 @@ fn main() {
     let pasm = root.join("pasm");
     let pasm = match pasm.to_str() {
         Some(path) => path.to_string(),
-        None => ui.fatal(EXIT_SST_RUN, "the testcase path is not valid UTF-8"),
+        None => ui.fatal(EXIT_COMPILE, "the testcase path is not valid UTF-8"),
     };
     let mut compile_args = vec![pasm.as_str()];
     if args.debug {
         compile_args.push("-d");
     }
-    if let Err(detail) = script(&root, "compile.sh", &compile_args, args.debug) {
-        ui.fatal(EXIT_SST_RUN, &detail);
+    if let Err((status, detail)) = script_status(&root, "compile.sh", &compile_args, args.debug) {
+        ui.fatal(compile_exit_code(status), &detail);
     }
     ui.ok();
 

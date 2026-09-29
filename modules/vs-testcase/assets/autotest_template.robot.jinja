@@ -25,6 +25,9 @@ Autotest Template
     ${result} =    Run Process    vesyla testcase run -d "${testcase_path}" --frontend ${frontend}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
 
     Verify Setup            ${result.rc}    ${output_dir}
+    Verify Compile          ${result.rc}    ${output_dir}
+    Verify Schedule Exists  ${result.rc}    ${output_dir}
+    Verify Schedule Found   ${result.rc}    ${output_dir}
     Verify Model 2 Run      ${result.rc}    ${output_dir}
     Verify Model 2 Output   ${result.rc}    ${output_dir}
     Verify RTL Run          ${result.rc}    ${output_dir}
@@ -36,6 +39,21 @@ Verify Setup
     [Arguments]    ${rc}    ${output_dir}
     Run Keyword If    ${rc} == 1    Log Failed Test Output    ${output_dir}
     Should Not Be Equal As Integers    ${rc}    1    Setup failed
+
+Verify Compile
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 6    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    6    Compilation failed
+
+Verify Schedule Exists
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 7    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    7    No schedule exists (timing constraints are infeasible)
+
+Verify Schedule Found
+    [Arguments]    ${rc}    ${output_dir}
+    Run Keyword If    ${rc} == 8    Log Failed Test Output    ${output_dir}
+    Should Not Be Equal As Integers    ${rc}    8    Scheduler gave up (solver time or memory limit)
 
 Verify Model 2 Run
     [Arguments]    ${rc}    ${output_dir}

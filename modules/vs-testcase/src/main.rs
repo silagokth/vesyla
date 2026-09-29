@@ -294,8 +294,9 @@ fn run(
         .expect("Failed to run the testcase");
     if !status.success() {
         // run.sh's exit codes are the suite's interface -- 1 setup, 2 SST run,
-        // 3 SST mismatch, 4 RTL run, 5 RTL mismatch -- and the generated Robot
-        // suite decodes them into named steps. Returning an io::Error here
+        // 3 SST mismatch, 4 RTL run, 5 RTL mismatch, 6 compile, 7 no schedule
+        // exists, 8 scheduler gave up -- and the generated Robot suite decodes
+        // them into named steps. Returning an io::Error here
         // would let main flatten every one of them to 1, so that whatever stage
         // a testcase actually reached, it was reported as "Setup failed".
         error!("Testcase failed");
