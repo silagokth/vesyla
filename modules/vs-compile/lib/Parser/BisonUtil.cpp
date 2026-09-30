@@ -97,6 +97,8 @@ mlir::Operation *build_cstr(rop_ref_t *lhs, rop_ref_t *rhs,
   auto cstr_op = vesyla::pasm::CstrOp::create(builder, loc, make_ar(src),
                                               make_ar(dst), delay_attr,
                                               builder.getBoolAttr(is_neq));
+  // Written in the source rather than derived by a pass.
+  cstr_op->setAttr("debug", builder.getStrArrayAttr({"Parser", "source"}));
 
   return cstr_op.getOperation();
 }

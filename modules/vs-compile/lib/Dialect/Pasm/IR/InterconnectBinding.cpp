@@ -771,6 +771,13 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   }
 }
 
+// What the debug dumps show against a constraint: the pass that emitted it and
+// the rule that fired.
+static mlir::ArrayAttr debug_attr(mlir::OpBuilder &builder,
+                                  llvm::StringRef rule) {
+  return builder.getStrArrayAttr({"InterconnectPass", rule});
+}
+
 void emit_interconnect_constraints(const InterconnectBinding &binding,
                                    RopOp rop, mlir::OpBuilder &builder) {
   builder.setInsertionPointAfter(rop);
@@ -855,7 +862,8 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         auto src_ar = of_step(src_indices, first_pass, last_pass);
         auto dst_ar = of_use(a, first_pass, last_pass);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
-                       builder.getBoolAttr(false));
+                       builder.getBoolAttr(false))
+            ->setAttr("debug", debug_attr(builder, "route-first-use"));
       }
     }
   }
@@ -898,7 +906,8 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
         auto dst_ar = of_step(dst_idx, first_pass, last_pass);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
-                       builder.getBoolAttr(false));
+                       builder.getBoolAttr(false))
+            ->setAttr("debug", debug_attr(builder, "route-last-use"));
       }
     }
 
@@ -925,7 +934,8 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
       for (const Anchor &a : binding.slots[final_slot][0].last_anchors) {
         CstrOp::create(builder, loc, of_use(a, src_from, src_to),
                        of_step(first_step, dst_from, dst_to), delay,
-                       builder.getBoolAttr(false));
+                       builder.getBoolAttr(false))
+            ->setAttr("debug", debug_attr(builder, "route-next-pass"));
       }
     }
   }

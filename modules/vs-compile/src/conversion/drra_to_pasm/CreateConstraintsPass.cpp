@@ -28,6 +28,12 @@ namespace {
 // the driver finishes.
 constexpr llvm::StringLiteral kProcessedMarker = "__cstr_processed__";
 
+// What the debug dumps show against a constraint: the pass that emitted it and
+// the rule that fired.
+mlir::ArrayAttr debug_attr(mlir::Builder &builder, llvm::StringRef rule) {
+  return builder.getStrArrayAttr({"CreateConstraintsPass", rule});
+}
+
 // One entry of the working set: the delay accumulated so far along the dataflow
 // chain together with the operation to continue from. The operation may be a
 // drra.rop or an affine.for whose iter_arg carries the value into the loop.
@@ -392,7 +398,8 @@ void constrain_accumulator_clear(vesyla::drra::RopOp rop,
         build_within(ctx, event, shared, id, Pin::first);
     pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst,
                          pasm::DelayAttr::get(ctx, 0, 0),
-                         rewriter.getBoolAttr(false));
+                         rewriter.getBoolAttr(false))
+        ->setAttr("debug", debug_attr(rewriter, "accumulator-clear"));
   }
 }
 
@@ -500,7 +507,8 @@ public:
           pasm::AnchorRangeAttr dst =
               build_anchor(ctx, consumer_id, consumer_loops);
           pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst, delay_attr,
-                         rewriter.getBoolAttr(false));
+                         rewriter.getBoolAttr(false))
+              ->setAttr("debug", debug_attr(rewriter, "dataflow"));
         } else {
           // Not an evt drra.rop: keep walking by enqueuing the consumer with the
           // delay walked to it.
@@ -642,7 +650,11 @@ public:
           pasm::AnchorRangeAttr dst =
               build_within(ctx, b, shared, b_id, Pin::first);
           pasm::CstrOp::create(builder, a->getLoc(), src, dst, delay_attr,
-                         builder.getBoolAttr(false));
+                         builder.getBoolAttr(false))
+              ->setAttr("debug",
+                        debug_attr(builder, same_storage
+                                                ? "storage-within-pass"
+                                                : "contention-within-pass"));
 
           // The pass-to-pass half of the same dependence. Saying only that a
           // pass's accesses of `a` come before that pass's accesses of `b`
@@ -663,7 +675,11 @@ public:
             pasm::AnchorRangeAttr carry_dst = build_carry(
                 ctx, a, shared, reused, a_id, Pin::first, carry, 1);
             pasm::CstrOp::create(builder, b->getLoc(), carry_src, carry_dst,
-                           delay_attr, builder.getBoolAttr(false));
+                           delay_attr, builder.getBoolAttr(false))
+                ->setAttr("debug",
+                          debug_attr(builder, same_storage
+                                                  ? "storage-carry"
+                                                  : "contention-carry"));
           }
         }
       }
@@ -711,7 +727,8 @@ public:
           pasm::AnchorRangeAttr dst = build_first_anchor(ctx, use, use_id);
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
           pasm::CstrOp::create(builder, cfg->getLoc(), src, dst, delay_attr,
-                         builder.getBoolAttr(false));
+                         builder.getBoolAttr(false))
+              ->setAttr("debug", debug_attr(builder, "config-first-use"));
         }
       }
     });
