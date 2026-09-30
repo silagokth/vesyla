@@ -2,11 +2,13 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 #include "vesyla/Dialect/Pasm/Transforms/CoalesceRopsPass.hpp"
 #include "vesyla/Support/Common.hpp"
 
 #include <map>
+#include <optional>
 #include <tuple>
 
 namespace vesyla::pasm {
@@ -22,25 +24,20 @@ struct Absorbed {
   uint32_t event;
 };
 
-// The single evt of a rop that can join a merge, or null.
+// The one evt of a rop that can join a merge, or null.
 //
-// A rop qualifies when its body is that one event and nothing else. A conf is
-// positional -- a route or swb option is identified by the order it sits in --
-// so a rop carrying one is left alone. A rop that already repeats is left
-// alone too, for now.
-//
-// TODO: merge rops that already carry a rep. Nothing about the transition
-// changes -- it still separates the two events -- but each side keeps its own
-// repetition, so the merged rop reads as T<d>(R<n,t>(e0), R<m,u>(e1)), and a
-// repeat that was inner on its own becomes outer to the transition. The
-// anchors naming the absorbed rop then move from IR to OR, which is the rule
-// Operation.cpp already applies when it classifies a repeat by whether a
-// transition was seen below it.
-InstrOp lone_event(RopOp rop) {
+// A rop qualifies when its body is that one event, followed by nothing but the
+// repetitions of the loops it sat in. A conf is positional -- a route or swb
+// option is identified by the order it sits in -- so a rop carrying one is
+// left alone.
+InstrOp sole_event(RopOp rop) {
   InstrOp event;
   for (mlir::Operation &op : rop.getBody().front()) {
     auto instr = llvm::dyn_cast<InstrOp>(op);
     if (!instr) {
+      continue;
+    }
+    if (event && instr.getType() == "rep") {
       continue;
     }
     if (instr.getType() != "evt" || event) {
@@ -49,6 +46,73 @@ InstrOp lone_event(RopOp rop) {
     event = instr;
   }
   return event;
+}
+
+// A rop's reps in the order they sit in, innermost loop first.
+llvm::SmallVector<InstrOp> reps_of(RopOp rop) {
+  llvm::SmallVector<InstrOp> reps;
+  for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
+    if (instr.getType() == "rep") {
+      reps.push_back(instr);
+    }
+  }
+  return reps;
+}
+
+// The loop a rep was lowered from, as AffineToRepPass named it; empty for a
+// rep that came from somewhere else.
+llvm::StringRef loop_of(InstrOp rep) {
+  auto tag = rep->getAttrOfType<mlir::StringAttr>("loop");
+  return tag ? tag.getValue() : llvm::StringRef();
+}
+
+// How many of their outermost reps the rops of a group have in common: the
+// loops all of them sat in. Those stay one repetition around the merged
+// events, while every other rep is its event's own and stays inside the
+// transition with it.
+//
+// Nothing when the group cannot be merged as one: a shared loop the rops step
+// through differently has no single repetition that serves them all, and two
+// rops sharing a loop the rest do not would need a merge inside the merge.
+std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
+  llvm::SmallVector<llvm::SmallVector<InstrOp>> reps;
+  for (RopOp rop : rops) {
+    reps.push_back(reps_of(rop));
+  }
+
+  size_t shared = 0;
+  while (true) {
+    bool all = true;
+    for (const auto &own : reps) {
+      if (own.size() <= shared) {
+        all = false;
+        break;
+      }
+      InstrOp rep = own[own.size() - 1 - shared];
+      InstrOp head = reps.front()[reps.front().size() - 1 - shared];
+      if (loop_of(rep).empty() || loop_of(rep) != loop_of(head)) {
+        all = false;
+        break;
+      }
+      if (rep.getParam().get("step") != head.getParam().get("step")) {
+        return std::nullopt;
+      }
+    }
+    if (!all) {
+      break;
+    }
+    ++shared;
+  }
+
+  llvm::StringSet<> seen;
+  for (const auto &own : reps) {
+    for (size_t i = 0; i + shared < own.size(); ++i) {
+      if (!loop_of(own[i]).empty() && !seen.insert(loop_of(own[i])).second) {
+        return std::nullopt;
+      }
+    }
+  }
+  return shared;
 }
 
 // Move `event` to the end of `head`'s body.
@@ -94,10 +158,11 @@ void append_transition(RopOp head, int32_t port) {
 
 // The same anchor, re-pointed at the event it became.
 //
-// The rops merged here carry no repetition of their own, so their anchors name
-// no iteration and only the event id moves. OR and IR carry across untouched:
-// they say which repeat of the event is meant, and merging does not change
-// that.
+// Only the event id moves. The indices say which repeat of the event is meant,
+// outermost first, and the merged event sits under the same repetitions in the
+// same order as it did in its own rop -- the shared ones are now around the
+// transition rather than directly around the event, which the timing model
+// reads off the rop and not off the anchor.
 AnchorRangeAttr remap(AnchorRangeAttr anchor,
                       const llvm::StringMap<Absorbed> &absorbed) {
   auto it = absorbed.find(anchor.getInstr().getValue());
@@ -146,7 +211,7 @@ public:
                llvm::SmallVector<RopOp>>
           by_resource;
       for (RopOp rop : epoch.getBody().front().getOps<RopOp>()) {
-        InstrOp event = lone_event(rop);
+        InstrOp event = sole_event(rop);
         if (!event) {
           continue;
         }
@@ -165,14 +230,31 @@ public:
         if (rops.size() < 2) {
           continue;
         }
+        std::optional<size_t> shared = shared_reps(rops);
+        if (!shared) {
+          continue;
+        }
         RopOp head = rops.front();
         int32_t port = std::get<3>(entry.first);
+        mlir::Operation *end = head.getBody().front().getTerminator();
+        llvm::SmallVector<InstrOp> head_reps = reps_of(head);
         for (size_t k = 1; k < rops.size(); ++k) {
-          move_event(head, lone_event(rops[k]));
+          // The event, then the reps that are its own; the shared ones it
+          // carried go with the rop, the head's standing for them.
+          llvm::SmallVector<InstrOp> reps = reps_of(rops[k]);
+          move_event(head, sole_event(rops[k]));
+          for (size_t i = 0; i + *shared < reps.size(); ++i) {
+            reps[i]->moveBefore(end);
+          }
           append_transition(head, port);
           absorbed[rops[k].getSymName()] =
               Absorbed{head.getSymNameAttr(), static_cast<uint32_t>(k)};
           merged_away.push_back(rops[k]);
+        }
+        // The shared reps close the rop, after the last transition, so they
+        // repeat the whole sequence of events.
+        for (size_t i = head_reps.size() - *shared; i < head_reps.size(); ++i) {
+          head_reps[i]->moveBefore(end);
         }
       }
 

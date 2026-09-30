@@ -200,9 +200,12 @@ unsigned enclosing_loop_count(mlir::Operation *op) {
 // Lower a single rop that sits directly inside `loop`: append a `rep` instr
 // derived from the loop's bounds and the rop's innermost map dim. Reads a local
 // copy of the map and leaves the rop's stored map untouched. Does not move the
-// rop or touch the loop.
+// rop or touch the loop. `loop_tag` names the loop on the rep, the same for
+// every rop lowered against it: once the loop is gone, two reps of the same
+// shape are otherwise indistinguishable from two reps of the same loop.
 mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
                                          mlir::affine::AffineForOp loop,
+                                         llvm::StringRef loop_tag,
                                          mlir::PatternRewriter &rewriter) {
   if (!rop.getMapAttr()) {
     return mlir::failure();
@@ -270,7 +273,8 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
   });
   pasm::InstrOp::create(rewriter, loop.getLoc(),
                         rewriter.getStringAttr(instr_id),
-                        rewriter.getStringAttr("rep"), params);
+                        rewriter.getStringAttr("rep"), params)
+      ->setAttr("loop", rewriter.getStringAttr(loop_tag));
 
   return mlir::success();
 }
@@ -302,8 +306,9 @@ public:
     }
 
     // lower each rop against this loop
+    std::string loop_tag = vesyla::util::Common::gen_random_string(8);
     for (pasm::RopOp rop : rops) {
-      if (mlir::failed(rewrite_rop_for_loop(rop, loop, rewriter))) {
+      if (mlir::failed(rewrite_rop_for_loop(rop, loop, loop_tag, rewriter))) {
         return mlir::failure();
       }
     }
