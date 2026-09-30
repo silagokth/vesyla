@@ -107,6 +107,12 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
                        static_cast<uint32_t>(last.getMt()),
                        to_u(last.getIrIdx()), last.getDelay()};
 
+    if (auto pass_hi =
+            icdep->getAttrOfType<mlir::DenseI32ArrayAttr>("pass_hi")) {
+      first_anchor.pass_hi = to_u(pass_hi.asArrayRef());
+      last_anchor.pass_hi = first_anchor.pass_hi;
+    }
+
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,
                       icdep.getSrc(), icdep.getDst());

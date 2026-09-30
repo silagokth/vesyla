@@ -45,13 +45,33 @@ bool InterconnectConfig::operator==(const InterconnectConfig &o) const {
   return config_key(*this) == config_key(o);
 }
 
-// Build a point AnchorRangeAttr (lo == hi) from OR/MT/IR indices.
-static AnchorRangeAttr make_point_anchor_range(mlir::MLIRContext *ctx,
-                                               mlir::FlatSymbolRefAttr id,
-                                               llvm::ArrayRef<uint32_t> or_idx,
-                                               uint32_t mt,
-                                               llvm::ArrayRef<uint32_t> ir) {
-  return AnchorRangeAttr::get(ctx, id, or_idx, mt, ir, or_idx, mt, ir);
+// How often the binding's sequence repeats: the trip count of each loop its
+// transfers release their routes across, outermost first. Empty when the
+// sequence covers the whole epoch. The transfers have to agree -- one that
+// repeats at a different depth would need a sequence of its own.
+static std::vector<uint32_t> pass_trips(const InterconnectBinding &binding) {
+  std::vector<uint32_t> trips;
+  bool seeded = false;
+  for (const auto &slot : binding.slots) {
+    for (const InterconnectConfigOption &opt : slot) {
+      for (const Anchor &a : opt.first_anchors) {
+        std::vector<uint32_t> own;
+        for (std::size_t k = 0; k < a.pass_hi.size() && k < a.ir_idx.size();
+             ++k) {
+          own.push_back(a.pass_hi[k] - a.ir_idx[k] + 1);
+        }
+        if (!seeded) {
+          trips = own;
+          seeded = true;
+        } else if (own != trips) {
+          llvm::errs() << "pass_trips: transfers repeating at different "
+                          "depths not implemented yet\n";
+          return {};
+        }
+      }
+    }
+  }
+  return trips;
 }
 
 static void print_anchor(const Anchor &a, llvm::raw_ostream &os) {
@@ -729,6 +749,26 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
       builder, loc,
       builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
       builder.getStringAttr("rep"), builder.getDictionaryAttr(rep_attrs));
+
+  // One level per pass loop, innermost first, replaying the sequence. Each has
+  // a delay of its own: the route fires fewer events per pass than the rops it
+  // serves, so it cannot share their period.
+  std::vector<uint32_t> trips = pass_trips(binding);
+  for (std::size_t k = trips.size(); k-- > 0;) {
+    llvm::SmallVector<mlir::NamedAttribute> pass_attrs;
+    pass_attrs.push_back(builder.getNamedAttr(
+        "delay", builder.getStringAttr(delay_name + "_" + std::to_string(k))));
+    pass_attrs.push_back(builder.getNamedAttr(
+        "iter", builder.getI32IntegerAttr(static_cast<int32_t>(trips[k]))));
+    pass_attrs.push_back(
+        builder.getNamedAttr("step", builder.getI32IntegerAttr(0)));
+    pass_attrs.push_back(
+        builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
+    InstrOp::create(
+        builder, loc,
+        builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+        builder.getStringAttr("rep"), builder.getDictionaryAttr(pass_attrs));
+  }
 }
 
 void emit_interconnect_constraints(const InterconnectBinding &binding,
@@ -739,6 +779,50 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   auto rop_ref = mlir::FlatSymbolRefAttr::get(ctx, rop.getSymName());
   auto delay = DelayAttr::get(ctx, 1, std::nullopt);
   bool has_sequence = binding.sequence.size() >= 2;
+
+  // The passes the sequence repeats over; none without a sequence, the route
+  // rop having no repetition to index then.
+  std::vector<uint32_t> trips;
+  if (has_sequence) {
+    trips = pass_trips(binding);
+  }
+  std::vector<uint32_t> first_pass(trips.size(), 0);
+  std::vector<uint32_t> last_pass;
+  for (uint32_t trip : trips) {
+    last_pass.push_back(trip - 1);
+  }
+
+  // An anchor range over passes `from`..`to` of each pass loop, counted from
+  // `base`, followed by `tail` as a point. With no pass loops it is the point
+  // `tail`.
+  auto spanning = [&](mlir::FlatSymbolRefAttr id,
+                      llvm::ArrayRef<uint32_t> or_idx, uint32_t mt,
+                      llvm::ArrayRef<uint32_t> base,
+                      llvm::ArrayRef<uint32_t> from,
+                      llvm::ArrayRef<uint32_t> to,
+                      llvm::ArrayRef<uint32_t> tail) {
+    std::vector<uint32_t> lo;
+    std::vector<uint32_t> hi;
+    for (std::size_t k = 0; k < from.size(); ++k) {
+      lo.push_back(base[k] + from[k]);
+      hi.push_back(base[k] + to[k]);
+    }
+    lo.insert(lo.end(), tail.begin(), tail.end());
+    hi.insert(hi.end(), tail.begin(), tail.end());
+    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+  };
+  // A transfer's anchor, and a step of this rop's sequence, over those passes.
+  auto of_use = [&](const Anchor &a, llvm::ArrayRef<uint32_t> from,
+                    llvm::ArrayRef<uint32_t> to) {
+    llvm::ArrayRef<uint32_t> ir(a.ir_idx);
+    return spanning(a.instr_id, a.or_idx, a.mt, ir, from, to,
+                    ir.drop_front(from.size()));
+  };
+  auto of_step = [&](llvm::ArrayRef<uint32_t> step,
+                     llvm::ArrayRef<uint32_t> from,
+                     llvm::ArrayRef<uint32_t> to) {
+    return spanning(rop_ref, {}, 0, first_pass, from, to, step);
+  };
 
   // Collect the rops whose instruction is a config. A config first-use is itself
   // a configuration step and must not receive a config -> first_use constraint.
@@ -768,11 +852,8 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
             }
           }
         }
-        auto src_ar =
-            make_point_anchor_range(ctx, rop_ref, /*or=*/{}, /*mt=*/0,
-                                    src_indices);
-        auto dst_ar =
-            make_point_anchor_range(ctx, a.instr_id, a.or_idx, a.mt, a.ir_idx);
+        auto src_ar = of_step(src_indices, first_pass, last_pass);
+        auto dst_ar = of_use(a, first_pass, last_pass);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
                        builder.getBoolAttr(false));
       }
@@ -813,12 +894,37 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         if (a.instr_id && uses_next.contains(a.instr_id.getValue())) {
           continue;
         }
-        auto src_ar =
-            make_point_anchor_range(ctx, a.instr_id, a.or_idx, a.mt, a.ir_idx);
+        auto src_ar = of_use(a, first_pass, last_pass);
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
-        auto dst_ar =
-            make_point_anchor_range(ctx, rop_ref, /*or=*/{}, /*mt=*/0, dst_idx);
+        auto dst_ar = of_step(dst_idx, first_pass, last_pass);
         CstrOp::create(builder, loc, src_ar, dst_ar, delay,
+                       builder.getBoolAttr(false));
+      }
+    }
+
+    // The sequence starts over on the next pass, so the last option's last
+    // use has to be done before that pass's first step. One constraint per
+    // pass loop: stepping it leaves the last pass of every loop inside and
+    // enters their first.
+    int final_slot = binding.sequence.back();
+    std::vector<uint32_t> first_step = {0};
+    for (std::size_t k = 0; k < trips.size(); ++k) {
+      if (trips[k] < 2 || binding.slots[final_slot].empty()) {
+        continue;
+      }
+      std::vector<uint32_t> src_from = first_pass;
+      std::vector<uint32_t> src_to = last_pass;
+      std::vector<uint32_t> dst_from = first_pass;
+      std::vector<uint32_t> dst_to = last_pass;
+      src_to[k] = last_pass[k] - 1;
+      dst_from[k] = 1;
+      for (std::size_t inner = k + 1; inner < trips.size(); ++inner) {
+        src_from[inner] = last_pass[inner];
+        dst_to[inner] = 0;
+      }
+      for (const Anchor &a : binding.slots[final_slot][0].last_anchors) {
+        CstrOp::create(builder, loc, of_use(a, src_from, src_to),
+                       of_step(first_step, dst_from, dst_to), delay,
                        builder.getBoolAttr(false));
       }
     }

@@ -103,13 +103,21 @@ public:
 
         CellOp send_cell = find_or_create_cell(sr, sc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&send_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), src_res, dst_one, kind_bulk,
-                        first, last, dir_send);
+        IcDepOp send = IcDepOp::create(rewriter, bulk.getLoc(), src_res,
+                                       dst_one, kind_bulk, first, last,
+                                       dir_send);
 
         CellOp recv_cell = find_or_create_cell(rr, rc, bulk.getLoc());
         rewriter.setInsertionPointToEnd(&recv_cell.getBody().front());
-        IcDepOp::create(rewriter, bulk.getLoc(), src_res, dst_one, kind_bulk,
-                        first, last, dir_recv);
+        IcDepOp recv = IcDepOp::create(rewriter, bulk.getLoc(), src_res,
+                                       dst_one, kind_bulk, first, last,
+                                       dir_recv);
+
+        // Both halves repeat over the passes the transfer does.
+        if (mlir::Attribute pass_hi = bulk->getAttr("pass_hi")) {
+          send->setAttr("pass_hi", pass_hi);
+          recv->setAttr("pass_hi", pass_hi);
+        }
       }
       rewriter.eraseOp(bulk);
     }

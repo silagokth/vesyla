@@ -83,24 +83,6 @@ pasm::AnchorRangeAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAt
   return make_ir_anchor(ctx, id, idx_lo, idx_hi);
 }
 
-// Build a single-point anchor fixed to the last iteration of each enclosing
-// loop (each dimension = upper_bound - 1). Bare when there are no loops.
-pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx, mlir::Operation *op,
-                                  mlir::FlatSymbolRefAttr id) {
-  llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
-  if (loops.empty()) {
-    return make_ir_anchor(ctx, id, {}, {});
-  }
-
-  llvm::SmallVector<uint32_t> idx;
-  for (mlir::affine::AffineForOp loop : loops) {
-    int64_t ub =
-        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
-    idx.push_back(static_cast<uint32_t>(ub - 1));
-  }
-  return make_ir_anchor(ctx, id, idx, idx);
-}
-
 // Build a single-point anchor fixed to the first iteration of each enclosing
 // loop (each dimension = lower_bound). Bare when there are no loops.
 pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
@@ -242,33 +224,37 @@ mlir::FlatSymbolRefAttr storage_of(mlir::Operation *op) {
 // does have one lists its induction variables the same way.
 //
 // A loop the address does not vary with is one the storage is reused across:
-// every pass writes the same addresses over again. Anything unstated is read as
-// varying, which claims no reuse and leaves the pair as it was.
+// every pass writes the same addresses over again. Anything unstated -- no map,
+// or an address that is not known until the program runs -- is read as not
+// varying, so the storage is taken to be reused unless the map says otherwise.
 bool address_varies_with(mlir::Operation *op, unsigned depth) {
   auto map_attr = op->getAttrOfType<mlir::AffineMapAttr>("map");
   if (!map_attr) {
-    return true;
+    return false;
   }
   mlir::AffineMap map = map_attr.getAffineMap();
   if (depth >= map.getNumDims()) {
-    return true;
+    return false;
   }
   return map.isFunctionOfDim(depth);
 }
 
-// The outermost shared loop that both accesses reuse their storage across, or
-// nothing when every pass addresses somewhere new. Shared loops are the
-// outermost ones and so occupy the same positions in both operations' enclosing
-// lists, which is what lets one depth index stand for both.
-std::optional<size_t>
-carrying_loop(mlir::Operation *a, mlir::Operation *b,
-              llvm::ArrayRef<mlir::affine::AffineForOp> shared) {
+// For each shared loop, whether the pair may meet again on a later pass through
+// it. Two accesses to one storage do unless both addresses move with the loop;
+// a pair that only contends for a slot always does, the slot being the same one
+// every pass. Shared loops are the outermost ones and so occupy the same
+// positions in both operations' enclosing lists, which is what lets one depth
+// index stand for both.
+llvm::SmallVector<bool>
+reused_loops(mlir::Operation *a, mlir::Operation *b,
+             llvm::ArrayRef<mlir::affine::AffineForOp> shared,
+             bool same_storage) {
+  llvm::SmallVector<bool> reused;
   for (size_t depth = 0; depth < shared.size(); ++depth) {
-    if (!address_varies_with(a, depth) && !address_varies_with(b, depth)) {
-      return depth;
-    }
+    reused.push_back(!same_storage || !address_varies_with(a, depth) ||
+                     !address_varies_with(b, depth));
   }
-  return std::nullopt;
+  return reused;
 }
 
 // An anchor like build_within, except that the shared loop at `carry` spans one
@@ -276,10 +262,15 @@ carrying_loop(mlir::Operation *a, mlir::Operation *b,
 // of these at offset 0 and 1 hold the same number of points and so pair pass i
 // with pass i + 1, which is how a dependence that runs from one pass into the
 // next is stated.
+//
+// A reused loop inside `carry` is pinned rather than spanned: stepping the
+// outer loop leaves the last pass of the inner one and enters its first, so
+// the two ends are that last and that first, not the same pass of each.
 pasm::AnchorRangeAttr
 build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
             llvm::ArrayRef<mlir::affine::AffineForOp> shared,
-            mlir::FlatSymbolRefAttr id, Pin pin, size_t carry, int64_t offset) {
+            llvm::ArrayRef<bool> reused, mlir::FlatSymbolRefAttr id, Pin pin,
+            size_t carry, int64_t offset) {
   llvm::SmallVector<uint32_t> idx_lo;
   llvm::SmallVector<uint32_t> idx_hi;
   size_t depth = 0;
@@ -291,7 +282,8 @@ build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
     if (depth == carry) {
       idx_lo.push_back(static_cast<uint32_t>(lb + offset));
       idx_hi.push_back(static_cast<uint32_t>(ub - 2 + offset));
-    } else if (llvm::is_contained(shared, loop)) {
+    } else if (llvm::is_contained(shared, loop) &&
+               !(depth > carry && reused[depth])) {
       idx_lo.push_back(static_cast<uint32_t>(lb));
       idx_hi.push_back(static_cast<uint32_t>(ub - 1));
     } else {
@@ -554,7 +546,8 @@ public:
     // (row, col, slot) resource (port ignored) must be at least one cycle apart
     // (delay [1, ]), unless a dataflow constraint already orders them. The
     // constraint runs from the first statement's last loop iteration to the
-    // second statement's first loop iteration.
+    // second statement's first loop iteration, within each pass through the
+    // loops the two share.
     mlir::MLIRContext *ctx = &getContext();
     getOperation().walk([&](pasm::EpochOp epoch) {
       mlir::OpBuilder builder(ctx);
@@ -633,49 +626,45 @@ public:
           // time anything reads it. Anchoring inside the shared loops instead
           // states it per pass, which is what the program means.
           //
-          // Contention stays the rule for a pair that shares a slot but no
-          // storage: nothing relates their iterations, so all-before-all is
-          // the only thing that can be said.
+          // A pair that shares a slot but no storage is anchored the same way:
+          // inside a loop the two share they take turns once per pass, and
+          // all-before-all would forbid the program its own interleaving. With
+          // no shared loop the anchors collapse to last-to-first.
           mlir::FlatSymbolRefAttr a_storage = storage_of(a);
           mlir::FlatSymbolRefAttr b_storage = storage_of(b);
           bool same_storage = a_storage && a_storage == b_storage;
-          llvm::SmallVector<mlir::affine::AffineForOp> shared;
-          if (same_storage) {
-            shared = shared_loops(a, b);
-          }
+          llvm::SmallVector<mlir::affine::AffineForOp> shared =
+              shared_loops(a, b);
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
 
           pasm::AnchorRangeAttr src =
-              same_storage ? build_within(ctx, a, shared, a_id, Pin::last)
-                           : build_last_anchor(ctx, a, a_id);
+              build_within(ctx, a, shared, a_id, Pin::last);
           pasm::AnchorRangeAttr dst =
-              same_storage ? build_within(ctx, b, shared, b_id, Pin::first)
-                           : build_first_anchor(ctx, b, b_id);
+              build_within(ctx, b, shared, b_id, Pin::first);
           pasm::CstrOp::create(builder, a->getLoc(), src, dst, delay_attr,
                          builder.getBoolAttr(false));
-
-          if (!same_storage) {
-            continue;
-          }
 
           // The pass-to-pass half of the same dependence. Saying only that a
           // pass's accesses of `a` come before that pass's accesses of `b`
           // leaves the next pass's `a` free to run first and overwrite what
           // this pass's `b` has not read yet -- the schedule satisfies every
           // per-pass constraint and still loses the data. That only arises
-          // where the storage is reused, so it is asked of the outermost
-          // shared loop whose addresses repeat, and of nothing else: a program
-          // that addresses somewhere new each pass may overlap them freely.
-          std::optional<size_t> carry = carrying_loop(a, b, shared);
-          if (!carry || trip_count(shared[*carry]) < 2) {
-            continue;
+          // where the pair meets again, so it is asked of every shared loop
+          // that is reused and of no other: a program that addresses somewhere
+          // new each pass may overlap them freely.
+          llvm::SmallVector<bool> reused =
+              reused_loops(a, b, shared, same_storage);
+          for (size_t carry = 0; carry < shared.size(); ++carry) {
+            if (!reused[carry] || trip_count(shared[carry]) < 2) {
+              continue;
+            }
+            pasm::AnchorRangeAttr carry_src = build_carry(
+                ctx, b, shared, reused, b_id, Pin::last, carry, 0);
+            pasm::AnchorRangeAttr carry_dst = build_carry(
+                ctx, a, shared, reused, a_id, Pin::first, carry, 1);
+            pasm::CstrOp::create(builder, b->getLoc(), carry_src, carry_dst,
+                           delay_attr, builder.getBoolAttr(false));
           }
-          pasm::AnchorRangeAttr carry_src =
-              build_carry(ctx, b, shared, b_id, Pin::last, *carry, 0);
-          pasm::AnchorRangeAttr carry_dst =
-              build_carry(ctx, a, shared, a_id, Pin::first, *carry, 1);
-          pasm::CstrOp::create(builder, b->getLoc(), carry_src, carry_dst,
-                         delay_attr, builder.getBoolAttr(false));
         }
       }
 

@@ -135,12 +135,17 @@ int32_t get_producer_delay(mlir::Operation *op) {
 // loop's lower bound; `last` uses each upper bound minus one. Top-level
 // producers (no enclosing loops) get a bare anchor with no event/indices. The
 // `delay` is taken from the originating drra.rop.
+//
+// The outermost `pass` loops are pinned to their first iteration for `last`
+// too: the transfer gives its route up at the end of each pass through them,
+// so its last use is the end of the first pass, not of the whole nest.
 AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
                         llvm::ArrayRef<mlir::affine::AffineForOp> loops,
-                        bool is_last, int32_t delay) {
+                        bool is_last, int32_t delay, size_t pass = 0) {
   llvm::SmallVector<int32_t> idx;
+  size_t depth = 0;
   for (mlir::affine::AffineForOp loop : loops) {
-    if (is_last) {
+    if (is_last && depth >= pass) {
       int64_t ub =
           loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 0;
       idx.push_back(static_cast<int32_t>(ub - 1));
@@ -149,9 +154,39 @@ AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
           loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
       idx.push_back(static_cast<int32_t>(lb));
     }
+    ++depth;
   }
   // Loop dimensions map to IR indices; MT (event id) is 0 and there is no OR.
   return AnchorAttr::get(ctx, instr, /*or_idx=*/{}, /*mt=*/0, idx, delay);
+}
+
+// The data kind a value travels as: a vector is a bulk transfer, a scalar a
+// word transfer.
+llvm::StringRef kind_of(mlir::Value value) {
+  return mlir::isa<mlir::ShapedType>(value.getType()) ? "bulk" : "word";
+}
+
+// How many of `loops`, outermost first, the transfer shares with another of
+// its kind. Such a loop is one whose body switches between routes, so the
+// transfer holds its route for one pass through it and takes it up again on
+// the next; the loops inside hold this transfer alone and the route stays put
+// across them. Zero when the transfer has the whole nest to itself.
+size_t pass_depth(mlir::Operation *producer, llvm::StringRef kind,
+                  llvm::ArrayRef<mlir::affine::AffineForOp> loops,
+                  llvm::ArrayRef<mlir::Operation *> producers) {
+  for (size_t depth = loops.size(); depth > 0; --depth) {
+    for (mlir::Operation *other : producers) {
+      if (other == producer || !loops[depth - 1]->isProperAncestor(other)) {
+        continue;
+      }
+      for (mlir::Value result : other->getResults()) {
+        if (kind_of(result) == kind) {
+          return depth;
+        }
+      }
+    }
+  }
+  return 0;
 }
 
 class GenerateIcdepPass
@@ -190,8 +225,6 @@ public:
         int32_t delay = get_producer_delay(producer);
         AnchorAttr first =
             build_anchor(ctx, instr, loops, /*is_last=*/false, delay);
-        AnchorAttr last =
-            build_anchor(ctx, instr, loops, /*is_last=*/true, delay);
 
         for (mlir::OpResult result : producer->getResults()) {
           ResourceAttr src =
@@ -220,21 +253,37 @@ public:
           // Derive the data kind (word/bulk) from the routed value's type:
           // a scalar (i16) is a word transfer, a vector (vector<16xi16>) is a
           // bulk transfer. dir is left empty here.
-          std::string kind =
-              mlir::isa<mlir::ShapedType>(result.getType()) ? "bulk" : "word";
+          std::string kind = kind_of(result).str();
+          // The loops the route is released across, and how far each runs, so
+          // the binding can repeat over them what it finds for one pass.
+          size_t pass = pass_depth(producer, kind, loops, producers);
+          AnchorAttr last =
+              build_anchor(ctx, instr, loops, /*is_last=*/true, delay, pass);
+          llvm::SmallVector<int32_t> pass_hi;
+          for (size_t depth = 0; depth < pass; ++depth) {
+            int64_t ub = loops[depth].hasConstantUpperBound()
+                             ? loops[depth].getConstantUpperBound()
+                             : 1;
+            pass_hi.push_back(static_cast<int32_t>(ub - 1));
+          }
+          auto mark = [&](IcDepOp icdep) {
+            if (pass > 0) {
+              icdep->setAttr("pass_hi", builder.getDenseI32ArrayAttr(pass_hi));
+            }
+          };
           if (kind == "bulk") {
             // bulk fans out: all receivers share one icdep.
-            IcDepOp::create(builder, producer->getLoc(), src,
-                            builder.getArrayAttr(dst),
-                            builder.getStringAttr(kind), first, last,
-                            /*dir=*/mlir::StringAttr());
+            mark(IcDepOp::create(builder, producer->getLoc(), src,
+                                 builder.getArrayAttr(dst),
+                                 builder.getStringAttr(kind), first, last,
+                                 /*dir=*/mlir::StringAttr()));
           } else {
             // word is point-to-point: one icdep per receiver.
             for (mlir::Attribute dres : dst) {
-              IcDepOp::create(builder, producer->getLoc(), src,
-                              builder.getArrayAttr(dres),
-                              builder.getStringAttr(kind), first, last,
-                              /*dir=*/mlir::StringAttr());
+              mark(IcDepOp::create(builder, producer->getLoc(), src,
+                                   builder.getArrayAttr(dres),
+                                   builder.getStringAttr(kind), first, last,
+                                   /*dir=*/mlir::StringAttr()));
             }
           }
         }
