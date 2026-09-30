@@ -167,11 +167,17 @@ llvm::StringRef kind_of(mlir::Value value) {
 }
 
 // How many of `loops`, outermost first, the transfer shares with another of
-// its kind. Such a loop is one whose body switches between routes, so the
-// transfer holds its route for one pass through it and takes it up again on
-// the next; the loops inside hold this transfer alone and the route stays put
-// across them. Zero when the transfer has the whole nest to itself.
+// its kind that needs a different route. Such a loop is one whose body
+// switches between routes, so the transfer holds its route for one pass
+// through it and takes it up again on the next; the loops inside hold this
+// transfer alone and the route stays put across them. Zero when the transfer
+// has the whole nest to itself.
+//
+// Two bulk transfers leaving the same slot share a route -- one send, with a
+// receive that lists both destinations -- so they do not count against each
+// other. Word transfers are all counted.
 size_t pass_depth(mlir::Operation *producer, llvm::StringRef kind,
+                  ResourceAttr src,
                   llvm::ArrayRef<mlir::affine::AffineForOp> loops,
                   llvm::ArrayRef<mlir::Operation *> producers) {
   for (size_t depth = loops.size(); depth > 0; --depth) {
@@ -179,10 +185,18 @@ size_t pass_depth(mlir::Operation *producer, llvm::StringRef kind,
       if (other == producer || !loops[depth - 1]->isProperAncestor(other)) {
         continue;
       }
-      for (mlir::Value result : other->getResults()) {
-        if (kind_of(result) == kind) {
-          return depth;
+      for (mlir::OpResult result : other->getResults()) {
+        if (kind_of(result) != kind) {
+          continue;
         }
+        ResourceAttr other_src =
+            get_result_resource(other, result.getResultNumber());
+        if (kind == "bulk" && other_src && other_src.getRow() == src.getRow() &&
+            other_src.getCol() == src.getCol() &&
+            other_src.getSlot() == src.getSlot()) {
+          continue;
+        }
+        return depth;
       }
     }
   }
@@ -256,7 +270,7 @@ public:
           std::string kind = kind_of(result).str();
           // The loops the route is released across, and how far each runs, so
           // the binding can repeat over them what it finds for one pass.
-          size_t pass = pass_depth(producer, kind, loops, producers);
+          size_t pass = pass_depth(producer, kind, src, loops, producers);
           AnchorAttr last =
               build_anchor(ctx, instr, loops, /*is_last=*/true, delay, pass);
           llvm::SmallVector<int32_t> pass_hi;
