@@ -76,6 +76,7 @@ jobs:
           . /usr/share/modules/init/sh
           module use /opt/modules
           module add sst
+          module add rust
           rm -rf library
           cd drra-components
           rm -rf build
