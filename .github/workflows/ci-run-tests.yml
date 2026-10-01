@@ -12,7 +12,12 @@ on:
 
 jobs:
   run-tests:
+    name: run-tests (${{ matrix.frontend }})
     runs-on: [modelsim, vesyla, bender, sst]
+    strategy:
+      fail-fast: false
+      matrix:
+        frontend: [pasm, mlir]
     steps:
       - name: Install gh CLI
         run: |
@@ -112,7 +117,7 @@ jobs:
             exit 1
           fi
 
-      - name: Run DRRA tests
+      - name: Run DRRA tests (${{ matrix.frontend }})
         id: run_tests
         continue-on-error: true
         run: |
@@ -128,7 +133,7 @@ jobs:
           export VESYLA_SUITE_PATH_COMPONENTS=$(readlink -e ../library)
           vesyla --version
           vesyla testcase generate -d ./testcases
-          ./run.sh
+          ./run.sh --frontend=${{ matrix.frontend }}
 
       - name: Collect failed-test debug logs
         if: steps.run_tests.outcome == 'failure'
@@ -146,9 +151,9 @@ jobs:
           import os, re, subprocess, pathlib
           from xml.etree import ElementTree as ET
 
-          # Map test name -> testcase path from autotest_config.robot
+          # Map test name -> (testcase path, frontend) from autotest_config.robot
           name2path = {}
-          row = re.compile(r'^([\w:.\-]+)\s{2,}(/\S.*)$')
+          row = re.compile(r'^([\w:.\-]+)\s{2,}(/\S+)(?:\s{2,}(\w+))?$')
           in_cases = False
           for line in open('autotest_config.robot'):
               if line.startswith('*** Test Cases'):
@@ -159,7 +164,7 @@ jobs:
               if in_cases:
                   m = row.match(line.rstrip())
                   if m:
-                      name2path[m.group(1)] = m.group(2)
+                      name2path[m.group(1)] = (m.group(2), m.group(3) or 'pasm')
 
           # Collect FAIL test names from robot output.xml
           tree = ET.parse('output/output.xml')
@@ -172,7 +177,7 @@ jobs:
 
           summary = open('failed_logs/SUMMARY.txt', 'w')
           for name in failed:
-              path = name2path.get(name)
+              path, frontend = name2path.get(name, (None, None))
               slug = re.sub(r'[^A-Za-z0-9_-]', '_', name)
               out = pathlib.Path('failed_logs') / slug
               out.mkdir(parents=True, exist_ok=True)
@@ -183,12 +188,14 @@ jobs:
                   continue
               with open(log_path, 'w') as log:
                   log.write(f'===== Test: {name} =====\n')
-                  log.write(f'===== Path: {path} =====\n\n')
-                  log.write('===== vesyla testcase run -d <path> -o <out>/run =====\n')
+                  log.write(f'===== Path: {path} =====\n')
+                  log.write(f'===== Frontend: {frontend} =====\n\n')
+                  log.write('===== vesyla testcase run -d <path> -o <out>/run -f <frontend> =====\n')
                   log.flush()
                   run_dir = out / 'run'
                   subprocess.run(
-                      ['vesyla', 'testcase', 'run', '-d', path, '-o', str(run_dir)],
+                      ['vesyla', 'testcase', 'run', '-d', path, '-o', str(run_dir),
+                       '--frontend', frontend],
                       stdout=log, stderr=subprocess.STDOUT,
                   )
                   # Disabled: the debug rerun takes too long on the big testcases.
@@ -211,7 +218,7 @@ jobs:
         if: steps.run_tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: failed-test-logs
+          name: failed-test-logs-${{ matrix.frontend }}
           path: failed-test-logs.tar.gz
           if-no-files-found: ignore
 
@@ -223,11 +230,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-outputs
+          name: test-outputs-${{ matrix.frontend }}
           path: output.tar.gz
 
       - name: Fail job if tests failed
         if: steps.run_tests.outcome == 'failure'
         run: |
-          echo "DRRA tests failed; see failed-test-logs artifact for per-test debug output."
+          echo "DRRA ${{ matrix.frontend }} tests failed; see failed-test-logs-${{ matrix.frontend }} artifact for per-test debug output."
           exit 1
