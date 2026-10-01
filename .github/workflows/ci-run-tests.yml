@@ -26,40 +26,64 @@ jobs:
           gh --version
 
       - name: Download DRRA components library
+        id: components
         run: |
           set -e
           source ~/.config/envman/PATH.env
           BRANCH="${{ inputs.branch }}"
           REPO="silagokth/drra-components"
           rm -f library.tar.gz
-          if [ -n "$BRANCH" ] && gh api "repos/$REPO/branches/$BRANCH" >/dev/null 2>&1; then
-            RUN_ID=$(gh run list --repo "$REPO" --branch "$BRANCH" \
-                       --workflow "PR workflow" \
-                       --limit 1 --json databaseId -q '.[0].databaseId')
-            if [ -n "$RUN_ID" ]; then
-              echo "Using drra-components@$BRANCH library artifact from run $RUN_ID"
-              gh run download "$RUN_ID" --repo "$REPO" -n library -D .
-            else
-              echo "Could not find a run for branch $BRANCH on $REPO; using latest release"
-            fi
+          if [ -z "$BRANCH" ] || ! gh api "repos/$REPO/branches/$BRANCH" >/dev/null 2>&1; then
+            echo "Branch $BRANCH not found on $REPO; using master"
+            BRANCH="master"
+          fi
+          SHA=$(gh api "repos/$REPO/commits/$BRANCH" -q .sha)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          # Only reuse a library built from the commit at the branch head.
+          RUN_ID=$(gh run list --repo "$REPO" --commit "$SHA" --status success \
+                     --workflow "PR workflow" \
+                     --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$RUN_ID" ] && gh run download "$RUN_ID" --repo "$REPO" -n library -D .; then
+            echo "Using drra-components@$BRANCH ($SHA) library artifact from run $RUN_ID"
+            echo "downloaded=true" >> $GITHUB_OUTPUT
           else
-            echo "Branch $BRANCH not found on $REPO; using latest release"
-          fi
-          if [ ! -f library.tar.gz ]; then
-            gh release download --repo "$REPO" --pattern "library.tar.gz"
-          fi
-          if [ ! -f library.tar.gz ]; then
-            echo "Error: library.tar.gz not found"
-            exit 1
+            echo "No library artifact for drra-components@$BRANCH ($SHA); building it"
+            echo "downloaded=false" >> $GITHUB_OUTPUT
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
 
       - name: Extract library
+        if: steps.components.outputs.downloaded == 'true'
         run: |
           rm -rf library
           tar -xzf library.tar.gz
           rm library.tar.gz
+
+      - name: Checkout DRRA components
+        if: steps.components.outputs.downloaded != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: silagokth/drra-components
+          path: drra-components
+          ref: ${{ steps.components.outputs.sha }}
+          token: ${{ secrets.DRRA_COMPONENTS_PAT_VESYLA_READ_ONLY }}
+
+      - name: Build library
+        if: steps.components.outputs.downloaded != 'true'
+        run: |
+          set -e
+          . /usr/share/modules/init/sh
+          module use /opt/modules
+          module add sst
+          rm -rf library
+          cd drra-components
+          rm -rf build
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -DUSE_SST=ON ..
+          cmake --build .
+          mv library ${{ github.workspace }}/library
 
       - name: Checkout DRRA tests
         uses: actions/checkout@v4
