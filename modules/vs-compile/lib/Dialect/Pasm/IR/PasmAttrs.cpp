@@ -2,6 +2,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
+#include "vesyla/Support/Anchor.hpp"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace vesyla::pasm;
@@ -82,61 +83,52 @@ mlir::Attribute AnchorRangeAttr::parse(mlir::AsmParser &p, mlir::Type) {
   }
   auto instr = mlir::FlatSymbolRefAttr::get(p.getContext(), instr_name);
 
-  std::string event;
-  llvm::SmallVector<uint32_t> los;
-  llvm::SmallVector<uint32_t> his;
-
+  // The index text (OR.MT.IR with optional range) is carried as a quoted
+  // string so it round-trips through the shared ::vesyla::Anchor grammar.
+  std::string idx_text;
   if (mlir::succeeded(p.parseOptionalComma())) {
-    if (p.parseString(&event)) {
+    if (p.parseString(&idx_text)) {
       return {};
-    }
-    if (mlir::succeeded(p.parseOptionalComma())) {
-      while (mlir::succeeded(p.parseOptionalLSquare())) {
-        uint32_t lo_v;
-        if (p.parseInteger(lo_v)) {
-          return {};
-        }
-        uint32_t hi_v = lo_v;
-        if (mlir::succeeded(p.parseOptionalColon())) {
-          if (p.parseInteger(hi_v)) {
-            return {};
-          }
-        }
-        if (p.parseRSquare()) {
-          return {};
-        }
-        los.push_back(lo_v);
-        his.push_back(hi_v);
-      }
     }
   }
 
   if (p.parseGreater()) {
     return {};
   }
-  return AnchorRangeAttr::get(p.getContext(), instr, event, los, his);
+
+  auto range = ::vesyla::AnchorRange::parse(instr_name.getValue().str() + idx_text);
+  if (!range) {
+    p.emitError(p.getCurrentLocation(), "invalid anchor_range index text: ")
+        << idx_text;
+    return {};
+  }
+
+  auto to_u = [](const std::vector<int> &v) {
+    return llvm::SmallVector<uint32_t>(v.begin(), v.end());
+  };
+  return AnchorRangeAttr::get(
+      p.getContext(), instr, to_u(range->lo.or_idx),
+      static_cast<uint32_t>(range->lo.mt_idx), to_u(range->lo.ir_idx),
+      to_u(range->hi.or_idx), static_cast<uint32_t>(range->hi.mt_idx),
+      to_u(range->hi.ir_idx));
 }
 
 void AnchorRangeAttr::print(mlir::AsmPrinter &p) const {
   p << "<";
   p.printAttribute(getInstr());
 
-  llvm::StringRef event = getEvent();
-  auto lo = getIdxLo();
-  auto hi = getIdxHi();
+  ::vesyla::Anchor lo, hi;
+  lo.or_idx.assign(getOrLo().begin(), getOrLo().end());
+  lo.mt_idx = static_cast<int>(getMtLo());
+  lo.ir_idx.assign(getIrLo().begin(), getIrLo().end());
+  hi.or_idx.assign(getOrHi().begin(), getOrHi().end());
+  hi.mt_idx = static_cast<int>(getMtHi());
+  hi.ir_idx.assign(getIrHi().begin(), getIrHi().end());
 
-  if (!event.empty() || !lo.empty()) {
-    p << ", \"" << event << "\"";
-  }
-  if (!lo.empty()) {
-    p << ", ";
-    for (std::size_t i = 0; i < lo.size(); ++i) {
-      p << "[" << lo[i];
-      if (lo[i] != hi[i]) {
-        p << ":" << hi[i];
-      }
-      p << "]";
-    }
+  // Empty-name to_string yields just the index text ("" when fully bare).
+  std::string idx = ::vesyla::AnchorRange{lo, hi}.to_string();
+  if (!idx.empty()) {
+    p << ", \"" << idx << "\"";
   }
   p << ">";
 }
@@ -195,75 +187,54 @@ mlir::Attribute AnchorAttr::parse(mlir::AsmParser &p, mlir::Type) {
     return {};
   }
 
-  std::string event;
-  llvm::SmallVector<int32_t> idx;
-  int32_t delay = 0;
-
   // Optional trailing parts, each preceded by ','.
-  // Forms:
-  //   , "event", [idx0, idx1, ...]
-  //   , delay
-  //   , "event", [idx0, ...], delay
+  // Forms:  , "<index-text>"  |  , delay  |  , "<index-text>", delay
+  std::string idx_text;
+  int32_t delay = 0;
   if (mlir::succeeded(p.parseOptionalComma())) {
-    std::string ev;
-    if (mlir::succeeded(p.parseOptionalString(&ev))) {
-      event = ev;
-      if (p.parseComma() || p.parseLSquare()) {
-        return {};
-      }
-      if (mlir::failed(p.parseOptionalRSquare())) {
-        int32_t v;
-        if (p.parseInteger(v)) {
-          return {};
-        }
-        idx.push_back(v);
-        while (mlir::succeeded(p.parseOptionalComma())) {
-          if (p.parseInteger(v)) {
-            return {};
-          }
-          idx.push_back(v);
-        }
-        if (p.parseRSquare()) {
-          return {};
-        }
-      }
+    if (mlir::succeeded(p.parseOptionalString(&idx_text))) {
       if (mlir::succeeded(p.parseOptionalComma())) {
         if (p.parseInteger(delay)) {
           return {};
         }
       }
-    } else {
-      if (p.parseInteger(delay)) {
-        return {};
-      }
+    } else if (p.parseInteger(delay)) {
+      return {};
     }
   }
 
   if (p.parseGreater()) {
     return {};
   }
-  return AnchorAttr::get(p.getContext(), instr, event, idx, delay);
+
+  auto anc = ::vesyla::Anchor::parse(instr.getValue().str() + idx_text);
+  if (!anc) {
+    p.emitError(p.getCurrentLocation(), "invalid anchor index text: ")
+        << idx_text;
+    return {};
+  }
+  auto to_i = [](const std::vector<int> &v) {
+    return llvm::SmallVector<int32_t>(v.begin(), v.end());
+  };
+  return AnchorAttr::get(p.getContext(), instr, to_i(anc->or_idx),
+                         static_cast<int32_t>(anc->mt_idx), to_i(anc->ir_idx),
+                         delay);
 }
 
 void AnchorAttr::print(mlir::AsmPrinter &p) const {
   p << "<";
   p.printAttribute(getInstr());
 
-  bool has_event = !getEvent().empty();
-  bool has_delay = getDelay() != 0;
+  ::vesyla::Anchor anc;
+  anc.or_idx.assign(getOrIdx().begin(), getOrIdx().end());
+  anc.mt_idx = static_cast<int>(getMt());
+  anc.ir_idx.assign(getIrIdx().begin(), getIrIdx().end());
 
-  if (has_event) {
-    p << ", \"" << getEvent() << "\", [";
-    auto idx = getIdx();
-    for (std::size_t i = 0; i < idx.size(); ++i) {
-      if (i > 0) {
-        p << ", ";
-      }
-      p << idx[i];
-    }
-    p << "]";
+  std::string idx = anc.to_string(); // empty name -> index text ("" if bare)
+  if (!idx.empty()) {
+    p << ", \"" << idx << "\"";
   }
-  if (has_delay) {
+  if (getDelay() != 0) {
     p << ", " << getDelay();
   }
   p << ">";

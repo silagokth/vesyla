@@ -19,9 +19,14 @@ enum class NodeKind { First, Last };
 
 struct Anchor {
   mlir::FlatSymbolRefAttr instr_id;
-  std::string event;
-  std::vector<uint32_t> indices;
+  std::vector<uint32_t> or_idx;
+  uint32_t mt;
+  std::vector<uint32_t> ir_idx;
   int32_t delay;
+  // The last iteration of each loop the transfer releases its route across,
+  // outermost first; `ir_idx` names the first pass through them. Empty when
+  // the anchor stands for the whole nest. Not part of the anchor's identity.
+  std::vector<uint32_t> pass_hi;
 
   bool operator<(const Anchor &o) const;
   bool operator==(const Anchor &o) const;

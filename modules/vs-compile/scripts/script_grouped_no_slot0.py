@@ -601,4 +601,5 @@ multi = len(epochs) > 1
 for name, body in epochs:
     dot = build_graph(name, body)
     out_name = f"{base}_{name}_grouped_no_slot0" if multi else f"{base}_grouped_no_slot0"
+    dot.render(out_name, format="svg", view=False, cleanup=False)
     dot.render(out_name, format="png", view=False, cleanup=False)

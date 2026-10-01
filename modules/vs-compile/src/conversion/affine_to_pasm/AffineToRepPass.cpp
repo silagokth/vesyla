@@ -7,6 +7,7 @@
 #include "AffineToRepPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 #include "vesyla/Support/Common.hpp"
+#include "vesyla/Support/Config.hpp"
 
 namespace vesyla::conversion::affine_to_pasm {
 #define GEN_PASS_DEF_AFFINETOREPPASS
@@ -68,6 +69,122 @@ std::optional<int64_t> coefficient_of_dim(mlir::AffineExpr expr,
   }
 }
 
+// The part of an address expression that no loop moves: the address the AGU
+// starts its sweep from.
+//
+// The coefficient of each dim becomes that loop's rep step, so what is left
+// once every dim is taken as zero is the base. Returns nothing for an
+// expression this cannot evaluate -- a symbol, a division, a modulo -- rather
+// than guessing at a base address.
+std::optional<int64_t> constant_term(mlir::AffineExpr expr) {
+  using mlir::AffineBinaryOpExpr;
+  using mlir::AffineConstantExpr;
+  using mlir::AffineDimExpr;
+  using mlir::AffineExprKind;
+
+  if (auto constant = llvm::dyn_cast<AffineConstantExpr>(expr)) {
+    return constant.getValue();
+  }
+  if (llvm::isa<AffineDimExpr>(expr)) {
+    return 0;
+  }
+  auto bin = llvm::dyn_cast<AffineBinaryOpExpr>(expr);
+  if (!bin) {
+    return std::nullopt;
+  }
+  std::optional<int64_t> lhs = constant_term(bin.getLHS());
+  std::optional<int64_t> rhs = constant_term(bin.getRHS());
+  if (!lhs || !rhs) {
+    return std::nullopt;
+  }
+  switch (bin.getKind()) {
+  case AffineExprKind::Add:
+    return *lhs + *rhs;
+  case AffineExprKind::Mul:
+    return *lhs * *rhs;
+  default:
+    return std::nullopt;
+  }
+}
+
+// An instruction takes a base address iff its ISA definition carries an
+// "init_addr" segment. That is a property of the instruction name and holds
+// across the components defining it, so it is looked up by name -- the same
+// question AddSlotPortPass asks of "port", asked the same way.
+bool instr_takes_init_addr(const nlohmann::json &isa_json,
+                           llvm::StringRef instr_name) {
+  auto has_init_addr = [](const nlohmann::json &segments) {
+    for (const auto &segment : segments) {
+      if (segment.contains("name") && segment["name"] == "init_addr") {
+        return true;
+      }
+    }
+    return false;
+  };
+  for (const auto &component : isa_json["components"]) {
+    for (const auto &instr : component["instructions"]) {
+      if (!instr.contains("name") || instr["name"] != instr_name.str()) {
+        continue;
+      }
+      if (instr.contains("segments") && has_init_addr(instr["segments"])) {
+        return true;
+      }
+      if (instr.contains("variants")) {
+        for (const auto &variant : instr["variants"]) {
+          if (variant.contains("segments") && has_init_addr(variant["segments"])) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Write the base address of the rop's map onto the instruction that takes one.
+//
+// The loop-dependent part of the map becomes the rep steps below; the constant
+// term belongs to no loop and is where the sweep starts. Without it
+// `(d0) -> (d0 + 1)` and `(d0) -> (d0)` lower to the same instructions and the
+// access runs one address low. A rop whose instruction has no such segment --
+// a dpu conf, a dpu event -- is left alone, and so is a base of zero, which is
+// what the default already is.
+mlir::LogicalResult set_init_addr(pasm::RopOp rop,
+                                  const nlohmann::json &isa_json) {
+  if (!rop.getMapAttr()) {
+    return mlir::success();
+  }
+  mlir::AffineMap map = rop.getMapAttr().getValue();
+  if (map.getNumResults() != 1) {
+    return mlir::success();
+  }
+  std::optional<int64_t> base = constant_term(map.getResult(0));
+  if (!base) {
+    rop.emitError("affine map has a base address this pass cannot evaluate");
+    return mlir::failure();
+  }
+  if (*base == 0) {
+    return mlir::success();
+  }
+
+  mlir::OpBuilder builder(rop.getContext());
+  for (mlir::Operation &op : rop.getBody().front()) {
+    auto instr = llvm::dyn_cast<pasm::InstrOp>(op);
+    if (!instr || !instr_takes_init_addr(isa_json, instr.getType())) {
+      continue;
+    }
+    if (instr.getParam().get("init_addr")) {
+      continue;
+    }
+    llvm::SmallVector<mlir::NamedAttribute> params(instr.getParam().begin(),
+                                                   instr.getParam().end());
+    params.push_back(builder.getNamedAttr(
+        "init_addr", builder.getI32IntegerAttr(static_cast<int32_t>(*base))));
+    instr->setAttr("param", builder.getDictionaryAttr(params));
+  }
+  return mlir::success();
+}
+
 // Number of affine.for ops enclosing `op`.
 unsigned enclosing_loop_count(mlir::Operation *op) {
   unsigned count = 0;
@@ -83,9 +200,12 @@ unsigned enclosing_loop_count(mlir::Operation *op) {
 // Lower a single rop that sits directly inside `loop`: append a `rep` instr
 // derived from the loop's bounds and the rop's innermost map dim. Reads a local
 // copy of the map and leaves the rop's stored map untouched. Does not move the
-// rop or touch the loop.
+// rop or touch the loop. `loop_tag` names the loop on the rep, the same for
+// every rop lowered against it: once the loop is gone, two reps of the same
+// shape are otherwise indistinguishable from two reps of the same loop.
 mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
                                          mlir::affine::AffineForOp loop,
+                                         llvm::StringRef loop_tag,
                                          mlir::PatternRewriter &rewriter) {
   if (!rop.getMapAttr()) {
     return mlir::failure();
@@ -153,7 +273,8 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
   });
   pasm::InstrOp::create(rewriter, loop.getLoc(),
                         rewriter.getStringAttr(instr_id),
-                        rewriter.getStringAttr("rep"), params);
+                        rewriter.getStringAttr("rep"), params)
+      ->setAttr("loop", rewriter.getStringAttr(loop_tag));
 
   return mlir::success();
 }
@@ -185,8 +306,9 @@ public:
     }
 
     // lower each rop against this loop
+    std::string loop_tag = vesyla::util::Common::gen_random_string(8);
     for (pasm::RopOp rop : rops) {
-      if (mlir::failed(rewrite_rop_for_loop(rop, loop, rewriter))) {
+      if (mlir::failed(rewrite_rop_for_loop(rop, loop, loop_tag, rewriter))) {
         return mlir::failure();
       }
     }
@@ -254,6 +376,21 @@ public:
       }
     });
     if (fatal) {
+      signalPassFailure();
+      return;
+    }
+
+    // The base address first, while every map is still on its rop: the rewriter
+    // below consumes the loops the map's dims stand for.
+    vesyla::pasm::Config cfg;
+    nlohmann::json isa_json = cfg.get_isa_json();
+    bool addressed = true;
+    getOperation().walk([&](pasm::RopOp rop) {
+      if (mlir::failed(set_init_addr(rop, isa_json))) {
+        addressed = false;
+      }
+    });
+    if (!addressed) {
       signalPassFailure();
       return;
     }

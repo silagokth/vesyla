@@ -28,7 +28,10 @@ spin_animation() {
     spinner=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
     while true; do
       for i in "${spinner[@]}"; do
-        el=$(($(date +%s) - SPIN_START))
+        # EPOCHSECONDS, not $(date +%s): a TERM trap firing while bash parses a
+        # command substitution corrupts the parser, making the subshell exit
+        # non-zero ("trap: unexpected EOF while looking for matching `)'").
+        el=$((EPOCHSECONDS - SPIN_START))
         # Glyph at col 0, then jump to SPIN_TCOL for the live timer. The label
         # printed between them by the caller is left untouched.
         printf "\\r${BLUE}%s${NC}\033[%dG${CYAN}(%02d:%02d)${NC}" "$i" "$SPIN_TCOL" $((el / 60)) $((el % 60))
@@ -40,7 +43,7 @@ spin_animation() {
 }
 
 start_spinner() {
-  SPIN_START=$(date +%s)
+  SPIN_START=$EPOCHSECONDS
   SPIN_TCOL=$(( $(tput cols 2>/dev/null || echo 80) - 8 ))
   if [ "$debug_mode" = false ]; then
     spin_animation
@@ -54,10 +57,11 @@ stop_spinner() {
   fi
   if [ -n "$SPIN_PID" ] && kill -0 "$SPIN_PID" 2>/dev/null; then
     kill "$SPIN_PID" 2>/dev/null
-    wait "$SPIN_PID" 2>/dev/null
+    # The spinner's exit status is irrelevant; never let it trip `set -e`.
+    wait "$SPIN_PID" 2>/dev/null || true
   fi
   tput cnorm # Show cursor
-  el=$(($(date +%s) - SPIN_START))
+  el=$((EPOCHSECONDS - SPIN_START))
   # Final line: mark at col 0, elapsed time at SPIN_TCOL. If the first arg is 0
   # print a checkmark, otherwise a cross.
   if [ "$1" -eq 0 ]; then
@@ -191,6 +195,34 @@ run_and_check() {
   fi
 }
 
+# Compile the programs under pasm/. compile.sh passes the compiler's exit status
+# through, and two of the compiler's codes name why a program could not be
+# scheduled: 7, no schedule exists; 8, the scheduler gave up within its limits.
+# Those are kept as this script's exit code; any other compile failure is 6.
+compile_programs() {
+  set +e
+  if [ "$debug_mode" = true ]; then
+    bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d
+    status=$?
+    output=""
+  else
+    output=$(bash ${template_path}/scripts/compile.sh ${template_path}/pasm 2>&1)
+    status=$?
+  fi
+  set -e
+  if [ $status -ne 0 ]; then
+    case $status in
+    7) fail_code=7 reason="no schedule exists" ;;
+    8) fail_code=8 reason="the scheduler gave up" ;;
+    *) fail_code=6 reason="compiler error" ;;
+    esac
+    stop_spinner $status
+    printf " ${RED}-> ERROR:${NC} Compilation failed (%s)!\n" "$reason"
+    [ -n "$output" ] && echo "$output"
+    exit "$fail_code"
+  fi
+}
+
 # Prepare environment
 rm -rf ${template_path}/work
 mkdir -p ${template_path}/work
@@ -257,11 +289,7 @@ printf "${BOLD}Model 2:${NC} instruction-level simulation\n"
 
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
-if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
-else
-  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
-fi
+compile_programs
 stop_spinner 0
 
 ## Run
@@ -304,11 +332,7 @@ printf "${BOLD}Model 3:${NC} RTL simulation\n"
 if [ "$run_m2" = false ]; then
 start_spinner
 printf "  ${BLUE}Compiling${NC}"
-if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d || exit 2
-else
-  run_and_check "Compilation" 2 bash ${template_path}/scripts/compile.sh ${template_path}/pasm
-fi
+compile_programs
 stop_spinner 0
 fi
 ## Run

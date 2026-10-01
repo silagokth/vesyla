@@ -1,5 +1,7 @@
 #include "vesyla/Dialect/Pasm/IR/RoutingDepGraph.hpp"
 
+#include "vesyla/Support/Anchor.hpp"
+
 #include <fstream>
 #include <queue>
 #include <set>
@@ -15,18 +17,6 @@ const char *kind_str(NodeKind k) {
 
 std::string node_dot_id(int id, NodeKind kind) {
   return "n" + std::to_string(id) + "_" + kind_str(kind);
-}
-
-std::string indices_to_str(const std::vector<uint32_t> &indices) {
-  std::string s = "[";
-  for (std::size_t i = 0; i < indices.size(); ++i) {
-    if (i) {
-      s += ", ";
-    }
-    s += std::to_string(indices[i]);
-  }
-  s += "]";
-  return s;
 }
 
 // Escape characters that are structural in a DOT record label so user-supplied
@@ -65,11 +55,14 @@ bool Anchor::operator<(const Anchor &o) const {
   if (a != b) {
     return a.compare(b) < 0;
   }
-  if (event != o.event) {
-    return event < o.event;
+  if (or_idx != o.or_idx) {
+    return or_idx < o.or_idx;
   }
-  if (indices != o.indices) {
-    return indices < o.indices;
+  if (mt != o.mt) {
+    return mt < o.mt;
+  }
+  if (ir_idx != o.ir_idx) {
+    return ir_idx < o.ir_idx;
   }
   return delay < o.delay;
 }
@@ -77,7 +70,8 @@ bool Anchor::operator<(const Anchor &o) const {
 bool Anchor::operator==(const Anchor &o) const {
   llvm::StringRef a = instr_id ? instr_id.getValue() : llvm::StringRef();
   llvm::StringRef b = o.instr_id ? o.instr_id.getValue() : llvm::StringRef();
-  return a == b && event == o.event && indices == o.indices && delay == o.delay;
+  return a == b && or_idx == o.or_idx && mt == o.mt && ir_idx == o.ir_idx &&
+         delay == o.delay;
 }
 
 RoutingDepGraph::RoutingDepGraph() {
@@ -332,9 +326,12 @@ void RoutingDepGraph::dump_dot(const std::string &path) const {
           }
         }
       }
+      ::vesyla::Anchor va;
+      va.or_idx.assign(n.anchor.or_idx.begin(), n.anchor.or_idx.end());
+      va.mt_idx = static_cast<int>(n.anchor.mt);
+      va.ir_idx.assign(n.anchor.ir_idx.begin(), n.anchor.ir_idx.end());
       std::string body = "instr: " + escape_dot_label(instr_name) +
-                         "\\nevent: " + escape_dot_label(n.anchor.event) +
-                         "\\nindices: " + indices_to_str(n.anchor.indices) +
+                         "\\nanchor: " + escape_dot_label(va.to_string()) +
                          "\\ndelay: " + std::to_string(n.anchor.delay);
       if (!route.empty()) {
         body += "\\nslot: " + route;

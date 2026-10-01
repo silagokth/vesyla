@@ -171,42 +171,70 @@ string Operation::to_string() {
   return str;
 }
 
-std::vector<std::pair<std::string, std::vector<int>>>
-OperationExpr::get_all_anchors() {
-  std::vector<std::pair<std::string, std::vector<int>>> anchors;
-  if (kind == TRANSIT) {
-    anchors = children[0].get_all_anchors();
-    anchors.insert(anchors.end(), children[1].get_all_anchors().begin(),
-                   children[1].get_all_anchors().end());
-  } else if (kind == REPEAT) {
-    std::vector<std::pair<std::string, std::vector<int>>> child_anchors =
-        children[0].get_all_anchors();
-    int iter = std::stoi(parameters["iter"]);
-    for (int i = 0; i < iter; i++) {
-      for (int j = 0; j < child_anchors.size(); j++) {
-        std::string anchor_event = child_anchors[j].first;
-        std::vector<int> indices = child_anchors[j].second;
-        indices.push_back(i);
-        anchors.push_back({anchor_event, indices});
+namespace {
+
+// While walking up from an event, a repeat is classified as outer (OR) once a
+// transition has been seen below it on the path, otherwise inner (IR). A path
+// with no transition puts every repeat in IR (the IR-default rule).
+struct PartialAnchor {
+  int event_id;
+  std::vector<int> or_idx;
+  std::vector<int> ir_idx;
+  bool transit_seen;
+};
+
+std::vector<PartialAnchor> collect_anchors(const OperationExpr &e) {
+  std::vector<PartialAnchor> result;
+  if (e.kind == OperationExpr::EVENT) {
+    PartialAnchor p;
+    p.event_id = std::stoi(e.parameters.at("id"));
+    p.transit_seen = false;
+    result.push_back(std::move(p));
+  } else if (e.kind == OperationExpr::TRANSIT) {
+    for (const auto &child : e.children) {
+      for (auto &p : collect_anchors(child)) {
+        p.transit_seen = true;
+        result.push_back(std::move(p));
       }
     }
-  } else if (kind == EVENT) {
-    anchors.push_back({"e" + parameters["id"], {}});
+  } else if (e.kind == OperationExpr::REPEAT) {
+    std::vector<PartialAnchor> child_anchors = collect_anchors(e.children[0]);
+    int iter = std::stoi(e.parameters.at("iter"));
+    for (int i = 0; i < iter; i++) {
+      for (const PartialAnchor &cp : child_anchors) {
+        PartialAnchor p = cp;
+        // Insert at the front so each field ends up outer-index-first.
+        if (p.transit_seen) {
+          p.or_idx.insert(p.or_idx.begin(), i);
+        } else {
+          p.ir_idx.insert(p.ir_idx.begin(), i);
+        }
+        result.push_back(std::move(p));
+      }
+    }
+  }
+  return result;
+}
+
+} // namespace
+
+std::vector<::vesyla::Anchor> OperationExpr::get_all_anchors() {
+  std::vector<::vesyla::Anchor> anchors;
+  for (const PartialAnchor &p : collect_anchors(*this)) {
+    ::vesyla::Anchor a;
+    a.mt_idx = p.event_id;
+    a.or_idx = p.or_idx;
+    a.ir_idx = p.ir_idx;
+    anchors.push_back(std::move(a));
   }
   return anchors;
 }
 
 std::vector<std::string> Operation::get_all_anchors() {
   std::vector<std::string> anchors;
-  for (const auto &anchor : expr.get_all_anchors()) {
-    std::string anchor_event = anchor.first;
-    std::vector<int> indices = anchor.second;
-    std::string anchor_str = anchor_event;
-    for (int i = indices.size() - 1; i >= 0; --i) {
-      int index = indices[i];
-      anchor_str += "[" + std::to_string(index) + "]";
-    }
-    anchors.push_back(anchor_str);
+  for (::vesyla::Anchor anchor : expr.get_all_anchors()) {
+    anchor.name = name;
+    anchors.push_back(anchor.to_string());
   }
   return anchors;
 }

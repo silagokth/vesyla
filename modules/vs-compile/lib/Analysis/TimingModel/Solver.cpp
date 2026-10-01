@@ -102,7 +102,8 @@ bool check_mzn_solution_valid(nlohmann::json &json_output, string &solution) {
 
 void write_minizinc_files(TimingModel &tm, string mzn_filename,
                           string dzn_filename, string json_filename,
-                          bool allow_act_mode_2 = false) {
+                          bool allow_act_mode_2 = false,
+                          bool feasibility_only = false) {
   // Create the MiniZinc model file
   std::ofstream mzn_file(mzn_filename);
   if (!mzn_file.is_open()) {
@@ -125,7 +126,7 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
   }
 
   // Write the MiniZinc model content
-  tm.to_mzn(mzn_file, dzn_file, allow_act_mode_2);
+  tm.to_mzn(mzn_file, dzn_file, allow_act_mode_2, feasibility_only);
 
   // Close all files
   mzn_file.close();
@@ -133,13 +134,55 @@ void write_minizinc_files(TimingModel &tm, string mzn_filename,
   json_file.close();
 }
 
+// Bounds on one solver run. Neither is meant to be reached by a model that has
+// a schedule in it; they are there because a model that has not is otherwise
+// unbounded in both time and memory. cp-sat has been seen to grow to 29 GB on a
+// 30 GB machine, at which point the kernel's OOM killer takes down whatever
+// else is running: a compile that fails is a result, a machine that dies is
+// not.
+constexpr unsigned long mzn_time_limit_ms = 300000;
+constexpr unsigned long mzn_address_space_limit_kb = 16UL * 1024 * 1024;
+
+// Bound on the feasibility check solve() runs first. That model has no act
+// modes and no objective, so cp-sat settles it in well under a second either
+// way on the testcases seen so far; a check that runs out of time proves
+// nothing and the full solve goes ahead as before.
+constexpr unsigned long mzn_feasibility_time_limit_ms = 30000;
+
+// Number of cp-sat search workers. With one worker cp-sat runs a single fixed
+// search, which gets nowhere on these models: their domains run to
+// MAX_LATENCY and their coefficients to the product of the loop bounds. On
+// mmm_64x64x64 it returned UNKNOWN at 30 s on the feasibility check and at
+// 300 s twice on the full model; with two or more workers the portfolio
+// (LP-based and feasibility-jump workers among them) solves both in 0.2 s.
+// Fixed rather than taken from the machine so a schedule does not depend on
+// where it was compiled. Workers are threads, so the address-space limit
+// above still bounds them together.
+constexpr unsigned mzn_num_workers = 8;
+
+// Exit codes for a program that cannot be scheduled, kept apart from the
+// EXIT_FAILURE every other compiler error uses. The testcase template's run.sh
+// and vs-verify pass these two through as the testcase's own exit code, and
+// the generated Robot suite names them, so they are an interface: 7 is a model
+// proven to have no schedule, 8 one the solver gave up on within its limits.
+constexpr int exit_no_schedule = 7;
+constexpr int exit_scheduler_gave_up = 8;
+
 void run_minizinc(string mzn_filename, string dzn_filename,
-                  string json_filename) {
+                  string json_filename,
+                  unsigned long time_limit_ms = mzn_time_limit_ms) {
   // run minizinc command and collect the json output
   LOG_DEBUG << "Running Minizinc command with input files: " << mzn_filename
             << " and " << dzn_filename;
-  string command = "minizinc --json-stream --solver cp-sat " + mzn_filename +
-                   " " + dzn_filename + " > " + json_filename;
+  // The address-space limit goes on the shell system() spawns so that
+  // minizinc's solver child inherits it; that child is the one that grows. The
+  // time limit is the gentler of the two: minizinc reports UNKNOWN and exits
+  // cleanly, which solve() already reads as a model it could not schedule.
+  string command = "ulimit -v " + to_string(mzn_address_space_limit_kb) +
+                   "; minizinc --time-limit " + to_string(time_limit_ms) +
+                   " --json-stream --solver cp-sat -p " +
+                   to_string(mzn_num_workers) + " " + mzn_filename + " " +
+                   dzn_filename + " > " + json_filename;
   int result = system(command.c_str());
 
   LOG_DEBUG << "Minizinc command executed: " << command;
@@ -176,6 +219,37 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
   string json_filename = tmp_path + random_id + ".json";
   string edited_json_filename = tmp_path + random_id + "_fixed.json";
 
+  // Check that the timing constraints admit any schedule at all before paying
+  // for the act-mode solves. Those encode the act modes as pairwise and
+  // triple-wise conditions on start times, over which cp-sat cannot prove a
+  // model infeasible: one whose dependencies contradict each other ran both
+  // solves out to their time limit, ten minutes, before failing. Without the
+  // act modes the same contradiction is found in under a second.
+  {
+    string check_id = random_id + "_feasibility";
+    string check_mzn = tmp_path + check_id + ".mzn";
+    string check_dzn = tmp_path + check_id + ".dzn";
+    string check_json = tmp_path + check_id + ".json";
+    string check_fixed_json = tmp_path + check_id + "_fixed.json";
+    write_minizinc_files(tm, check_mzn, check_dzn, check_json, false, true);
+    run_minizinc(check_mzn, check_dzn, check_json,
+                 mzn_feasibility_time_limit_ms);
+    turn_to_valid_json(check_json, check_fixed_json);
+    nlohmann::json check_output = get_json_from_file(check_fixed_json);
+    string check_solution;
+    check_mzn_solution_valid(check_output, check_solution);
+    if (check_solution == "UNSATISFIABLE") {
+      LOG_ERROR << "No schedule exists: the timing constraints contradict "
+                   "each other, whatever act mode is chosen.";
+      LOG_ERROR << "Look for a dependency that orders one operation after "
+                   "every iteration of another it also runs in step with.";
+      LOG_ERROR << "Input MZN file: " << check_mzn;
+      LOG_ERROR << "Input DZN file: " << check_dzn;
+      LOG_FATAL << "Minizinc command failed.";
+      exit(exit_no_schedule);
+    }
+  }
+
   write_minizinc_files(tm, mzn_filename, dzn_filename, json_filename);
   run_minizinc(mzn_filename, dzn_filename, json_filename);
   turn_to_valid_json(json_filename, edited_json_filename);
@@ -193,12 +267,24 @@ unordered_map<string, string> Solver::solve(TimingModel &tm,
     json_output = get_json_from_file(edited_json_filename);
 
     if (!check_mzn_solution_valid(json_output, solution)) {
-      LOG_ERROR << "Minizinc command failed to find a solution.";
+      // The feasibility check passed or ran out of time, so the act modes are
+      // what rule a schedule out here -- or the solver never got an answer.
+      bool proven = solution == "UNSATISFIABLE";
+      if (proven) {
+        LOG_ERROR << "No schedule exists: the timing constraints admit one, "
+                     "but no act mode does.";
+      } else {
+        LOG_ERROR << "Minizinc command failed to find a solution.";
+        LOG_ERROR << "A model too big to schedule ends here too: minizinc "
+                     "reports UNKNOWN, having run past its "
+                  << mzn_time_limit_ms << " ms limit or lost its solver to the "
+                  << mzn_address_space_limit_kb << " kB address-space limit.";
+      }
       LOG_ERROR << "Input MZN file: " << mzn_filename;
       LOG_ERROR << "Input DZN file: " << dzn_filename;
       LOG_ERROR << "Output: " << json_output.dump(4);
       LOG_FATAL << "Minizinc command failed.";
-      exit(EXIT_FAILURE);
+      exit(proven ? exit_no_schedule : exit_scheduler_gave_up);
     }
   }
 

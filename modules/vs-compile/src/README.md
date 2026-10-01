@@ -93,7 +93,7 @@ Each `RopOp` is described by a textual expression in three primitives. `tm::Oper
 
 | Kind | Syntax | Meaning |
 |---|---|---|
-| **EVENT** | `e<id>` (e.g. `e1`) | A single 1-cycle marker the user can refer to as `<op>.e<id>` |
+| **EVENT** | `e<id>` (e.g. `e1`) | A single 1-cycle marker; referenced from a constraint as the MT field of an anchor, e.g. `<op>.[<id>]` |
 | **TRANSIT** | `T<delay>(left, right)` | Run `left`, wait `delay` cycles, then run `right` |
 | **REPEAT** | `R<iter, delay>(child)` | Run `child` `iter` times with `delay` cycles between iterations |
 
@@ -105,14 +105,14 @@ operation op0 T<3>(e1, e2)
 
 Per-component helper. The string above is **produced** by an external program — `<component_path>/resources/<resource_kind>/compile_util get_timing_model <input.json> <output.txt>`. The `RopOp` (with id, row/col/slot/port and its child `InstrOp`s) is serialised to JSON via `op2json`, written to `<input.json>`, and the helper writes the timing-model string to `<output.txt>`. Different components (e.g. memory vs. arithmetic units) thus describe their own latencies/event structure outside the compiler.
 
-Anchors. References from constraints take the form `op_name.e<id>[i][j]…`. Each `[k]` index corresponds to one enclosing `R<...>` repeat — `op0.e1[2]` means "the e1 event of op0 in iteration 2 of its outermost repeat". `Operation::get_all_anchors()` enumerates these names.
+Anchors. References from constraints take the form `op_name[OR].[MT].[IR]` — three dot-separated bracket fields. **MT** is a single index: the event id. **OR** (outer repetition) and **IR** (inner repetition) each hold `0..n` `[k]` iteration indices, one per enclosing `R<...>` repeat: a repeat is *outer* if it encloses the `T<...>` transition and *inner* otherwise (a repeat with no enclosing transition is inner — the IR-default). A leading dot (right after the name) means OR is absent, and a bare `op_name` means MT=0 with no repetitions. Example: `op0.[1].[2]` = event 1 of op0 in iteration 2 of its inner repeat (no outer repeat, so OR is omitted). A constraint endpoint may also span a range, written with `[lo:hi]` on any IR bracket (e.g. `op0.[1].[0:29]`). `Operation::get_all_anchors()` enumerates these names.
 
 ### 3b. `TimingModel::compile()`
 
 `compile()` runs once on the model before MiniZinc is invoked. It does three things:
 
 1. **Variable extraction.** Walk every `OperationExpr`. For each TRANSIT/REPEAT node, classify the `delay` parameter: if it's a numeric literal, ignore it; if it's an identifier, add it to `TimingModel::variables` (these will become `var 0..MAX_LATENCY` in MiniZinc — i.e. delays the solver is free to choose).
-2. **Anchor lowering.** For each user `Constraint` (kind must be `"linear"`), regex-find every substring matching `<op>.e<id>[<idx>]…`, register a `tm::Anchor` for it, and **rewrite the constraint expression in place** so the `op.eN[…]` token is replaced by the synthetic anchor variable name. After this step the constraint expression is plain MiniZinc.
+2. **Anchor lowering.** For each user `Constraint` (kind must be `"linear"`), register a `tm::Anchor` for every referenced anchor (`<op>[OR].[MT].[IR]`) and **rewrite the constraint expression in place** so the `op[OR].[MT].[IR]` token is replaced by the synthetic anchor variable name. After this step the constraint expression is plain MiniZinc.
 3. **Symbolic start/duration computation per operation.** Each `OperationExpr` is converted to a binary tree (TRANSIT → two children, REPEAT → one child, EVENT → leaf), then traversed twice:
 
    **Post-order (LRC) — duration up the tree:**
@@ -234,7 +234,7 @@ pasm.epoch "ep0" {
   pasm.rop "rop0" 0 1 2 0 {
     pasm.instr "i0" "add" {iter = 4 : i32, delay = 2 : i32}
   }
-  pasm.cstr "linear" "rop0.e1[0] >= 5"
+  pasm.cstr "linear" "rop0.[1].[0] >= 5"
 }
 ```
 
@@ -313,11 +313,11 @@ REPEAT  iter=4, delay=2
     └── EVENT  e1
 ```
 
-Anchors `rop0.e0`, `rop0.e0[0..3]`, `rop0.e1`, `rop0.e1[0..3]` are all referenceable from constraints.
+The `R<4>` repeat encloses the `T` transition, so its iteration index is an **outer repetition (OR)** index. Point anchors `rop0[0].[0]` … `rop0[3].[0]` (event 0 across the 4 iterations) and `rop0[0].[1]` … `rop0[3].[1]` (event 1) are all referenceable from constraints. (Ranges are only over IR, so a range across the outer repeat is not expressible here — each iteration is named individually.)
 
-**Step 6 — the user's constraint `rop0.e1[0] >= 5`** is added as a `tm::Constraint("linear", "rop0.e1[0] >= 5")`. During `compile()`:
+**Step 6 — the user's constraint `rop0[0].[1] >= 5`** is added as a `tm::Constraint("linear", "rop0[0].[1] >= 5")`. During `compile()`:
 
-- Anchor `rop0.e1[0]` is registered with `op_name=rop0`, `event_id=1`, `indices=[0]`.
+- Anchor `rop0[0].[1]` is registered with `name=rop0`, `or_idx=[0]`, `mt_idx=1`, `ir_idx=[]` (flat MZN name `rop0_o0_e1`).
 - Constraint expression rewritten to `<anchor_var> >= 5` (where `<anchor_var>` is a flattened identifier).
 - Per-op tree traversal computes (with `iter=4, delay=2, child_dur=(1+1+1)=3`):
   - `event e1`'s `start = (0 + (1) + (1)) = 2` cycles into the inner transit,
@@ -339,10 +339,10 @@ var 0..MAX_LATENCY: rop0;
 constraint op_start_vec[0] == rop0;
 constraint op_end_vec[0]   == rop0 + (((1)+(1)+(1))*4 + (2)*(4-1));
 
-var 0..MAX_LATENCY: rop0_e1_0;     % synthesised anchor
-constraint rop0_e1_0 == (rop0 + 2);
+var 0..MAX_LATENCY: rop0_o0_e1;    % synthesised anchor
+constraint rop0_o0_e1 == (rop0 + 2);
 
-constraint rop0_e1_0 >= 5;          % the user constraint, rewritten
+constraint rop0_o0_e1 >= 5;         % the user constraint, rewritten
 
 constraint min(op_start_vec) == 0;
 constraint max(op_end_vec)   == total_latency;

@@ -30,33 +30,40 @@ def ResourceArrayAttr : TypedArrayAttrBase<ResourceAttr,
 }
 
 def AnchorRangeAttr : Pasm_Attr<"AnchorRange", "anchor_range"> {
-  let summary = "Symbolic instr, event, and per-dimension index range";
+  let summary = "Constraint endpoint as a low/high anchor pair (OR.MT.IR)";
   let description = [{
-    Bundles a constraint endpoint's instruction symbol, event name, and
-    a multi-dimensional index range. The `instr` field is required; the
-    rest default to empty. Printed as
-    `#pasm.anchor_range<@instr[, "event"[, [lo0:hi0][lo1:hi1]...]]>`.
+    A constraint endpoint spanning a range between a low and a high anchor that
+    differ only in the innermost IR index. Both anchors share the `instr`
+    symbol; each stores its own OR indices, MT event id, and IR indices.
+    Printed as `#pasm.anchor_range<@instr[, "<or>.<mt>.<ir[:range]>"]>`, where
+    the index text follows the ::vesyla::Anchor grammar with a compact
+    `[lo:hi]` range on the innermost IR bracket.
   }];
   let parameters = (ins
     "::mlir::FlatSymbolRefAttr":$instr,
-    StringRefParameter<>:$event,
-    ArrayRefParameter<"uint32_t">:$idx_lo,
-    ArrayRefParameter<"uint32_t">:$idx_hi);
+    ArrayRefParameter<"uint32_t">:$or_lo,
+    "uint32_t":$mt_lo,
+    ArrayRefParameter<"uint32_t">:$ir_lo,
+    ArrayRefParameter<"uint32_t">:$or_hi,
+    "uint32_t":$mt_hi,
+    ArrayRefParameter<"uint32_t">:$ir_hi);
   let hasCustomAssemblyFormat = 1;
 }
 
 def AnchorAttr : Pasm_Attr<"Anchor", "anchor"> {
-  let summary = "Single anchor (instr + optional event/indices + delay) for an icdep";
+  let summary = "Single icdep anchor (instr + OR.MT.IR indices + delay)";
   let description = [{
-    Bundles an icdep anchor's instruction symbol, optional event name, optional
-    multi-dimensional indices, and delay. Printed as
-    `#pasm.anchor<@instr[, "event", [idx0, idx1, ...]][, delay]>`.
-    Empty event and zero delay are omitted on print.
+    Bundles an icdep anchor's instruction symbol, OR indices, MT event id, IR
+    indices, and delay. Printed as
+    `#pasm.anchor<@instr[, "<or>.<mt>.<ir>"][, delay]>`, where the index text
+    follows the ::vesyla::Anchor grammar. An empty index text and zero delay
+    are omitted on print.
   }];
   let parameters = (ins
     "::mlir::FlatSymbolRefAttr":$instr,
-    StringRefParameter<>:$event,
-    ArrayRefParameter<"int32_t">:$idx,
+    ArrayRefParameter<"int32_t">:$or_idx,
+    "int32_t":$mt,
+    ArrayRefParameter<"int32_t">:$ir_idx,
     "int32_t":$delay);
   let hasCustomAssemblyFormat = 1;
 }

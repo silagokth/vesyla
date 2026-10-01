@@ -1,34 +1,26 @@
 #ifndef __VESYLA_TM_ANCHOR_HPP__
 #define __VESYLA_TM_ANCHOR_HPP__
 
+#include "vesyla/Support/Anchor.hpp"
 #include "vesyla/Support/Common.hpp"
-#include <regex>
 #include <string>
-#include <vector>
 
 using namespace std;
 
 namespace vesyla {
 namespace tm {
 
-struct AnchorExpr {
-  string op_name;
-  int event_id;
-  std::vector<int> indices;
-  AnchorExpr() {}
-  AnchorExpr(string str);
-  ~AnchorExpr();
-  string to_string();
-};
-
 struct Anchor {
+  // Flat MiniZinc variable identifier (see ::vesyla::Anchor::flat_name).
   string name;
-  AnchorExpr expr;
+  // The parsed anchor: owning op name, MT event id, and OR/IR indices.
+  ::vesyla::Anchor anchor;
+  // MiniZinc expression computing this anchor's absolute cycle.
   string timing_expr;
 
   Anchor() {}
   Anchor(string expr_str_);
-  Anchor(AnchorExpr expr_);
+  Anchor(::vesyla::Anchor anchor_);
   ~Anchor();
   string to_string();
 };

@@ -1,6 +1,7 @@
 #ifndef __VESYLA_TM_OPERATION_HPP__
 #define __VESYLA_TM_OPERATION_HPP__
 
+#include "vesyla/Support/Anchor.hpp"
 #include "vesyla/Support/Common.hpp"
 #include <regex>
 #include <string>
@@ -20,7 +21,11 @@ struct OperationExpr {
   OperationExpr(string str);
   ~OperationExpr();
   string to_string();
-  std::vector<std::pair<std::string, std::vector<int>>> get_all_anchors();
+  // Enumerate every event anchor of this expression. MT holds the event id;
+  // OR / IR hold the enclosing repeat iteration indices split by whether the
+  // repeat sits above (outer) or below (inner) the nearest transition. The
+  // returned anchors have an empty name (the owning operation fills it in).
+  std::vector<::vesyla::Anchor> get_all_anchors();
 };
 
 struct Operation {
