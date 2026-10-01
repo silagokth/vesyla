@@ -702,7 +702,9 @@ public:
 
         // Earliest use of each configured key, deduplicated but kept in the
         // order the keys are visited so the emitted constraints are stable.
-        llvm::SmallVector<mlir::Operation *> first_uses;
+        // Each is kept with the rule that made it a use.
+        llvm::SmallVector<std::pair<mlir::Operation *, llvm::StringRef>>
+            first_uses;
         std::set<mlir::Operation *> seen;
         for (const auto &key : cfg_keys) {
           for (mlir::Operation *use : statements) {
@@ -710,14 +712,32 @@ public:
             collect_resource_keys(use, use_keys);
             if (use_keys.count(key)) {
               if (seen.insert(use).second) {
-                first_uses.push_back(use);
+                first_uses.push_back({use, "config-first-use"});
               }
               break;
             }
           }
         }
 
-        for (mlir::Operation *use : first_uses) {
+        // A config with no event of its own is used by whatever it is fed. It
+        // sits on the data path with nothing on its own resource to say when
+        // that starts, so the search above can come back empty, and the config
+        // is then free to land after the data has gone by. The events that
+        // produce its operands are its first uses.
+        auto cfg_rop = mlir::dyn_cast<vesyla::drra::RopOp>(cfg);
+        if (cfg_rop && !cfg_rop.getEvtAttr()) {
+          for (mlir::Value operand : cfg->getOperands()) {
+            auto producer = mlir::dyn_cast_or_null<vesyla::drra::RopOp>(
+                operand.getDefiningOp());
+            if (producer && producer.getEvtAttr() &&
+                seen.insert(producer.getOperation()).second) {
+              first_uses.push_back(
+                  {producer.getOperation(), "config-before-operand"});
+            }
+          }
+        }
+
+        for (auto [use, rule] : first_uses) {
           auto use_id =
               mlir::dyn_cast_or_null<mlir::FlatSymbolRefAttr>(use->getAttr("id"));
           if (!use_id) {
@@ -728,7 +748,7 @@ public:
           auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
           pasm::CstrOp::create(builder, cfg->getLoc(), src, dst, delay_attr,
                          builder.getBoolAttr(false))
-              ->setAttr("debug", debug_attr(builder, "config-first-use"));
+              ->setAttr("debug", debug_attr(builder, rule));
         }
       }
     });
