@@ -149,6 +149,17 @@ constexpr unsigned long mzn_address_space_limit_kb = 16UL * 1024 * 1024;
 // nothing and the full solve goes ahead as before.
 constexpr unsigned long mzn_feasibility_time_limit_ms = 30000;
 
+// Number of cp-sat search workers. With one worker cp-sat runs a single fixed
+// search, which gets nowhere on these models: their domains run to
+// MAX_LATENCY and their coefficients to the product of the loop bounds. On
+// mmm_64x64x64 it returned UNKNOWN at 30 s on the feasibility check and at
+// 300 s twice on the full model; with two or more workers the portfolio
+// (LP-based and feasibility-jump workers among them) solves both in 0.2 s.
+// Fixed rather than taken from the machine so a schedule does not depend on
+// where it was compiled. Workers are threads, so the address-space limit
+// above still bounds them together.
+constexpr unsigned mzn_num_workers = 8;
+
 // Exit codes for a program that cannot be scheduled, kept apart from the
 // EXIT_FAILURE every other compiler error uses. The testcase template's run.sh
 // and vs-verify pass these two through as the testcase's own exit code, and
@@ -169,7 +180,8 @@ void run_minizinc(string mzn_filename, string dzn_filename,
   // cleanly, which solve() already reads as a model it could not schedule.
   string command = "ulimit -v " + to_string(mzn_address_space_limit_kb) +
                    "; minizinc --time-limit " + to_string(time_limit_ms) +
-                   " --json-stream --solver cp-sat " + mzn_filename + " " +
+                   " --json-stream --solver cp-sat -p " +
+                   to_string(mzn_num_workers) + " " + mzn_filename + " " +
                    dzn_filename + " > " + json_filename;
   int result = system(command.c_str());
 
