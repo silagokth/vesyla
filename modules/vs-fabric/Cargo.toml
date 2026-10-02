@@ -1,18 +1,24 @@
 [package]
-name = "vs-component"
+name = "vs-fabric"
 edition = "2021"
-description = "Vesyla tool to create and validate components of the DRRA component library."
+description = "Vesyla tool to elaborate DRRA fabrics and generate their RTL and SST simulation configurations from high-level descriptions."
 
 [[bin]]
-name = "vs-component"
+name = "vs-fabric"
 path = "src/main.rs"
 
 [dependencies]
+bs58 = "0.5.1"
 clap = { version = "4.5.40", features = ["derive"] }
 env_logger = "0.11.8"
-jsonschema = "0.33.0"
 log = "0.4.27"
 log-panics = { version = "2.1.0", features = ["with-backtrace"] }
 minijinja = { version = "2.10.2", features = ["loader"] }
+serde = "1.0.219"
 serde_json = "1.0.140"
+yaml-rust2 = "0.10.4"
+svg = "0.18.0"
 tempfile = "3.20.0"
+walkdir = "2.5.0"
+hashlink = "0.10.0"
+which = "8.0.0"

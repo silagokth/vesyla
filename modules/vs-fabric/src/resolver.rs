@@ -12,11 +12,6 @@ use crate::utils::{get_arch_from_library, get_isa_from_library, get_parameters};
 
 use std::{collections::HashMap, fs, io::Error, path::Path};
 
-pub struct ResolvedAlimp {
-    pub alimp: Alimp,
-    pub resolved_cells: Vec<Cell>,
-}
-
 pub struct HierarchicalResolver {
     library_cache: HashMap<String, serde_json::Value>,
     cell_templates: HashMap<String, Cell>,
@@ -33,7 +28,7 @@ impl HierarchicalResolver {
             cell_templates: HashMap::new(),
         }
     }
-    pub fn resolve_alimp(&mut self, alimp_filepath: &Path) -> Result<ResolvedAlimp, DRRAError> {
+    pub fn resolve_alimp(&mut self, alimp_filepath: &Path) -> Result<Alimp, DRRAError> {
         let input: serde_json::Value = serde_json::from_reader(fs::File::open(alimp_filepath)?)
             .map_err(|e| DRRAError::Io(Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
@@ -56,10 +51,7 @@ impl HierarchicalResolver {
         alimp.drra.as_mut().unwrap().generate_fingerprints()?;
         alimp.validate()?;
 
-        Ok(ResolvedAlimp {
-            alimp,
-            resolved_cells,
-        })
+        Ok(alimp)
     }
 
     fn build_base_fabric(&self, fabric_json: &serde_json::Value) -> Result<Fabric, DRRAError> {

@@ -58,7 +58,7 @@ enum Command {
         /// Compile output directory (the one passed as --output to `vesyla compile`)
         #[arg(short, long, default_value = ".")]
         directory: String,
-        /// Resolved architecture JSON (the arch.json emitted by `vs-component`,
+        /// Resolved architecture JSON (the arch.json emitted by `vs-fabric`,
         /// with per-cell coordinates) that supplies the fabric geometry. If
         /// omitted (or if an input-form arch.json is given), the resolved
         /// arch.json for the run is auto-discovered under --directory.
@@ -73,7 +73,7 @@ enum Command {
         name = "fabric"
     )]
     Fabric {
-        /// Directory to search for fabric.svg/.png (the compile/assembly output directory)
+        /// Directory to search for fabric.svg/.png (the compile/elaborate output directory)
         #[arg(short, long, default_value = ".")]
         directory: String,
     },
@@ -354,7 +354,7 @@ fn show_conflict_graph(directory: &str) -> Result<(), io::Error> {
 // Render a fabric utilization heatmap for a chosen epoch and open it. The
 // utilization_<epoch>.json files are written next to the schedule timetables
 // (the "timetable_dir" configured for `vesyla compile`); the fabric geometry
-// comes from the resolved architecture JSON emitted by `vs-component`, passed
+// comes from the resolved architecture JSON emitted by `vs-fabric`, passed
 // via --arch. One heatmap is produced per epoch (the selected utilization file).
 fn show_heatmap(directory: &str, arch: Option<&str>, metric: &str) -> Result<(), io::Error> {
     let metric = match heatmap::Metric::from_arg(metric) {
@@ -407,7 +407,7 @@ fn show_heatmap(directory: &str, arch: Option<&str>, metric: &str) -> Result<(),
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     // Resolve the fabric geometry: the *resolved* arch.json (with per-cell
-    // coordinates) that `vs-component` emits. The input-form arch.json (cell
+    // coordinates) that `vs-fabric` emits. The input-form arch.json (cell
     // templates, no coordinates) has no placement and would draw nothing.
     let arch_json = load_geometry(arch, util_file, root)?;
 
@@ -496,7 +496,7 @@ fn load_geometry(
         warn!(
             "{:?} is an input architecture description (its cells carry no \
              coordinates), not the resolved fabric. Searching for the resolved \
-             arch.json produced by `vs-component`...",
+             arch.json produced by `vs-fabric`...",
             path
         );
     }
@@ -512,7 +512,7 @@ fn load_geometry(
             error!(
                 "Could not find a resolved arch.json (with per-cell coordinates and \
                  resources_list) under {:?}. Pass it with --arch; it is the arch.json \
-                 emitted by `vs-component` (e.g. work/system/arch/arch.json).",
+                 emitted by `vs-fabric` (e.g. work/system/arch/arch.json).",
                 root
             );
             Err(io::Error::new(
@@ -546,12 +546,12 @@ fn is_resolved_arch_file(path: &Path) -> bool {
 
 // Locate the resolved architecture JSON for the run that produced `util_file`.
 // Preference: the arch.json in the same work-tree as the utilization file (the
-// known `system/arch/arch.json` or `archive/assemble/arch/arch.json` above it);
+// known `system/arch/arch.json` or `archive/elaborate/arch/arch.json` above it);
 // failing that, any resolved arch.json found under `root`.
 fn find_resolved_arch(util_file: &Path, root: &Path) -> Option<PathBuf> {
     let mut dir = util_file.parent();
     while let Some(d) = dir {
-        for rel in ["system/arch/arch.json", "archive/assemble/arch/arch.json"] {
+        for rel in ["system/arch/arch.json", "archive/elaborate/arch/arch.json"] {
             let candidate = d.join(rel);
             if is_resolved_arch_file(&candidate) {
                 return Some(candidate);
@@ -657,7 +657,7 @@ fn collect_dots(root: &Path, suffix: &Path, out: &mut Vec<PathBuf>) -> Result<()
 }
 
 // Find the fabric architecture diagram(s) (fabric.svg / fabric.png) generated
-// by `vs-component` and open the chosen one. Unlike the debug graphs, the fabric
+// by `vs-fabric` and open the chosen one. Unlike the debug graphs, the fabric
 // diagram is a plain named file living in the assembly arch output (e.g.
 // system/arch/fabric.svg), so it is discovered by name anywhere under
 // `directory`. The SVG is preferred over a sibling PNG.
@@ -671,8 +671,8 @@ fn show_fabric(directory: &str) -> Result<(), io::Error> {
 
     if images.is_empty() {
         error!(
-            "No fabric.svg/.png found under {:?}. Did you run `vesyla` (component \
-             assembly) first?",
+            "No fabric.svg/.png found under {:?}. Did you run `vesyla` (fabric \
+             elaborate) first?",
             root
         );
         return Err(io::Error::new(

@@ -11,7 +11,7 @@ Synthesis and compilation tool suite for DRRA hardware accelerator platform.
 
 ### Requirements
 
-- [bender](https://github.com/pulp-platform/bender) (used by `vesyla component`)
+- [bender](https://github.com/pulp-platform/bender) (used by `vesyla fabric`)
 - [minizinc](https://www.minizinc.org/) (used by `vesyla compile`)
 - `g++` (used by `vesyla testcase`)
 - `xdg-open` (from `xdg-utils`) (used by `vesyla show` to open the selected image)
@@ -95,7 +95,8 @@ Packages will be generated in the `build/pkg` directory.
 ## [Modules](./modules/)
 
 - `testcase`: Test case infrastructure and build-in test cases for DRRA-2
-- `component`: Assemble the components of vesyla,
+- `component`: Create and validate components of the DRRA component library.
+- `fabric`: Elaborate a DRRA fabric from the components of the library, and generate its SST simulation files and RTL,
   it requires you to specify the location of DRRA libary as enviroment variable `VESYLA_SUITE_PATH_COMPONENTS`.
   Check the repo [drra-components](https://github.com/silagokth/drra-components).
 - `compile`: Compiler for DRRA-2 instruction set architecture (ISA).
@@ -110,7 +111,8 @@ Packages will be generated in the `build/pkg` directory.
 Usage: vesyla [command and options]
 Commands:
         compile     Compile the source code
-        component   Assemble the system
+        component   Create and validate components of the component library
+        fabric      Elaborate the fabric and generate its SST and RTL
         testcase    Test the system
 Options:
         -h, --help     Show this help message
@@ -140,7 +142,6 @@ Usage: vesyla component <COMMAND>
 
 Commands:
   create         Create a new component
-  assemble       Assemble the system
   validate_json  Validate JSON file
   clean          Clean the build directory
   help           Print this message or the help of the given subcommand(s)
@@ -148,6 +149,28 @@ Commands:
 Options:
   -h, --help  Print help
 ```
+
+### `vesyla fabric`
+
+```shell
+Usage: vesyla fabric <COMMAND>
+
+Commands:
+  elaborate  Elaborate the fabric: the arch.json and ISA the compiler reads
+  sst        Generate the SST simulation files from an elaborated or sized arch.json
+  rtl        Generate the RTL from an elaborated or sized arch.json
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+`elaborate` resolves the source arch.json against the component library and
+writes `arch/arch.json` and `isa/`, which is all `vesyla compile` needs. The
+compiler writes `arch_sized.json` next to the program it compiles: the
+elaborated arch.json with the parameters it set for that program. `sst` and
+`rtl` take either file; any parameter a component does not give falls back to
+its library default.
 
 ### `vesyla compile`
 

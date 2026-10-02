@@ -41,7 +41,8 @@ fn main() {
         "Usage: {} [command and options]\n\
          Commands:\n\
          \tcompile     Compile the source code\n\
-         \tcomponent   Assemble the system\n\
+         \tcomponent   Create and validate components of the component library\n\
+         \tfabric      Elaborate the fabric and generate its SST and RTL\n\
          \ttestcase    Test the system\n\
          \tverify      Run one testcase through every model and check they agree\n\
          \tshow        Show debug artifacts (e.g. timetables)\n\
@@ -58,7 +59,14 @@ fn main() {
 
     // find the directory of the current executable
     let command = &args[1];
-    let tools_list = ["compile", "component", "testcase", "verify", "show"];
+    let tools_list = [
+        "compile",
+        "component",
+        "fabric",
+        "testcase",
+        "verify",
+        "show",
+    ];
     match command.as_str() {
         "-h" | "--help" => {
             println!("{}", help_message);

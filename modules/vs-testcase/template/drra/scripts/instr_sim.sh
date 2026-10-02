@@ -32,8 +32,8 @@ if [ ! -d "${workspace_path}/mem" ]; then
   echo "${workspace_path}/mem directory does not exist"
   exit 1
 fi
-if [ ! -d "${workspace_path}/system/sst" ]; then
-  echo "${workspace_path}/system/sst directory does not exist"
+if [ ! -d "${workspace_path}/system/instr/${id}/sst" ]; then
+  echo "${workspace_path}/system/instr/${id}/sst directory does not exist"
   exit 1
 fi
 
@@ -50,8 +50,8 @@ mkdir -p "${workspace_path}/archive/instr_sim_${id}"
 touch "${workspace_path}/mem/sram_image_m2.bin"
 
 # simulate the code segment
-sst "${workspace_path}/system/sst/sst_sim_conf.py" \
-  --output-dot "${workspace_path}/system/sst/sst_sim_conf.dot" -- \
+sst "${workspace_path}/system/instr/${id}/sst/sst_sim_conf.py" \
+  --output-dot "${workspace_path}/system/instr/${id}/sst/sst_sim_conf.dot" -- \
   --io_input_buffer_filepath "${workspace_path}/mem/sram_image_in.bin" \
   --io_output_buffer_filepath "${workspace_path}/mem/sram_image_m2.bin" \
   --assembly_program_path "${workspace_path}/system/instr/${id}/instr.bin"

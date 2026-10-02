@@ -58,6 +58,10 @@ if [ ! -d "${workspace_path}/mem" ]; then
   echo "mem directory does not exist"
   exit 1
 fi
+if [ ! -d "${workspace_path}/system/instr/${id}/rtl" ]; then
+  echo "${workspace_path}/system/instr/${id}/rtl directory does not exist"
+  exit 1
+fi
 mkdir -p ${workspace_path}/archive
 
 # create the necessary directories
@@ -70,7 +74,7 @@ cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
 # gather the dependencies using bender
-bender -d ${workspace_path}/system/rtl/tb script vsim -t sim >read_src.do
+bender -d ${workspace_path}/system/instr/${id}/rtl/tb script vsim -t sim >read_src.do
 echo "exit" >>read_src.do
 
 # compile the library
