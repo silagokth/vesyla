@@ -229,15 +229,16 @@ mkdir -p ${template_path}/work
 cd ${template_path}/work
 mkdir -p mem
 
-# Assemble the fabric
+# Elaborate the fabric. Its SST and RTL are generated after the program is
+# compiled, from the architecture the compiler sized for it.
 start_spinner
-printf "  ${BOLD}Assembling the fabric${NC}"
+printf "  ${BOLD}Elaborating the fabric${NC}"
 if [ "$debug_mode" = true ]; then
   stop_spinner 0
-  bash ${template_path}/scripts/assemble.sh
+  bash ${template_path}/scripts/elaborate.sh
   start_spinner
 else
-  run_and_check "Assembly" bash ${template_path}/scripts/assemble.sh
+  run_and_check "Elaboration" bash ${template_path}/scripts/elaborate.sh
 fi
 stop_spinner 0
 
@@ -292,6 +293,16 @@ printf "  ${BLUE}Compiling${NC}"
 compile_programs
 stop_spinner 0
 
+## Generate the SST simulation files for the fabric sized for the program
+start_spinner
+printf "  ${BLUE}Generating SST${NC}"
+if [ "$debug_mode" = true ]; then
+  bash ${template_path}/scripts/sst_gen.sh 0 || exit 2
+else
+  run_and_check "SST generation" 2 bash ${template_path}/scripts/sst_gen.sh 0
+fi
+stop_spinner 0
+
 ## Run
 start_spinner
 if [ "$interactive_mode" = "all" ] || [ "$interactive_mode" = "sst" ]; then
@@ -335,6 +346,15 @@ printf "  ${BLUE}Compiling${NC}"
 compile_programs
 stop_spinner 0
 fi
+## Generate the RTL for the fabric sized for the program
+start_spinner
+printf "  ${BLUE}Generating RTL${NC}"
+if [ "$debug_mode" = true ]; then
+  bash ${template_path}/scripts/rtl_gen.sh 0 || exit 4
+else
+  run_and_check "RTL generation" 4 bash ${template_path}/scripts/rtl_gen.sh 0
+fi
+stop_spinner 0
 ## Run
 start_spinner
 if [ "$interactive_mode" = "all" ] || [ "$interactive_mode" = "rtl" ]; then

@@ -32,6 +32,7 @@ const std::map<std::string, std::string> &output_defaults() {
       {"stage_ext", ".mlir"},
       {"instr_basename", "instr"},
       {"schedule_dump_prefix", "schedule_"},
+      {"arch_sized", "arch_sized.json"},
   };
   return defaults;
 }
@@ -170,6 +171,35 @@ nlohmann::json Config::get_component_map_json() const {
   return component_map_json;
 }
 nlohmann::json Config::get_config_json() const { return config_json; }
+
+bool Config::set_resource_parameter(int row, int col, int slot,
+                                    const std::string &name, uint64_t value) {
+  for (auto &cell : arch_json["cells"]) {
+    if (cell["coordinates"]["row"] != row ||
+        cell["coordinates"]["col"] != col) {
+      continue;
+    }
+    for (auto &resource : cell["cell"]["resources_list"]) {
+      int slot_start = resource["slot"];
+      int size = resource["size"];
+      if (slot >= slot_start && slot < slot_start + size) {
+        resource["parameters"][name] = value;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void Config::write_arch_json(const std::string &path) const {
+  std::ofstream ofs(path);
+  if (!ofs.is_open()) {
+    LOG_FATAL << "Error: Failed to open " << path << " for writing";
+    std::exit(EXIT_FAILURE);
+  }
+  ofs << arch_json.dump(2) << std::endl;
+  ofs.close();
+}
 
 PortInfo Config::get_port_info(int port) const {
   if (config_json.is_object() && config_json.contains("port_table") &&

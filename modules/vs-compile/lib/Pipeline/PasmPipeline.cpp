@@ -148,6 +148,16 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   pm.clear();
   save_mlir(module, stage_file(6));
 
+  // Sized on the final instruction stream, the one the binary encodes: the
+  // AGU parameters it sets go into arch_sized.json.
+  pm.addPass(vesyla::pasm::createSizeAguPass());
+  if (mlir::failed(pm.run(module))) {
+    LOG_FATAL << "Error: createSizeAguPass failed.\n";
+    std::exit(EXIT_FAILURE);
+  }
+  pm.clear();
+  save_mlir(module, stage_file(7));
+
   // Save the transformed module to ASM and BIN files
   std::string codegen_path = output_dir;
   if (!std::filesystem::exists(codegen_path)) {

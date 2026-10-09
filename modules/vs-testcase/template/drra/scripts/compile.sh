@@ -81,6 +81,9 @@ for id in ${ids}; do
   mkdir -p ${workspace_path}/system/instr/${id}
   cp ${workspace_path}/temp/instr.bin system/instr/${id}
   cp ${workspace_path}/temp/instr.asm system/instr/${id}
+  # the architecture sized for this program, which its SST and RTL are
+  # generated from
+  cp ${workspace_path}/temp/arch_sized.json ${workspace_path}/system/instr/${id}
 
   # archive everything
   mv ${workspace_path}/temp ${workspace_path}/archive/compile_${id}

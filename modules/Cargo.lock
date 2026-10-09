@@ -1619,11 +1619,24 @@ dependencies = [
 name = "vs-component"
 version = "0.0.0"
 dependencies = [
+ "clap",
+ "env_logger",
+ "jsonschema",
+ "log",
+ "log-panics",
+ "minijinja",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "vs-fabric"
+version = "0.0.0"
+dependencies = [
  "bs58",
  "clap",
  "env_logger",
  "hashlink",
- "jsonschema",
  "log",
  "log-panics",
  "minijinja",

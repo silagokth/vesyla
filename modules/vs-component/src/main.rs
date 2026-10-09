@@ -1,15 +1,6 @@
-mod arch_visual_gen;
-mod isa_gen;
-mod models;
-mod sst_sim_gen;
+mod component_generator;
 mod utils;
 
-mod assembly_manager;
-mod component_generator;
-mod resolver;
-mod rtl_generator;
-
-use crate::assembly_manager::{assemble_project, AssemblyManager};
 use crate::component_generator::ComponentGenerator;
 
 use log::{error, info};
@@ -36,18 +27,6 @@ enum Command {
         // Non interactive mode
         #[arg(short, long, default_value_t = false)]
         non_interactive: bool,
-    },
-    #[command(about = "Assemble the system", name = "assemble")]
-    Assemble {
-        /// Architecture JSON file path
-        #[arg(short, long)]
-        arch_json: String,
-        /// Output directory path
-        #[arg(short, long)]
-        output: String,
-        // Debug mode (default: false)
-        #[arg(short, long, default_value_t = false)]
-        debug: bool,
     },
     #[command(about = "Validate JSON file", name = "validate_json")]
     ValidateJson {
@@ -121,28 +100,6 @@ fn main() {
                 }
             }
         }
-        Command::Assemble {
-            arch_json,
-            output,
-            debug,
-        } => {
-            let debug_level = if *debug {
-                log::LevelFilter::Debug
-            } else {
-                log::LevelFilter::Info
-            };
-            env_logger::builder().filter_level(debug_level);
-
-            info!("Assembling system from {} to {}", arch_json, output);
-
-            match assemble_project(arch_json, output) {
-                Ok(_) => info!("Assembly completed successfully!"),
-                Err(e) => {
-                    error!("Assembly failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
         Command::ValidateJson {
             json_file,
             schema_file,
@@ -158,7 +115,7 @@ fn main() {
         }
         Command::Clean { build_dir } => {
             info!("Cleaning build directory: {}", build_dir);
-            match AssemblyManager::clean(build_dir) {
+            match clean(build_dir) {
                 Ok(_) => info!("Clean completed successfully!"),
                 Err(e) => {
                     error!("Clean failed: {}", e);
@@ -167,6 +124,18 @@ fn main() {
             }
         }
     }
+}
+
+fn clean(build_dir: &str) -> Result<()> {
+    let build_path = Path::new(build_dir);
+    if build_path.exists() {
+        info!("Cleaning build directory: {}", build_dir);
+        fs::remove_dir_all(build_path)?;
+        info!("Build directory cleaned");
+    } else {
+        info!("Build directory does not exist: {}", build_dir);
+    }
+    Ok(())
 }
 
 fn validate_json(json_file: &str, schema_file: &str) -> Result<()> {

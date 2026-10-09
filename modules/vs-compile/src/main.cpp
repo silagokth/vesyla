@@ -316,6 +316,11 @@ int main(int argc, char **argv) {
   vesyla::schedule::Scheduler scheduler;
   scheduler.run(module_op, output_dir, allow_unsafe, keep_debug);
 
+  // The architecture this program was compiled for, with whatever parameters
+  // compilation set on it. vesyla fabric generates the program's SST and RTL
+  // from it.
+  cfg.write_arch_json(output_dir + "/" + cfg.output_path("arch_sized"));
+
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {
     std::string mzn_dir = output_dir + "/" + cfg.output_path("minizinc_dir");

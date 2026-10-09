@@ -1,4 +1,4 @@
-//! Verify one testcase: assemble the fabric, run the C++ reference, compile and
+//! Verify one testcase: elaborate the fabric, run the C++ reference, compile and
 //! simulate the program, and check that the simulators agree with the
 //! reference.
 //!
@@ -207,7 +207,7 @@ fn preflight(run_sst: bool, run_rtl: bool) -> Result<(), String> {
     let mut required: Vec<(&str, &str)> = vec![
         (
             "vesyla",
-            "the helper scripts call it to assemble the fabric and compile the program",
+            "the helper scripts call it to build the fabric and compile the program",
         ),
         ("g++", "builds the model 0 C++ reference"),
         (
@@ -230,7 +230,7 @@ fn preflight(run_sst: bool, run_rtl: bool) -> Result<(), String> {
         }
     }
 
-    // The component library is what the fabric is assembled out of and what
+    // The component library is what the fabric is built out of and what
     // instruction selection reads its patterns from, so it is as much a
     // requirement as any of the programs above.
     match env::var("VESYLA_SUITE_PATH_COMPONENTS") {
@@ -635,9 +635,11 @@ fn main() {
     let mem = work.join("mem");
     let reference = mem.join("sram_image_m0.bin");
 
-    // Setup: a fresh work directory and the fabric assembled into it.
+    // Setup: a fresh work directory and the fabric elaborated into it. The SST
+    // and RTL are generated later, from the architecture the compiler sized
+    // for the program.
     ui.stage("Setup");
-    ui.step("Assembling the fabric");
+    ui.step("Elaborating the fabric");
     if work.exists() {
         if let Err(e) = fs::remove_dir_all(&work) {
             ui.fatal(EXIT_SETUP, &format!("cannot clear {}: {}", work.display(), e));
@@ -646,7 +648,7 @@ fn main() {
     if let Err(e) = fs::create_dir_all(&mem) {
         ui.fatal(EXIT_SETUP, &format!("cannot create {}: {}", mem.display(), e));
     }
-    if let Err(detail) = script(&root, "assemble.sh", &[], args.debug) {
+    if let Err(detail) = script(&root, "elaborate.sh", &[], args.debug) {
         ui.fatal(EXIT_SETUP, &detail);
     }
     ui.ok();
@@ -731,6 +733,12 @@ fn main() {
 
     let model_2 = mem.join("sram_image_m2.bin");
     if run_sst {
+        ui.step("Generating SST");
+        if let Err(detail) = script(&root, "sst_gen.sh", &["0"], args.debug) {
+            ui.fatal(EXIT_SST_RUN, &detail);
+        }
+        ui.ok();
+
         if matches!(args.interactive, Some(Interactive::All) | Some(Interactive::Sst)) {
             ui.note("interactive mode is not implemented for SST; running batch");
         }
@@ -750,12 +758,19 @@ fn main() {
         }
         ui.ok();
     } else {
+        ui.skipped("Generating SST", "--skip sst");
         ui.skipped("Running", "--skip sst");
     }
 
     // Model 3: the RTL simulation.
     ui.stage("Model 3: RTL simulation");
     if run_rtl {
+        ui.step("Generating RTL");
+        if let Err(detail) = script(&root, "rtl_gen.sh", &["0"], args.debug) {
+            ui.fatal(EXIT_RTL_RUN, &detail);
+        }
+        ui.ok();
+
         ui.step("Compiling and running");
         let interactive = match args.interactive {
             Some(Interactive::All) => "-it=all",
@@ -785,6 +800,7 @@ fn main() {
         }
         ui.ok();
     } else {
+        ui.skipped("Generating RTL", "--skip rtl");
         ui.skipped("Compiling and running", "--skip rtl");
     }
 

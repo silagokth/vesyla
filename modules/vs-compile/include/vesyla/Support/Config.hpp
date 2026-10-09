@@ -28,6 +28,17 @@ public:
   nlohmann::json get_component_map_json() const;
   nlohmann::json get_config_json() const;
 
+  // Set a parameter of the resource that occupies `slot` in cell (row, col),
+  // in the loaded architecture. Returns false when no resource occupies that
+  // slot. The architecture write_arch_json writes carries every parameter set
+  // this way; vesyla fabric generates the SST and RTL for a program from it,
+  // taking the library default for any parameter left unset.
+  bool set_resource_parameter(int row, int col, int slot,
+                              const std::string &name, uint64_t value);
+  // Write the loaded architecture, with the parameters set through
+  // set_resource_parameter, to `path`.
+  void write_arch_json(const std::string &path) const;
+
   // Look up the direction/kind for a port number from the config's
   // "port_table" section. Falls back to the default mapping (bit0 = direction,
   // bit1 = kind) when no config was loaded.

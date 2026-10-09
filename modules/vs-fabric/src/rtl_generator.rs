@@ -1,8 +1,5 @@
-use crate::{
-    models::{
-        cell::Cell, controller::Controller, drra::Fabric, resource::Resource, types::RTLComponent,
-    },
-    resolver::ResolvedAlimp,
+use crate::models::{
+    cell::Cell, controller::Controller, drra::Fabric, resource::Resource, types::RTLComponent,
 };
 
 use std::{collections::HashMap, fs, io::Error, path::Path, path::PathBuf};
@@ -24,12 +21,18 @@ impl RTLGenerator {
         }
     }
 
-    pub fn generate(&mut self, resolved_alimp: &mut ResolvedAlimp) -> Result<(), Error> {
-        for cell in &mut resolved_alimp.resolved_cells {
-            self.process_resolved_cell(cell)?;
+    // Each placed cell is generated rather than each cell template: the cells
+    // placed from one template need not match once their parameters were sized
+    // independently. Cells, controllers and resources that do match share one
+    // implementation, keyed by fingerprint.
+    pub fn generate(&mut self, fabric: &mut Fabric) -> Result<(), Error> {
+        for row in fabric.cells.iter_mut() {
+            for cell in row.iter_mut() {
+                self.process_resolved_cell(cell)?;
+            }
         }
 
-        self.generate_fabric_rtl(resolved_alimp.alimp.drra.as_mut().unwrap())?;
+        self.generate_fabric_rtl(fabric)?;
 
         Ok(())
     }

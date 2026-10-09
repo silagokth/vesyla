@@ -39,6 +39,18 @@ def AddHaltPass: Pass<"add-halt-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def SizeAguPass: Pass<"size-agu-pass", "::mlir::ModuleOp"> {
+  let summary = "Size each resource's AGUs to what the program uses.";
+  let description = [{
+    Replays the final instruction stream of every cell the way each resource's
+    AGU controller decodes it, and sets NUMBER_IR, NUMBER_MT and NUMBER_OR of
+    every resource in the architecture to the largest configuration any of its
+    AGUs is given. A resource whose AGUs the program never configures gets the
+    smallest AGU that elaborates. The sized architecture is what
+    arch_sized.json carries to SST and RTL generation.
+  }];
+}
+
 def AddSlotPortPass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
   let summary = "Add slot and port operations.";
   let description = [{

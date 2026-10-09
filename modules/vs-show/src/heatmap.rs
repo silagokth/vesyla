@@ -1,13 +1,13 @@
 // Render a fabric utilization heatmap as an SVG.
 //
-// This mirrors the spatial layout of `vs-component`'s `arch_visual_gen` (cells
+// This mirrors the spatial layout of `vs-fabric`'s `arch_visual_gen` (cells
 // on a (row, col) grid, per-cell controller on the left and resource slots
 // stacked on the right), but recolors each resource slot by its utilization
 // instead of by resource kind. The geometry is intentionally kept close to the
 // architecture view so the two read as the same fabric.
 //
 // Two JSON documents drive it:
-//   * the resolved architecture JSON (the one `vs-component` writes and
+//   * the resolved architecture JSON (the one `vs-fabric` writes and
 //     `arch_visual_gen` consumes): a flat `cells` array of
 //     `{ coordinates: {row, col}, cell: { controller, resources_list } }`,
 //     where each resource carries `name`, `slot` and `size`.

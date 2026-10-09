@@ -29,11 +29,12 @@ unsigned enclosing_loop_depth(mlir::Operation *op);
 // sweeps:
 //   - an affine.apply feeding an index operand: reuse its map, which already
 //     carries both the stepping and the base.
-//   - otherwise: the innermost loop dim, if there is one, plus the base the
-//     access names outright. A load that says [1, 0] starts one bulk in, and
-//     that has to survive into the map because set_init_addr reads the base
-//     from here and nowhere else -- an access with no map at all lowers to the
-//     same instruction as one addressing bulk zero.
+//   - a constant subscript: that base alone, over the enclosing loops' dims
+//     but stepped by none of them. A load that says [1, 0] starts one bulk
+//     in, and that has to survive into the map because set_init_addr reads
+//     the base from here and nowhere else -- an access with no map at all
+//     lowers to the same instruction as one addressing bulk zero.
+//   - otherwise, a subscript a loop supplies: the innermost loop dim.
 //   - neither: no map (returns null).
 // A heuristic that matches the shapes in the reference IR; the exact
 // multi-index / symbol cases need revisiting once run end to end.

@@ -89,8 +89,12 @@ mlir::AffineMapAttr lift_affine_map(mlir::Operation *access) {
     return {};
   }
 
+  // A constant subscript names the same address on every iteration: the map
+  // keeps the enclosing loops' dims, so each loop still gets its rep, but none
+  // of them moves the address. Only a subscript some loop supplies is stepped,
+  // and that by the innermost loop.
   mlir::AffineExpr addr = mlir::getAffineConstantExpr(base.value_or(0), ctx);
-  if (depth > 0) {
+  if (depth > 0 && !base) {
     addr = mlir::getAffineDimExpr(depth - 1, ctx) + addr;
   }
   return mlir::AffineMapAttr::get(
