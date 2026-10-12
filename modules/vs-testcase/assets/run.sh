@@ -2,11 +2,18 @@
 # Run the autotest suite. Do NOT use `set -e` here: pabot exits non-zero when any
 # testcase fails, and we still want the summary step below to run in that case.
 #
-# Usage: ./run.sh [--frontend=pasm|mlir|all] [pabot/robot options...]
+# Options: see the USAGE text below (./run.sh --help). `vesyla testcase generate`
+# prints the same text, so keep it in that heredoc.
+#
 # Every testcase has a pasm variant, and an mlir variant when it carries
-# mlir/*.mlir; --frontend picks which of them run (default: pasm). Any other
-# arguments are passed through to pabot, e.g. --include drra::basic.
+# mlir/*.mlir; --frontend picks which of them run by their frontend:<name> tag.
+# --rtl-target is handed to the testcases' rtl_sim.sh through
+# VESYLA_RTL_TARGETS, which adds it to the Bender targets on top of `sim`.
+# --no-cleanup keeps the work/ directory of every testcase; without it only the
+# failing ones are kept.
 frontend=pasm
+cleanup_flag=""
+rtl_targets="${VESYLA_RTL_TARGETS:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
   --frontend=*)
@@ -17,11 +24,32 @@ while [ $# -gt 0 ]; do
     frontend="$2"
     shift 2
     ;;
+  --rtl-target=*)
+    rtl_targets="$rtl_targets ${1#*=}"
+    shift
+    ;;
+  --rtl-target)
+    rtl_targets="$rtl_targets $2"
+    shift 2
+    ;;
+  --no-cleanup)
+    cleanup_flag="--variable NO_CLEANUP:True"
+    shift
+    ;;
   -h | --help)
-    echo "Usage: $0 [--frontend=pasm|mlir|all] [pabot/robot options...]"
-    echo "  --frontend=pasm   run the testcases' pasm/*.pasm programs (default)"
-    echo "  --frontend=mlir   run the testcases' mlir/*.mlir programs"
-    echo "  --frontend=all    run both"
+    cat <<'USAGE'
+Usage: ./run.sh [options] [pabot/robot options...]
+  --frontend=pasm          run the testcases' pasm/*.pasm programs (default)
+  --frontend=mlir          run the testcases' mlir/*.mlir programs
+  --frontend=all           run both
+  --rtl-target=TARGET      add a Bender target to the RTL simulation on top of sim,
+                           e.g. freepdk45 for the OpenRAM macro models; repeatable
+                           (default: sim only, flip-flop memories)
+  --no-cleanup             keep every testcase's work/<testcase>_<id>/ directory
+                           (default: only failing testcases keep theirs)
+  -h, --help               show this help
+Any other argument goes to pabot, e.g. --include <testcase group> to run one group.
+USAGE
     exit 0
     ;;
   *)
@@ -39,8 +67,17 @@ all) frontend_filter="" ;;
   ;;
 esac
 
-# $frontend_filter is deliberately unquoted: it is either empty or two words.
-pabot --testlevelsplit -d output $frontend_filter "$@" autotest_config.robot
+# Trim the leading space the loop above leaves.
+rtl_targets="$(echo $rtl_targets)"
+export VESYLA_RTL_TARGETS="$rtl_targets"
+echo "RTL simulation targets: sim${rtl_targets:+ $rtl_targets}"
+if [ -n "$cleanup_flag" ]; then
+  echo "Keeping every testcase's work directory under work/"
+fi
+
+# $frontend_filter and $cleanup_flag are deliberately unquoted: each is either
+# empty or two words.
+pabot --testlevelsplit -d output $frontend_filter $cleanup_flag "$@" autotest_config.robot
 pabot_rc=$?
 
 # Summarize which step each failing testcase reached, using the per-test failure

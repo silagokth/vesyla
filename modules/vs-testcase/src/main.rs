@@ -1,6 +1,7 @@
 use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use log::{error, info, warn, LevelFilter};
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs::{self, File};
 use std::io;
@@ -490,7 +491,27 @@ fn generate(directory: &String, output_dir: &String) -> Result<(), io::Error> {
     let output_work_path = format!("{}/work", output_dir);
     fs::create_dir_all(&output_work_path).unwrap();
 
+    // Tell the user how to run what was just generated
+    let groups: BTreeSet<&str> = testcase_entries.iter().map(|e| e.tags.as_str()).collect();
+    info!("Generated run.sh and autotest_config.robot in {}", output_dir);
+    println!("{}", run_sh_usage(run_sh_content));
+    println!(
+        "Testcase groups: {}",
+        groups.into_iter().collect::<Vec<_>>().join(", ")
+    );
+
     Ok(())
+}
+
+// The usage text of the generated run.sh: the USAGE heredoc its --help prints,
+// so what `generate` shows cannot drift from what the script accepts.
+fn run_sh_usage(run_sh: &str) -> &str {
+    let open = "<<'USAGE'\n";
+    let start = run_sh.find(open).expect("run.sh has no USAGE heredoc") + open.len();
+    let len = run_sh[start..]
+        .find("\nUSAGE\n")
+        .expect("run.sh's USAGE heredoc is not terminated");
+    &run_sh[start..start + len]
 }
 
 fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
@@ -633,6 +654,16 @@ mod tests {
     }
 
     #[test]
+    fn test_run_sh_usage_lists_options() {
+        let usage = run_sh_usage(include_str!("../assets/run.sh"));
+        assert!(usage.starts_with("Usage: ./run.sh"));
+        assert!(usage.contains("--frontend=pasm"));
+        assert!(usage.contains("--rtl-target=TARGET"));
+        assert!(usage.contains("--no-cleanup"));
+        assert!(!usage.contains("USAGE"));
+    }
+
+    #[test]
     fn test_parse_models() {
         assert_eq!(parse_models("0,2,3").unwrap(), "0,2,3");
         assert_eq!(parse_models("0, 3").unwrap(), "0,3");
@@ -657,6 +688,8 @@ mod tests {
 
         let content = fs::read_to_string(robot_path).unwrap();
         assert!(content.contains("*** Comments ***"));
+        // run.sh --no-cleanup sets this to keep passing testcases' work directories.
+        assert!(content.contains("${NO_CLEANUP}"));
 
         assert!(content.contains("style0::type1::bar::pasm"));
         assert!(content.contains("style0::type1::foo::pasm"));

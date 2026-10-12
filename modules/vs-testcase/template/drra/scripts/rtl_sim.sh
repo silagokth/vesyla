@@ -73,8 +73,15 @@ cp ${workspace_path}/system/instr/${id}/instr.bin temp
 cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
-# gather the dependencies using bender
-bender -d ${workspace_path}/system/instr/${id}/rtl/tb script vsim -t sim >read_src.do
+# gather the dependencies using bender. VESYLA_RTL_TARGETS adds Bender targets
+# on top of `sim`, e.g. `freepdk45` simulates the memories that have a macro on
+# the macro's simulation model instead of flip-flops.
+bender_targets="-t sim"
+for target in ${VESYLA_RTL_TARGETS:-}; do
+  bender_targets="${bender_targets} -t ${target}"
+done
+echo "RTL simulation Bender targets: ${bender_targets}"
+bender -d ${workspace_path}/system/instr/${id}/rtl/tb script vsim ${bender_targets} >read_src.do
 echo "exit" >>read_src.do
 
 # compile the library

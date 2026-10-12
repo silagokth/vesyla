@@ -5,6 +5,11 @@ Library           String
 Suite Teardown    Terminate All Processes    kill=True
 Test Template     Autotest Template
 
+*** Variables ***
+# Keep every testcase's work directory, not only the failing ones'.
+# Set with `--variable NO_CLEANUP:True` (run.sh --no-cleanup).
+${NO_CLEANUP}     ${False}
+
 *** Test Cases ***  testcase_path    frontend
 {% for testcase in testcases %}
 {{ testcase.name }}    {{ testcase.path }}    {{ testcase.frontend }}
@@ -33,7 +38,10 @@ Autotest Template
     Verify RTL Run          ${result.rc}    ${output_dir}
     Verify RTL Output       ${result.rc}    ${output_dir}
     Verify Exit Code        ${result.rc}    ${output_dir}
-    Remove Directory    ${output_dir}    recursive=True
+    # A failing testcase stops at its Verify step above and keeps its directory.
+    IF    not ${NO_CLEANUP}
+        Remove Directory    ${output_dir}    recursive=True
+    END
 
 Verify Setup
     [Arguments]    ${rc}    ${output_dir}
