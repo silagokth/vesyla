@@ -206,10 +206,13 @@ void dump_schedule_table(
 
         if (all_control_op_anchors.find(label) !=
             all_control_op_anchors.end()) {
+          // The ROP's ACT is issued act_lead() cycles before its start, so
+          // that is the issue slot no COP instruction may share.
           for (auto &ref : all_control_op_anchors[label]) {
             ::vesyla::tm::Constraint c(/*src_id=*/ops[i],
                                        /*dst_id=*/ref.op_name,
-                                       /*min_delay=*/0, /*max_delay=*/0,
+                                       /*min_delay=*/-act_lead(),
+                                       /*max_delay=*/-act_lead(),
                                        /*src_anchor=*/std::nullopt,
                                        /*dst_anchor=*/ref.anchor);
             c.is_neq = true;
@@ -334,10 +337,47 @@ public:
     int row = arch_json["parameters"]["ROWS"].get<int>();
     int col = arch_json["parameters"]["COLS"].get<int>();
 
+    // Cycles from an ACT to a resource's first AGU address. vs-fabric
+    // defaults it to 1 at fabric level; the same value sizes the output
+    // stages of the RTL agu_array and the SST AGUArray. One value per
+    // fabric: a resource or cell override would have to move its ACTs alone,
+    // which the scheduler does not do, so it is rejected here.
+    int agu_latency = arch_json["parameters"].value("AGU_LATENCY", 1);
+    if (agu_latency < 1) {
+      llvm::outs() << "Error: AGU_LATENCY must be at least 1, got "
+                   << agu_latency << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+    if (arch_json.contains("cells")) {
+      for (const auto &cell : arch_json["cells"]) {
+        if (!cell.contains("cell") ||
+            !cell["cell"].contains("resources_list"))
+          continue;
+        for (const auto &resource : cell["cell"]["resources_list"]) {
+          if (!resource.contains("parameters") ||
+              !resource["parameters"].contains("AGU_LATENCY"))
+            continue;
+          int resource_latency =
+              resource["parameters"]["AGU_LATENCY"].get<int>();
+          if (resource_latency != agu_latency) {
+            llvm::outs() << "Error: resource at cell ("
+                         << cell["coordinates"]["row"].get<int>() << ", "
+                         << cell["coordinates"]["col"].get<int>() << ") slot "
+                         << resource["slot"].get<int>() << " has AGU_LATENCY "
+                         << resource_latency << ", but the fabric has "
+                         << agu_latency
+                         << ". A per-resource AGU latency is not "
+                            "supported by the scheduler.\n";
+            std::exit(EXIT_FAILURE);
+          }
+        }
+      }
+    }
+
     ::mlir::RewritePatternSet patterns(&getContext());
     patterns.add<schedule_epoch_detail::ScheduleEpochPassRewriter>(
         &getContext(), component_map_json, component_path, tmp_path,
-        allow_unsafe, row, col);
+        allow_unsafe, row, col, agu_latency);
     ::mlir::FrozenRewritePatternSet patternSet(std::move(patterns));
     if (failed(applyPatternsGreedily(getOperation(), patternSet)))
       signalPassFailure();

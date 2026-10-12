@@ -52,9 +52,14 @@ void ScheduleEpochPassRewriter::insert_rop_instructions(
     if (num_instructions == 0)
       continue; // skip if there is no instruction in the ROP
 
+    // The configuration must be in place before the ROP's ACT, which is
+    // issued act_lead() cycles ahead of its start. A conf-only ROP has no ACT
+    // and only has to land before its start.
+    int issue_t = rop_needs_act(rop_op) ? t - act_lead() : t;
+
     // search for an empty time slot that is the size of the number of
     // instructions in the ROP
-    int curr_t = t - 1;
+    int curr_t = issue_t - 1;
     bool found_slot = false;
     while (!found_slot) {
       found_slot = true;
@@ -248,8 +253,12 @@ int ScheduleEpochPassRewriter::synchronize(
       if (act_instr_param_map["mode"] == 2)
         cell_contains_act_mode2[label] = true;
 
+      // Issue the ACT act_lead() cycles early so the first address still
+      // appears one cycle after the ROP's scheduled start, whatever
+      // AGU_LATENCY is. A negative time is fine: the epoch is shifted below so
+      // that its earliest instruction lands at 0.
       auto act_instr = compose_act_mlir_op(op, rewriter, act_instr_param_map);
-      create_time_table_entry(cell_time_table, t, act_instr);
+      create_time_table_entry(cell_time_table, t - act_lead(), act_instr);
     }
   }
 
