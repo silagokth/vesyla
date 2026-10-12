@@ -1,6 +1,10 @@
 #include "vesyla/Pipeline/PasmPipeline.hpp"
 #include "vesyla/Codegen/BinaryGenerator.hpp"
 
+#include <iterator>
+#include <map>
+#include <utility>
+
 namespace vesyla {
 namespace schedule {
 void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
@@ -157,6 +161,30 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
   }
   pm.clear();
   save_mlir(module, stage_file(7));
+
+  // Each instruction is one word of its cell's sequencer program, so this is
+  // what the binary loads into every sequencer. A cell the program does not
+  // use gets 0.
+  {
+    std::map<std::pair<int, int>, uint64_t> instr_counts;
+    for (const auto &cell : cfg.get_arch_json()["cells"]) {
+      instr_counts[{cell["coordinates"]["row"], cell["coordinates"]["col"]}] =
+          0;
+    }
+    module.walk([&](vesyla::pasm::RawOp raw) {
+      auto ops = raw.getBody().front().getOps<vesyla::pasm::InstrOp>();
+      instr_counts[{raw.getRow(), raw.getCol()}] +=
+          std::distance(ops.begin(), ops.end());
+    });
+    for (const auto &[coord, count] : instr_counts) {
+      if (!cfg.set_controller_instr_count(coord.first, coord.second, count)) {
+        LOG_FATAL << "Error: the program uses cell (" << coord.first << ", "
+                  << coord.second << "), which the architecture does not "
+                  << "have.\n";
+        std::exit(EXIT_FAILURE);
+      }
+    }
+  }
 
   // Save the transformed module to ASM and BIN files
   std::string codegen_path = output_dir;

@@ -191,6 +191,18 @@ bool Config::set_resource_parameter(int row, int col, int slot,
   return false;
 }
 
+bool Config::set_controller_instr_count(int row, int col, uint64_t count) {
+  for (auto &cell : arch_json["cells"]) {
+    if (cell["coordinates"]["row"] != row ||
+        cell["coordinates"]["col"] != col) {
+      continue;
+    }
+    cell["cell"]["controller"]["instr_count"] = count;
+    return true;
+  }
+  return false;
+}
+
 void Config::write_arch_json(const std::string &path) const {
   std::ofstream ofs(path);
   if (!ofs.is_open()) {

@@ -35,8 +35,15 @@ public:
   // taking the library default for any parameter left unset.
   bool set_resource_parameter(int row, int col, int slot,
                               const std::string &name, uint64_t value);
+  // Set `instr_count` on the controller of cell (row, col), in the loaded
+  // architecture: the number of instructions its sequencer is loaded with.
+  // It is kept out of the controller's parameters, so it changes neither the
+  // RTL nor the fingerprint vesyla fabric generates. Returns false when the
+  // architecture has no such cell.
+  bool set_controller_instr_count(int row, int col, uint64_t count);
   // Write the loaded architecture, with the parameters set through
-  // set_resource_parameter, to `path`.
+  // set_resource_parameter and the counts set through
+  // set_controller_instr_count, to `path`.
   void write_arch_json(const std::string &path) const;
 
   // Look up the direction/kind for a port number from the config's
