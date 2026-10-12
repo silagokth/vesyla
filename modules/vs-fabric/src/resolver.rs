@@ -56,10 +56,14 @@ impl HierarchicalResolver {
 
     fn build_base_fabric(&self, fabric_json: &serde_json::Value) -> Result<Fabric, DRRAError> {
         let mut fabric = Fabric::new();
-        fabric.add_parameters(get_parameters(
-            fabric_json,
-            Some("custom_properties".to_string()),
-        ));
+        let mut parameters = get_parameters(fabric_json, Some("custom_properties".to_string()));
+        // Cycles from an ACT to a resource's first AGU address. It is a
+        // contract between the RTL agu_array, the SST AGUArray and the
+        // scheduler (vs-compile ScheduleEpochPass), so it is defaulted here, at
+        // fabric level -- the lowest priority -- rather than repeated in every
+        // architecture description. 1 is the registered activation alone.
+        parameters.entry("AGU_LATENCY".to_string()).or_insert(1);
+        fabric.add_parameters(parameters);
         Ok(fabric)
     }
 
