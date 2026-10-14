@@ -2,8 +2,8 @@
 set -e
 
 # check the number of arguments
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <id>"
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <id> [-nr|--no-reconfiguration]"
   exit 1
 fi
 
@@ -17,6 +17,15 @@ id=$1
 
 # the sized architecture the compiler wrote for this program
 arch_sized="${workspace_path}/system/instr/${id}/arch_sized.json"
+# without reconfiguration, the one whose controllers only issue the
+# activations and whose resources hardcode the rest of the program
+for arg in "$@"; do
+  case "$arg" in
+  -nr | --no-reconfiguration)
+    arch_sized="${workspace_path}/system/instr/${id}/arch_noreconf.json"
+    ;;
+  esac
+done
 if [ ! -f "${arch_sized}" ]; then
   echo "${arch_sized} does not exist"
   exit 1

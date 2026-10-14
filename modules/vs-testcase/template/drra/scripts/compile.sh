@@ -18,10 +18,14 @@ shift
 
 # parse remaining flags
 debug_flag=""
+noreconf_flag=""
 for arg in "$@"; do
   case "$arg" in
   -d | --debug)
     debug_flag="-d"
+    ;;
+  -nr | --no-reconfiguration)
+    noreconf_flag="--no-reconfiguration"
     ;;
   esac
 done
@@ -67,14 +71,14 @@ for id in ${ids}; do
       -i ${workspace_path}/system/isa/isa.json \
       -m ${template_path}/pasm/${id}.mlir \
       -o ${workspace_path}/temp \
-      ${debug_flag}
+      ${debug_flag} ${noreconf_flag}
   else
     vesyla compile \
       -a ${workspace_path}/system/arch/arch.json \
       -i ${workspace_path}/system/isa/isa.json \
       -p ${template_path}/pasm/${id}.pasm \
       -o ${workspace_path}/temp \
-      ${debug_flag}
+      ${debug_flag} ${noreconf_flag}
   fi
 
   # preserve the instructions
@@ -84,6 +88,11 @@ for id in ${ids}; do
   # the architecture sized for this program, which its SST and RTL are
   # generated from
   cp ${workspace_path}/temp/arch_sized.json ${workspace_path}/system/instr/${id}
+  # without reconfiguration, the architecture whose controllers only issue
+  # the activations and whose resources hardcode the rest of the program
+  if [ -n "${noreconf_flag}" ]; then
+    cp ${workspace_path}/temp/arch_noreconf.json ${workspace_path}/system/instr/${id}
+  fi
 
   # archive everything
   mv ${workspace_path}/temp ${workspace_path}/archive/compile_${id}

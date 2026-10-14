@@ -23,6 +23,7 @@ id=$1
 vsim_cli_mode="-c"
 debug_mode=0
 interactive_mode=0
+noreconf_mode=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -37,6 +38,9 @@ for arg in "$@"; do
     ;;
   -d | --debug)
     debug_mode=1
+    ;;
+  -nr | --no-reconfiguration)
+    noreconf_mode=1
     ;;
   esac
 done
@@ -69,7 +73,13 @@ mkdir -p ${workspace_path}/temp
 mkdir -p ${workspace_path}/archive/rtl_sim_${id}
 
 # copy the necessary files
-cp ${workspace_path}/system/instr/${id}/instr.bin temp
+# Without reconfiguration there is no program to load: an empty instr.bin
+# makes the testbench call the fabric right away.
+if [ "$noreconf_mode" = "1" ]; then
+  : >temp/instr.bin
+else
+  cp ${workspace_path}/system/instr/${id}/instr.bin temp
+fi
 cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
