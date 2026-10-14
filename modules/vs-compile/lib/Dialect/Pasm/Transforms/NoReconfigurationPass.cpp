@@ -268,11 +268,11 @@ const std::vector<ConfRule> &conf_rules() {
 }
 
 // One version of one option of an option table: the entries the option holds
-// from the conf that starts it until a conf rewrites one of them. A conf adding
-// an entry the option did not have yet adds it to the version, and so does a
-// conf rewriting an entry the version still has from the one before it, as
-// long as no activation has read the version: the confs of one
-// reconfiguration rewrite several entries one after the other.
+// from the conf that starts it until a conf changes it. Until an activation
+// reads the version, a conf adding an entry, or rewriting one the version still
+// has from the one before it, belongs to the version: the confs of one
+// reconfiguration write several entries one after the other. Once an
+// activation has read it, any change starts a new version.
 struct OptionVersion {
   // entry key -> the fields of the conf that wrote it
   std::map<std::string, nlohmann::json> entries;
@@ -977,11 +977,15 @@ private:
       if (versions.empty()) {
         start_version({});
       }
+      // An activation that read the version must not see what a later conf
+      // writes, so any change after it starts a new version; before it, only
+      // rewriting an entry this version wrote itself does.
       OptionVersion &current = versions.back();
       auto written = current.entries.find(key.dump());
-      if (written != current.entries.end() &&
-          value_of(written->second) != value &&
-          (current.written.count(key.dump()) || current.activated)) {
+      bool added = written == current.entries.end();
+      bool rewritten = !added && value_of(written->second) != value;
+      if ((current.activated && (added || rewritten)) ||
+          (rewritten && current.written.count(key.dump()))) {
         start_version(current.entries);
       }
       versions.back().entries[key.dump()] = fields;
