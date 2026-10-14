@@ -51,6 +51,20 @@ def SizeAguPass: Pass<"size-agu-pass", "::mlir::ModuleOp"> {
   }];
 }
 
+def NoReconfigurationPass: Pass<"no-reconfiguration-pass", "::mlir::ModuleOp"> {
+  let summary = "Record what a fabric without reconfiguration hardcodes.";
+  let description = [{
+    Run only for --no-reconfiguration. Replays the final instruction stream
+    of every cell, counting the cycle each instruction issues in, and records
+    for the no-reconfiguration architecture: per controller, the cycle every
+    act raises which activate ports and the cycle of the halt; per resource,
+    every configuration each AGU runs, in the order it is activated, and the
+    conf entries it is given. Fails when the program cannot run without
+    reconfiguration: a conf entry written twice with different values, a
+    cell with nothing to run, or a stream whose timing is not static.
+  }];
+}
+
 def AddSlotPortPass: Pass<"add-slot-port-pass", "::mlir::ModuleOp"> {
   let summary = "Add slot and port operations.";
   let description = [{

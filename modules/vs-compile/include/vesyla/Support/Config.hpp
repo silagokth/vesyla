@@ -46,6 +46,20 @@ public:
   // set_controller_instr_count, to `path`.
   void write_arch_json(const std::string &path) const;
 
+  // Fields of the no-reconfiguration architecture (--no-reconfiguration).
+  // They are kept apart from the loaded architecture, so arch_sized.json is
+  // the same with or without the flag. Set `fields` on the controller of cell
+  // (row, col), or on the resource that occupies `slot` in it; a later call
+  // for the same target adds to or replaces earlier fields.
+  void set_noreconf_controller_fields(int row, int col,
+                                      const nlohmann::json &fields);
+  void set_noreconf_resource_fields(int row, int col, int slot,
+                                    const nlohmann::json &fields);
+  // Write the loaded architecture, as write_arch_json does, with the fields
+  // set above merged into its controllers and resources, to `path`. Returns
+  // false when a field names a cell or slot the architecture does not have.
+  bool write_noreconf_arch_json(const std::string &path) const;
+
   // Look up the direction/kind for a port number from the config's
   // "port_table" section. Falls back to the default mapping (bit0 = direction,
   // bit1 = kind) when no config was loaded.
@@ -75,6 +89,10 @@ public:
   // top-level vs-compile config json. Currently holds the "port_table" section
   // (per-port direction and data kind).
   static nlohmann::json config_json;
+  // Controller and resource fields of the no-reconfiguration architecture,
+  // keyed "row_col" and "row_col_slot".
+  static nlohmann::json noreconf_controllers;
+  static nlohmann::json noreconf_resources;
 };
 
 } // namespace pasm

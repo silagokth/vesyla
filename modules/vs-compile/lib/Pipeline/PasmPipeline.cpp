@@ -19,7 +19,8 @@ void Scheduler::save_mlir(mlir::ModuleOp &module, const std::string &filename) {
 }
 
 void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
-                    bool allow_unsafe = false, bool keep_debug_files) {
+                    bool allow_unsafe = false, bool keep_debug_files,
+                    bool no_reconfiguration) {
 
   // get the environment variable: VESYLA_SUITE_PATH_COMPONENTS
   std::string VESYLA_SUITE_PATH_COMPONENTS =
@@ -184,6 +185,18 @@ void Scheduler::run(mlir::ModuleOp &module, std::string output_dir,
         std::exit(EXIT_FAILURE);
       }
     }
+  }
+
+  // Replayed on the same final instruction stream: the cycle of every act and
+  // the configurations a fabric without reconfiguration hardcodes go into
+  // arch_noreconf.json.
+  if (no_reconfiguration) {
+    pm.addPass(vesyla::pasm::createNoReconfigurationPass());
+    if (mlir::failed(pm.run(module))) {
+      LOG_FATAL << "Error: createNoReconfigurationPass failed.\n";
+      std::exit(EXIT_FAILURE);
+    }
+    pm.clear();
   }
 
   // Save the transformed module to ASM and BIN files
