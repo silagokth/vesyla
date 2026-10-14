@@ -45,6 +45,10 @@ enum Command {
         /// Front end to compile the testcase with: its pasm/*.pasm or its mlir/*.mlir programs
         #[arg(short, long, value_enum, default_value_t = Frontend::Pasm)]
         frontend: Frontend,
+        /// Build the RTL without reconfiguration (run.sh --no-reconfiguration): the
+        /// controllers only issue the activations, the resources hardcode the rest
+        #[arg(long, default_value = "false")]
+        no_reconfiguration: bool,
     },
     #[command(about = "Generate testcase scripts", name = "generate")]
     Generate {
@@ -138,6 +142,7 @@ fn main() -> Result<(), io::Error> {
             output_dir,
             models,
             frontend,
+            no_reconfiguration,
         } => {
             let template_dir = if template_dir.is_none() {
                 None
@@ -145,7 +150,14 @@ fn main() -> Result<(), io::Error> {
                 let template_dir = template_dir.as_ref().unwrap();
                 Some(PathBuf::from(template_dir))
             };
-            run(template_dir, directory, output_dir, models, *frontend)
+            run(
+                template_dir,
+                directory,
+                output_dir,
+                models,
+                *frontend,
+                *no_reconfiguration,
+            )
         }
         Command::Generate {
             directory,
@@ -251,6 +263,7 @@ fn run(
     output_dir: &String,
     models: &String,
     frontend: Frontend,
+    no_reconfiguration: bool,
 ) -> Result<(), io::Error> {
     let test_dir = get_testcase_dir(Path::new(directory).to_path_buf())
         .expect("Failed to get testcase directory");
@@ -289,6 +302,9 @@ fn run(
     command.arg(testcase_script_path);
     if models != "0,2,3" {
         command.arg(format!("--models={}", models));
+    }
+    if no_reconfiguration {
+        command.arg("--no-reconfiguration");
     }
     let status = command
         .status()

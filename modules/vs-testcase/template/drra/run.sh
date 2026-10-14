@@ -437,6 +437,41 @@ else
   done
 fi
 
+# Record the cycle counts in cycles.txt, one key=value per line, for the suite
+# (the Robot suite of `vesyla testcase generate` lists them per testcase):
+# sst and rtl, from the models that ran, and with --no-reconfiguration the
+# start_offset, the cycles before the first activation that the
+# no-reconfiguration fabric skips (arch_noreconf.json).
+{
+  if [ -f "instr_sim_cycles.txt" ]; then
+    echo "sst=$(tr -d '[:space:]' <instr_sim_cycles.txt)"
+  fi
+  rtl_cycles_file=$(find archive -name 'rtl_sim_cycles.txt' 2>/dev/null | head -1)
+  if [ -n "$rtl_cycles_file" ]; then
+    echo "rtl=$(tr -d '[:space:]' <"$rtl_cycles_file")"
+  fi
+  noreconf_arch=$(find archive -name 'arch_noreconf.json' 2>/dev/null | head -1)
+  if [ -n "$noreconf_flag" ] && [ -n "$noreconf_arch" ]; then
+    python3 - "$noreconf_arch" <<'PY'
+import json, sys
+
+def offsets(node):
+    if isinstance(node, dict):
+        if "start_offset" in node:
+            yield node["start_offset"]
+        for value in node.values():
+            yield from offsets(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from offsets(value)
+
+found = list(offsets(json.load(open(sys.argv[1]))))
+if found:
+    print("start_offset=%d" % found[0])
+PY
+  fi
+} >cycles.txt
+
 # Cycle-accurate trace comparison (debug mode only). The RTL VCD (all resource
 # interface signals + cycle_count) and the SST Chrome-trace are both produced
 # only under -d, so this step is gated on debug_mode. It projects both onto a

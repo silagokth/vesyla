@@ -9,6 +9,9 @@ Test Template     Autotest Template
 # Keep every testcase's work directory, not only the failing ones'.
 # Set with `--variable NO_CLEANUP:True` (run.sh --no-cleanup).
 ${NO_CLEANUP}     ${False}
+# Build every testcase's RTL without reconfiguration.
+# Set with `--variable NO_RECONFIGURATION:True` (run.sh --no-reconfiguration).
+${NO_RECONFIGURATION}    ${False}
 
 *** Test Cases ***  testcase_path    frontend
 {% for testcase in testcases %}
@@ -26,8 +29,10 @@ Autotest Template
     ${clean_testcase_name} =    Replace String Using Regexp    ${testcase_name}    [^a-zA-Z0-9_-]    _
     ${output_dir} =    Set Variable    work/${clean_testcase_name}_${random_string}
     Create Directory    ${output_dir}
+    ${reconf_flag} =    Set Variable If    ${NO_RECONFIGURATION}    --no-reconfiguration    ${EMPTY}
 
-    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}" --frontend ${frontend}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
+    ${result} =    Run Process    vesyla testcase run -d "${testcase_path}" --frontend ${frontend} ${reconf_flag}    shell=True    timeout=30 min    stdout=stdout.txt    stderr=stderr.txt    cwd=${output_dir}
+    Report Cycles    ${output_dir}
 
     Verify Setup            ${result.rc}    ${output_dir}
     Verify Compile          ${result.rc}    ${output_dir}
@@ -41,6 +46,19 @@ Autotest Template
     # A failing testcase stops at its Verify step above and keeps its directory.
     IF    not ${NO_CLEANUP}
         Remove Directory    ${output_dir}    recursive=True
+    END
+
+# The cycle counts the testcase's run.sh wrote to work/cycles.txt (sst, rtl and,
+# without reconfiguration, start_offset), as the test's message: the report
+# shows them and run.sh lists them after the suite. A failing step replaces it.
+Report Cycles
+    [Arguments]    ${output_dir}
+    ${cycles_file} =    Set Variable    ${output_dir}/work/cycles.txt
+    ${has_cycles} =    Run Keyword And Return Status    File Should Exist    ${cycles_file}
+    IF    ${has_cycles}
+        ${cycles} =    Get File    ${cycles_file}
+        ${cycles} =    Replace String    ${cycles.strip()}    \n    ${SPACE}
+        Set Test Message    Cycles: ${cycles}
     END
 
 Verify Setup

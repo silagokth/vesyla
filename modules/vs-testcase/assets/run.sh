@@ -11,8 +11,11 @@
 # VESYLA_RTL_TARGETS, which adds it to the Bender targets on top of `sim`.
 # --no-cleanup keeps the work/ directory of every testcase; without it only the
 # failing ones are kept.
+# --no-reconfiguration builds every testcase's RTL without reconfiguration
+# (the testcases' run.sh -nr); model 2 is skipped then.
 frontend=pasm
 cleanup_flag=""
+noreconf_flag=""
 rtl_targets="${VESYLA_RTL_TARGETS:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +39,10 @@ while [ $# -gt 0 ]; do
     cleanup_flag="--variable NO_CLEANUP:True"
     shift
     ;;
+  -nr | --no-reconfiguration)
+    noreconf_flag="--variable NO_RECONFIGURATION:True"
+    shift
+    ;;
   -h | --help)
     cat <<'USAGE'
 Usage: ./run.sh [options] [pabot/robot options...]
@@ -47,6 +54,10 @@ Usage: ./run.sh [options] [pabot/robot options...]
                            (default: sim only, flip-flop memories)
   --no-cleanup             keep every testcase's work/<testcase>_<id>/ directory
                            (default: only failing testcases keep theirs)
+  -nr, --no-reconfiguration
+                           build the RTL without reconfiguration: the controllers
+                           only issue the activations, the resources hardcode the
+                           rest of the program; model 2 (SST) is skipped
   -h, --help               show this help
 Any other argument goes to pabot, e.g. --include <testcase group> to run one group.
 USAGE
@@ -74,10 +85,13 @@ echo "RTL simulation targets: sim${rtl_targets:+ $rtl_targets}"
 if [ -n "$cleanup_flag" ]; then
   echo "Keeping every testcase's work directory under work/"
 fi
+if [ -n "$noreconf_flag" ]; then
+  echo "Building the RTL without reconfiguration"
+fi
 
-# $frontend_filter and $cleanup_flag are deliberately unquoted: each is either
-# empty or two words.
-pabot --testlevelsplit -d output $frontend_filter $cleanup_flag "$@" autotest_config.robot
+# $frontend_filter, $cleanup_flag and $noreconf_flag are deliberately unquoted:
+# each is either empty or two words.
+pabot --testlevelsplit -d output $frontend_filter $cleanup_flag $noreconf_flag "$@" autotest_config.robot
 pabot_rc=$?
 
 # Summarize which step each failing testcase reached, using the per-test failure
@@ -89,6 +103,24 @@ if [ -f output/output.xml ]; then
 import re, xml.etree.ElementTree as ET
 
 root = ET.parse("output/output.xml").getroot()
+
+# The cycle counts of the passing testcases: the message the suite's Report
+# Cycles keyword gives them ("Cycles: sst=.. rtl=.. start_offset=..").
+cycles = []
+for test in root.iter("test"):
+    status = test.find("status")
+    msg = (status.text or "").strip() if status is not None else ""
+    if status is not None and status.get("status") == "PASS" and msg.startswith("Cycles:"):
+        values = dict(kv.split("=", 1) for kv in msg[len("Cycles:"):].split() if "=" in kv)
+        cycles.append((test.get("name"), values))
+if cycles:
+    keys = [k for k in ("sst", "rtl", "start_offset") if any(k in v for _, v in cycles)]
+    width = max(len(name) for name, _ in cycles)
+    print("\n===== CYCLE COUNTS =====")
+    print("  %-*s %s" % (width, "testcase", "".join("%14s" % k for k in keys)))
+    for name, values in sorted(cycles):
+        print("  %-*s %s" % (width, name, "".join("%14s" % values.get(k, "-") for k in keys)))
+
 failed = []
 for test in root.iter("test"):
     status = test.find("status")
