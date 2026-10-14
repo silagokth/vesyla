@@ -59,7 +59,10 @@ def NoReconfigurationPass: Pass<"no-reconfiguration-pass", "::mlir::ModuleOp"> {
     for the no-reconfiguration architecture: per controller, the cycle every
     act raises which activate ports and the cycle of the halt; per resource,
     every configuration each AGU runs, in the order it is activated, and the
-    conf entries it is given. Fails when the program cannot run without
+    conf entries it is given. The controller cycles start at the first
+    activation of the fabric, since nothing has to be configured before it;
+    the cycles removed are recorded as the controllers' start_offset.
+    Fails when the program cannot run without
     reconfiguration: a conf entry written twice with different values, a
     cell with nothing to run, or a stream whose timing is not static.
   }];

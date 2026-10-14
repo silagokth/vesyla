@@ -685,8 +685,26 @@ public:
            {"static_config", {{"agus", agus}, {"conf", conf}}}});
     }
 
+    // Nothing has to be configured before the first activation, since the
+    // resources hold their configuration from reset, so the program starts
+    // with it: every cycle moves earlier by the first activation of the
+    // fabric. The same for every cell, so the cells keep the timing between
+    // them the schedule gave them.
+    uint64_t start_offset = UINT64_MAX;
+    for (const auto &[coord, length] : lengths_) {
+      const auto &cell_activations = activations_[coord];
+      if (!cell_activations.empty()) {
+        start_offset =
+            std::min(start_offset, cell_activations.begin()->first);
+      }
+    }
+    if (start_offset == UINT64_MAX) {
+      start_offset = 0;
+    }
+
     // Each controller issues the activations of its cell, the program's and
-    // those added to switch options, and halts at the cycle its program does.
+    // those added to switch options, and halts at the cycle its program does,
+    // all start_offset cycles earlier.
     for (const auto &[coord, length] : lengths_) {
       nlohmann::json activations = nlohmann::json::array();
       for (const auto &[cycle, masks] : activations_[coord]) {
@@ -694,11 +712,15 @@ public:
         for (auto [slot, mask] : masks) {
           activate.push_back({{"slot", slot}, {"mask", mask}});
         }
-        activations.push_back({{"cycle", cycle}, {"activate", activate}});
+        activations.push_back(
+            {{"cycle", cycle - start_offset}, {"activate", activate}});
       }
       cfg.set_noreconf_controller_fields(
           coord.first, coord.second,
-          {{"kind", "fsm"}, {"activations", activations}, {"length", length}});
+          {{"kind", "fsm"},
+           {"activations", activations},
+           {"length", length - start_offset},
+           {"start_offset", start_offset}});
     }
   }
 
