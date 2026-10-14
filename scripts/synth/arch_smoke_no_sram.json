@@ -1,0 +1,51 @@
+{
+  "platform": "drra",
+  "resources": [
+    { "name": "swb_impl", "kind": "swb" },
+    { "name": "io_impl", "kind": "io" },
+    { "name": "rf_impl", "kind": "rf" },
+    { "name": "dpu_impl", "kind": "dpu" }
+  ],
+  "controllers": [
+    { "name": "sequencer_impl", "kind": "sequencer" }
+  ],
+  "cells": [
+    {
+      "name": "cell_single_row_impl",
+      "kind": "cell_single_row",
+      "controller": "sequencer_impl",
+      "resource_list": [
+        "swb_impl",
+        "io_impl",
+        "rf_impl",
+        "rf_impl",
+        "rf_impl",
+        "dpu_impl"
+      ]
+    }
+  ],
+  "fabric": {
+    "height": 1,
+    "width": 1,
+    "cells_list": [
+      { "coordinates": [ { "row": 0, "col": 0 } ], "cell_name": "cell_single_row_impl" }
+    ],
+    "custom_properties": [
+      { "name": "IO_DATA_WIDTH", "value": 256 },
+      { "name": "IO_ADDR_WIDTH", "value": 16 },
+      { "name": "RESOURCE_INSTR_WIDTH", "value": 27 },
+      { "name": "ROWS", "value": 1 },
+      { "name": "COLS", "value": 1 },
+      { "name": "INSTR_DATA_WIDTH", "value": 32 },
+      { "name": "INSTR_ADDR_WIDTH", "value": 8 },
+      { "name": "INSTR_HOPS_WIDTH", "value": 4 },
+      { "name": "INSTR_OPCODE_BITWIDTH", "value": 3 },
+      { "name": "INSTR_PAYLOAD_BITWIDTH", "value": 27 },
+      { "name": "BULK_WIDTH", "value": 256 }
+    ]
+  },
+  "interface": {
+    "input_buffer_depth": 1024,
+    "output_buffer_depth": 1024
+  }
+}
