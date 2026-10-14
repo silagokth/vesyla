@@ -182,6 +182,14 @@ impl FabricLoader {
             }
         }
         controller.isa = Some(self.library_isa(&kind)?);
+        // The architecture of a fabric without reconfiguration lists what
+        // each controller issues.
+        if controller_json.get("activations").is_some() {
+            controller.static_program = Some(serde_json::json!({
+                "activations": controller_json["activations"],
+                "length": controller_json["length"],
+            }));
+        }
 
         controller.validate()?;
 
@@ -222,6 +230,8 @@ impl FabricLoader {
             &[cell_parameters, fabric_parameters],
         )?;
         resource.isa = Some(self.library_isa(&kind)?);
+        // ... and what each resource hardcodes.
+        resource.static_config = resource_json.get("static_config").cloned();
 
         resource.validate()?;
 
