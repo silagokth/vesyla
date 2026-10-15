@@ -115,18 +115,17 @@ get_enclosing_loops(mlir::Operation *op, EpochOp epoch) {
   return loops;
 }
 
-// Read the producer's `delay` attribute, which is carried on the originating
-// drra.rop and copied onto the icdep anchors built from it.
+// Read the producer's latency, which is carried on the originating drra.rop and
+// copied onto the icdep anchors built from it: the cycles from a pass's event
+// to its result being there to be taken. `delay` is the older name for it.
 //
-// An absent one reads as no delay. The component library does not describe how
-// long an operation takes yet -- a resource's description says what it computes
-// and which of its parts it holds, not its latency -- so nothing on the
-// selection path writes a delay, and only hand-written input carries one.
-// CreateConstraintsPass already defaults the same way.
+// An absent one reads as no delay, as CreateConstraintsPass also defaults.
 int32_t get_producer_delay(mlir::Operation *op) {
-  if (auto delay = mlir::dyn_cast_or_null<mlir::IntegerAttr>(
-          op->getAttr("delay"))) {
-    return static_cast<int32_t>(delay.getInt());
+  for (llvm::StringRef name : {"latency", "delay"}) {
+    if (auto attr =
+            mlir::dyn_cast_or_null<mlir::IntegerAttr>(op->getAttr(name))) {
+      return static_cast<int32_t>(attr.getInt());
+    }
   }
   return 0;
 }
