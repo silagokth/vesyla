@@ -1,5 +1,6 @@
 # vesyla &emsp; [![Build Status]][actions] [![Rustc Version 1.82+]][rustc]
 
+
 [Build Status]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml/badge.svg
 [actions]: https://github.com/silagokth/vesyla/actions/workflows/ci-weekly-build.yml
 [Rustc Version 1.82+]: https://img.shields.io/badge/rustc-1.82+-lightgray.svg?e&logo=rust&logoColor=white
