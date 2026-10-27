@@ -265,6 +265,26 @@ add_mlir_library(
   VesylaPasm
   VesylaDrra)
 
+# A C kernel as cgeist emits it -- a func.func over the io buffers -- into the
+# epoch form the rest of the mlir pipeline compiles.
+add_custom_mlir_pass_dir(conversion/func_to_pasm VesylaFuncToPasm)
+file(GLOB SOURCE_FUNC_TO_PASM "src/conversion/func_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaFuncToPasm
+  ${SOURCE_FUNC_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaFuncToPasmIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  VesylaPasm)
+
 # Instruction selector: affine + arith -> drra. The patterns are not compiled in
 # -- they are loaded at run time from the component library, so adding a
 # resource does not rebuild this.
@@ -336,7 +356,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

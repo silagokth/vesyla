@@ -18,6 +18,7 @@
 #include "conversion/affine_to_pasm/AffineToRepPass.hpp"
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
+#include "conversion/func_to_pasm/FuncToEpochPass.hpp"
 #include "conversion/select_instructions/SelectInstructionsPass.hpp"
 #include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
@@ -59,10 +60,22 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
 
+  // FuncToEpochPass runs first: a kernel lowered from C comes as a func.func
+  // over the io buffers, and it rewrites that into the epoch form the passes
+  // below compile. A program already in that form has no func.func and passes
+  // through unchanged.
+  mlir::PassManager func_to_epoch_pm(&context);
+  func_to_epoch_pm.addPass(
+      vesyla::conversion::func_to_pasm::createFuncToEpochPass());
+  if (mlir::failed(func_to_epoch_pm.run(*module))) {
+    LOG_FATAL << "Error: FuncToEpochPass failed.";
+    return nullptr;
+  }
+
   // Dump the module after each pass into a debug folder, mirroring the
-  // scheduler. The <prefix>0 file is the parsed input; subsequent files follow
-  // the passes. The debug folder, stage-file prefix, and extension all come
-  // from the "output" section of config.json.
+  // scheduler. The <prefix>0 file is the input after FuncToEpochPass;
+  // subsequent files follow the passes. The debug folder, stage-file prefix,
+  // and extension all come from the "output" section of config.json.
   vesyla::pasm::Config cfg;
   std::string module_debug_path =
       output_dir + "/" + cfg.output_path("compile_debug_dir");
@@ -292,6 +305,8 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::affine::AffineDialect>();
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
+  // A kernel lowered from C comes as a func.func; FuncToEpochPass unwraps it.
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
   // port table, AddDefaultValuePass needs the ISA, and
