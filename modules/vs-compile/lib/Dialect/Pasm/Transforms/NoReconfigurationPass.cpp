@@ -984,9 +984,20 @@ private:
       }
       OptionTable &table = confs.tables[rule->table];
       table.rule = rule;
-      table.num_options = count->second;
+      // A resource with the NUM_OPTIONS fabric parameter (the swb) has a
+      // table of that size: its options are hardcoded here, so it is not
+      // limited to the ones a conf can name. Other tables have as many
+      // options as the conf's `option` field can name.
+      table.num_options =
+          resource.parameters.value("NUM_OPTIONS", count->second);
 
       int option = int_param(instr, "option").value_or(0);
+      if (option < 0 || option >= table.num_options) {
+        return instr.emitError("no-reconfiguration: this conf writes ")
+               << rule->table << " option " << option << " of the "
+               << resource.kind << " in slot " << resource.slot
+               << ", which has " << table.num_options << " options";
+      }
       std::vector<OptionVersion> &versions = table.options[option];
       auto start_version = [&](std::map<std::string, nlohmann::json> entries) {
         OptionVersion version;
