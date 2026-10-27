@@ -19,6 +19,7 @@
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
 #include "conversion/func_to_pasm/FuncToEpochPass.hpp"
+#include "transformation/assign_ids/AssignIdsPass.hpp"
 #include "conversion/select_instructions/SelectInstructionsPass.hpp"
 #include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
@@ -62,18 +63,21 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
 
   // FuncToEpochPass runs first: a kernel lowered from C comes as a func.func
   // over the io buffers, and it rewrites that into the epoch form the passes
-  // below compile. A program already in that form has no func.func and passes
-  // through unchanged.
-  mlir::PassManager func_to_epoch_pm(&context);
-  func_to_epoch_pm.addPass(
+  // below compile. AssignIdsPass then names whatever the program left unnamed.
+  // A hand-written program has no func.func and all its ids, and passes
+  // through both unchanged.
+  mlir::PassManager input_pm(&context);
+  input_pm.addPass(
       vesyla::conversion::func_to_pasm::createFuncToEpochPass());
-  if (mlir::failed(func_to_epoch_pm.run(*module))) {
-    LOG_FATAL << "Error: FuncToEpochPass failed.";
+  input_pm.addPass(
+      vesyla::transformation::assign_ids::createAssignIdsPass());
+  if (mlir::failed(input_pm.run(*module))) {
+    LOG_FATAL << "Error: FuncToEpochPass or AssignIdsPass failed.";
     return nullptr;
   }
 
   // Dump the module after each pass into a debug folder, mirroring the
-  // scheduler. The <prefix>0 file is the input after FuncToEpochPass;
+  // scheduler. The <prefix>0 file is the input after AssignIdsPass;
   // subsequent files follow the passes. The debug folder, stage-file prefix,
   // and extension all come from the "output" section of config.json.
   vesyla::pasm::Config cfg;

@@ -316,6 +316,24 @@ add_mlir_library(
   VesylaDrra
   VesylaUtil)
 
+# Names every buffer, access and arith op the program left unnamed, so the
+# passes below can key on their ids.
+add_custom_mlir_pass_dir(transformation/assign_ids VesylaAssignIds)
+file(GLOB SOURCE_ASSIGN_IDS "src/transformation/assign_ids/*.cpp")
+add_mlir_library(
+  VesylaAssignIds
+  ${SOURCE_ASSIGN_IDS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaAssignIdsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRMemRefDialect)
+
 # Design space exploration: allocation, binding and scheduling over the module
 # instruction selection produced. Allocation is read from the architecture file;
 # binding and scheduling are still being written.
@@ -356,7 +374,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
