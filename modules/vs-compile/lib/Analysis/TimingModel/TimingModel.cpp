@@ -114,6 +114,9 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
                     "] == " + it->second.name + ";\n";
     // +1 accounts for the act-issue controller cycle preceding background
     // iteration; without it total_latency under-counts and halt fires mid-iter.
+    // It stays 1 for any AGU_LATENCY: ScheduleEpochPass issues each ACT
+    // AGU_LATENCY - 1 cycles early, so an access always lands one cycle after
+    // its model time.
     mzn_file << "constraint op_end_vec[" +
                     std::to_string(op2idx[it->second.name]) +
                     "] == " + it->second.name + " + " +

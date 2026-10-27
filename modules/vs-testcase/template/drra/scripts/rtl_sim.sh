@@ -23,6 +23,7 @@ id=$1
 vsim_cli_mode="-c"
 debug_mode=0
 interactive_mode=0
+noreconf_mode=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -37,6 +38,9 @@ for arg in "$@"; do
     ;;
   -d | --debug)
     debug_mode=1
+    ;;
+  -nr | --no-reconfiguration)
+    noreconf_mode=1
     ;;
   esac
 done
@@ -69,12 +73,25 @@ mkdir -p ${workspace_path}/temp
 mkdir -p ${workspace_path}/archive/rtl_sim_${id}
 
 # copy the necessary files
-cp ${workspace_path}/system/instr/${id}/instr.bin temp
+# Without reconfiguration there is no program to load: an empty instr.bin
+# makes the testbench call the fabric right away.
+if [ "$noreconf_mode" = "1" ]; then
+  : >temp/instr.bin
+else
+  cp ${workspace_path}/system/instr/${id}/instr.bin temp
+fi
 cp ${workspace_path}/mem/sram_image_in.bin temp
 cd ${workspace_path}/temp
 
-# gather the dependencies using bender
-bender -d ${workspace_path}/system/instr/${id}/rtl/tb script vsim -t sim >read_src.do
+# gather the dependencies using bender. VESYLA_RTL_TARGETS adds Bender targets
+# on top of `sim`, e.g. `freepdk45` simulates the memories that have a macro on
+# the macro's simulation model instead of flip-flops.
+bender_targets="-t sim"
+for target in ${VESYLA_RTL_TARGETS:-}; do
+  bender_targets="${bender_targets} -t ${target}"
+done
+echo "RTL simulation Bender targets: ${bender_targets}"
+bender -d ${workspace_path}/system/instr/${id}/rtl/tb script vsim ${bender_targets} >read_src.do
 echo "exit" >>read_src.do
 
 # compile the library

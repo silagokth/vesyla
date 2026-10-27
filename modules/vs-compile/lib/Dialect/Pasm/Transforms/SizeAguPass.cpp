@@ -44,11 +44,15 @@ struct AguSize {
   uint64_t number_ir = 1;
   uint64_t number_mt = 0;
   uint64_t number_or = 0;
+  // AGU_USED: bit p set if the program configures the AGU of port p. An AGU
+  // no `evt` ever opens is not built (agu_array's AGU_USED).
+  uint64_t agu_used = 0;
 
   void merge(const AguSize &other) {
     number_ir = std::max(number_ir, other.number_ir);
     number_mt = std::max(number_mt, other.number_mt);
     number_or = std::max(number_or, other.number_or);
+    agu_used |= other.agu_used;
   }
 };
 
@@ -220,7 +224,9 @@ public:
           return;
         }
         auto [agu_row, agu_col, slot, port] = key;
-        sizes[resource_at.at({agu_row, agu_col, slot})].merge(replay.size());
+        AguSize size = replay.size();
+        size.agu_used = 1ULL << port;
+        sizes[resource_at.at({agu_row, agu_col, slot})].merge(size);
       };
 
       for (InstrOp instr : raw.getBody().front().getOps<InstrOp>()) {
@@ -302,6 +308,7 @@ public:
           {"NUMBER_IR", sizes[i].number_ir},
           {"NUMBER_MT", sizes[i].number_mt},
           {"NUMBER_OR", sizes[i].number_or},
+          {"AGU_USED", sizes[i].agu_used},
       };
       for (const auto &[name, value] : values) {
         if (std::find(resource.parameters.begin(), resource.parameters.end(),

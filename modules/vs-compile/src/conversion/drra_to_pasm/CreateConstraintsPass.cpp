@@ -37,10 +37,36 @@ mlir::ArrayAttr debug_attr(mlir::Builder &builder, llvm::StringRef rule) {
 // One entry of the working set: the delay accumulated so far along the dataflow
 // chain together with the operation to continue from. The operation may be a
 // drra.rop or an affine.for whose iter_arg carries the value into the loop.
+// `current_ii` is the largest initiation interval met since the chain last left
+// a loop: the cycles between two passes of whatever the next carried loop
+// repeats.
 struct WorkItem {
   int32_t current_delay;
+  int32_t current_ii;
   mlir::Operation *operation;
 };
+
+// A rop's latency: the cycles from the event that starts one pass to that
+// pass's result being there to be taken. `delay` is the older name for it. A
+// rop with neither takes no time.
+int32_t rop_latency(mlir::Operation *op) {
+  for (llvm::StringRef name : {"latency", "delay"}) {
+    if (auto attr = op->getAttrOfType<mlir::IntegerAttr>(name)) {
+      return static_cast<int32_t>(attr.getInt());
+    }
+  }
+  return 0;
+}
+
+// A rop's initiation interval: the cycles between the starts of two successive
+// passes. Without one, a pass is taken to occupy the operation for its whole
+// latency, which is how a lone `delay` has always been read.
+int32_t rop_ii(mlir::Operation *op) {
+  if (auto attr = op->getAttrOfType<mlir::IntegerAttr>("ii")) {
+    return static_cast<int32_t>(attr.getInt());
+  }
+  return rop_latency(op);
+}
 
 // Enclosing affine.for loops of `op`, outermost first.
 llvm::SmallVector<mlir::affine::AffineForOp>
@@ -427,61 +453,74 @@ public:
     // Working set of items still to be processed, seeded with this rop at delay
     // 0.
     llvm::SmallVector<WorkItem> working_set;
-    working_set.push_back({0, rop.getOperation()});
+    working_set.push_back({0, 0, rop.getOperation()});
 
     while (!working_set.empty()) {
       WorkItem item = working_set.pop_back_val();
 
-      // Retrieve the operation's own delay (missing attribute defaults to 0)
-      // and add it to the delay accumulated so far.
-      int32_t delay = item.current_delay;
-      if (auto delay_attr =
-              item.operation->getAttrOfType<mlir::IntegerAttr>("delay")) {
-        delay += static_cast<int32_t>(delay_attr.getInt());
-      }
+      // Add the operation's own latency to the delay accumulated so far, and
+      // fold its initiation interval into the chain's. Neither attribute is
+      // on an affine.for, so a loop entered through its iter_args adds nothing.
+      int32_t delay = item.current_delay + rop_latency(item.operation);
+      int32_t ii = std::max(item.current_ii, rop_ii(item.operation));
 
       // Determine the source values to walk from, each tagged with the delay
       // carried to it. If the operation is an affine.for, it was entered through
       // an iter_args init, so walk the region iter arguments into the loop body.
       // Otherwise walk the operation's results.
-      llvm::SmallVector<std::pair<mlir::Value, int32_t>> sources;
+      struct Source {
+        mlir::Value value;
+        int32_t delay;
+        int32_t ii;
+      };
+      llvm::SmallVector<Source> sources;
       if (auto loop =
               mlir::dyn_cast<mlir::affine::AffineForOp>(item.operation)) {
         for (mlir::BlockArgument iter_arg : loop.getRegionIterArgs()) {
-          sources.push_back({iter_arg, delay});
+          sources.push_back({iter_arg, delay, ii});
         }
       } else {
         for (mlir::Value result : item.operation->getResults()) {
-          sources.push_back({result, delay});
+          sources.push_back({result, delay, ii});
         }
       }
 
-      // Collect the consumer ops, each tagged with the delay carried to it. A use
-      // by an affine.yield is followed out to the matching loop result
-      // (yield-out), multiplying the delay by that loop's trip count since the
-      // loop body runs that many times.
-      llvm::SmallVector<std::pair<mlir::Operation *, int32_t>> consumers;
+      // Collect the consumer ops, each tagged with the delay and initiation
+      // interval carried to it. A use by an affine.yield is followed out to the
+      // matching loop result (yield-out). The loop body runs trip-count times,
+      // one pass starting every initiation interval, and the last pass's
+      // result is there its own delay after it starts: so the delay out of the
+      // loop is the delay of one pass plus (trip count - 1) intervals. The
+      // operations of this loop do not pace the next one, so the interval
+      // starts over.
+      struct Consumer {
+        mlir::Operation *operation;
+        int32_t delay;
+        int32_t ii;
+      };
+      llvm::SmallVector<Consumer> consumers;
       while (!sources.empty()) {
-        auto [value, value_delay] = sources.pop_back_val();
-        for (mlir::OpOperand &use : value.getUses()) {
+        Source source = sources.pop_back_val();
+        for (mlir::OpOperand &use : source.value.getUses()) {
           mlir::Operation *owner = use.getOwner();
           if (mlir::isa<mlir::affine::AffineYieldOp>(owner)) {
             auto loop =
                 mlir::dyn_cast<mlir::affine::AffineForOp>(owner->getParentOp());
             if (loop && use.getOperandNumber() < loop.getNumResults()) {
+              int32_t trips = static_cast<int32_t>(trip_count(loop));
               int32_t scaled =
-                  value_delay * static_cast<int32_t>(trip_count(loop));
+                  trips > 0 ? source.delay + (trips - 1) * source.ii : 0;
               sources.push_back(
-                  {loop.getResult(use.getOperandNumber()), scaled});
+                  {loop.getResult(use.getOperandNumber()), scaled, 0});
             }
             continue;
           }
-          consumers.push_back({owner, value_delay});
+          consumers.push_back({owner, source.delay, source.ii});
         }
       }
 
       // Visit every collected consumer.
-      for (auto [consumer, consumer_delay] : consumers) {
+      for (auto [consumer, consumer_delay, consumer_ii] : consumers) {
         auto consumer_rop = mlir::dyn_cast<vesyla::drra::RopOp>(consumer);
         if (consumer_rop && consumer_rop.getEvtAttr()) {
           // Reached an evt: emit a pasm.cstr carrying the delay walked to it.
@@ -512,7 +551,7 @@ public:
         } else {
           // Not an evt drra.rop: keep walking by enqueuing the consumer with the
           // delay walked to it.
-          working_set.push_back({consumer_delay, consumer});
+          working_set.push_back({consumer_delay, consumer_ii, consumer});
         }
       }
     }

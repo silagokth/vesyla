@@ -173,7 +173,23 @@ impl FabricLoader {
             &from_lib.parameters,
             &[cell_parameters, fabric_parameters],
         )?;
+        // A sized arch.json records how many instructions the program loads
+        // into each cell. A controller with an instruction memory gets one
+        // just big enough for them.
+        if let Some(instr_count) = controller_json.get("instr_count").and_then(|c| c.as_u64()) {
+            if let Some(depth) = controller.parameters.get_mut("IRAM_DEPTH") {
+                *depth = iram_depth(instr_count);
+            }
+        }
         controller.isa = Some(self.library_isa(&kind)?);
+        // The architecture of a fabric without reconfiguration lists what
+        // each controller issues.
+        if controller_json.get("activations").is_some() {
+            controller.static_program = Some(serde_json::json!({
+                "activations": controller_json["activations"],
+                "length": controller_json["length"],
+            }));
+        }
 
         controller.validate()?;
 
@@ -214,6 +230,8 @@ impl FabricLoader {
             &[cell_parameters, fabric_parameters],
         )?;
         resource.isa = Some(self.library_isa(&kind)?);
+        // ... and what each resource hardcodes.
+        resource.static_config = resource_json.get("static_config").cloned();
 
         resource.validate()?;
 
@@ -237,6 +255,17 @@ impl FabricLoader {
         isa.component_kind = Some(kind.clone());
         self.isa_cache.insert(kind.clone(), isa.clone());
         Ok(isa)
+    }
+}
+
+// The instruction memory depth for a program of `instr_count` instructions: the
+// next power of two, at least 2. A cell the program does not use gets 0, which
+// the sequencer builds without a memory, always fetching HALT.
+fn iram_depth(instr_count: u64) -> u64 {
+    if instr_count == 0 {
+        0
+    } else {
+        instr_count.max(2).next_power_of_two()
     }
 }
 

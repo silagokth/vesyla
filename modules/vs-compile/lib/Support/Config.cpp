@@ -7,6 +7,8 @@ nlohmann::json Config::isa_json;
 nlohmann::json Config::arch_json;
 nlohmann::json Config::component_map_json;
 nlohmann::json Config::config_json;
+nlohmann::json Config::noreconf_controllers = nlohmann::json::object();
+nlohmann::json Config::noreconf_resources = nlohmann::json::object();
 
 using namespace std;
 
@@ -33,6 +35,7 @@ const std::map<std::string, std::string> &output_defaults() {
       {"instr_basename", "instr"},
       {"schedule_dump_prefix", "schedule_"},
       {"arch_sized", "arch_sized.json"},
+      {"arch_noreconf", "arch_noreconf.json"},
   };
   return defaults;
 }
@@ -191,6 +194,18 @@ bool Config::set_resource_parameter(int row, int col, int slot,
   return false;
 }
 
+bool Config::set_controller_instr_count(int row, int col, uint64_t count) {
+  for (auto &cell : arch_json["cells"]) {
+    if (cell["coordinates"]["row"] != row ||
+        cell["coordinates"]["col"] != col) {
+      continue;
+    }
+    cell["cell"]["controller"]["instr_count"] = count;
+    return true;
+  }
+  return false;
+}
+
 void Config::write_arch_json(const std::string &path) const {
   std::ofstream ofs(path);
   if (!ofs.is_open()) {
@@ -199,6 +214,53 @@ void Config::write_arch_json(const std::string &path) const {
   }
   ofs << arch_json.dump(2) << std::endl;
   ofs.close();
+}
+
+void Config::set_noreconf_controller_fields(int row, int col,
+                                            const nlohmann::json &fields) {
+  noreconf_controllers[std::to_string(row) + "_" + std::to_string(col)]
+      .update(fields);
+}
+
+void Config::set_noreconf_resource_fields(int row, int col, int slot,
+                                          const nlohmann::json &fields) {
+  noreconf_resources[std::to_string(row) + "_" + std::to_string(col) + "_" +
+                     std::to_string(slot)]
+      .update(fields);
+}
+
+bool Config::write_noreconf_arch_json(const std::string &path) const {
+  nlohmann::json arch = arch_json;
+  size_t merged = 0;
+  for (auto &cell : arch["cells"]) {
+    int row = cell["coordinates"]["row"];
+    int col = cell["coordinates"]["col"];
+    std::string cell_key = std::to_string(row) + "_" + std::to_string(col);
+    if (noreconf_controllers.contains(cell_key)) {
+      cell["cell"]["controller"].update(noreconf_controllers[cell_key]);
+      merged++;
+    }
+    for (auto &resource : cell["cell"]["resources_list"]) {
+      std::string key =
+          cell_key + "_" + std::to_string(resource["slot"].get<int>());
+      if (noreconf_resources.contains(key)) {
+        resource.update(noreconf_resources[key]);
+        merged++;
+      }
+    }
+  }
+  if (merged != noreconf_controllers.size() + noreconf_resources.size()) {
+    return false;
+  }
+
+  std::ofstream ofs(path);
+  if (!ofs.is_open()) {
+    LOG_FATAL << "Error: Failed to open " << path << " for writing";
+    std::exit(EXIT_FAILURE);
+  }
+  ofs << arch.dump(2) << std::endl;
+  ofs.close();
+  return true;
 }
 
 PortInfo Config::get_port_info(int port) const {

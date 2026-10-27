@@ -218,7 +218,8 @@ int main(int argc, char **argv) {
 
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
-                "[--config FILE] [--output DIR] [--allow-unsafe] [-d|--debug]";
+                "[--config FILE] [--output DIR] [--allow-unsafe] "
+                "[--no-reconfiguration] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
                 "[--config FILE] [--output DIR]";
@@ -240,6 +241,10 @@ int main(int argc, char **argv) {
   std::string output_dir = args.get("output", args.get("o", "."));
   bool allow_unsafe = args.flag("allow-unsafe");
   bool keep_debug = args.flag("d") || args.flag("debug");
+  // Also write arch_noreconf.json, the architecture of a fabric whose
+  // controllers only issue the activations and whose resources hardcode the
+  // rest of the program.
+  bool no_reconfiguration = args.flag("no-reconfiguration");
 
   if (arch_file.empty() || isa_file.empty()) {
     LOG_FATAL << "Required arguments missing, see --help for usage.";
@@ -314,12 +319,20 @@ int main(int argc, char **argv) {
 
   mlir::ModuleOp module_op = *module;
   vesyla::schedule::Scheduler scheduler;
-  scheduler.run(module_op, output_dir, allow_unsafe, keep_debug);
+  scheduler.run(module_op, output_dir, allow_unsafe, keep_debug,
+                no_reconfiguration);
 
   // The architecture this program was compiled for, with whatever parameters
   // compilation set on it. vesyla fabric generates the program's SST and RTL
   // from it.
   cfg.write_arch_json(output_dir + "/" + cfg.output_path("arch_sized"));
+  if (no_reconfiguration &&
+      !cfg.write_noreconf_arch_json(output_dir + "/" +
+                                    cfg.output_path("arch_noreconf"))) {
+    LOG_FATAL << "Error: the no-reconfiguration fields name a cell or slot "
+                 "the architecture does not have.";
+    return -1;
+  }
 
   // clean up debug intermediates unless -d/--debug was passed
   if (!keep_debug) {

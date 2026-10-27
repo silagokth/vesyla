@@ -83,6 +83,7 @@ trap 'cleanup $?' INT TERM
 interactive_mode=false
 debug_mode=false
 models="0,2,3"
+noreconf_flag=""
 
 # Get the script full path
 template_path=$(dirname "$(realpath "$0")")
@@ -123,6 +124,10 @@ for arg in "$@"; do
     debug_mode=true
     printf "${CYAN}INFO:${NC} Debug mode enabled\n"
     ;;
+  -nr | --no-reconfiguration)
+    noreconf_flag="-nr"
+    printf "${CYAN}INFO:${NC} No-reconfiguration fabric: the controllers only issue activations\n"
+    ;;
   -h | --help)
     echo "Usage: $0 [options]"
     echo "Options:"
@@ -131,6 +136,9 @@ for arg in "$@"; do
     echo "                                   Model 0 is required: it writes the input memory image"
     echo "                                   (mem/sram_image_in.bin) and the reference output."
     echo "  -d, --debug                      Enable debug mode; default is off"
+    echo "  -nr, --no-reconfiguration        Build the RTL without reconfiguration: the controllers"
+    echo "                                   only issue the activations, the resources hardcode the"
+    echo "                                   rest of the program. RTL only, so model 2 is skipped."
     echo "  -nc, --no-color                  Disable colored output; default is on"
     echo "  -h, --help                       Show this help message and exit"
     exit 0
@@ -155,6 +163,10 @@ for m in "${model_list[@]}"; do
     ;;
   esac
 done
+if [ -n "$noreconf_flag" ] && [ "$run_m2" = true ]; then
+  printf "${CYAN}INFO:${NC} --no-reconfiguration has no SST model; skipping model 2\n"
+  run_m2=false
+fi
 if [ "$has_m0" = false ]; then
   printf "${RED}ERROR:${NC} --models=%s: model 0 is required (it writes the input and reference images)\n" "$models"
   exit 1
@@ -202,11 +214,11 @@ run_and_check() {
 compile_programs() {
   set +e
   if [ "$debug_mode" = true ]; then
-    bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d
+    bash ${template_path}/scripts/compile.sh ${template_path}/pasm -d ${noreconf_flag}
     status=$?
     output=""
   else
-    output=$(bash ${template_path}/scripts/compile.sh ${template_path}/pasm 2>&1)
+    output=$(bash ${template_path}/scripts/compile.sh ${template_path}/pasm ${noreconf_flag} 2>&1)
     status=$?
   fi
   set -e
@@ -350,9 +362,9 @@ fi
 start_spinner
 printf "  ${BLUE}Generating RTL${NC}"
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/rtl_gen.sh 0 || exit 4
+  bash ${template_path}/scripts/rtl_gen.sh 0 ${noreconf_flag} || exit 4
 else
-  run_and_check "RTL generation" 4 bash ${template_path}/scripts/rtl_gen.sh 0
+  run_and_check "RTL generation" 4 bash ${template_path}/scripts/rtl_gen.sh 0 ${noreconf_flag}
 fi
 stop_spinner 0
 ## Run
@@ -363,9 +375,9 @@ else
   printf "  ${BLUE}Compiling & Running${NC}"
 fi
 if [ "$debug_mode" = true ]; then
-  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" || exit 4
+  bash ${template_path}/scripts/rtl_sim.sh 0 -d -it="$interactive_mode" ${noreconf_flag} || exit 4
 else
-  run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode"
+  run_and_check "RTL simulation" 4 bash ${template_path}/scripts/rtl_sim.sh 0 -it="$interactive_mode" ${noreconf_flag}
 fi
 stop_spinner 0
 
@@ -424,6 +436,41 @@ else
     if [ -f "$f" ]; then printf "  ${CYAN}%s${NC} cycles (%s)\n" "$(tr -d '[:space:]' <"$f")" "$f"; fi
   done
 fi
+
+# Record the cycle counts in cycles.txt, one key=value per line, for the suite
+# (the Robot suite of `vesyla testcase generate` lists them per testcase):
+# sst and rtl, from the models that ran, and with --no-reconfiguration the
+# start_offset, the cycles before the first activation that the
+# no-reconfiguration fabric skips (arch_noreconf.json).
+{
+  if [ -f "instr_sim_cycles.txt" ]; then
+    echo "sst=$(tr -d '[:space:]' <instr_sim_cycles.txt)"
+  fi
+  rtl_cycles_file=$(find archive -name 'rtl_sim_cycles.txt' 2>/dev/null | head -1)
+  if [ -n "$rtl_cycles_file" ]; then
+    echo "rtl=$(tr -d '[:space:]' <"$rtl_cycles_file")"
+  fi
+  noreconf_arch=$(find archive -name 'arch_noreconf.json' 2>/dev/null | head -1)
+  if [ -n "$noreconf_flag" ] && [ -n "$noreconf_arch" ]; then
+    python3 - "$noreconf_arch" <<'PY'
+import json, sys
+
+def offsets(node):
+    if isinstance(node, dict):
+        if "start_offset" in node:
+            yield node["start_offset"]
+        for value in node.values():
+            yield from offsets(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from offsets(value)
+
+found = list(offsets(json.load(open(sys.argv[1]))))
+if found:
+    print("start_offset=%d" % found[0])
+PY
+  fi
+} >cycles.txt
 
 # Cycle-accurate trace comparison (debug mode only). The RTL VCD (all resource
 # interface signals + cycle_count) and the SST Chrome-trace are both produced

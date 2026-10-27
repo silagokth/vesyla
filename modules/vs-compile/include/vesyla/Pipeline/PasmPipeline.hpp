@@ -28,8 +28,10 @@ namespace schedule {
 class Scheduler {
 
 public:
+  // With no_reconfiguration, also record what a fabric without
+  // reconfiguration hardcodes (NoReconfigurationPass).
   void run(mlir::ModuleOp &module, std::string output_dir, bool allow_unsafe,
-           bool keep_debug_files = false);
+           bool keep_debug_files = false, bool no_reconfiguration = false);
 
 private:
   void save_mlir(mlir::ModuleOp &module, const std::string &filename);

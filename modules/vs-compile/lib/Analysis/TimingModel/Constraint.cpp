@@ -47,7 +47,9 @@ string Constraint::to_string() {
     int m = min_delay.value_or(0);
     if (m == 0)
       return dr + " != " + sr;
-    return dr + " != " + sr + " + " + std::to_string(m);
+    if (m > 0)
+      return dr + " != " + sr + " + " + std::to_string(m);
+    return dr + " != " + sr + " - " + std::to_string(-m);
   }
   if (min_delay && max_delay && *min_delay == *max_delay) {
     int m = *min_delay;

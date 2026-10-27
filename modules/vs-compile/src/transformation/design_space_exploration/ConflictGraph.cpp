@@ -35,6 +35,15 @@ void occupy(OccupancyMap &occupancy, mlir::Operation *op, unsigned index) {
 // checks its shape when it loads the pattern, so by the time it reaches here it
 // has already been vetted. Empty means the operation declared nothing, which
 // callers read as holding the whole resource.
+//
+// TODO: occupancy. `uses` says which parts an operation holds, not for how
+// long. A pipelined operation (a drra.rop with latency > ii, such as the DPU's
+// mac) still holds some of them for latency - ii cycles after its last pass
+// starts: N passes occupy them for (N - 1) * ii + latency cycles, not N * ii.
+// Two operations that share no part but are serialised on one instance would
+// need that tail between them. Nothing reaches it today -- every DPU arithmetic
+// mode claims conf_reg:0, so no two of them share an instance -- but it will
+// once modes are spread over the configuration registers.
 llvm::SmallVector<mlir::StringAttr> read_parts(mlir::Operation *op) {
   llvm::SmallVector<mlir::StringAttr> parts;
   auto array = op->getAttrOfType<mlir::ArrayAttr>("uses");

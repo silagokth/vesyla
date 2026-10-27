@@ -43,15 +43,24 @@ public:
   bool allow_unsafe;
   int _row;
   int _col;
+  // AGU_LATENCY from the architecture: cycles from an ACT to the first
+  // address a resource's AGU presents. The timing model is calibrated to a
+  // latency of 1 (an access lands one cycle after its ROP's scheduled start),
+  // so every ACT is issued act_lead() cycles ahead of that start to keep it
+  // there.
+  int _agu_latency;
 
   ScheduleEpochPassRewriter(::mlir::MLIRContext *context,
                             nlohmann::json component_map,
                             std::string component_path, std::string tmp_path,
-                            bool allow_unsafe, int row_, int col_)
+                            bool allow_unsafe, int row_, int col_,
+                            int agu_latency)
       : ::mlir::OpRewritePattern<::vesyla::pasm::EpochOp>(context),
         component_map(component_map), component_path(std::move(component_path)),
         tmp_path(std::move(tmp_path)), allow_unsafe(allow_unsafe), _row(row_),
-        _col(col_) {}
+        _col(col_), _agu_latency(agu_latency) {}
+
+  int act_lead() const { return _agu_latency - 1; }
 
   // ScheduleEpochPass.cpp
   ::mlir::LogicalResult

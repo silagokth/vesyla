@@ -22,6 +22,10 @@ pub struct Controller {
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
     pub isa: Option<ComponentInstructionSet>,
+    // In a fabric without reconfiguration (vs-compile --no-reconfiguration),
+    // what the controller issues: its `activations` and the `length` of the
+    // program. Rendered into its RTL, so part of its fingerprint.
+    pub static_program: Option<serde_json::Value>,
 }
 
 impl Controller {
@@ -38,6 +42,7 @@ impl Controller {
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
             isa: None,
+            static_program: None,
         }
     }
 
@@ -295,7 +300,11 @@ impl RTLComponent for Controller {
     }
 
     fn generate_hash(&mut self) -> String {
-        self.fingerprint = Some(generate_hash(vec![self.name.clone()], &self.parameters));
+        let mut names = vec![self.name.clone()];
+        if let Some(static_program) = &self.static_program {
+            names.push(static_program.to_string());
+        }
+        self.fingerprint = Some(generate_hash(names, &self.parameters));
         self.fingerprint.clone().unwrap()
     }
 
@@ -346,6 +355,13 @@ impl Serialize for Controller {
         }
         if let Some(isa) = &self.isa {
             state.serialize_entry("isa", isa)?;
+        }
+        if let Some(static_program) = &self.static_program {
+            for key in ["activations", "length"] {
+                if let Some(value) = static_program.get(key) {
+                    state.serialize_entry(key, value)?;
+                }
+            }
         }
         state.end()
     }

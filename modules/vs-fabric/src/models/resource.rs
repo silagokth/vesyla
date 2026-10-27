@@ -2,7 +2,7 @@ use crate::models::{
     isa::ComponentInstructionSet,
     types::{DRRAError, ParameterList, RTLComponent},
 };
-use crate::utils::{generate_hash, merge_parameters};
+use crate::utils::{add_bender_dependency, generate_hash, merge_parameters};
 
 use log::warn;
 use std::path::Path;
@@ -25,6 +25,10 @@ pub struct Resource {
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
     pub isa: Option<ComponentInstructionSet>,
+    // In a fabric without reconfiguration (vs-compile --no-reconfiguration),
+    // the configurations its AGUs run and the CONF entries it holds. Rendered
+    // into its RTL, so part of its fingerprint.
+    pub static_config: Option<serde_json::Value>,
 }
 
 impl Resource {
@@ -42,6 +46,7 @@ impl Resource {
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
             isa: None,
+            static_config: None,
         }
     }
 
@@ -305,11 +310,25 @@ impl RTLComponent for Resource {
 
     fn generate_bender(&self, output_folder: &Path) -> Result<(), DRRAError> {
         let fingerprint = self.clone().get_fingerprint();
-        self.generate_bender_default(output_folder, Some(fingerprint), None)
+        self.generate_bender_default(output_folder, Some(fingerprint), None)?;
+        if self.static_config.is_some() {
+            // Its AGUs are agu_array_static (lib/common/jinja/static_agu.j2),
+            // which the library entry does not depend on.
+            add_bender_dependency(
+                &output_folder.join("Bender.yml"),
+                "agu_array_static",
+                "../../common/agu_array_static",
+            )?;
+        }
+        Ok(())
     }
 
     fn generate_hash(&mut self) -> String {
-        self.fingerprint = Some(generate_hash(vec![self.name.clone()], &self.parameters));
+        let mut names = vec![self.name.clone()];
+        if let Some(static_config) = &self.static_config {
+            names.push(static_config.to_string());
+        }
+        self.fingerprint = Some(generate_hash(names, &self.parameters));
         self.fingerprint.clone().unwrap()
     }
 
@@ -365,6 +384,9 @@ impl Serialize for Resource {
         }
         if let Some(isa) = &self.isa {
             state.serialize_entry("isa", isa)?;
+        }
+        if let Some(static_config) = &self.static_config {
+            state.serialize_entry("static_config", static_config)?;
         }
         state.end()
     }

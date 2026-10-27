@@ -56,10 +56,20 @@ impl HierarchicalResolver {
 
     fn build_base_fabric(&self, fabric_json: &serde_json::Value) -> Result<Fabric, DRRAError> {
         let mut fabric = Fabric::new();
-        fabric.add_parameters(get_parameters(
-            fabric_json,
-            Some("custom_properties".to_string()),
-        ));
+        let mut parameters = get_parameters(fabric_json, Some("custom_properties".to_string()));
+        // Cycles from an ACT to a resource's first AGU address. It is a
+        // contract between the RTL agu_array, the SST AGUArray and the
+        // scheduler (vs-compile ScheduleEpochPass), so it is defaulted here, at
+        // fabric level -- the lowest priority -- rather than repeated in every
+        // architecture description. 1 is the registered activation alone.
+        parameters.entry("AGU_LATENCY".to_string()).or_insert(1);
+        // Options in the switchbox's configuration table. The RTL, the SST
+        // model and the no-reconfiguration pass size the table from it. A conf
+        // instruction can only name the first 4 (its option field is 2 bits),
+        // so more only help a fabric without reconfiguration, whose options
+        // are hardcoded. 4 is today's hardware.
+        parameters.entry("NUM_OPTIONS".to_string()).or_insert(4);
+        fabric.add_parameters(parameters);
         Ok(fabric)
     }
 
