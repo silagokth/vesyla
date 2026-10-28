@@ -1,6 +1,8 @@
 #include "ConflictGraph.hpp"
 
 #include "mlir/Analysis/Liveness.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
@@ -26,6 +28,29 @@ using OccupancyMap =
 // instance the carried value is sitting in.
 void occupy(OccupancyMap &occupancy, mlir::Operation *op, unsigned index) {
   op->walk([&](mlir::Operation *nested) { occupancy[nested].push_back(index); });
+}
+
+// The outermost affine.for around `op` inside its epoch, or null outside any
+// loop.
+//
+// A drra.rop that runs in a mode (a conf) inside a loop nest is configured
+// once and streamed over every iteration of the nest -- its map has a dim per
+// enclosing loop -- so it holds its instance from the first iteration to the
+// last. Two operations in sibling
+// inner loops of one outer loop never run at the same time, but sharing an
+// instance between them would mean re-issuing its conf on every outer
+// iteration, which the pasm lowering does not do (see the TODO in
+// DrraToPasmPass), so the whole nest is claimed.
+mlir::Operation *outermost_loop(mlir::Operation *op) {
+  mlir::Operation *outermost = nullptr;
+  for (mlir::Operation *parent = op->getParentOp();
+       parent && !llvm::isa<pasm::EpochOp>(parent);
+       parent = parent->getParentOp()) {
+    if (llvm::isa<mlir::affine::AffineForOp>(parent)) {
+      outermost = parent;
+    }
+  }
+  return outermost;
 }
 
 // The parts of its resource the operation says it holds, in declaration order.
@@ -165,6 +190,36 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
         for (mlir::Operation *live_op : liveness.resolveLiveness(result)) {
           occupy(occupancy, live_op, i);
         }
+      }
+    }
+  }
+
+  // Loop nests. A node whose operation runs in a mode -- a conf, set once and
+  // streamed over every iteration -- holds its instance for the whole nest, so
+  // two such nodes in one nest are active together whatever the schedule and
+  // contend wherever their parts overlap, even where liveness sees one of them
+  // finished before the other starts (ger's alpha * x[i] and the add two
+  // operations later in the same loop). Event-driven operations (io and rf
+  // transfers, the dpu rst) are single instructions the scheduler can put one
+  // after the other on a shared instance, so they keep to liveness alone.
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<unsigned>> nests;
+  for (unsigned i = 0; i < graph.nodes_.size(); ++i) {
+    for (mlir::Operation *op : graph.nodes_[i].ops) {
+      if (!op->hasAttr("conf")) {
+        continue;
+      }
+      if (mlir::Operation *nest = outermost_loop(op)) {
+        nests[nest].push_back(i);
+      }
+    }
+  }
+  for (auto &entry : nests) {
+    llvm::SmallVector<unsigned> &here = entry.second;
+    llvm::sort(here);
+    here.erase(llvm::unique(here), here.end());
+    for (unsigned a = 0; a < here.size(); ++a) {
+      for (unsigned b = a + 1; b < here.size(); ++b) {
+        graph.add_edge(here[a], here[b], ConflictReason::same_loop);
       }
     }
   }
@@ -357,7 +412,8 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
       for (auto [bit, text] :
            {std::pair{ConflictReason::distinct_storage, "storage"},
             std::pair{ConflictReason::data_flow, "data flow"},
-            std::pair{ConflictReason::live_overlap, "live"}}) {
+            std::pair{ConflictReason::live_overlap, "live"},
+            std::pair{ConflictReason::same_loop, "loop"}}) {
         if (has_reason(why, bit)) {
           reasons += reasons.empty() ? text : std::string(" + ") + text;
         }

@@ -410,6 +410,7 @@ add_mlir_library(
   MLIRTransforms
   MLIRTransformUtils
   MLIRRewrite
+  MLIRAffineDialect
   VesylaPasm
   VesylaDrra
   VesylaUtil)

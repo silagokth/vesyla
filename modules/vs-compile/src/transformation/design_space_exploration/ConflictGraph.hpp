@@ -32,6 +32,10 @@ enum class ConflictReason : unsigned {
   live_overlap = 1u << 1,
   // They hold different storage, and one instance holds one storage.
   distinct_storage = 1u << 2,
+  // Both run in a mode (a conf) inside the same loop nest. Such an operation
+  // is configured once and streamed over every iteration, so it holds its
+  // parts for the whole nest, not only where its value is live.
+  same_loop = 1u << 3,
 };
 
 inline ConflictReason operator|(ConflictReason a, ConflictReason b) {
