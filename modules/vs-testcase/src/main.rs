@@ -42,7 +42,8 @@ enum Command {
         /// is required, it writes the input and reference memory images
         #[arg(short, long, default_value = "0,2,3", value_parser = parse_models)]
         models: String,
-        /// Front end to compile the testcase with: its pasm/*.pasm or its mlir/*.mlir programs
+        /// Front end to compile the testcase with: its pasm/*.pasm, its mlir/*.mlir or its
+        /// c/*.c programs (lowered to MLIR with cgeist, $CGEIST or cgeist on PATH)
         #[arg(short, long, value_enum, default_value_t = Frontend::Pasm)]
         frontend: Frontend,
         /// Build the RTL without reconfiguration (run.sh --no-reconfiguration): the
@@ -61,13 +62,15 @@ enum Command {
     },
 }
 
-/// Which of a testcase's programs is compiled: the hand-written PASM under pasm/
-/// or the MLIR under mlir/. Both describe the same problem and are checked
-/// against the same model 0 reference.
+/// Which of a testcase's programs is compiled: the hand-written PASM under pasm/,
+/// the MLIR under mlir/, or the C under c/, which cgeist lowers to MLIR first.
+/// All describe the same problem and are checked against the same model 0
+/// reference.
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Frontend {
     Pasm,
     Mlir,
+    C,
 }
 
 impl Frontend {
@@ -75,6 +78,7 @@ impl Frontend {
         match self {
             Frontend::Pasm => "pasm",
             Frontend::Mlir => "mlir",
+            Frontend::C => "c",
         }
     }
 }
@@ -294,7 +298,15 @@ fn run(
     // run the testcase, if the testcase fails, the process will exit with non-zero status
     info!("Copying and running testcase in {:?}", temp_dir_path);
     copy_dir_all(test_dir, temp_dir_path).expect("Failed to copy testcase directory");
-    if frontend == Frontend::Mlir {
+    if frontend == Frontend::C {
+        // A program cgeist cannot lower is a compile failure like any other.
+        if let Err(err) = lower_c_programs(temp_dir_path) {
+            error!("{}", err);
+            error!("Testcase failed");
+            process::exit(6);
+        }
+    }
+    if frontend == Frontend::Mlir || frontend == Frontend::C {
         use_mlir_programs(temp_dir_path)?;
     }
     let testcase_script_path = format!("{}/run.sh", temp_dir_path.display());
@@ -346,14 +358,107 @@ fn use_mlir_programs(root: &Path) -> Result<(), io::Error> {
     Ok(())
 }
 
+// Replace the testcase's MLIR programs with its C ones, lowered: each c/<id>.c
+// becomes mlir/<id>.mlir, which use_mlir_programs then hands to compile.sh. The
+// kernel is the one function c/<id>.c defines; vesyla's FuncToEpochPass takes
+// it from there.
+//
+// cgeist (Polygeist) is built against an older LLVM than vesyla. Its module
+// carries LLVM-dialect and data-layout attributes vesyla does not load, and
+// nothing below reads them, so they are dropped.
+fn lower_c_programs(root: &Path) -> Result<(), io::Error> {
+    let programs = programs_with_extension(&root.join("c"), "c");
+    if programs.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Testcase has no c/*.c programs",
+        ));
+    }
+    let cgeist = env::var("CGEIST").unwrap_or_else(|_| "cgeist".to_string());
+    let mlir_dir = root.join("mlir");
+    if mlir_dir.exists() {
+        fs::remove_dir_all(&mlir_dir)?;
+    }
+    fs::create_dir_all(&mlir_dir)?;
+    for program in programs {
+        let source = fs::read_to_string(&program)?;
+        let function = c_kernel_name(&source).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{:?} defines no void function to compile", program),
+            )
+        })?;
+        let output = process::Command::new(&cgeist)
+            .arg(&program)
+            .arg(format!("--function={}", function))
+            .args(["-S", "--raise-scf-to-affine"])
+            .output()
+            .map_err(|err| {
+                io::Error::new(
+                    err.kind(),
+                    format!("Failed to run cgeist ({}): {} -- set CGEIST", cgeist, err),
+                )
+            })?;
+        if !output.status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "cgeist failed on {:?}:\n{}",
+                    program,
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            ));
+        }
+        let mlir = strip_cgeist_attributes(&String::from_utf8_lossy(&output.stdout));
+        let stem = program.file_stem().unwrap();
+        fs::write(mlir_dir.join(stem).with_extension("mlir"), mlir)?;
+        info!("Lowered {:?} (function {}) with cgeist", program, function);
+    }
+    Ok(())
+}
+
+// The kernel a C program defines: the first `void <name>(` at the start of a
+// line. A testcase's C program holds just that one function.
+fn c_kernel_name(source: &str) -> Option<String> {
+    source.lines().find_map(|line| {
+        let rest = line.strip_prefix("void ")?.trim_start();
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let after = rest[name.len()..].trim_start();
+        (!name.is_empty() && after.starts_with('(')).then_some(name)
+    })
+}
+
+fn strip_cgeist_attributes(mlir: &str) -> String {
+    mlir.lines()
+        .map(|line| {
+            if line.starts_with("module attributes {") && line.ends_with("} {") {
+                "module {".to_string()
+            } else {
+                line.replace(" attributes {llvm.linkage = #llvm.linkage<external>}", "")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 // The .mlir files directly under dir, sorted; empty if dir does not exist.
 fn mlir_programs(dir: &Path) -> Vec<PathBuf> {
+    programs_with_extension(dir, "mlir")
+}
+
+// The files with extension `ext` directly under dir, sorted; empty if dir does
+// not exist.
+fn programs_with_extension(dir: &Path, ext: &str) -> Vec<PathBuf> {
     let mut programs: Vec<PathBuf> = fs::read_dir(dir)
         .map(|entries| {
             entries
                 .flatten()
                 .map(|entry| entry.path())
-                .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "mlir"))
+                .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == ext))
                 .collect()
         })
         .unwrap_or_default();
@@ -400,11 +505,14 @@ fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
             .to_string();
 
         // One entry per front end the testcase has programs for: PASM always,
-        // MLIR only when it carries mlir/*.mlir. The run.sh suite script picks
-        // between them by the frontend:<name> tag.
+        // MLIR only when it carries mlir/*.mlir, C only when it carries c/*.c.
+        // The run.sh suite script picks between them by the frontend:<name> tag.
         let mut frontends = vec![Frontend::Pasm];
         if !mlir_programs(&Path::new(&path).join("mlir")).is_empty() {
             frontends.push(Frontend::Mlir);
+        }
+        if !programs_with_extension(&Path::new(&path).join("c"), "c").is_empty() {
+            frontends.push(Frontend::C);
         }
         for frontend in frontends {
             testcase_entries.push(TestcaseEntry {
