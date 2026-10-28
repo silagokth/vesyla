@@ -128,14 +128,14 @@ void move_event(RopOp head, InstrOp event) {
 
 // Add one transition to the end of `head`'s body.
 //
-// A transition follows the event it joins to the one before it -- after the
-// second evt, then after the third, and so on. The resource reads its own
-// instruction list as a postfix stack when it works out the timing model: an
-// evt pushes, a trans pops the two below it and combines them. So a trans
-// written between two events finds only one on the stack, is silently
-// declined, and the operation loses an event; written after the second it
-// closes the pair. Joining them as it goes leaves the expression nested to the
-// left, T<..>(T<..>(e0, e1), e2), which is the order they run in.
+// The transitions come after every event, in event order: the AGU controller
+// opens a lane per evt, takes the reps that follow it before any trans as that
+// lane's own, joins lane k to lane k + 1 through the k-th trans, and reads a rep
+// after a trans as one around all the lanes -- after which it drops any further
+// trans. So a trans written between two events would turn the next event's own
+// reps into outer ones. The timing model (the component library's
+// get_timing_model) reads the list the same way, as T<..>(T<..>(e0, e1), e2),
+// which is the order they run in.
 //
 // The delay is a fresh symbol; how far apart the two events sit is the
 // scheduler's to decide, and the constraints that used to order the separate
@@ -239,17 +239,20 @@ public:
         mlir::Operation *end = head.getBody().front().getTerminator();
         llvm::SmallVector<InstrOp> head_reps = reps_of(head);
         for (size_t k = 1; k < rops.size(); ++k) {
-          // The event, then the reps that are its own; the shared ones it
-          // carried go with the rop, the head's standing for them.
+          // The event, then the reps that are its own, ahead of every
+          // transition; the shared ones it carried go with the rop, the
+          // head's standing for them.
           llvm::SmallVector<InstrOp> reps = reps_of(rops[k]);
           move_event(head, sole_event(rops[k]));
           for (size_t i = 0; i + *shared < reps.size(); ++i) {
             reps[i]->moveBefore(end);
           }
-          append_transition(head, port);
           absorbed[rops[k].getSymName()] =
               Absorbed{head.getSymNameAttr(), static_cast<uint32_t>(k)};
           merged_away.push_back(rops[k]);
+        }
+        for (size_t k = 1; k < rops.size(); ++k) {
+          append_transition(head, port);
         }
         // The shared reps close the rop, after the last transition, so they
         // repeat the whole sequence of events.
