@@ -1,6 +1,7 @@
 #include "NativeHelpers.hpp"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -34,6 +35,19 @@ bool feeds_iter_args_init(mlir::Operation *op) {
     }
   }
   return false;
+}
+
+bool is_io_buffer(mlir::Value memref) {
+  auto alloc =
+      llvm::dyn_cast_or_null<mlir::memref::AllocOp>(memref.getDefiningOp());
+  if (!alloc) {
+    return false;
+  }
+  auto id = alloc->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+  if (!id) {
+    return false;
+  }
+  return id.getValue() == "input_buffer" || id.getValue() == "output_buffer";
 }
 
 unsigned enclosing_loop_depth(mlir::Operation *op) {
@@ -73,6 +87,52 @@ static std::optional<int64_t> constant_base(mlir::Operation *access) {
   return constant.getValue();
 }
 
+// The access's own first map result, re-expressed over the enclosing loops
+// (outermost first), when it reads loop counters and nothing else. Null for a
+// constant subscript and for anything that is not a function of enclosing
+// loop counters alone -- those keep the heuristic below.
+static mlir::AffineMapAttr lift_own_map(mlir::Operation *access,
+                                        unsigned depth) {
+  mlir::AffineMap map;
+  llvm::SmallVector<mlir::Value> operands;
+  if (auto read = llvm::dyn_cast<mlir::affine::AffineReadOpInterface>(access)) {
+    map = read.getAffineMap();
+    operands = llvm::to_vector(read.getMapOperands());
+  } else if (auto write =
+                 llvm::dyn_cast<mlir::affine::AffineWriteOpInterface>(access)) {
+    map = write.getAffineMap();
+    operands = llvm::to_vector(write.getMapOperands());
+  } else {
+    return {};
+  }
+  if (map.getNumResults() == 0 || map.getNumSymbols() != 0 ||
+      llvm::isa<mlir::AffineConstantExpr>(map.getResult(0))) {
+    return {};
+  }
+
+  llvm::SmallVector<mlir::Value> loops; // induction variables, outermost first
+  for (mlir::Operation *parent = access->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (auto loop = llvm::dyn_cast<mlir::affine::AffineForOp>(parent)) {
+      loops.insert(loops.begin(), loop.getInductionVar());
+    }
+  }
+
+  mlir::MLIRContext *ctx = access->getContext();
+  llvm::SmallVector<mlir::AffineExpr> dims;
+  for (mlir::Value operand : operands) {
+    auto at = llvm::find(loops, operand);
+    if (at == loops.end()) {
+      return {};
+    }
+    dims.push_back(mlir::getAffineDimExpr(at - loops.begin(), ctx));
+  }
+  mlir::AffineExpr addr = mlir::simplifyAffineExpr(
+      map.getResult(0).replaceDims(dims), depth, /*numSymbols=*/0);
+  return mlir::AffineMapAttr::get(
+      mlir::AffineMap::get(depth, /*symbolCount=*/0, addr));
+}
+
 mlir::AffineMapAttr lift_affine_map(mlir::Operation *access) {
   for (mlir::Value idx : access->getOperands()) {
     if (auto apply = idx.getDefiningOp<mlir::affine::AffineApplyOp>()) {
@@ -82,6 +142,15 @@ mlir::AffineMapAttr lift_affine_map(mlir::Operation *access) {
 
   mlir::MLIRContext *ctx = access->getContext();
   unsigned depth = enclosing_loop_depth(access);
+
+  // A subscript written over loop counters in the access's own map (what a
+  // kernel lowered from C has: `%rf[%i]` inside a `%j` loop, `[%r + 2, 0]`):
+  // that expression, over the enclosing loops outermost first, which is the
+  // dim order the AGU reads a map in.
+  if (auto lifted = lift_own_map(access, depth)) {
+    return lifted;
+  }
+
   std::optional<int64_t> base = constant_base(access);
 
   // No loop to step and no base to start from: there is no address to describe.

@@ -350,6 +350,25 @@ add_mlir_library(
   MLIRPass
   MLIRArithDialect)
 
+# Moves io rows through a staging buffer, so a kernel lowered from C that reads
+# and writes the io buffers word by word reaches the bulk io patterns.
+add_custom_mlir_pass_dir(transformation/stage_io VesylaStageIo)
+file(GLOB SOURCE_STAGE_IO "src/transformation/stage_io/*.cpp")
+add_mlir_library(
+  VesylaStageIo
+  ${SOURCE_STAGE_IO}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaStageIoIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRMemRefDialect
+  MLIRVectorDialect
+  VesylaSelectInstr)
+
 # Design space exploration: allocation, binding and scheduling over the module
 # instruction selection produced. Allocation is read from the architecture file;
 # binding and scheduling are still being written.
@@ -390,7 +409,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

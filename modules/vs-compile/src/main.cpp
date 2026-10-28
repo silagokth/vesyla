@@ -23,6 +23,7 @@
 #include "transformation/assign_ids/AssignIdsPass.hpp"
 #include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
+#include "transformation/stage_io/StageIoPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
@@ -65,18 +66,21 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   // FuncToEpochPass runs first: a kernel lowered from C comes as a func.func
   // over the io buffers, and it rewrites that into the epoch form the passes
   // below compile. NarrowIntegersPass undoes C's integer promotion, so the
-  // arithmetic is on the 16-bit word again. AssignIdsPass then names whatever
-  // the program left unnamed, including the ops narrowing rebuilt. A
-  // hand-written program has no func.func, no extensions and all its ids, and
-  // passes through all three unchanged.
+  // arithmetic is on the 16-bit word again. StageIoPass moves the io rows a C
+  // kernel accesses word by word through staging buffers. AssignIdsPass then
+  // names whatever the program left unnamed, including the ops the two before
+  // it built. A hand-written program has no func.func, no extensions, only
+  // whole-row io transfers and all its ids, and passes through all four
+  // unchanged.
   mlir::PassManager input_pm(&context);
   input_pm.addPass(vesyla::conversion::func_to_pasm::createFuncToEpochPass());
   input_pm.addPass(
       vesyla::transformation::narrow_integers::createNarrowIntegersPass());
+  input_pm.addPass(vesyla::transformation::stage_io::createStageIoPass());
   input_pm.addPass(vesyla::transformation::assign_ids::createAssignIdsPass());
   if (mlir::failed(input_pm.run(*module))) {
-    LOG_FATAL << "Error: FuncToEpochPass, NarrowIntegersPass or AssignIdsPass "
-                 "failed.";
+    LOG_FATAL << "Error: FuncToEpochPass, NarrowIntegersPass, StageIoPass or "
+                 "AssignIdsPass failed.";
     return nullptr;
   }
 
