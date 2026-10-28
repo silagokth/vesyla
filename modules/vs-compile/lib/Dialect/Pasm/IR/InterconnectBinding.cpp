@@ -55,18 +55,20 @@ static std::vector<uint32_t> own_trips(const Anchor &a) {
   return own;
 }
 
-// How often the binding's sequence repeats: the trip count of each loop its
-// transfers release their routes across, outermost first. Empty when the
-// sequence covers the whole epoch. The transfers have to agree -- one that
-// repeats at a different depth (ger's rows 0..2, loaded once before the loop
-// whose every pass loads a row of A) would need a sequence of its own, which is
-// reported on `report` when there is one.
+// How often the repeated part of the binding's sequence repeats: the trip
+// count of each loop its transfers release their routes across, outermost
+// first. Empty when the sequence covers the whole epoch. Its transfers have to
+// agree -- one that repeats over other loops would need a sequence of its own,
+// which is reported on `report` when there is one. Transfers that run once
+// before or after the loops are the prefix and suffix, not counted here.
 static mlir::FailureOr<std::vector<uint32_t>>
 pass_trips(const InterconnectBinding &binding, mlir::Operation *report) {
   std::vector<uint32_t> trips;
   bool seeded = false;
-  for (const auto &slot : binding.slots) {
-    for (const InterconnectConfigOption &opt : slot) {
+  std::size_t end = binding.sequence.size() - binding.suffix_steps;
+  for (std::size_t j = binding.prefix_steps; j < end; ++j) {
+    for (const InterconnectConfigOption &opt :
+         binding.slots[binding.sequence[j]]) {
       for (const Anchor &a : opt.first_anchors) {
         std::vector<uint32_t> own = own_trips(a);
         if (!seeded) {
@@ -187,18 +189,26 @@ static bool same_configs(const std::vector<InterconnectConfig> &a,
   return true;
 }
 
+// The part of the sequence a configuration belongs to, in the order they run.
+enum Part : int { Prefix = 0, Repeated = 1, Suffix = 2 };
+
 // Stash `current` into a binding slot (existing match preferred, else first
 // empty slot), record the slot index in `binding.sequence`, and return it.
 // Returns nullopt if no free slot is available.
+//
+// A slot is only reused within the part of the sequence (`part`, see Part) that
+// filled it: a transfer of the repeated part keeps its anchors on its own
+// option, and a prefix that happens to configure the same routes is switched
+// in by an evt of its own anyway.
 static std::optional<std::size_t>
-save_current(InterconnectBinding &binding,
-             const std::vector<InterconnectConfig> &current,
+save_current(InterconnectBinding &binding, std::array<int, 4> &slot_part,
+             int part, const std::vector<InterconnectConfig> &current,
              const std::vector<Anchor> &first_anchors,
              const std::vector<Anchor> &last_anchors) {
   std::optional<std::size_t> existing_slot;
   std::optional<std::size_t> free_slot;
   for (std::size_t i = 0; i < binding.slots.size(); ++i) {
-    if (binding.slots[i].size() == 1 &&
+    if (binding.slots[i].size() == 1 && slot_part[i] == part &&
         same_configs(binding.slots[i][0].configs, current) &&
         !existing_slot.has_value()) {
       existing_slot = i;
@@ -215,6 +225,7 @@ save_current(InterconnectBinding &binding,
   } else {
     binding.slots[*free_slot].push_back(
         InterconnectConfigOption{current, first_anchors, last_anchors});
+    slot_part[*free_slot] = part;
     slot_idx = *free_slot;
   }
   binding.sequence.push_back(static_cast<int>(slot_idx));
@@ -487,6 +498,32 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
   std::vector<Anchor> current_first_anchors;
   std::vector<Anchor> current_last_anchors;
   InterconnectBinding binding{};
+  std::array<int, 4> slot_part{-1, -1, -1, -1};
+
+  // The loops the deepest transfers repeat over. A transfer outside all of
+  // them runs once: before the first repeated transfer it is the prefix, after
+  // them the suffix.
+  std::vector<uint32_t> deepest;
+  for (const Node &n : graph) {
+    if (n.id != 0 && n.kind == NodeKind::First &&
+        own_trips(n.anchor).size() > deepest.size()) {
+      deepest = own_trips(n.anchor);
+    }
+  }
+  int part = Prefix;
+  auto save = [&]() {
+    if (!save_current(binding, slot_part, part, current, current_first_anchors,
+                      current_last_anchors)
+             .has_value()) {
+      return false;
+    }
+    if (part == Prefix) {
+      ++binding.prefix_steps;
+    } else if (part == Suffix) {
+      ++binding.suffix_steps;
+    }
+    return true;
+  };
 
   // Begin algorithm at start node
   release_children(graph, NodeKey{0, NodeKind::First}, free_set);
@@ -513,6 +550,38 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       if (kind == "bulk") {
         cfg.sr = (candidate.dir == "send") ? 0 : 1;
       }
+      // Entering the next part of the sequence closes the option of the one
+      // before: a prefix route left in the repeated option would also receive
+      // every pass's transfers (and the other way round).
+      int want = Repeated;
+      if (!deepest.empty() && own_trips(candidate.anchor).empty()) {
+        want = part == Prefix ? Prefix : Suffix;
+      }
+      if (want != part) {
+        if (want < part) {
+          report->emitError("interconnect: the ")
+              << kind
+              << " transfers repeated over a loop are interleaved with ones "
+                 "that run once; not supported";
+          return mlir::failure();
+        }
+        if (!active.empty()) {
+          report->emitError("interconnect: a ")
+              << kind
+              << " transfer that runs once is still in flight when the "
+                 "repeated ones start or end; not supported";
+          return mlir::failure();
+        }
+        if (!current.empty()) {
+          if (!save()) {
+            return no_free_option(report, kind, binding);
+          }
+          current.clear();
+          current_first_anchors.clear();
+          current_last_anchors.clear();
+        }
+        part = want;
+      }
       // A recv from a direction the current option already listens to widens
       // that config rather than opening one beside it.
       if (merge_recv(current, active, cfg)) {
@@ -528,9 +597,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       }
       // if there is a conflict with the current configuration
       if (has_conflict(candidate, current, kind)) {
-        if (!save_current(binding, current, current_first_anchors,
-                          current_last_anchors)
-                 .has_value()) {
+        if (!save()) {
           return no_free_option(report, kind, binding);
         }
         // What is still in flight has to stay configured across the switch.
@@ -569,11 +636,13 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
 
   // Flush any remaining `current` into the binding.
   if (!current.empty()) {
-    if (!save_current(binding, current, current_first_anchors,
-                      current_last_anchors)
-             .has_value()) {
+    if (!save()) {
       return no_free_option(report, kind, binding);
     }
+  }
+  // Only a prefix: nothing repeats, so it is the whole sequence.
+  if (binding.prefix_steps == binding.sequence.size()) {
+    binding.prefix_steps = 0;
   }
 
   return binding;
@@ -701,52 +770,61 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
   return rop;
 }
 
+// One instruction of the interconnect rop, at the builder's insertion point.
+static void add_instr(mlir::OpBuilder &builder, mlir::Location loc,
+                      llvm::StringRef type,
+                      llvm::ArrayRef<std::pair<llvm::StringRef, mlir::Attribute>>
+                          params) {
+  llvm::SmallVector<mlir::NamedAttribute> attrs;
+  for (auto [name, value] : params) {
+    attrs.push_back(builder.getNamedAttr(name, value));
+  }
+  InstrOp::create(
+      builder, loc,
+      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder.getStringAttr(type), builder.getDictionaryAttr(attrs));
+}
+
+// The rep stepping an evt through `steps` (options, in the order they are
+// switched in), when there is more than one. One rep steps by a fixed stride;
+// a sequence that changes stride (0, 1, 0) would need one rep per run.
+static mlir::LogicalResult emit_stride(llvm::ArrayRef<int> steps, RopOp rop,
+                                       mlir::OpBuilder &builder,
+                                       llvm::StringRef delay, int32_t port) {
+  if (steps.size() <= 1) {
+    return mlir::success();
+  }
+  int stride = steps[1] - steps[0];
+  for (std::size_t i = 2; i < steps.size(); ++i) {
+    if (steps[i] - steps[i - 1] != stride) {
+      return rop->emitError("interconnect: the route option sequence of this "
+                            "epoch is not one fixed stride; not supported");
+    }
+  }
+  add_instr(builder, rop.getLoc(), "rep",
+            {{"delay", builder.getStringAttr(delay)},
+             {"iter", builder.getI32IntegerAttr(
+                          static_cast<int32_t>(steps.size()))},
+             {"step", builder.getI32IntegerAttr(stride)},
+             {"port", builder.getI32IntegerAttr(port)}});
+  return mlir::success();
+}
+
 mlir::LogicalResult
 emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
                            mlir::OpBuilder &builder) {
   builder.setInsertionPoint(rop.getBody().front().getTerminator());
 
-  if (binding.sequence.size() <= 1) {
+  std::size_t n = binding.sequence.size();
+  std::size_t prefix = binding.prefix_steps;
+  std::size_t suffix = binding.suffix_steps;
+  bool parts = prefix + suffix > 0;
+  if (n <= 1 && !parts) {
     return mlir::success();
   }
   mlir::FailureOr<std::vector<uint32_t>> trips = pass_trips(binding, rop);
   if (mlir::failed(trips)) {
     return mlir::failure();
-  }
-
-  std::vector<int> deltas;
-  for (std::size_t i = 1; i < binding.sequence.size(); ++i) {
-    deltas.push_back(binding.sequence[i] - binding.sequence[i - 1]);
-  }
-
-  llvm::errs() << "deltas: [";
-  for (std::size_t i = 0; i < deltas.size(); ++i) {
-    if (i) {
-      llvm::errs() << ", ";
-    }
-    llvm::errs() << deltas[i];
-  }
-  llvm::errs() << "]\n";
-
-  std::vector<std::pair<int, int>> runs;
-  int current = deltas[0];
-  int count = 1;
-  for (std::size_t i = 1; i < deltas.size(); ++i) {
-    if (deltas[i] == current) {
-      ++count;
-    } else {
-      runs.push_back({current, count});
-      current = deltas[i];
-      count = 1;
-    }
-  }
-  runs.push_back({current, count});
-
-  // One rep steps the option by a fixed stride; a sequence that changes stride
-  // (0, 1, 0) would need one rep per run.
-  if (runs.size() != 1) {
-    return rop->emitError("interconnect: the route option sequence of this "
-                          "epoch is not one fixed stride; not supported");
   }
 
   mlir::Location loc = rop.getLoc();
@@ -761,38 +839,64 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
                            std::to_string(rop.getRow()) + "_" +
                            std::to_string(rop.getCol());
 
-  llvm::SmallVector<mlir::NamedAttribute> rep_attrs;
-  rep_attrs.push_back(
-      builder.getNamedAttr("delay", builder.getStringAttr(delay_name)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("iter",
-                          builder.getI32IntegerAttr(runs[0].second + 1)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("step", builder.getI32IntegerAttr(runs[0].first)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-  InstrOp::create(
-      builder, loc,
-      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-      builder.getStringAttr("rep"), builder.getDictionaryAttr(rep_attrs));
+  // The parts in the order they run: [begin, end) of the sequence, and whether
+  // it repeats with every pass.
+  struct Span {
+    std::size_t begin, end;
+    bool repeated;
+    std::string delay;
+  };
+  llvm::SmallVector<Span> spans;
+  if (prefix > 0) {
+    spans.push_back({0, prefix, false, delay_name + "_prefix"});
+  }
+  spans.push_back({prefix, n - suffix, true, delay_name});
+  if (suffix > 0) {
+    spans.push_back({n - suffix, n, false, delay_name + "_suffix"});
+  }
 
-  // One level per pass loop, innermost first, replaying the sequence. Each has
-  // a delay of its own: the route fires fewer events per pass than the rops it
-  // serves, so it cannot share their period.
-  for (std::size_t k = trips->size(); k-- > 0;) {
-    llvm::SmallVector<mlir::NamedAttribute> pass_attrs;
-    pass_attrs.push_back(builder.getNamedAttr(
-        "delay", builder.getStringAttr(delay_name + "_" + std::to_string(k))));
-    pass_attrs.push_back(builder.getNamedAttr(
-        "iter", builder.getI32IntegerAttr(static_cast<int32_t>((*trips)[k]))));
-    pass_attrs.push_back(
-        builder.getNamedAttr("step", builder.getI32IntegerAttr(0)));
-    pass_attrs.push_back(
-        builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-    InstrOp::create(
-        builder, loc,
-        builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-        builder.getStringAttr("rep"), builder.getDictionaryAttr(pass_attrs));
+  // Each part is an evt of its own, starting at its first option; the first
+  // one is the evt the rop already holds, which starts at option 0. A
+  // transition follows every evt after the first and joins it to the ones
+  // before (see CoalesceRopsPass: the rop reads its instructions as a postfix
+  // stack).
+  for (std::size_t s = 0; s < spans.size(); ++s) {
+    const Span &span = spans[s];
+    llvm::ArrayRef<int> steps(binding.sequence.data() + span.begin,
+                              span.end - span.begin);
+    if (s > 0) {
+      add_instr(builder, loc, "evt",
+                {{"port", builder.getI32IntegerAttr(port)},
+                 {"init_addr", builder.getI32IntegerAttr(steps.front())}});
+    } else if (parts && steps.front() != 0) {
+      return rop->emitError("interconnect: the first route option is not "
+                            "option 0");
+    }
+    if (mlir::failed(emit_stride(steps, rop, builder, span.delay, port))) {
+      return mlir::failure();
+    }
+
+    // One level per pass loop, innermost first, replaying the repeated part.
+    // Each has a delay of its own: the route fires fewer events per pass than
+    // the rops it serves, so it cannot share their period. A part of one
+    // option stays configured across every pass and needs none.
+    if (span.repeated && steps.size() > 1) {
+      for (std::size_t k = trips->size(); k-- > 0;) {
+        add_instr(builder, loc, "rep",
+                  {{"delay", builder.getStringAttr(delay_name + "_" +
+                                                   std::to_string(k))},
+                   {"iter", builder.getI32IntegerAttr(
+                                static_cast<int32_t>((*trips)[k]))},
+                   {"step", builder.getI32IntegerAttr(0)},
+                   {"port", builder.getI32IntegerAttr(port)}});
+      }
+    }
+    if (s > 0) {
+      add_instr(builder, loc, "trans",
+                {{"delay", builder.getStringAttr(delay_name + "_trans" +
+                                                 std::to_string(s))},
+                 {"port", builder.getI32IntegerAttr(port)}});
+    }
   }
   return mlir::success();
 }
@@ -802,6 +906,195 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
 static mlir::ArrayAttr debug_attr(mlir::OpBuilder &builder,
                                   llvm::StringRef rule) {
   return builder.getStrArrayAttr({"InterconnectPass", rule});
+}
+
+// The route constraints of a binding in parts (see InterconnectBinding): the
+// prefix and suffix run once, each an evt of its own on `rop`, and the part in
+// between repeats with every pass. The rules are the ones of a binding in one
+// part -- an option is switched in before the first transfer that uses it, and
+// the transfers of the option before are done before the switch -- with the
+// rop's anchors pointing at the evt of the step's part (its MT index) and the
+// transfers of a part that runs once tied to the first or last pass of the
+// repeated part next to it.
+static void emit_part_constraints(const InterconnectBinding &binding,
+                                  RopOp rop, mlir::OpBuilder &builder,
+                                  llvm::ArrayRef<uint32_t> trips,
+                                  const llvm::StringSet<> &config_rops) {
+  mlir::Location loc = rop.getLoc();
+  mlir::MLIRContext *ctx = builder.getContext();
+  auto rop_ref = mlir::FlatSymbolRefAttr::get(ctx, rop.getSymName());
+  auto delay = DelayAttr::get(ctx, 1, std::nullopt);
+
+  std::size_t n = binding.sequence.size();
+  std::size_t prefix = binding.prefix_steps;
+  std::size_t suffix = binding.suffix_steps;
+  std::size_t rep_begin = prefix;
+  std::size_t rep_end = n - suffix;
+
+  std::vector<uint32_t> first_pass_v(trips.size(), 0);
+  std::vector<uint32_t> last_pass_v;
+  for (uint32_t trip : trips) {
+    last_pass_v.push_back(trip - 1);
+  }
+  llvm::ArrayRef<uint32_t> first_pass(first_pass_v);
+  llvm::ArrayRef<uint32_t> last_pass(last_pass_v);
+  llvm::ArrayRef<uint32_t> none;
+
+  auto repeated = [&](std::size_t j) { return j >= rep_begin && j < rep_end; };
+  // The evt step `j` belongs to, and its first step.
+  auto event_of = [&](std::size_t j) -> uint32_t {
+    if (j < rep_begin) {
+      return 0;
+    }
+    uint32_t base = prefix > 0 ? 1 : 0;
+    return repeated(j) ? base : base + 1;
+  };
+  auto begin_of = [&](std::size_t j) {
+    return j < rep_begin ? 0 : (repeated(j) ? rep_begin : rep_end);
+  };
+  auto length_of = [&](std::size_t j) {
+    return j < rep_begin ? prefix : (repeated(j) ? rep_end - rep_begin : suffix);
+  };
+  // Whether the rop repeats step `j`'s evt over the passes: only a repeated
+  // part that switches between options does (emit_sequence_instructions).
+  auto has_passes = [&](std::size_t j) {
+    return repeated(j) && length_of(j) > 1;
+  };
+
+  auto range = [&](mlir::FlatSymbolRefAttr id, llvm::ArrayRef<uint32_t> or_idx,
+                   uint32_t mt, llvm::ArrayRef<uint32_t> base,
+                   llvm::ArrayRef<uint32_t> from, llvm::ArrayRef<uint32_t> to,
+                   llvm::ArrayRef<uint32_t> tail) {
+    std::vector<uint32_t> lo;
+    std::vector<uint32_t> hi;
+    for (std::size_t k = 0; k < from.size(); ++k) {
+      lo.push_back(base[k] + from[k]);
+      hi.push_back(base[k] + to[k]);
+    }
+    lo.insert(lo.end(), tail.begin(), tail.end());
+    hi.insert(hi.end(), tail.begin(), tail.end());
+    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+  };
+  // Step `j` of the rop over passes `from`..`to` (ignored for an evt that does
+  // not repeat over them).
+  auto step_at = [&](std::size_t j, llvm::ArrayRef<uint32_t> from,
+                     llvm::ArrayRef<uint32_t> to) {
+    std::vector<uint32_t> tail;
+    if (length_of(j) > 1) {
+      tail.push_back(static_cast<uint32_t>(j - begin_of(j)));
+    }
+    if (!has_passes(j)) {
+      return range(rop_ref, {}, event_of(j), none, none, none, tail);
+    }
+    return range(rop_ref, {}, event_of(j), first_pass, from, to, tail);
+  };
+  // A transfer over passes `from`..`to` of the repeated loops; a transfer that
+  // runs once has none.
+  auto use_at = [&](const Anchor &a, llvm::ArrayRef<uint32_t> from,
+                    llvm::ArrayRef<uint32_t> to) {
+    llvm::ArrayRef<uint32_t> ir(a.ir_idx);
+    if (own_trips(a).empty()) {
+      return range(a.instr_id, a.or_idx, a.mt, none, none, none, ir);
+    }
+    return range(a.instr_id, a.or_idx, a.mt, ir, from, to,
+                 ir.drop_front(from.size()));
+  };
+  auto add = [&](AnchorRangeAttr src, AnchorRangeAttr dst, llvm::StringRef rule) {
+    CstrOp::create(builder, loc, src, dst, delay, builder.getBoolAttr(false))
+        ->setAttr("debug", debug_attr(builder, rule));
+  };
+
+  // config -> first_use: the step that switches an option in comes before the
+  // first transfer that uses it -- on every pass when the step repeats, and
+  // before the first pass when its option stays on through all of them.
+  for (std::size_t j = 0; j < n; ++j) {
+    std::size_t slot = static_cast<std::size_t>(binding.sequence[j]);
+    bool first = true;
+    for (std::size_t k = 0; k < j; ++k) {
+      first &= binding.sequence[k] != binding.sequence[j];
+    }
+    if (!first || binding.slots[slot].empty()) {
+      continue;
+    }
+    for (const Anchor &a : binding.slots[slot][0].first_anchors) {
+      if (a.instr_id && config_rops.contains(a.instr_id.getValue())) {
+        continue;
+      }
+      if (has_passes(j)) {
+        add(step_at(j, first_pass, last_pass), use_at(a, first_pass, last_pass),
+            "route-first-use");
+      } else {
+        add(step_at(j, none, none), use_at(a, first_pass, first_pass),
+            "route-first-use");
+      }
+    }
+  }
+
+  // last_use -> next config: the transfers of an option are done before the
+  // step that switches the next one in. Out of the repeated part that is its
+  // last pass, into it its first.
+  for (std::size_t j = 1; j < n; ++j) {
+    int prev_slot = binding.sequence[j - 1];
+    int cur_slot = binding.sequence[j];
+    if (prev_slot == cur_slot || binding.slots[prev_slot].empty()) {
+      continue;
+    }
+    // A transfer carried into the next option spans the switch; see the rule
+    // of the same name in emit_interconnect_constraints. Matched on the whole
+    // anchor, not the instruction: coalesced transfers share one (ger's rows
+    // 0..2 and its rows of A are all events of vector_load_0).
+    auto carried = [&](const Anchor &a) {
+      return !binding.slots[cur_slot].empty() &&
+             llvm::is_contained(binding.slots[cur_slot][0].first_anchors, a);
+    };
+    bool from_rep = repeated(j - 1);
+    bool to_rep = repeated(j);
+    llvm::ArrayRef<uint32_t> src_from = !from_rep ? none
+                                        : to_rep  ? first_pass
+                                                  : last_pass;
+    llvm::ArrayRef<uint32_t> src_to = !from_rep ? none : last_pass;
+    llvm::ArrayRef<uint32_t> dst_from = !to_rep ? none : first_pass;
+    llvm::ArrayRef<uint32_t> dst_to = !to_rep ? none
+                                      : from_rep ? last_pass
+                                                 : first_pass;
+    for (const Anchor &a : binding.slots[prev_slot][0].last_anchors) {
+      if (carried(a)) {
+        continue;
+      }
+      add(use_at(a, src_from, src_to), step_at(j, dst_from, dst_to),
+          "route-last-use");
+    }
+  }
+
+  // The repeated part starts over on the next pass, so its last option's last
+  // use is done before that pass's first step; one constraint per pass loop,
+  // as in emit_interconnect_constraints.
+  if (rep_end - rep_begin < 2) {
+    return;
+  }
+  int final_slot = binding.sequence[rep_end - 1];
+  if (binding.slots[final_slot].empty()) {
+    return;
+  }
+  for (std::size_t k = 0; k < trips.size(); ++k) {
+    if (trips[k] < 2) {
+      continue;
+    }
+    std::vector<uint32_t> src_from = first_pass_v;
+    std::vector<uint32_t> src_to = last_pass_v;
+    std::vector<uint32_t> dst_from = first_pass_v;
+    std::vector<uint32_t> dst_to = last_pass_v;
+    src_to[k] = last_pass[k] - 1;
+    dst_from[k] = 1;
+    for (std::size_t inner = k + 1; inner < trips.size(); ++inner) {
+      src_from[inner] = last_pass[inner];
+      dst_to[inner] = 0;
+    }
+    for (const Anchor &a : binding.slots[final_slot][0].last_anchors) {
+      add(use_at(a, src_from, src_to), step_at(rep_begin, dst_from, dst_to),
+          "route-next-pass");
+    }
+  }
 }
 
 void emit_interconnect_constraints(const InterconnectBinding &binding,
@@ -816,7 +1109,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   // The passes the sequence repeats over; none without a sequence, the route
   // rop having no repetition to index then.
   std::vector<uint32_t> trips;
-  if (has_sequence) {
+  if (has_sequence || binding.prefix_steps + binding.suffix_steps > 0) {
     trips = *pass_trips(binding, /*report=*/nullptr);
   }
   std::vector<uint32_t> first_pass(trips.size(), 0);
@@ -868,6 +1161,11 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         }
       }
     });
+  }
+
+  if (binding.prefix_steps + binding.suffix_steps > 0) {
+    emit_part_constraints(binding, rop, builder, trips, config_rops);
+    return;
   }
 
   // config -> first_use: rop sequence step must happen before first use
