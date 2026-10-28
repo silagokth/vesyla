@@ -45,28 +45,39 @@ bool InterconnectConfig::operator==(const InterconnectConfig &o) const {
   return config_key(*this) == config_key(o);
 }
 
+// The trip count of each loop a transfer releases its route across,
+// outermost first. Empty for a transfer that runs once.
+static std::vector<uint32_t> own_trips(const Anchor &a) {
+  std::vector<uint32_t> own;
+  for (std::size_t k = 0; k < a.pass_hi.size() && k < a.ir_idx.size(); ++k) {
+    own.push_back(a.pass_hi[k] - a.ir_idx[k] + 1);
+  }
+  return own;
+}
+
 // How often the binding's sequence repeats: the trip count of each loop its
 // transfers release their routes across, outermost first. Empty when the
 // sequence covers the whole epoch. The transfers have to agree -- one that
-// repeats at a different depth would need a sequence of its own.
-static std::vector<uint32_t> pass_trips(const InterconnectBinding &binding) {
+// repeats at a different depth (ger's rows 0..2, loaded once before the loop
+// whose every pass loads a row of A) would need a sequence of its own, which is
+// reported on `report` when there is one.
+static mlir::FailureOr<std::vector<uint32_t>>
+pass_trips(const InterconnectBinding &binding, mlir::Operation *report) {
   std::vector<uint32_t> trips;
   bool seeded = false;
   for (const auto &slot : binding.slots) {
     for (const InterconnectConfigOption &opt : slot) {
       for (const Anchor &a : opt.first_anchors) {
-        std::vector<uint32_t> own;
-        for (std::size_t k = 0; k < a.pass_hi.size() && k < a.ir_idx.size();
-             ++k) {
-          own.push_back(a.pass_hi[k] - a.ir_idx[k] + 1);
-        }
+        std::vector<uint32_t> own = own_trips(a);
         if (!seeded) {
           trips = own;
           seeded = true;
         } else if (own != trips) {
-          llvm::errs() << "pass_trips: transfers repeating at different "
-                          "depths not implemented yet\n";
-          return {};
+          if (report) {
+            report->emitError("interconnect: transfers sharing a route repeat "
+                              "over different loops; not supported");
+          }
+          return mlir::failure();
         }
       }
     }
@@ -437,6 +448,16 @@ static void release_children(RoutingDepGraph &graph, NodeKey parent,
   }
 }
 
+// The error for a binding that ran out of configuration options.
+static mlir::FailureOr<InterconnectBinding>
+no_free_option(mlir::Operation *report, llvm::StringRef kind,
+               const InterconnectBinding &binding) {
+  report->emitError("interconnect: the ")
+      << kind << " transfers need more than the " << binding.slots.size()
+      << " configuration options the interconnect has; not supported";
+  return mlir::failure();
+}
+
 bool has_conflict(const Node &candidate,
                   const std::vector<InterconnectConfig> &current,
                   llvm::StringRef kind) {
@@ -457,8 +478,9 @@ bool has_conflict(const Node &candidate,
   return false;
 }
 
-InterconnectBinding bind_interconnect(RoutingDepGraph graph,
-                                      llvm::StringRef kind) {
+mlir::FailureOr<InterconnectBinding>
+bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
+                  mlir::Operation *report) {
   std::vector<Node> free_set;
   std::vector<ActiveConfig> active;
   std::vector<InterconnectConfig> current;
@@ -509,8 +531,7 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
         if (!save_current(binding, current, current_first_anchors,
                           current_last_anchors)
                  .has_value()) {
-          llvm::errs() << "bind_interconnect: no free binding slot\n";
-          return binding;
+          return no_free_option(report, kind, binding);
         }
         // What is still in flight has to stay configured across the switch.
         current = active_configs(active);
@@ -551,8 +572,7 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
     if (!save_current(binding, current, current_first_anchors,
                       current_last_anchors)
              .has_value()) {
-      llvm::errs() << "bind_interconnect: no free binding slot\n";
-      return binding;
+      return no_free_option(report, kind, binding);
     }
   }
 
@@ -681,12 +701,17 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
   return rop;
 }
 
-void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
-                                mlir::OpBuilder &builder) {
+mlir::LogicalResult
+emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
+                           mlir::OpBuilder &builder) {
   builder.setInsertionPoint(rop.getBody().front().getTerminator());
 
   if (binding.sequence.size() <= 1) {
-    return;
+    return mlir::success();
+  }
+  mlir::FailureOr<std::vector<uint32_t>> trips = pass_trips(binding, rop);
+  if (mlir::failed(trips)) {
+    return mlir::failure();
   }
 
   std::vector<int> deltas;
@@ -717,10 +742,11 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   }
   runs.push_back({current, count});
 
+  // One rep steps the option by a fixed stride; a sequence that changes stride
+  // (0, 1, 0) would need one rep per run.
   if (runs.size() != 1) {
-    llvm::errs() << "emit_sequence_instructions: multiple runs not implemented "
-                    "yet\n";
-    return;
+    return rop->emitError("interconnect: the route option sequence of this "
+                          "epoch is not one fixed stride; not supported");
   }
 
   mlir::Location loc = rop.getLoc();
@@ -753,13 +779,12 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   // One level per pass loop, innermost first, replaying the sequence. Each has
   // a delay of its own: the route fires fewer events per pass than the rops it
   // serves, so it cannot share their period.
-  std::vector<uint32_t> trips = pass_trips(binding);
-  for (std::size_t k = trips.size(); k-- > 0;) {
+  for (std::size_t k = trips->size(); k-- > 0;) {
     llvm::SmallVector<mlir::NamedAttribute> pass_attrs;
     pass_attrs.push_back(builder.getNamedAttr(
         "delay", builder.getStringAttr(delay_name + "_" + std::to_string(k))));
     pass_attrs.push_back(builder.getNamedAttr(
-        "iter", builder.getI32IntegerAttr(static_cast<int32_t>(trips[k]))));
+        "iter", builder.getI32IntegerAttr(static_cast<int32_t>((*trips)[k]))));
     pass_attrs.push_back(
         builder.getNamedAttr("step", builder.getI32IntegerAttr(0)));
     pass_attrs.push_back(
@@ -769,6 +794,7 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
         builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
         builder.getStringAttr("rep"), builder.getDictionaryAttr(pass_attrs));
   }
+  return mlir::success();
 }
 
 // What the debug dumps show against a constraint: the pass that emitted it and
@@ -791,7 +817,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   // rop having no repetition to index then.
   std::vector<uint32_t> trips;
   if (has_sequence) {
-    trips = pass_trips(binding);
+    trips = *pass_trips(binding, /*report=*/nullptr);
   }
   std::vector<uint32_t> first_pass(trips.size(), 0);
   std::vector<uint32_t> last_pass;

@@ -284,7 +284,11 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
 //===----------------------------------------------------------------------===//
 class InterconnectPassRewriter : public OpRewritePattern<EpochOp> {
 public:
-  using OpRewritePattern<EpochOp>::OpRewritePattern;
+  // `failed` is set when a cell's transfers cannot be bound or sequenced; the
+  // error is already reported on the epoch or the rop by then. A pattern that
+  // has rewritten the IR cannot report failure itself, so the pass checks it.
+  InterconnectPassRewriter(MLIRContext *context, bool &failed)
+      : OpRewritePattern<EpochOp>(context), failed_(failed) {}
 
   LogicalResult matchAndRewrite(EpochOp op,
                                 PatternRewriter &rewriter) const final {
@@ -338,19 +342,28 @@ public:
         reduced.transitive_reduce();
         reduced.dump_dot(dot_path);
 
-        InterconnectBinding binding = bind_interconnect(graph, kind);
+        mlir::FailureOr<InterconnectBinding> binding =
+            bind_interconnect(graph, kind, op);
+        if (mlir::failed(binding)) {
+          failed_ = true;
+          return;
+        }
         llvm::errs() << "binding (" << kind << "):\n";
-        dump_binding(binding, llvm::errs());
+        dump_binding(*binding, llvm::errs());
 
         RopOp rop = nullptr;
         if (kind == "word") {
-          rop = emit_swb_instructions(binding, cell, rewriter);
+          rop = emit_swb_instructions(*binding, cell, rewriter);
         } else {
-          rop = emit_route_instructions(binding, cell, rewriter);
+          rop = emit_route_instructions(*binding, cell, rewriter);
         }
         if (rop) {
-          emit_sequence_instructions(binding, rop, rewriter);
-          emit_interconnect_constraints(binding, rop, rewriter);
+          if (mlir::failed(
+                  emit_sequence_instructions(*binding, rop, rewriter))) {
+            failed_ = true;
+            return;
+          }
+          emit_interconnect_constraints(*binding, rop, rewriter);
         }
 
         // Best-effort rendering via graphviz, producing both an SVG (preferred,
@@ -386,6 +399,9 @@ public:
 
     return any_processed ? success() : failure();
   }
+
+private:
+  bool &failed_;
 };
 
 class InterconnectPass : public impl::InterconnectPassBase<InterconnectPass> {
@@ -395,10 +411,11 @@ public:
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
 
+    bool binding_failed = false;
     RewritePatternSet patterns(&getContext());
-    patterns.add<InterconnectPassRewriter>(&getContext());
+    patterns.add<InterconnectPassRewriter>(&getContext(), binding_failed);
     FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsGreedily(module, patternSet))) {
+    if (failed(applyPatternsGreedily(module, patternSet)) || binding_failed) {
       signalPassFailure();
     }
     module.dump();
