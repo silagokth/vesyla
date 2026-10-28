@@ -334,6 +334,22 @@ add_mlir_library(
   MLIRArithDialect
   MLIRMemRefDialect)
 
+# Undoes C integer promotion: arithmetic under an arith.trunci is computed in
+# the narrow type, so a kernel lowered from C reaches the 16-bit patterns.
+add_custom_mlir_pass_dir(transformation/narrow_integers VesylaNarrowIntegers)
+file(GLOB SOURCE_NARROW_INTEGERS "src/transformation/narrow_integers/*.cpp")
+add_mlir_library(
+  VesylaNarrowIntegers
+  ${SOURCE_NARROW_INTEGERS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaNarrowIntegersIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRArithDialect)
+
 # Design space exploration: allocation, binding and scheduling over the module
 # instruction selection produced. Allocation is read from the architecture file;
 # binding and scheduling are still being written.
@@ -374,7 +390,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
