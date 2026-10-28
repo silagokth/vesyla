@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
 Usage: ./run.sh [options] [pabot/robot options...]
   --frontend=pasm          run the testcases' pasm/*.pasm programs (default)
   --frontend=mlir          run the testcases' mlir/*.mlir programs
-  --frontend=c             run the testcases' c/*.c programs (lowered with cgeist: $CGEIST or PATH)
+  --frontend=c             run the testcases' c/*.c programs (lowered with Polygeist: cgeist, polygeist-opt)
   --frontend=all           run all three
   --rtl-target=TARGET      add a Bender target to the RTL simulation on top of sim,
                            e.g. freepdk45 for the OpenRAM macro models; repeatable

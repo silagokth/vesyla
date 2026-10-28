@@ -43,7 +43,8 @@ enum Command {
         #[arg(short, long, default_value = "0,2,3", value_parser = parse_models)]
         models: String,
         /// Front end to compile the testcase with: its pasm/*.pasm, its mlir/*.mlir or its
-        /// c/*.c programs (lowered to MLIR with cgeist, $CGEIST or cgeist on PATH)
+        /// c/*.c programs (lowered to MLIR with Polygeist: $CGEIST and $POLYGEIST_OPT, or
+        /// cgeist and polygeist-opt on PATH)
         #[arg(short, long, value_enum, default_value_t = Frontend::Pasm)]
         frontend: Frontend,
         /// Build the RTL without reconfiguration (run.sh --no-reconfiguration): the
@@ -363,6 +364,13 @@ fn use_mlir_programs(root: &Path) -> Result<(), io::Error> {
 // kernel is the one function c/<id>.c defines; vesyla's FuncToEpochPass takes
 // it from there.
 //
+// cgeist emits scf, and polygeist-opt raises it to affine. --affine-cfg has to
+// run before --raise-scf-to-affine: C's `/` and `%` on an index reach it
+// expanded into divsi/remsi and selects, which --affine-cfg folds back into
+// floordiv/mod. Raised the other way round -- cgeist's own
+// --raise-scf-to-affine -- such an access stays a memref.load and
+// FuncToEpochPass rejects it.
+//
 // cgeist (Polygeist) is built against an older LLVM than vesyla. Its module
 // carries LLVM-dialect and data-layout attributes vesyla does not load, and
 // nothing below reads them, so they are dropped.
@@ -375,6 +383,8 @@ fn lower_c_programs(root: &Path) -> Result<(), io::Error> {
         ));
     }
     let cgeist = env::var("CGEIST").unwrap_or_else(|_| "cgeist".to_string());
+    let polygeist_opt =
+        env::var("POLYGEIST_OPT").unwrap_or_else(|_| "polygeist-opt".to_string());
     let mlir_dir = root.join("mlir");
     if mlir_dir.exists() {
         fs::remove_dir_all(&mlir_dir)?;
@@ -388,33 +398,82 @@ fn lower_c_programs(root: &Path) -> Result<(), io::Error> {
                 format!("{:?} defines no void function to compile", program),
             )
         })?;
-        let output = process::Command::new(&cgeist)
-            .arg(&program)
-            .arg(format!("--function={}", function))
-            .args(["-S", "--raise-scf-to-affine"])
-            .output()
-            .map_err(|err| {
-                io::Error::new(
-                    err.kind(),
-                    format!("Failed to run cgeist ({}): {} -- set CGEIST", cgeist, err),
-                )
-            })?;
-        if !output.status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "cgeist failed on {:?}:\n{}",
-                    program,
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            ));
-        }
-        let mlir = strip_cgeist_attributes(&String::from_utf8_lossy(&output.stdout));
+        let scf = run_tool(
+            process::Command::new(&cgeist)
+                .arg(&program)
+                .arg(format!("--function={}", function))
+                .arg("-S"),
+            "cgeist",
+            "CGEIST",
+            &cgeist,
+            &program,
+            None,
+        )?;
+        let affine = run_tool(
+            process::Command::new(&polygeist_opt).args([
+                "--affine-cfg",
+                "--raise-scf-to-affine",
+                "--affine-cfg",
+            ]),
+            "polygeist-opt",
+            "POLYGEIST_OPT",
+            &polygeist_opt,
+            &program,
+            Some(&scf),
+        )?;
+        let mlir = strip_cgeist_attributes(&String::from_utf8_lossy(&affine));
         let stem = program.file_stem().unwrap();
         fs::write(mlir_dir.join(stem).with_extension("mlir"), mlir)?;
-        info!("Lowered {:?} (function {}) with cgeist", program, function);
+        info!("Lowered {:?} (function {}) with cgeist and polygeist-opt", program, function);
     }
     Ok(())
+}
+
+// Runs one Polygeist tool, feeding it `stdin` when given, and returns its
+// stdout. A tool that is missing or fails is reported with its stderr and the
+// variable that points at it.
+fn run_tool(
+    command: &mut process::Command,
+    name: &str,
+    var: &str,
+    path: &str,
+    program: &Path,
+    stdin: Option<&[u8]>,
+) -> Result<Vec<u8>, io::Error> {
+    command
+        .stdin(if stdin.is_some() {
+            process::Stdio::piped()
+        } else {
+            process::Stdio::null()
+        })
+        .stdout(process::Stdio::piped())
+        .stderr(process::Stdio::piped());
+    let mut child = command.spawn().map_err(|err| {
+        io::Error::new(
+            err.kind(),
+            format!("Failed to run {} ({}): {} -- set {}", name, path, err, var),
+        )
+    })?;
+    if let Some(input) = stdin {
+        // Written from a thread: a tool that fills its stdout pipe before it has
+        // read all of stdin would otherwise never finish.
+        let mut pipe = child.stdin.take().unwrap();
+        let input = input.to_vec();
+        std::thread::spawn(move || pipe.write_all(&input));
+    }
+    let output = child.wait_with_output()?;
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "{} failed on {:?}:\n{}",
+                name,
+                program,
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        ));
+    }
+    Ok(output.stdout)
 }
 
 // The kernel a C program defines: the first `void <name>(` at the start of a
