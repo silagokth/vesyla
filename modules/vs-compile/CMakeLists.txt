@@ -369,6 +369,25 @@ add_mlir_library(
   MLIRVectorDialect
   VesylaSelectInstr)
 
+# Re-reads a scalar loaded outside a loop inside every loop that uses it, so
+# the operation it feeds gets one element per iteration.
+add_custom_mlir_pass_dir(transformation/sink_scalar_loads VesylaSinkScalarLoads)
+file(GLOB SOURCE_SINK_SCALAR_LOADS "src/transformation/sink_scalar_loads/*.cpp")
+add_mlir_library(
+  VesylaSinkScalarLoads
+  ${SOURCE_SINK_SCALAR_LOADS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSinkScalarLoadsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRMemRefDialect
+  VesylaSelectInstr)
+
 # Design space exploration: allocation, binding and scheduling over the module
 # instruction selection produced. Allocation is read from the architecture file;
 # binding and scheduling are still being written.
@@ -409,7 +428,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
