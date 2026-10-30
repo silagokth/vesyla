@@ -56,6 +56,19 @@ public:
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
 
+    // A reduction's initial value is its accumulator reset. A constant hoisted
+    // out of a surrounding loop would reset it once, so each reduction gets
+    // its own copy right before it.
+    module.walk([](mlir::affine::AffineForOp loop) {
+      for (mlir::OpOperand &init : loop.getInitsMutable()) {
+        auto constant = init.get().getDefiningOp<mlir::arith::ConstantOp>();
+        if (constant && outermost_crossed_loop(loop, constant)) {
+          mlir::OpBuilder builder(loop);
+          init.set(builder.clone(*constant)->getResult(0));
+        }
+      }
+    });
+
     llvm::SmallVector<mlir::affine::AffineLoadOp> loads;
     module.walk([&](mlir::affine::AffineLoadOp load) { loads.push_back(load); });
 
