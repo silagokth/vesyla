@@ -11,7 +11,7 @@
     },
     {
       "name": "rf_impl",
-      "kind": "rf"
+      "kind": "rf_4row"
     },
     {
       "name": "dpu_impl",

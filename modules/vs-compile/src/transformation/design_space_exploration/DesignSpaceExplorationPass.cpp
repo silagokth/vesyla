@@ -45,11 +45,9 @@ bool has_resource(mlir::Operation *op) {
   });
 }
 
-// Write the conflict graph as Graphviz DOT under the "conflict_graph_dir"
-// output path. This is the pass's own reasoning made readable: what it thought
-// could not be put together, and why. Losing the dump is not worth failing a
-// compile over, so problems here are warnings.
-void dump_conflict_graph(const ConflictGraph &graph) {
+// `file` under the "conflict_graph_dir" output path, the directory made if it
+// is missing; empty, with a warning, when it cannot be.
+std::string dump_path(const std::string &file) {
   std::string output_dir;
   if (!::vesyla::util::GlobalVar::gets("__OUTPUT_DIR__", output_dir) ||
       output_dir.empty()) {
@@ -64,10 +62,20 @@ void dump_conflict_graph(const ConflictGraph &graph) {
   if (dir_ec) {
     llvm::errs() << "Warning: could not create conflict graph directory "
                  << graph_dir << ": " << dir_ec.message() << "\n";
+    return "";
+  }
+  return graph_dir + "/" + file;
+}
+
+// Write the conflict graph as Graphviz DOT under the "conflict_graph_dir"
+// output path. This is the pass's own reasoning made readable: what it thought
+// could not be put together, and why. Losing the dump is not worth failing a
+// compile over, so problems here are warnings.
+void dump_conflict_graph(const ConflictGraph &graph) {
+  std::string path = dump_path("conflict.dot");
+  if (path.empty()) {
     return;
   }
-
-  std::string path = graph_dir + "/conflict.dot";
   std::error_code file_ec;
   llvm::raw_fd_ostream os(path, file_ec, llvm::sys::fs::OF_Text);
   if (file_ec) {
@@ -76,6 +84,23 @@ void dump_conflict_graph(const ConflictGraph &graph) {
     return;
   }
   graph.write_dot(os, "program");
+}
+
+// Write which rows of which memory hold which storage, and when, as
+// memory_map.txt next to the conflict graph.
+void dump_memory_map(const Binder &binder) {
+  std::string path = dump_path("memory_map.txt");
+  if (path.empty()) {
+    return;
+  }
+  std::error_code file_ec;
+  llvm::raw_fd_ostream os(path, file_ec, llvm::sys::fs::OF_Text);
+  if (file_ec) {
+    llvm::errs() << "Warning: could not open memory map file " << path << ": "
+                 << file_ec.message() << "\n";
+    return;
+  }
+  binder.write_memory_map(os);
 }
 
 // The check the pass ends on: nothing may leave here unbound.
@@ -102,7 +127,7 @@ mlir::LogicalResult verify_all_bound(mlir::ModuleOp module) {
   return mlir::success(ok);
 }
 
-// The other check the pass ends on: one storage, one instance.
+// The other check the pass ends on: one storage, one instance and base row.
 //
 // Every access to a register file has to land on the register file that access
 // is in, which is what the conflict graph merges storages for. It is worth
@@ -140,19 +165,24 @@ mlir::LogicalResult verify_storage_bindings(mlir::ModuleOp module) {
       return;
     }
     pasm::ResourceAttr first = entry->second.first;
+    auto base = [](mlir::Operation *op) {
+      auto attr = op->getAttrOfType<mlir::IntegerAttr>("mem_base");
+      return attr ? attr.getInt() : 0;
+    };
     if (first.getRow() == resource.getRow() &&
         first.getCol() == resource.getCol() &&
-        first.getSlot() == resource.getSlot()) {
+        first.getSlot() == resource.getSlot() &&
+        base(entry->second.second) == base(rop)) {
       return;
     }
     mlir::InFlightDiagnostic diag = rop.emitError(
         "design-space-exploration: storage @");
     diag << storage.getValue() << " was bound to (" << resource.getRow() << ", "
-         << resource.getCol() << ", " << resource.getSlot()
-         << ") here, and to (" << first.getRow() << ", " << first.getCol()
-         << ", " << first.getSlot()
-         << ") elsewhere -- every access to one register file has to land on "
-            "one register file";
+         << resource.getCol() << ", " << resource.getSlot() << ") base row "
+         << base(rop) << " here, and to (" << first.getRow() << ", "
+         << first.getCol() << ", " << first.getSlot() << ") base row "
+         << base(entry->second.second) << " elsewhere -- every access to one register file has to land on "
+            "the same rows of one register file";
     diag.attachNote(entry->second.second->getLoc())
         << "design-space-exploration: the other binding of @"
         << storage.getValue();
@@ -192,7 +222,9 @@ public:
 
     // Binding: the colouring of the graph against the instances allocated.
     std::unique_ptr<Binder> binder = create_greedy_coloring_binder();
-    if (mlir::failed(binder->bind(graph, *arch))) {
+    const bool bound = mlir::succeeded(binder->bind(graph, *arch));
+    dump_memory_map(*binder);
+    if (!bound) {
       return signalPassFailure();
     }
 

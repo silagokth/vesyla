@@ -36,6 +36,8 @@ struct ResourceEntry {
   int col;
   int slot;
   std::string kind;
+  // its component category ("memory", ...)
+  std::string category;
   // its parameters in the architecture
   nlohmann::json parameters;
   // cycles from an act to the first address of its AGUs
@@ -229,9 +231,9 @@ private:
   bool or_configured_ = false;
 };
 
-// How a kind of resource addresses its conf entries: a conf writes the entry
-// named by the `key` fields with the `value` fields, as the resource's RTL
-// decodes it. `variant` is the conf variant, empty for a conf without any.
+// How a kind of resource, or every resource of a category, addresses its conf
+// entries: a conf writes the entry named by the `key` fields with the `value`
+// fields, as the resource's RTL decodes it. `variant` is the conf variant, empty for a conf without any.
 //
 // The entries of an option table are grouped into options by the conf's
 // `option` field, and the resource uses the option the AGU of port
@@ -240,7 +242,7 @@ private:
 // switches to an option `select_latency` cycles after the selector presents
 // its address.
 struct ConfRule {
-  const char *kind;
+  const char *kind; // a kind, or a category
   const char *variant;
   const char *table;
   int selector_port;
@@ -260,9 +262,8 @@ const std::vector<ConfRule> &conf_rules() {
       // send_links / receive_links[source] of route option `option` = target,
       // selected by AGU_ROUTE_INDEX through the registered current_option
       {"swb", "route", "route", 1, 1, {"sr", "source"}, {"target"}},
-      // memory[address] = value
-      {"rf", "", "memory", -1, 0, {"address"}, {"value"}},
-      {"rf_row", "", "memory", -1, 0, {"address"}, {"value"}},
+      // memory[address] = value, for every register file
+      {"memory", "", "memory", -1, 0, {"address"}, {"value"}},
   };
   return rules;
 }
@@ -549,7 +550,9 @@ public:
         nlohmann::json parameters =
             resource.value("parameters", nlohmann::json::object());
         resources.push_back({row, col, first_slot,
-                             resource.value("kind", std::string()), parameters,
+                             resource.value("kind", std::string()),
+                             resource.value("category", std::string()),
+                             parameters,
                              parameters.value("AGU_LATENCY", 1)});
       }
     }
@@ -948,7 +951,9 @@ private:
     std::string variant = string_param(instr, "variant");
     const ConfRule *rule = nullptr;
     for (const ConfRule &candidate : conf_rules()) {
-      if (resource.kind == candidate.kind && variant == candidate.variant) {
+      if ((resource.kind == candidate.kind ||
+           resource.category == candidate.kind) &&
+          variant == candidate.variant) {
         rule = &candidate;
         break;
       }

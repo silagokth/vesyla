@@ -10,6 +10,7 @@
 #include "json/json.hpp"
 
 #include <string>
+#include <utility>
 
 namespace vesyla {
 namespace transformation {
@@ -28,10 +29,21 @@ struct ResourceInstance {
   int size = 1;
   bool io_input = false;
   bool io_output = false;
+  // The component's category ("memory", ...), "uncategorized" when it has none.
+  std::string category;
   // Elaborated parameters of this instance (RF_DEPTH, WORD_BITWIDTH, ...).
-  // Binding will need them to know a register file's capacity; nothing reads
-  // them yet.
   nlohmann::json parameters;
+  // The instructions it takes, as (name, port): one entry per port key of an
+  // instruction with a `port` segment, port -1 for one without.
+  llvm::SmallVector<std::pair<std::string, int>> instructions;
+
+  bool is_memory() const { return category == "memory"; }
+  bool has_instruction(llvm::StringRef name, int port) const;
+  // A memory's capacity in words (RF_DEPTH), and the words in one of its rows
+  // (a bulk transfer: BULK_BITWIDTH / WORD_BITWIDTH). 0 when not given.
+  int depth() const;
+  int row_words() const;
+  int depth_rows() const;
 };
 
 // The set of resources the design may use -- the allocation.
@@ -61,6 +73,10 @@ public:
   // Indices of every instance of `kind`, in the order the architecture file
   // lists them (row-major over cells, then slot order within a cell).
   llvm::SmallVector<unsigned> instances_of_kind(llvm::StringRef kind) const;
+
+  // Indices of every memory instance, smallest depth first, then in file
+  // order.
+  llvm::SmallVector<unsigned> memory_instances() const;
 
   int rows() const { return rows_; }
   int cols() const { return cols_; }

@@ -105,15 +105,13 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   ConflictGraph graph;
   mlir::Operation *scope = module.getOperation();
 
-  // The nodes. Operations that hold the same storage on the same kind are one
-  // node, because they have to be bound together; everything else is a node of
-  // its own. Grouping on the kind as well as the storage keeps a node from
-  // being asked to be two kinds of instance at once, which could otherwise
-  // happen where two resources match accesses to one buffer.
+  // The nodes. Operations that hold the same storage are one node, because
+  // they have to be bound together; everything else is a node of its own. The
+  // kind is not part of the key: every memory that fits the storage is a
+  // candidate, whichever memory's pattern matched the access.
   // Keyed on the generic Attribute: DenseMapInfo for a concrete attribute class
   // hands back its base, which will not convert to the derived type.
-  llvm::DenseMap<std::pair<mlir::Attribute, mlir::Attribute>, unsigned>
-      by_storage;
+  llvm::DenseMap<mlir::Attribute, unsigned> by_storage;
   scope->walk([&](drra::RopOp rop) {
     mlir::Operation *op = rop.getOperation();
     auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
@@ -121,7 +119,7 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
 
     unsigned index = graph.nodes_.size();
     if (kind && storage) {
-      auto [entry, fresh] = by_storage.try_emplace({kind, storage}, index);
+      auto [entry, fresh] = by_storage.try_emplace(storage, index);
       index = entry->second;
       if (fresh) {
         graph.nodes_.push_back(Node{{}, kind, storage, {}});
@@ -142,22 +140,6 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   graph.adjacency_.resize(graph.nodes_.size());
   if (graph.nodes_.empty()) {
     return graph;
-  }
-
-  // Different storage on one kind. One instance holds one storage, so these
-  // conflict whether or not they ever run at the same time -- which is why the
-  // pairs are walked here rather than left to the occupancies below.
-  for (unsigned a = 0; a < graph.nodes_.size(); ++a) {
-    if (!graph.nodes_[a].storage) {
-      continue;
-    }
-    for (unsigned b = a + 1; b < graph.nodes_.size(); ++b) {
-      if (!graph.nodes_[b].storage ||
-          graph.nodes_[a].storage == graph.nodes_[b].storage) {
-        continue;
-      }
-      graph.add_edge(a, b, ConflictReason::distinct_storage);
-    }
   }
 
   // Data flow. A producer still holds its value when its consumer reads it, so
@@ -247,10 +229,10 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
   if (a == b) {
     return;
   }
-  // Different kinds never land on one instance, so there is nothing to say
-  // about them; a node whose kind selection did not write has nothing to
-  // compare against either.
-  if (!nodes_[a].kind || nodes_[a].kind != nodes_[b].kind) {
+  // Nodes bound from different pools never land on one instance, so there is
+  // nothing to say about them; a node whose kind selection did not write has
+  // nothing to compare against either.
+  if (!same_pool(a, b)) {
     return;
   }
 
@@ -258,10 +240,7 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
   auto found = edges_.find(key);
   if (found == edges_.end()) {
     llvm::SmallVector<mlir::StringAttr> shared;
-    bool distinct_storage = nodes_[a].storage && nodes_[b].storage &&
-                            nodes_[a].storage != nodes_[b].storage;
-    if (!distinct_storage && !nodes_[a].parts.empty() &&
-        !nodes_[b].parts.empty()) {
+    if (!nodes_[a].parts.empty() && !nodes_[b].parts.empty()) {
       // Same resource, same moment -- but a resource has parts, and two nodes
       // only contend when they want the same one. A node that declared no parts
       // is read as holding all of them, so it contends with everything of its
@@ -277,6 +256,20 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
     adjacency_[b].insert(a);
   }
   found->second.why = found->second.why | why;
+}
+
+bool ConflictGraph::same_pool(unsigned a, unsigned b) const {
+  if (nodes_[a].storage || nodes_[b].storage) {
+    return nodes_[a].storage && nodes_[b].storage;
+  }
+  return nodes_[a].kind && nodes_[a].kind == nodes_[b].kind;
+}
+
+std::string ConflictGraph::pool_name(unsigned node) const {
+  if (nodes_[node].storage) {
+    return "memory";
+  }
+  return nodes_[node].kind ? nodes_[node].kind.getValue().str() : "";
 }
 
 ConflictReason ConflictGraph::reason(unsigned a, unsigned b) const {
@@ -363,26 +356,27 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
   os << "graph \"" << graph_name << "\" {\n";
   os << "  node [shape=box];\n";
 
-  // Nodes grouped by kind, which is also how they are grouped when bound: a
-  // cluster is the set of nodes competing for the same pool of instances.
-  llvm::SmallVector<mlir::StringAttr> kinds_seen;
-  for (const Node &node : nodes_) {
-    if (node.kind && !llvm::is_contained(kinds_seen, node.kind)) {
-      kinds_seen.push_back(node.kind);
+  // Nodes grouped by pool, which is also how they are grouped when bound: a
+  // cluster is the set of nodes competing for the same instances.
+  llvm::SmallVector<std::string> pools_seen;
+  for (unsigned i = 0; i < nodes_.size(); ++i) {
+    std::string pool = pool_name(i);
+    if (!pool.empty() && !llvm::is_contained(pools_seen, pool)) {
+      pools_seen.push_back(pool);
     }
   }
-  for (mlir::StringAttr kind : kinds_seen) {
-    os << "  subgraph \"cluster_" << kind.getValue() << "\" {\n";
-    os << "    label=\"" << kind.getValue() << "\";\n";
+  for (const std::string &pool : pools_seen) {
+    os << "  subgraph \"cluster_" << pool << "\" {\n";
+    os << "    label=\"" << pool << "\";\n";
     for (unsigned i = 0; i < nodes_.size(); ++i) {
-      if (nodes_[i].kind == kind) {
+      if (pool_name(i) == pool) {
         os << "    n" << i << " [label=\"" << node_label(i) << "\"];\n";
       }
     }
     os << "  }\n";
   }
   for (unsigned i = 0; i < nodes_.size(); ++i) {
-    if (!nodes_[i].kind) {
+    if (pool_name(i).empty()) {
       os << "  n" << i << " [label=\"" << node_label(i)
          << "\", style=dashed, color=gray];\n";
     }
@@ -402,16 +396,13 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
       std::string label;
       if (!shared.empty()) {
         label = join(shared);
-      } else if (has_reason(why, ConflictReason::distinct_storage)) {
-        label = "different storage";
       } else {
         label = "whole resource";
       }
 
       std::string reasons;
       for (auto [bit, text] :
-           {std::pair{ConflictReason::distinct_storage, "storage"},
-            std::pair{ConflictReason::data_flow, "data flow"},
+           {std::pair{ConflictReason::data_flow, "data flow"},
             std::pair{ConflictReason::live_overlap, "live"},
             std::pair{ConflictReason::same_loop, "loop"}}) {
         if (has_reason(why, bit)) {

@@ -1,6 +1,9 @@
+#include "MemoryMap.hpp"
 #include "Strategy.hpp"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -168,6 +171,90 @@ mlir::Attribute build_resource(mlir::Operation *rop,
   return mlir::ArrayAttr::get(ctx, endpoints);
 }
 
+// The memref each storage names: the op whose `id` is the storage symbol and
+// whose one result is a memref (the module's memref.alloc).
+llvm::DenseMap<mlir::Attribute, mlir::MemRefType>
+storage_types(mlir::ModuleOp module) {
+  llvm::DenseMap<mlir::Attribute, mlir::MemRefType> types;
+  module.walk([&](mlir::Operation *op) {
+    auto id = op->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+    if (!id || op->getNumResults() != 1) {
+      return;
+    }
+    if (auto type = mlir::dyn_cast<mlir::MemRefType>(op->getResult(0).getType())) {
+      types[id] = type;
+    }
+  });
+  return types;
+}
+
+// The instruction an access issues, as (name, port), matched against what a
+// memory takes (ResourceInstance::instructions).
+llvm::SmallVector<std::pair<std::string, int>>
+instructions_of(mlir::Operation *rop) {
+  llvm::SmallVector<std::pair<std::string, int>> instructions;
+  for (const char *name : {"conf", "evt"}) {
+    auto dict = rop->getAttrOfType<mlir::DictionaryAttr>(name);
+    if (!dict) {
+      continue;
+    }
+    int port = -1;
+    if (auto attr = dict.getAs<mlir::IntegerAttr>("port")) {
+      port = static_cast<int>(attr.getInt());
+    }
+    instructions.push_back({name, port});
+  }
+  return instructions;
+}
+
+// Move an access's address to the storage's base row: the map's result goes up
+// by the rows below it, counted in the access's own unit (a word, or a
+// vector<N> for a bulk access). AffineToRepPass turns the map's constant into
+// the AGU's init_addr.
+mlir::LogicalResult move_map(mlir::Operation *rop, int base, int row_words) {
+  if (base == 0) {
+    return mlir::success();
+  }
+  mlir::MLIRContext *ctx = rop->getContext();
+  mlir::Type value;
+  if (rop->getNumResults() > 0) {
+    value = rop->getResult(0).getType();
+  } else if (rop->getNumOperands() > 0) {
+    value = rop->getOperand(0).getType();
+  }
+  int64_t unit = 1;
+  if (auto vector = mlir::dyn_cast_or_null<mlir::VectorType>(value)) {
+    unit = vector.getNumElements();
+  }
+  if (unit <= 0 || row_words % unit != 0) {
+    rop->emitError("design-space-exploration: an access of ")
+        << unit << " words does not divide a memory row of " << row_words;
+    return mlir::failure();
+  }
+
+  mlir::AffineMap map;
+  if (auto attr = rop->getAttrOfType<mlir::AffineMapAttr>("map")) {
+    map = attr.getValue();
+  } else {
+    // No map: address 0 on every iteration of the enclosing loops.
+    unsigned loops = 0;
+    for (mlir::Operation *parent = rop->getParentOp(); parent;
+         parent = parent->getParentOp()) {
+      loops += llvm::isa<mlir::affine::AffineForOp>(parent);
+    }
+    map = mlir::AffineMap::get(loops, 0, mlir::getAffineConstantExpr(0, ctx));
+  }
+  if (map.getNumResults() != 1) {
+    rop->emitError("design-space-exploration: cannot move an address map with ")
+        << map.getNumResults() << " results to a base row";
+    return mlir::failure();
+  }
+  mlir::AffineExpr moved = map.getResult(0) + base * (row_words / unit);
+  rop->setAttr("map", mlir::AffineMapAttr::get(mlir::AffineMap::get(
+                          map.getNumDims(), map.getNumSymbols(), moved)));
+  return mlir::success();
+}
+
 class GreedyColoringBinder : public Binder {
 public:
   mlir::LogicalResult bind(const ConflictGraph &graph,
@@ -193,9 +280,12 @@ public:
     // Cache the per-kind candidate lists; a scope full of rf accesses should
     // not rescan the instance table for each one.
     llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<unsigned>> candidates;
-    bool failed = false;
+    bool failed = mlir::failed(bind_memories(graph, arch, order, assignment));
 
     for (unsigned node : order) {
+      if (graph.storage(node)) {
+        continue;
+      }
       // A node may be several operations -- every access to one register file
       // is bound as a unit -- so diagnostics are raised against the first of
       // them and the decision is written onto all of them.
@@ -243,14 +333,11 @@ public:
         // back later -- is what would rescue this, and there is none yet, so
         // say what ran short instead of overcommitting an instance and letting
         // it surface as wrong results.
-        mlir::InFlightDiagnostic diag = rop->emitError()
+        rop->emitError()
             << "design-space-exploration: the architecture allocates "
             << pool.size() << " resource(s) of kind '" << kind.getValue()
             << "', but this conflicts with all of them -- the program needs "
                "more than the design has";
-        if (mlir::FlatSymbolRefAttr storage = graph.storage(node)) {
-          diag << " (storage @" << storage.getValue() << ")";
-        }
         failed = true;
         continue;
       }
@@ -272,6 +359,198 @@ public:
       }
     }
 
+    return mlir::failure(failed);
+  }
+
+  void write_memory_map(llvm::raw_ostream &os) const final {
+    if (map_ && points_) {
+      map_->write(os, *points_);
+    }
+  }
+
+private:
+  std::optional<MemoryMap> map_;
+  std::optional<ProgramPoints> points_;
+
+  // The storage nodes, largest first and then in `order`: each gets the
+  // smallest memory it fits in -- one holding nothing else over its lifetime
+  // before one that does -- and the lowest rows free there.
+  mlir::LogicalResult bind_memories(const ConflictGraph &graph,
+                                    const Architecture &arch,
+                                    llvm::ArrayRef<unsigned> order,
+                                    llvm::SmallVectorImpl<int> &assignment) {
+    llvm::SmallVector<unsigned> nodes;
+    for (unsigned node : order) {
+      if (graph.storage(node)) {
+        nodes.push_back(node);
+      }
+    }
+    if (nodes.empty()) {
+      return mlir::success();
+    }
+
+    auto module =
+        graph.ops(nodes.front()).front()->getParentOfType<mlir::ModuleOp>();
+    mlir::FailureOr<ProgramPoints> points = ProgramPoints::build(module);
+    if (mlir::failed(points)) {
+      return mlir::failure();
+    }
+    points_ = std::move(*points);
+    map_.emplace(arch);
+    llvm::DenseMap<mlir::Attribute, mlir::MemRefType> types =
+        storage_types(module);
+
+    llvm::DenseMap<unsigned, int64_t> words;
+    bool failed = false;
+    for (unsigned node : nodes) {
+      mlir::MemRefType type = types.lookup(graph.storage(node));
+      if (!type || !type.hasStaticShape()) {
+        graph.ops(node).front()->emitError()
+            << "design-space-exploration: storage @"
+            << graph.storage(node).getValue()
+            << " names no memref of static shape, so its size is not known";
+        failed = true;
+        continue;
+      }
+      words[node] = type.getNumElements();
+    }
+    if (failed) {
+      return mlir::failure();
+    }
+    llvm::stable_sort(nodes, [&](unsigned a, unsigned b) {
+      return words[a] > words[b];
+    });
+
+    llvm::SmallVector<unsigned> memories = arch.memory_instances();
+    for (unsigned node : nodes) {
+      failed |= mlir::failed(
+          bind_memory(graph, arch, memories, node, words[node], assignment));
+    }
+    return mlir::failure(failed);
+  }
+
+  mlir::LogicalResult bind_memory(const ConflictGraph &graph,
+                                  const Architecture &arch,
+                                  llvm::ArrayRef<unsigned> memories,
+                                  unsigned node, int64_t words,
+                                  llvm::SmallVectorImpl<int> &assignment) {
+    llvm::ArrayRef<mlir::Operation *> ops = graph.ops(node);
+    mlir::FlatSymbolRefAttr storage = graph.storage(node);
+    Interval live = storage_lifetime(graph, node, words, *points_);
+
+    // The memories that take every access to the storage.
+    llvm::SmallVector<unsigned> taking;
+    for (unsigned memory : memories) {
+      const ResourceInstance &instance = arch.at(memory);
+      bool takes = llvm::all_of(ops, [&](mlir::Operation *op) {
+        return llvm::all_of(instructions_of(op), [&](const auto &instr) {
+          return instance.has_instruction(instr.first, instr.second);
+        });
+      });
+      if (takes && instance.row_words() > 0) {
+        taking.push_back(memory);
+      }
+    }
+    if (taking.empty()) {
+      ops.front()->emitError()
+          << "design-space-exploration: the architecture has no memory that "
+             "takes the accesses to storage @"
+          << storage.getValue();
+      return mlir::failure();
+    }
+
+    // Big enough, smallest first (memory_instances is sorted by depth).
+    llvm::SmallVector<unsigned> fitting;
+    for (unsigned memory : taking) {
+      if (arch.at(memory).depth() >= words) {
+        fitting.push_back(memory);
+      }
+    }
+    if (fitting.empty()) {
+      const ResourceInstance &largest = arch.at(taking.back());
+      ops.front()->emitError()
+          << "design-space-exploration: storage @" << storage.getValue()
+          << " needs " << words << " words, the largest memory in the "
+          << "architecture holds " << largest.depth() << " (" << largest.kind
+          << ")";
+      return mlir::failure();
+    }
+
+    // Memories a conflicting storage already holds are out: the two would
+    // want the same port at once.
+    llvm::DenseMap<unsigned, unsigned> taken;
+    for (unsigned neighbor : graph.neighbors(node)) {
+      if (assignment[neighbor] >= 0) {
+        taken[static_cast<unsigned>(assignment[neighbor])] = neighbor;
+      }
+    }
+
+    auto rows_in = [&](const ResourceInstance &instance) {
+      return static_cast<int>((words + instance.row_words() - 1) /
+                              instance.row_words());
+    };
+    std::optional<std::pair<unsigned, int>> chosen;
+    for (size_t group = 0; group < fitting.size() && !chosen;) {
+      size_t end = group;
+      int depth = arch.at(fitting[group]).depth();
+      while (end < fitting.size() && arch.at(fitting[end]).depth() == depth) {
+        ++end;
+      }
+      // Within one size, an idle memory first: two storages on one memory
+      // take turns on it.
+      for (bool want_busy : {false, true}) {
+        for (size_t i = group; i < end && !chosen; ++i) {
+          unsigned memory = fitting[i];
+          if (taken.count(memory) || map_->busy(memory, live) != want_busy) {
+            continue;
+          }
+          if (std::optional<int> base =
+                  map_->fit(memory, rows_in(arch.at(memory)), live)) {
+            chosen = {memory, *base};
+          }
+        }
+      }
+      group = end;
+    }
+
+    if (!chosen) {
+      mlir::InFlightDiagnostic diag = ops.front()->emitError();
+      diag << "design-space-exploration: storage @" << storage.getValue()
+           << " (" << words << " words) fits in no memory over ["
+           << points_->name(live.first) << ", " << points_->name(live.last)
+           << "]:";
+      for (unsigned memory : fitting) {
+        const ResourceInstance &instance = arch.at(memory);
+        diag << " " << instance.kind << " (" << instance.row << ","
+             << instance.col << "," << instance.slot << ") ";
+        if (auto conflict = taken.find(memory); conflict != taken.end()) {
+          diag << "holds @" << graph.storage(conflict->second).getValue()
+               << ", which conflicts with it;";
+        } else {
+          diag << map_->holders(memory, live, *points_) << ";";
+        }
+      }
+      return mlir::failure();
+    }
+
+    auto [memory, base] = *chosen;
+    const ResourceInstance &instance = arch.at(memory);
+    map_->place(memory, base, rows_in(instance), {storage, live});
+    assignment[node] = static_cast<int>(memory);
+
+    mlir::Builder builder(ops.front()->getContext());
+    bool failed = false;
+    for (mlir::Operation *bound : ops) {
+      std::optional<EndpointSlots> slots;
+      if (mlir::failed(read_endpoints(bound, instance, slots)) ||
+          mlir::failed(move_map(bound, base, instance.row_words()))) {
+        failed = true;
+        continue;
+      }
+      bound->setAttr("resource", build_resource(bound, instance, slots));
+      bound->setAttr("kind", builder.getStringAttr(instance.kind));
+      bound->setAttr("mem_base", builder.getI32IntegerAttr(base));
+    }
     return mlir::failure(failed);
   }
 };
