@@ -191,9 +191,13 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           llvm::ArrayRef<uint32_t> src_hi = src_ar.getIrHi();
           llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIrLo();
           llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
-          std::size_t n = std::min(src_lo.size(), dst_lo_ar.size());
-          if (range_strictly_after(current_lo_ar.take_front(n),
-                                   src_hi.take_front(n))) {
+          // A dst without indices propagates nothing, so src is gated on its
+          // own dims.
+          std::size_t n = std::min(src_lo.size(), dst_lo_ar.empty()
+                                                      ? current_lo_ar.size()
+                                                      : dst_lo_ar.size());
+          if (n > 0 && range_strictly_after(current_lo_ar.take_front(n),
+                                            src_hi.take_front(n))) {
             continue;
           }
 
