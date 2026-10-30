@@ -30,7 +30,7 @@ def StageIoPass : Pass<"stage-io-pass", "::mlir::ModuleOp"> {
     Reported as errors, for now:
       - a read whose row changes with the word index (a sliding window,
         `a[i + j]`; C frontend G17),
-      - a write that covers only part of a row (C frontend G16),
+      - a write whose words are not known at compile time,
       - a write or read whose row changes inside the loop over its words
         (`out[col][row]`),
       - a read whose row changes inside a reduction loop longer than a row

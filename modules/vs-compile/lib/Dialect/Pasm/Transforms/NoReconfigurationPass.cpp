@@ -262,6 +262,8 @@ const std::vector<ConfRule> &conf_rules() {
       // send_links / receive_links[source] of route option `option` = target,
       // selected by AGU_ROUTE_INDEX through the registered current_option
       {"swb", "route", "route", 1, 1, {"sr", "source"}, {"target"}},
+      // wr_mask, one value for the whole program
+      {"io", "", "wr_mask", -1, 0, {}, {"wr_mask"}},
       // memory[address] = value, for every register file
       {"memory", "", "memory", -1, 0, {"address"}, {"value"}},
   };

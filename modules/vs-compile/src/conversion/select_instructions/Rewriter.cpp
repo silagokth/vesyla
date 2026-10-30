@@ -123,8 +123,8 @@ mlir::LogicalResult applyReplacement(const Pattern &pattern,
     mlir::Operation *clone = builder.clone(op, mapping);
     clone->setLoc(root->getLoc());
     // Per-match, so the library cannot state them: which program operation this
-    // came from, the address the AGU sweeps for it, and the storage it lands
-    // in.
+    // came from, the address the AGU sweeps for it, the storage it lands in, and
+    // the words of the row an io write stores.
     if (llvm::isa<drra::RopOp>(clone)) {
       if (id) {
         clone->setAttr("id", id);
@@ -134,6 +134,9 @@ mlir::LogicalResult applyReplacement(const Pattern &pattern,
       }
       if (storage) {
         clone->setAttr("storage", storage);
+      }
+      if (auto wrMask = root->getAttr("wr_mask")) {
+        clone->setAttr("wr_mask", wrMask);
       }
       clone->setAttr("kind", builder.getStringAttr(pattern.kind));
     }

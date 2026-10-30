@@ -18,6 +18,7 @@ import {{fingerprint}}_pkg::*;
   output logic io_en_out,
   output logic [IO_ADDR_WIDTH-1:0] io_addr_out,
   output logic [IO_DATA_WIDTH-1:0] io_data_out,
+  output logic [IO_DATA_WIDTH/16-1:0] io_wr_mask_out,
   {% endif %}
   {% for slot in range(size) %}
   input  logic clk_{{ slot }},
