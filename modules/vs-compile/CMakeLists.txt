@@ -388,6 +388,26 @@ add_mlir_library(
   MLIRMemRefDialect
   VesylaSelectInstr)
 
+# Splits a loop nest that needs more DPUs than the fabric has into epochs.
+add_custom_mlir_pass_dir(transformation/split_epochs VesylaSplitEpochs)
+file(GLOB SOURCE_SPLIT_EPOCHS "src/transformation/split_epochs/*.cpp")
+add_mlir_library(
+  VesylaSplitEpochs
+  ${SOURCE_SPLIT_EPOCHS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSplitEpochsIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRMemRefDialect
+  VesylaSelectInstr
+  VesylaDse)
+
 # Design space exploration: allocation, binding and scheduling over the module
 # instruction selection produced. Allocation is read from the architecture file;
 # binding and scheduling are still being written.
@@ -429,7 +449,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

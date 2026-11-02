@@ -24,6 +24,7 @@
 #include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
+#include "transformation/split_epochs/SplitEpochsPass.hpp"
 #include "transformation/stage_io/StageIoPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
@@ -112,8 +113,12 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   mlir::PassManager select_pm(&context);
   select_pm.addPass(
       vesyla::conversion::select_instructions::createSelectInstructionsPass());
+  // SplitEpochsPass splits a loop nest that needs more DPUs than the fabric
+  // has into epochs, before DSE binds them.
+  select_pm.addPass(
+      vesyla::transformation::split_epochs::createSplitEpochsPass());
   if (mlir::failed(select_pm.run(*module))) {
-    LOG_FATAL << "Error: SelectInstructionsPass failed.";
+    LOG_FATAL << "Error: SelectInstructionsPass or SplitEpochsPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(1));
