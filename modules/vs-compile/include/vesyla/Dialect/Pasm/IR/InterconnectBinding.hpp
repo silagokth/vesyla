@@ -53,17 +53,24 @@ struct InterconnectConfigOption {
   std::vector<Anchor> last_anchors;
 };
 
-// The options and the order they are switched through. When some transfers
-// repeat over loops and others run once before or after them (ger: rows 0..2
-// loaded once, then a row of A in every pass), `sequence` is three parts: the
-// first `prefix_steps` run once, the last `suffix_steps` run once, and the ones
-// in between repeat with every pass. Each part has options of its own and is
-// an evt of its own on the interconnect rop, joined by transitions.
+// Steps [begin, end) of the sequence for one loop nest; `trips` outermost
+// first, empty when it runs once.
+struct BindingPart {
+  std::size_t begin;
+  std::size_t end;
+  std::vector<uint32_t> trips;
+};
+
+// The options and the order they are switched through. `parts` splits
+// `sequence` per loop nest (each its own evt), empty for a single part.
+// Options are shared between parts; `step_first`/`step_last` hold each step's
+// transfers.
 struct InterconnectBinding {
   std::array<std::vector<InterconnectConfigOption>, 4> slots;
   std::vector<int> sequence;
-  std::size_t prefix_steps = 0;
-  std::size_t suffix_steps = 0;
+  std::vector<std::vector<Anchor>> step_first;
+  std::vector<std::vector<Anchor>> step_last;
+  std::vector<BindingPart> parts;
 };
 
 // 3x3 direction code: row-major in [-1..1] x [-1..1], NW=0..SE=8.
