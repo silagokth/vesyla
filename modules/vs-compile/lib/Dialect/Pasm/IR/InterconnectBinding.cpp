@@ -6,6 +6,7 @@
 #include "llvm/ADT/StringSet.h"
 
 #include <cassert>
+#include <map>
 
 namespace vesyla::pasm {
 
@@ -551,8 +552,10 @@ bool has_conflict(const Node &candidate,
     }
     return false;
   }
+  // The swb picks one source per target slot; one source may feed several.
+  int target = config_key({candidate.src, candidate.dst, std::nullopt}).target;
   for (const InterconnectConfig &c : current) {
-    if (c.src == candidate.src || c.dst == candidate.dst) {
+    if (config_key(c).target == target) {
       return true;
     }
   }
@@ -699,6 +702,24 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
   merge_parts(binding, parts);
   if (parts.size() > 1) {
     binding.parts = std::move(parts);
+  }
+
+  // A second source for a target in one option would silently replace the
+  // first in the swb.
+  for (std::size_t i = 0; kind == "word" && i < binding.slots.size(); ++i) {
+    for (const InterconnectConfigOption &opt : binding.slots[i]) {
+      std::map<int, int> source_of;
+      for (const InterconnectConfig &c : opt.configs) {
+        ConfigKey key = config_key(c);
+        auto [it, fresh] = source_of.emplace(key.target, key.source);
+        if (!fresh && it->second != key.source) {
+          report->emitError("interconnect: swb option ")
+              << i << " drives target " << key.target << " from both slot "
+              << it->second << " and slot " << key.source;
+          return mlir::failure();
+        }
+      }
+    }
   }
 
   return binding;
