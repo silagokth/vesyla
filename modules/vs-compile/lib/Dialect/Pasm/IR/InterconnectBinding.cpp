@@ -956,6 +956,12 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
   return mlir::success();
 }
 
+// From a transfer to a later step: the data is on the route `a.delay` cycles
+// after the anchor's event.
+static DelayAttr after(mlir::MLIRContext *ctx, const Anchor &a) {
+  return DelayAttr::get(ctx, 1 + a.delay, std::nullopt);
+}
+
 // What the debug dumps show against a constraint: the pass that emitted it and
 // the rule that fired.
 static mlir::ArrayAttr debug_attr(mlir::OpBuilder &builder,
@@ -1050,8 +1056,10 @@ static void emit_part_constraints(const InterconnectBinding &binding,
     std::vector<uint32_t> last = last_pass(own_trips(a));
     return use_at(a, last, last);
   };
-  auto add = [&](AnchorRangeAttr src, AnchorRangeAttr dst, llvm::StringRef rule) {
-    CstrOp::create(builder, loc, src, dst, delay, builder.getBoolAttr(false))
+  auto add = [&](AnchorRangeAttr src, AnchorRangeAttr dst, llvm::StringRef rule,
+                 DelayAttr d = {}) {
+    CstrOp::create(builder, loc, src, dst, d ? d : delay,
+                   builder.getBoolAttr(false))
         ->setAttr("debug", debug_attr(builder, rule));
   };
 
@@ -1093,12 +1101,15 @@ static void emit_part_constraints(const InterconnectBinding &binding,
         const BindingPart &part = binding.parts[p];
         std::vector<uint32_t> first = first_pass(part.trips);
         std::vector<uint32_t> last = last_pass(part.trips);
-        add(use_at(a, first, last), step_at(j, first, last), "route-last-use");
+        add(use_at(a, first, last), step_at(j, first, last), "route-last-use",
+            after(ctx, a));
       } else if (same_part) {
-        add(use_at(a, none, none), step_at(j, none, none), "route-last-use");
+        add(use_at(a, none, none), step_at(j, none, none), "route-last-use",
+            after(ctx, a));
       } else {
         std::vector<uint32_t> first = first_pass(binding.parts[p].trips);
-        add(use_last(a), step_at(j, first, first), "route-last-use");
+        add(use_last(a), step_at(j, first, first), "route-last-use",
+            after(ctx, a));
       }
     }
   }
@@ -1129,7 +1140,7 @@ static void emit_part_constraints(const InterconnectBinding &binding,
       }
       for (const Anchor &a : binding.step_last[part.end - 1]) {
         add(use_at(a, src_from, src_to), step_at(part.begin, dst_from, dst_to),
-            "route-next-pass");
+            "route-next-pass", after(ctx, a));
       }
     }
   }
@@ -1267,7 +1278,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         auto src_ar = of_use(a, first_pass, last_pass);
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
         auto dst_ar = of_step(dst_idx, first_pass, last_pass);
-        CstrOp::create(builder, loc, src_ar, dst_ar, delay,
+        CstrOp::create(builder, loc, src_ar, dst_ar, after(ctx, a),
                        builder.getBoolAttr(false))
             ->setAttr("debug", debug_attr(builder, "route-last-use"));
       }
@@ -1295,7 +1306,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
       }
       for (const Anchor &a : binding.slots[final_slot][0].last_anchors) {
         CstrOp::create(builder, loc, of_use(a, src_from, src_to),
-                       of_step(first_step, dst_from, dst_to), delay,
+                       of_step(first_step, dst_from, dst_to), after(ctx, a),
                        builder.getBoolAttr(false))
             ->setAttr("debug", debug_attr(builder, "route-next-pass"));
       }
