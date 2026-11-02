@@ -369,6 +369,24 @@ add_mlir_library(
   MLIRVectorDialect
   VesylaSelectInstr)
 
+# Reorders a loop nest so every io write's row stays fixed over its words.
+add_custom_mlir_pass_dir(transformation/interchange_loops VesylaInterchangeLoops)
+file(GLOB SOURCE_INTERCHANGE_LOOPS "src/transformation/interchange_loops/*.cpp")
+add_mlir_library(
+  VesylaInterchangeLoops
+  ${SOURCE_INTERCHANGE_LOOPS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaInterchangeLoopsIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRAffineUtils
+  VesylaStageIo)
+
 # Re-reads a scalar loaded outside a loop inside every loop that uses it, so
 # the operation it feeds gets one element per iteration.
 add_custom_mlir_pass_dir(transformation/sink_scalar_loads VesylaSinkScalarLoads)
@@ -468,7 +486,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaCopyStorages VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaCopyStorages VesylaDse VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

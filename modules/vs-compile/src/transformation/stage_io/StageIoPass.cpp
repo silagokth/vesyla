@@ -12,6 +12,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include "StageIoPass.hpp"
+#include "IoAccess.hpp"
 #include "conversion/select_instructions/NativeHelpers.hpp"
 
 #include <algorithm>
@@ -28,47 +29,7 @@ namespace {
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::affine::AffineForOp;
-
-// A word-by-word access to an io buffer: the map's first result picks the
-// row, the second the word in it.
-struct IoAccess {
-  mlir::Operation *op;
-  bool write;
-  mlir::Value buffer;
-  AffineMap map;
-  llvm::SmallVector<mlir::Value> operands;
-
-  AffineExpr row() const { return map.getResult(0); }
-  AffineExpr word() const { return map.getResult(1); }
-};
-
-std::optional<IoAccess> as_io_access(mlir::Operation *op) {
-  IoAccess access;
-  if (auto load = llvm::dyn_cast<mlir::affine::AffineLoadOp>(op)) {
-    access = {op, false, load.getMemRef(), load.getAffineMap(),
-              llvm::to_vector(load.getMapOperands())};
-  } else if (auto store = llvm::dyn_cast<mlir::affine::AffineStoreOp>(op)) {
-    access = {op, true, store.getMemRef(), store.getAffineMap(),
-              llvm::to_vector(store.getMapOperands())};
-  } else {
-    return std::nullopt;
-  }
-  if (!vesyla::sel::is_io_buffer(access.buffer) ||
-      access.map.getNumResults() != 2) {
-    return std::nullopt;
-  }
-  return access;
-}
-
-llvm::SmallVector<IoAccess> collect_io_accesses(mlir::ModuleOp module) {
-  llvm::SmallVector<IoAccess> accesses;
-  module.walk([&](mlir::Operation *op) {
-    if (auto access = as_io_access(op)) {
-      accesses.push_back(*access);
-    }
-  });
-  return accesses;
-}
+using namespace vesyla::transformation::stage_io;
 
 // The words in an io row: its memref is <rows x words x elem>.
 int64_t row_words(mlir::Value buffer) {
@@ -339,17 +300,6 @@ bool splits_a_reduction(AffineForOp loop, int64_t w) {
   return !loop.getInits().empty() && loop.getConstantUpperBound() > w;
 }
 
-// The loops whose counters `e` reads.
-llvm::SmallVector<AffineForOp> loops_of(const IoAccess &access, AffineExpr e) {
-  llvm::SmallVector<AffineForOp> loops;
-  for (auto [pos, operand] : llvm::enumerate(access.operands)) {
-    if (pos < access.map.getNumDims() && e.isFunctionOfDim(pos)) {
-      loops.push_back(mlir::affine::getForInductionVarOwner(operand));
-    }
-  }
-  return loops;
-}
-
 // Calls `visit` with `e` at every point of the loops it reads. False when they
 // are not known at compile time.
 bool for_each_value(const IoAccess &access, AffineExpr e,
@@ -540,8 +490,11 @@ std::string unbufferable(const IoAccess &access) {
 // Why `access` cannot be staged a row at a time, or empty when it can.
 std::string unstageable(const IoAccess &access, mlir::Operation *point,
                         int64_t w) {
+  // A read fetches its row again on every pass; a write would overwrite the
+  // row's other words.
   for (AffineForOp loop : loops_of(access, access.word())) {
-    if (loop.getOperation() != point && loop->isProperAncestor(point)) {
+    if (access.write && loop.getOperation() != point &&
+        loop->isProperAncestor(point)) {
       return "its row changes inside the loop over its words";
     }
   }
