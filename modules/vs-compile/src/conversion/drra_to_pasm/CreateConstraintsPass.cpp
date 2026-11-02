@@ -741,20 +741,31 @@ public:
 
         // Earliest use of each configured key, deduplicated but kept in the
         // order the keys are visited so the emitted constraints are stable.
-        // Each is kept with the rule that made it a use.
+        // Each is kept with the rule that made it a use. A config in a loop nest
+        // prefers a use in that nest, else the first anywhere.
         llvm::SmallVector<std::pair<mlir::Operation *, llvm::StringRef>>
             first_uses;
         std::set<mlir::Operation *> seen;
+        mlir::Block &top = epoch.getBody().front();
+        mlir::Operation *cfg_nest = top.findAncestorOpInBlock(*cfg);
         for (const auto &key : cfg_keys) {
+          mlir::Operation *first = nullptr;
           for (mlir::Operation *use : statements) {
             std::set<std::tuple<int32_t, int32_t, int32_t>> use_keys;
             collect_resource_keys(use, use_keys);
-            if (use_keys.count(key)) {
-              if (seen.insert(use).second) {
-                first_uses.push_back({use, "config-first-use"});
-              }
+            if (!use_keys.count(key)) {
+              continue;
+            }
+            if (!first) {
+              first = use;
+            }
+            if (cfg_nest != cfg && top.findAncestorOpInBlock(*use) == cfg_nest) {
+              first = use;
               break;
             }
+          }
+          if (first && seen.insert(first).second) {
+            first_uses.push_back({first, "config-first-use"});
           }
         }
 
