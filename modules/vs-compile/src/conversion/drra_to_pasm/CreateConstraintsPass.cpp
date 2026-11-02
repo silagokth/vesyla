@@ -16,6 +16,7 @@
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
 #include "CreateConstraintsPass.hpp"
+#include "DataflowWalk.hpp"
 
 namespace vesyla::conversion::drra_to_pasm {
 #define GEN_PASS_DEF_CREATECONSTRAINTSPASS
@@ -32,40 +33,6 @@ constexpr llvm::StringLiteral kProcessedMarker = "__cstr_processed__";
 // the rule that fired.
 mlir::ArrayAttr debug_attr(mlir::Builder &builder, llvm::StringRef rule) {
   return builder.getStrArrayAttr({"CreateConstraintsPass", rule});
-}
-
-// One entry of the working set: the delay accumulated so far along the dataflow
-// chain together with the operation to continue from. The operation may be a
-// drra.rop or an affine.for whose iter_arg carries the value into the loop.
-// `current_ii` is the largest initiation interval met since the chain last left
-// a loop: the cycles between two passes of whatever the next carried loop
-// repeats.
-struct WorkItem {
-  int32_t current_delay;
-  int32_t current_ii;
-  mlir::Operation *operation;
-};
-
-// A rop's latency: the cycles from the event that starts one pass to that
-// pass's result being there to be taken. `delay` is the older name for it. A
-// rop with neither takes no time.
-int32_t rop_latency(mlir::Operation *op) {
-  for (llvm::StringRef name : {"latency", "delay"}) {
-    if (auto attr = op->getAttrOfType<mlir::IntegerAttr>(name)) {
-      return static_cast<int32_t>(attr.getInt());
-    }
-  }
-  return 0;
-}
-
-// A rop's initiation interval: the cycles between the starts of two successive
-// passes. Without one, a pass is taken to occupy the operation for its whole
-// latency, which is how a lone `delay` has always been read.
-int32_t rop_ii(mlir::Operation *op) {
-  if (auto attr = op->getAttrOfType<mlir::IntegerAttr>("ii")) {
-    return static_cast<int32_t>(attr.getInt());
-  }
-  return rop_latency(op);
 }
 
 // Enclosing affine.for loops of `op`, outermost first.
@@ -450,110 +417,29 @@ public:
       return mlir::failure();
     }
 
-    // Working set of items still to be processed, seeded with this rop at delay
-    // 0.
-    llvm::SmallVector<WorkItem> working_set;
-    working_set.push_back({0, 0, rop.getOperation()});
-
-    while (!working_set.empty()) {
-      WorkItem item = working_set.pop_back_val();
-
-      // Add the operation's own latency to the delay accumulated so far, and
-      // fold its initiation interval into the chain's. Neither attribute is
-      // on an affine.for, so a loop entered through its iter_args adds nothing.
-      int32_t delay = item.current_delay + rop_latency(item.operation);
-      int32_t ii = std::max(item.current_ii, rop_ii(item.operation));
-
-      // Determine the source values to walk from, each tagged with the delay
-      // carried to it. If the operation is an affine.for, it was entered through
-      // an iter_args init, so walk the region iter arguments into the loop body.
-      // Otherwise walk the operation's results.
-      struct Source {
-        mlir::Value value;
-        int32_t delay;
-        int32_t ii;
-      };
-      llvm::SmallVector<Source> sources;
-      if (auto loop =
-              mlir::dyn_cast<mlir::affine::AffineForOp>(item.operation)) {
-        for (mlir::BlockArgument iter_arg : loop.getRegionIterArgs()) {
-          sources.push_back({iter_arg, delay, ii});
-        }
-      } else {
-        for (mlir::Value result : item.operation->getResults()) {
-          sources.push_back({result, delay, ii});
-        }
-      }
-
-      // Collect the consumer ops, each tagged with the delay and initiation
-      // interval carried to it. A use by an affine.yield is followed out to the
-      // matching loop result (yield-out). The loop body runs trip-count times,
-      // one pass starting every initiation interval, and the last pass's
-      // result is there its own delay after it starts: so the delay out of the
-      // loop is the delay of one pass plus (trip count - 1) intervals. The
-      // operations of this loop do not pace the next one, so the interval
-      // starts over.
-      struct Consumer {
-        mlir::Operation *operation;
-        int32_t delay;
-        int32_t ii;
-      };
-      llvm::SmallVector<Consumer> consumers;
-      while (!sources.empty()) {
-        Source source = sources.pop_back_val();
-        for (mlir::OpOperand &use : source.value.getUses()) {
-          mlir::Operation *owner = use.getOwner();
-          if (mlir::isa<mlir::affine::AffineYieldOp>(owner)) {
-            auto loop =
-                mlir::dyn_cast<mlir::affine::AffineForOp>(owner->getParentOp());
-            if (loop && use.getOperandNumber() < loop.getNumResults()) {
-              int32_t trips = static_cast<int32_t>(trip_count(loop));
-              int32_t scaled =
-                  trips > 0 ? source.delay + (trips - 1) * source.ii : 0;
-              sources.push_back(
-                  {loop.getResult(use.getOperandNumber()), scaled, 0});
-            }
-            continue;
-          }
-          consumers.push_back({owner, source.delay, source.ii});
-        }
-      }
-
-      // Visit every collected consumer.
-      for (auto [consumer, consumer_delay, consumer_ii] : consumers) {
-        auto consumer_rop = mlir::dyn_cast<vesyla::drra::RopOp>(consumer);
-        if (consumer_rop && consumer_rop.getEvtAttr()) {
-          // Reached an evt: emit a pasm.cstr carrying the delay walked to it.
-          mlir::MLIRContext *ctx = rewriter.getContext();
-          llvm::SmallVector<mlir::affine::AffineForOp> consumer_loops =
-              get_enclosing_loops(consumer);
-          llvm::SmallVector<mlir::affine::AffineForOp> shared =
-              shared_loops(rop, consumer);
-          auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
-          auto consumer_id =
-              consumer->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
-          auto delay_attr =
-              pasm::DelayAttr::get(ctx, consumer_delay, consumer_delay);
-          // Insert the constraints at the epoch level, before its terminator,
-          // so they do not end up inside an affine.for body.
-          pasm::EpochOp epoch = rop->getParentOfType<pasm::EpochOp>();
-          rewriter.setInsertionPoint(epoch.getBody().front().getTerminator());
-          // Loops shared with the consumer span their full range; the ones
-          // the dataflow leaves are pinned to their first iteration, their
-          // remaining iterations being already folded into the delay.
-          pasm::AnchorRangeAttr src =
-              build_within(ctx, rop, shared, rop_id, Pin::first);
-          pasm::AnchorRangeAttr dst =
-              build_anchor(ctx, consumer_id, consumer_loops);
-          pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst, delay_attr,
-                         rewriter.getBoolAttr(false))
-              ->setAttr("debug", debug_attr(rewriter, "dataflow"));
-        } else {
-          // Not an evt drra.rop: keep walking by enqueuing the consumer with the
-          // delay walked to it.
-          working_set.push_back({consumer_delay, consumer_ii, consumer});
-        }
-      }
+    for (auto [consumer, consumer_delay] : reached_events(rop)) {
+      // Reached an evt: emit a pasm.cstr carrying the delay walked to it.
+      mlir::MLIRContext *ctx = rewriter.getContext();
+      llvm::SmallVector<mlir::affine::AffineForOp> consumer_loops =
+          get_enclosing_loops(consumer);
+      llvm::SmallVector<mlir::affine::AffineForOp> shared =
+          shared_loops(rop, consumer);
+      auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+      auto consumer_id = consumer->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+      auto delay_attr = pasm::DelayAttr::get(ctx, consumer_delay, consumer_delay);
+      // Insert the constraints at the epoch level, before its terminator, so
+      // they do not end up inside an affine.for body.
+      pasm::EpochOp epoch = rop->getParentOfType<pasm::EpochOp>();
+      rewriter.setInsertionPoint(epoch.getBody().front().getTerminator());
+      // Loops shared with the consumer span their full range; the ones the
+      // dataflow leaves are pinned to their first iteration, their remaining
+      // iterations being already folded into the delay.
+      pasm::AnchorRangeAttr src =
+          build_within(ctx, rop, shared, rop_id, Pin::first);
+      pasm::AnchorRangeAttr dst = build_anchor(ctx, consumer_id, consumer_loops);
+      pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst, delay_attr,
+                           rewriter.getBoolAttr(false))
+          ->setAttr("debug", debug_attr(rewriter, "dataflow"));
     }
 
     // A clear whose loop makes nothing of the value it carries in leaves the

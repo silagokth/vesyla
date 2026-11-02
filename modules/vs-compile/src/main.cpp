@@ -24,6 +24,7 @@
 #include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
+#include "transformation/copy_storages/CopyStoragesPass.hpp"
 #include "transformation/split_epochs/SplitEpochsPass.hpp"
 #include "transformation/stage_io/StageIoPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
@@ -117,8 +118,11 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   // has into epochs, before DSE binds them.
   select_pm.addPass(
       vesyla::transformation::split_epochs::createSplitEpochsPass());
+  // CopyStoragesPass gives a storage read twice in one cycle a copy per reader.
+  select_pm.addPass(
+      vesyla::transformation::copy_storages::createCopyStoragesPass());
   if (mlir::failed(select_pm.run(*module))) {
-    LOG_FATAL << "Error: SelectInstructionsPass or SplitEpochsPass failed.";
+    LOG_FATAL << "Error: SelectInstructionsPass, SplitEpochsPass or CopyStoragesPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(1));

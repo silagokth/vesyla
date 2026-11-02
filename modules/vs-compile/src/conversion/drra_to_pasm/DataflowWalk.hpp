@@ -1,0 +1,28 @@
+#ifndef __VESYLA_CONVERSION_DRRA_TO_PASM_DATAFLOW_WALK_HPP__
+#define __VESYLA_CONVERSION_DRRA_TO_PASM_DATAFLOW_WALK_HPP__
+
+#include "mlir/IR/Operation.h"
+#include "llvm/ADT/SmallVector.h"
+#include <cstdint>
+
+namespace vesyla::conversion::drra_to_pasm {
+
+// An evt rop the data flow from another evt reaches, and the cycles after it.
+struct ReachedEvent {
+  mlir::Operation *event;
+  int32_t delay;
+};
+
+// Walks the data flow forward from the evt rop `source` through rops without
+// an evt and loop iter_args, adding latencies, up to the next evt rops. These
+// are the exact delays CreateConstraintsPass turns into `==` constraints.
+llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source);
+
+// Evt rops under `scope` whose times those delays fix to be equal: each group
+// has at least two members, which must run in the same cycle.
+llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>
+tied_groups(mlir::Operation *scope);
+
+} // namespace vesyla::conversion::drra_to_pasm
+
+#endif // __VESYLA_CONVERSION_DRRA_TO_PASM_DATAFLOW_WALK_HPP__

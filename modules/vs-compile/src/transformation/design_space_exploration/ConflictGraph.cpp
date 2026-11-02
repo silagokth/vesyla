@@ -5,6 +5,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include "conversion/drra_to_pasm/DataflowWalk.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
@@ -28,6 +29,13 @@ using OccupancyMap =
 // instance the carried value is sitting in.
 void occupy(OccupancyMap &occupancy, mlir::Operation *op, unsigned index) {
   op->walk([&](mlir::Operation *nested) { occupancy[nested].push_back(index); });
+}
+
+// The port of a rop's evt, or -1.
+int64_t evt_port(mlir::Operation *op) {
+  auto evt = op->getAttrOfType<mlir::DictionaryAttr>("evt");
+  auto port = evt ? evt.getAs<mlir::IntegerAttr>("port") : nullptr;
+  return port ? port.getInt() : -1;
 }
 
 // The outermost affine.for around `op` inside its epoch, or null outside any
@@ -205,6 +213,24 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
       }
     }
   }
+
+  // Accesses to different storages that must run in the same cycle on the
+  // same port need different memories.
+  module.walk([&](pasm::EpochOp epoch) {
+    for (auto &group : conversion::drra_to_pasm::tied_groups(epoch)) {
+      for (size_t a = 0; a < group.size(); ++a) {
+        for (size_t b = a + 1; b < group.size(); ++b) {
+          auto sa = group[a]->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
+          auto sb = group[b]->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
+          if (!sa || !sb || sa == sb || evt_port(group[a]) != evt_port(group[b]))
+            continue;
+          auto na = graph.node_of(group[a]), nb = graph.node_of(group[b]);
+          if (na && nb)
+            graph.add_edge(*na, *nb, ConflictReason::tied);
+        }
+      }
+    }
+  });
 
   // Two nodes claiming an instance at the same point may still not contend --
   // add_edge has the last word on that, since it is what knows which parts of
@@ -404,7 +430,8 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
       for (auto [bit, text] :
            {std::pair{ConflictReason::data_flow, "data flow"},
             std::pair{ConflictReason::live_overlap, "live"},
-            std::pair{ConflictReason::same_loop, "loop"}}) {
+            std::pair{ConflictReason::same_loop, "loop"},
+            std::pair{ConflictReason::tied, "tied"}}) {
         if (has_reason(why, bit)) {
           reasons += reasons.empty() ? text : std::string(" + ") + text;
         }
