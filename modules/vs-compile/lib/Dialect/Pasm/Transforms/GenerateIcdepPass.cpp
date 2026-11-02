@@ -5,6 +5,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include <algorithm>
 
+#include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/GenerateIcdepPass.hpp"
 
 namespace vesyla::pasm {
@@ -130,6 +131,37 @@ int32_t get_producer_delay(mlir::Operation *op) {
   return 0;
 }
 
+// The op a producer's transfer is timed by, and its delay. A conf-only rop has
+// no event: use its first operand from an op in the same loops, adding the
+// latencies; the producer itself when there is none.
+std::pair<mlir::Operation *, int32_t> timing_source(mlir::Operation *producer,
+                                                    EpochOp epoch) {
+  mlir::Operation *op = producer;
+  int32_t delay = get_producer_delay(producer);
+  for (int hops = 0; hops < 16; ++hops) {
+    auto rop = mlir::dyn_cast<drra::RopOp>(op);
+    if (!rop || rop.getEvtAttr() || !rop.getConfAttr()) {
+      return {op, delay};
+    }
+    llvm::SmallVector<mlir::affine::AffineForOp> loops =
+        get_enclosing_loops(op, epoch);
+    mlir::Operation *next = nullptr;
+    for (mlir::Value operand : op->getOperands()) {
+      mlir::Operation *def = operand.getDefiningOp();
+      if (def && def->hasAttr("id") && get_enclosing_loops(def, epoch) == loops) {
+        next = def;
+        break;
+      }
+    }
+    if (!next) {
+      break;
+    }
+    op = next;
+    delay += get_producer_delay(op);
+  }
+  return {producer, get_producer_delay(producer)};
+}
+
 // Build the first/last anchor for a producer. `first` uses each enclosing
 // loop's lower bound; `last` uses each upper bound minus one. Top-level
 // producers (no enclosing loops) get a bare anchor with no event/indices. The
@@ -235,9 +267,11 @@ public:
         }
         llvm::SmallVector<mlir::affine::AffineForOp> loops =
             get_enclosing_loops(producer, epoch);
-        int32_t delay = get_producer_delay(producer);
+        auto [source, delay] = timing_source(producer, epoch);
+        auto source_id =
+            mlir::cast<mlir::FlatSymbolRefAttr>(source->getAttr("id"));
         AnchorAttr first =
-            build_anchor(ctx, instr, loops, /*is_last=*/false, delay);
+            build_anchor(ctx, source_id, loops, /*is_last=*/false, delay);
 
         for (mlir::OpResult result : producer->getResults()) {
           ResourceAttr src =
@@ -271,7 +305,7 @@ public:
           // the binding can repeat over them what it finds for one pass.
           size_t pass = pass_depth(producer, kind, src, loops, producers);
           AnchorAttr last =
-              build_anchor(ctx, instr, loops, /*is_last=*/true, delay, pass);
+              build_anchor(ctx, source_id, loops, /*is_last=*/true, delay, pass);
           llvm::SmallVector<int32_t> pass_hi;
           for (size_t depth = 0; depth < pass; ++depth) {
             int64_t ub = loops[depth].hasConstantUpperBound()
