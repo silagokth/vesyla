@@ -6,6 +6,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -278,7 +279,8 @@ pasm::AnchorRangeAttr
 build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
             llvm::ArrayRef<mlir::affine::AffineForOp> shared,
             llvm::ArrayRef<bool> reused, mlir::FlatSymbolRefAttr id, Pin pin,
-            size_t carry, int64_t offset) {
+            size_t carry, int64_t offset,
+            llvm::ArrayRef<int64_t> inner = {}) {
   llvm::SmallVector<uint32_t> idx_lo;
   llvm::SmallVector<uint32_t> idx_hi;
   size_t depth = 0;
@@ -287,7 +289,12 @@ build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
         loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
     int64_t ub =
         loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
-    if (depth == carry) {
+    if (!inner.empty() && depth >= shared.size()) {
+      // An explicit point in the loops the pair does not share.
+      uint32_t at = static_cast<uint32_t>(inner[depth - shared.size()]);
+      idx_lo.push_back(at);
+      idx_hi.push_back(at);
+    } else if (depth == carry) {
       idx_lo.push_back(static_cast<uint32_t>(lb + offset));
       idx_hi.push_back(static_cast<uint32_t>(ub - 2 + offset));
     } else if (llvm::is_contained(shared, loop) &&
@@ -302,6 +309,102 @@ build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
     ++depth;
   }
   return make_ir_anchor(ctx, id, idx_lo, idx_hi);
+}
+
+// Words per row when `op` moves a whole row (its value is a vector), else 0.
+int64_t bulk_words(mlir::Operation *op) {
+  mlir::Value value = op->getNumResults() > 0 ? op->getResult(0)
+                      : op->getNumOperands() > 0 ? op->getOperand(0)
+                                                 : mlir::Value();
+  auto vec = value ? mlir::dyn_cast<mlir::VectorType>(value.getType())
+                   : mlir::VectorType();
+  return vec ? vec.getNumElements() : 0;
+}
+
+// The row `op` touches at each point of the loops it does not share, in
+// program order, or nothing when that is not known: no single-result map, an
+// address that moves with a shared loop, or too many points.
+std::optional<llvm::SmallVector<std::pair<llvm::SmallVector<int64_t>, int64_t>>>
+rows_per_point(mlir::Operation *op, size_t num_shared, int64_t row_words) {
+  auto map_attr = op->getAttrOfType<mlir::AffineMapAttr>("map");
+  if (!map_attr || map_attr.getAffineMap().getNumResults() != 1) {
+    return std::nullopt;
+  }
+  mlir::AffineMap map = map_attr.getAffineMap();
+  llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
+  if (map.getNumDims() != loops.size() || map.getNumSymbols() != 0) {
+    return std::nullopt;
+  }
+  llvm::SmallVector<int64_t> lb, ub;
+  int64_t points = 1;
+  for (size_t d = 0; d < loops.size(); ++d) {
+    if (!loops[d].hasConstantLowerBound() ||
+        !loops[d].hasConstantUpperBound() || loops[d].getStepAsInt() != 1) {
+      return std::nullopt;
+    }
+    if (d < num_shared && map.isFunctionOfDim(d)) {
+      return std::nullopt;
+    }
+    lb.push_back(loops[d].getConstantLowerBound());
+    ub.push_back(loops[d].getConstantUpperBound());
+    if (d >= num_shared) {
+      points *= ub.back() - lb.back();
+    }
+  }
+  if (points <= 0 || points > 4096) {
+    return std::nullopt;
+  }
+  int64_t words = bulk_words(op) ? 1 : row_words;
+  llvm::SmallVector<std::pair<llvm::SmallVector<int64_t>, int64_t>> out;
+  llvm::SmallVector<int64_t> at(lb);
+  while (true) {
+    int64_t addr = map.compose(at).front();
+    out.push_back({llvm::SmallVector<int64_t>(at.begin() + num_shared,
+                                              at.end()),
+                   addr / words});
+    size_t d = loops.size();
+    while (d > num_shared && ++at[d - 1] == ub[d - 1]) {
+      at[d - 1] = lb[d - 1];
+      --d;
+    }
+    if (d == num_shared) {
+      break;
+    }
+  }
+  return out;
+}
+
+// Per RF row, the last point at which `reader` reads it and the first at which
+// `writer` writes it, so a write waits only for the reads of its own row.
+// Nothing when the rows are not known or the two share no row.
+llvm::SmallVector<std::pair<llvm::SmallVector<int64_t>, llvm::SmallVector<int64_t>>>
+row_war_points(mlir::Operation *reader, mlir::Operation *writer,
+               size_t num_shared) {
+  int64_t row_words = std::max(bulk_words(reader), bulk_words(writer));
+  if (row_words == 0) {
+    return {};
+  }
+  auto reads = rows_per_point(reader, num_shared, row_words);
+  auto writes = rows_per_point(writer, num_shared, row_words);
+  if (!reads || !writes) {
+    return {};
+  }
+  std::map<int64_t, llvm::SmallVector<int64_t>> last_read;
+  for (auto &[point, row] : *reads) {
+    last_read[row] = point;
+  }
+  std::map<int64_t, llvm::SmallVector<int64_t>> first_write;
+  for (auto &[point, row] : *writes) {
+    first_write.try_emplace(row, point);
+  }
+  llvm::SmallVector<std::pair<llvm::SmallVector<int64_t>, llvm::SmallVector<int64_t>>> out;
+  for (auto &[row, point] : first_write) {
+    auto it = last_read.find(row);
+    if (it != last_read.end()) {
+      out.push_back({it->second, point});
+    }
+  }
+  return out;
 }
 
 // Collect the (row, col, slot) of every resource an op touches (port ignored).
@@ -603,8 +706,27 @@ public:
           // new each pass may overlap them freely.
           llvm::SmallVector<bool> reused =
               reused_loops(a, b, shared, same_storage);
+          // A read of `b` followed by the next pass's write of `a`: each row's
+          // write waits only for the last read of that row.
+          auto row_points =
+              same_storage && storage_delay(b, a) == 0
+                  ? row_war_points(b, a, shared.size())
+                  : decltype(row_war_points(b, a, 0)){};
           for (size_t carry = 0; carry < shared.size(); ++carry) {
             if (!reused[carry] || trip_count(shared[carry]) < 2) {
+              continue;
+            }
+            for (auto &[read_at, write_at] : row_points) {
+              pasm::CstrOp::create(
+                  builder, b->getLoc(),
+                  build_carry(ctx, b, shared, reused, b_id, Pin::last, carry,
+                              0, read_at),
+                  build_carry(ctx, a, shared, reused, a_id, Pin::first, carry,
+                              1, write_at),
+                  delay_of(b, a), builder.getBoolAttr(false))
+                  ->setAttr("debug", debug_attr(builder, "storage-carry-row"));
+            }
+            if (!row_points.empty()) {
               continue;
             }
             pasm::AnchorRangeAttr carry_src = build_carry(
