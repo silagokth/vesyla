@@ -118,6 +118,10 @@ public:
           send->setAttr("pass_hi", pass_hi);
           recv->setAttr("pass_hi", pass_hi);
         }
+        if (mlir::Attribute loops = bulk->getAttr("loops")) {
+          send->setAttr("loops", loops);
+          recv->setAttr("loops", loops);
+        }
       }
       rewriter.eraseOp(bulk);
     }

@@ -112,6 +112,10 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       first_anchor.pass_hi = to_u(pass_hi.asArrayRef());
       last_anchor.pass_hi = first_anchor.pass_hi;
     }
+    if (auto loops = icdep->getAttrOfType<mlir::ArrayAttr>("loops")) {
+      first_anchor.loops.assign(loops.begin(), loops.end());
+      last_anchor.loops = first_anchor.loops;
+    }
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,

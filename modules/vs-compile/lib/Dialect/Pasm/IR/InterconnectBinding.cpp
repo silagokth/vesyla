@@ -58,7 +58,8 @@ static std::vector<uint32_t> own_trips(const Anchor &a) {
 
 // Same loop nest: both run once, or one's loops enclose the other's. Sibling
 // nests (a main loop and its remainder) are not.
-static bool same_nest(llvm::ArrayRef<uint32_t> a, llvm::ArrayRef<uint32_t> b) {
+static bool same_nest(llvm::ArrayRef<mlir::Attribute> a,
+                      llvm::ArrayRef<mlir::Attribute> b) {
   if (a.empty() || b.empty()) {
     return a.empty() == b.empty();
   }
@@ -575,6 +576,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
   // Parts in walk order; `part_trips` is the current part's loops.
   std::vector<BindingPart> parts;
   std::optional<std::vector<uint32_t>> part_trips;
+  std::vector<mlir::Attribute> part_loops;
   auto save = [&]() {
     return save_current(binding, current, current_first_anchors,
                         current_last_anchors)
@@ -597,7 +599,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
     for (std::size_t i = 0; pick == free_set.size() && i < free_set.size();
          ++i) {
       if (free_set[i].id != 0 && part_trips &&
-          same_nest(own_trips(free_set[i].anchor), *part_trips)) {
+          same_nest(free_set[i].anchor.loops, part_loops)) {
         pick = i;
       }
     }
@@ -615,7 +617,8 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       }
       // Another loop nest starts the next part and closes the current option.
       std::vector<uint32_t> trips = own_trips(candidate.anchor);
-      bool next_part = part_trips && !same_nest(trips, *part_trips);
+      bool next_part =
+          part_trips && !same_nest(candidate.anchor.loops, part_loops);
       if (next_part) {
         if (!active.empty()) {
           report->emitError("interconnect: a ")
@@ -637,6 +640,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       if (!part_trips || next_part) {
         parts.push_back(BindingPart{binding.sequence.size(), 0, trips});
         part_trips = trips;
+        part_loops = candidate.anchor.loops;
       }
       // A recv from a direction the current option already listens to widens
       // that config rather than opening one beside it.

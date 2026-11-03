@@ -307,15 +307,23 @@ public:
           AnchorAttr last =
               build_anchor(ctx, source_id, loops, /*is_last=*/true, delay, pass);
           llvm::SmallVector<int32_t> pass_hi;
+          llvm::SmallVector<mlir::Attribute> pass_loops;
           for (size_t depth = 0; depth < pass; ++depth) {
             int64_t ub = loops[depth].hasConstantUpperBound()
                              ? loops[depth].getConstantUpperBound()
                              : 1;
             pass_hi.push_back(static_cast<int32_t>(ub - 1));
+            auto id = loops[depth]->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+            if (!id) {
+              loops[depth]->emitError("generate-icdep: loop has no id");
+              return mlir::WalkResult::interrupt();
+            }
+            pass_loops.push_back(id);
           }
           auto mark = [&](IcDepOp icdep) {
             if (pass > 0) {
               icdep->setAttr("pass_hi", builder.getDenseI32ArrayAttr(pass_hi));
+              icdep->setAttr("loops", builder.getArrayAttr(pass_loops));
             }
           };
           if (kind == "bulk") {
@@ -337,7 +345,9 @@ public:
       }
       return mlir::WalkResult::advance();
     });
-    (void)result;
+    if (result.wasInterrupted()) {
+      signalPassFailure();
+    }
   }
 };
 

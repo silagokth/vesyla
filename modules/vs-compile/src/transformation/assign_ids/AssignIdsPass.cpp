@@ -14,10 +14,11 @@ namespace vesyla::transformation::assign_ids {
 
 namespace {
 
-// The ops the passes below look up by id: buffers, accesses, and every arith
-// op, since any of them can be the root a pattern is matched on.
+// The ops the passes below look up by id: buffers, loops, accesses, and every
+// arith op, since any of them can be the root a pattern is matched on.
 bool needs_id(mlir::Operation *op) {
-  return llvm::isa<mlir::memref::AllocOp, mlir::affine::AffineLoadOp,
+  return llvm::isa<mlir::memref::AllocOp, mlir::affine::AffineForOp,
+                   mlir::affine::AffineLoadOp,
                    mlir::affine::AffineStoreOp,
                    mlir::affine::AffineVectorLoadOp,
                    mlir::affine::AffineVectorStoreOp>(op) ||
