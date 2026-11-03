@@ -216,6 +216,15 @@ mlir::FlatSymbolRefAttr storage_of(mlir::Operation *op) {
   return op->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
 }
 
+// Minimum delay from `src` to `dst` on one storage. A write may land in the
+// cycle of the last read of the old data (the read sees the old value), so a
+// read followed by a write needs 0; everything else 1.
+int64_t storage_delay(mlir::Operation *src, mlir::Operation *dst) {
+  bool src_reads = src->getNumResults() > 0;
+  bool dst_writes = dst->getNumResults() == 0 && dst->getNumOperands() > 0;
+  return src_reads && dst_writes ? 0 : 1;
+}
+
 // Whether `op`'s address varies with the enclosing loop at `depth`, outermost
 // first. Instruction selection lifts the access's affine map onto the rop with
 // one dimension per enclosing loop in that order -- NativeHelpers.cpp builds it
@@ -568,13 +577,16 @@ public:
           bool same_storage = a_storage && a_storage == b_storage;
           llvm::SmallVector<mlir::affine::AffineForOp> shared =
               shared_loops(a, b);
-          auto delay_attr = pasm::DelayAttr::get(ctx, 1, std::nullopt);
+          auto delay_of = [&](mlir::Operation *from, mlir::Operation *to) {
+            return pasm::DelayAttr::get(
+                ctx, same_storage ? storage_delay(from, to) : 1, std::nullopt);
+          };
 
           pasm::AnchorRangeAttr src =
               build_within(ctx, a, shared, a_id, Pin::last);
           pasm::AnchorRangeAttr dst =
               build_within(ctx, b, shared, b_id, Pin::first);
-          pasm::CstrOp::create(builder, a->getLoc(), src, dst, delay_attr,
+          pasm::CstrOp::create(builder, a->getLoc(), src, dst, delay_of(a, b),
                          builder.getBoolAttr(false))
               ->setAttr("debug",
                         debug_attr(builder, same_storage
@@ -600,7 +612,7 @@ public:
             pasm::AnchorRangeAttr carry_dst = build_carry(
                 ctx, a, shared, reused, a_id, Pin::first, carry, 1);
             pasm::CstrOp::create(builder, b->getLoc(), carry_src, carry_dst,
-                           delay_attr, builder.getBoolAttr(false))
+                           delay_of(b, a), builder.getBoolAttr(false))
                 ->setAttr("debug",
                           debug_attr(builder, same_storage
                                                   ? "storage-carry"
