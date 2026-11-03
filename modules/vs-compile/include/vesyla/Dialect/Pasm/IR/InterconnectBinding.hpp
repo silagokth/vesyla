@@ -53,12 +53,14 @@ struct InterconnectConfigOption {
   std::vector<Anchor> last_anchors;
 };
 
-// Steps [begin, end) of the sequence for one loop nest; `trips` outermost
-// first, empty when it runs once.
+// Steps [begin, end) of the sequence for one loop nest; `trips` (outermost
+// first, empty when it runs once) and `loops` are those of its deepest
+// transfer.
 struct BindingPart {
   std::size_t begin;
   std::size_t end;
   std::vector<uint32_t> trips;
+  std::vector<mlir::Attribute> loops;
 };
 
 // The options and the order they are switched through. `parts` splits

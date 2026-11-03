@@ -148,7 +148,10 @@ std::pair<mlir::Operation *, int32_t> timing_source(mlir::Operation *producer,
     mlir::Operation *next = nullptr;
     for (mlir::Value operand : op->getOperands()) {
       mlir::Operation *def = operand.getDefiningOp();
-      if (def && def->hasAttr("id") && get_enclosing_loops(def, epoch) == loops) {
+      // Not into a loop: its results are the values it carries, not an event.
+      if (def && def->hasAttr("id") &&
+          !mlir::isa<mlir::affine::AffineForOp>(def) &&
+          get_enclosing_loops(def, epoch) == loops) {
         next = def;
         break;
       }
@@ -259,7 +262,9 @@ public:
       mlir::OpBuilder builder(ctx);
       builder.setInsertionPoint(block.getTerminator());
 
+      int32_t pos = -1;
       for (mlir::Operation *producer : producers) {
+        ++pos;
         auto instr =
             mlir::dyn_cast<mlir::FlatSymbolRefAttr>(producer->getAttr("id"));
         if (!instr) {
@@ -324,6 +329,7 @@ public:
             if (pass > 0) {
               icdep->setAttr("pass_hi", builder.getDenseI32ArrayAttr(pass_hi));
               icdep->setAttr("loops", builder.getArrayAttr(pass_loops));
+              icdep->setAttr("pos", builder.getI32IntegerAttr(pos));
             }
           };
           if (kind == "bulk") {

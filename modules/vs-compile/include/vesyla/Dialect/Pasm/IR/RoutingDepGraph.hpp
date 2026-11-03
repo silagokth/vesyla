@@ -29,6 +29,8 @@ struct Anchor {
   std::vector<uint32_t> pass_hi;
   // The ids of those loops, to tell sibling nests apart.
   std::vector<mlir::Attribute> loops;
+  // Program order of the transfer in its epoch; -1 without loops.
+  int32_t pos = -1;
 
   bool operator<(const Anchor &o) const;
   bool operator==(const Anchor &o) const;
