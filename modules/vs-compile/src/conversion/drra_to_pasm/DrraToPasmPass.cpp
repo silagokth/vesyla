@@ -114,10 +114,11 @@ mlir::FlatSymbolRefAttr wr_mask_symbol(drra::RopOp rop) {
 
 void add_order(mlir::OpBuilder &builder, drra::RopOp rop,
                pasm::AnchorRangeAttr src, pasm::AnchorRangeAttr dst,
-               int64_t gap) {
+               int64_t gap, llvm::StringRef rule) {
   pasm::CstrOp::create(builder, rop.getLoc(), src, dst,
                        pasm::DelayAttr::get(rop.getContext(), gap, std::nullopt),
-                       builder.getBoolAttr(false));
+                       builder.getBoolAttr(false))
+      ->setAttr("debug", builder.getStrArrayAttr({"DrraToPasmPass", rule}));
 }
 
 // The io writes that set the io's wr_mask, and to what. The register holds
@@ -190,11 +191,12 @@ plan_wr_masks(mlir::ModuleOp module,
         if (s > 0) {
           for (drra::RopOp before : stretches[s - 1]) {
             add_order(builder, before, anchor_at(before, true), conf,
-                      WR_MASK_GAP);
+                      WR_MASK_GAP, "wr-mask-after-last-write");
           }
         }
         for (drra::RopOp rop : stretch) {
-          add_order(builder, rop, conf, anchor_at(rop, false), 1);
+          add_order(builder, rop, conf, anchor_at(rop, false), 1,
+                  "wr-mask-before-write");
         }
       }
     }
