@@ -188,6 +188,111 @@ AnchorAttr remap(AnchorAttr anchor, const llvm::StringMap<Absorbed> &absorbed) {
                          anchor.getIrIdx(), anchor.getDelay());
 }
 
+// The port a rop's events run on, or nothing for a rop without events.
+std::optional<int32_t> event_port(RopOp rop) {
+  for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
+    if (instr.getType() != "evt") {
+      continue;
+    }
+    if (auto port =
+            llvm::dyn_cast_or_null<mlir::IntegerAttr>(instr.getParam().get("port"))) {
+      return static_cast<int32_t>(port.getInt());
+    }
+  }
+  return std::nullopt;
+}
+
+// The anchor of a rop's last event: its last event, at the last iteration of
+// every rep around it, outermost first. Nothing when a rep's count is not a
+// number.
+std::optional<AnchorRangeAttr> last_event(RopOp rop) {
+  uint32_t event = 0;
+  uint32_t events = 0;
+  llvm::SmallVector<InstrOp> own;    // reps of the last event, innermost first
+  llvm::SmallVector<InstrOp> shared; // reps after the transitions
+  bool after_trans = false;
+  for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
+    if (instr.getType() == "evt") {
+      event = events++;
+      own.clear();
+    } else if (instr.getType() == "trans") {
+      after_trans = true;
+    } else if (instr.getType() == "rep") {
+      (after_trans ? shared : own).push_back(instr);
+    }
+  }
+  std::vector<uint32_t> ir;
+  for (auto *reps : {&shared, &own}) {
+    for (auto it = reps->rbegin(); it != reps->rend(); ++it) {
+      auto iter =
+          llvm::dyn_cast_or_null<mlir::IntegerAttr>(it->getParam().get("iter"));
+      if (!iter) {
+        return std::nullopt;
+      }
+      ir.push_back(static_cast<uint32_t>(std::max<int64_t>(iter.getInt(), 1) - 1));
+    }
+  }
+  return AnchorRangeAttr::get(rop.getContext(),
+                              mlir::FlatSymbolRefAttr::get(rop.getSymNameAttr()),
+                              {}, event, ir, {}, event, ir);
+}
+
+// A port runs one AGU program, so rops with events on the same port that were
+// not merged run one after the other, in program order: each one's setup comes
+// after the last event of the one before (`port_exclusive`; ScheduleEpochPass
+// adds the setup lead). Two that share a loop would have to interleave, which
+// no ordering allows: an error.
+mlir::LogicalResult order_port_users(EpochOp epoch) {
+  std::map<std::tuple<int32_t, int32_t, int32_t, int32_t>,
+           llvm::SmallVector<RopOp>>
+      by_port;
+  for (RopOp rop : epoch.getBody().front().getOps<RopOp>()) {
+    if (std::optional<int32_t> port = event_port(rop)) {
+      by_port[{rop.getRow(), rop.getCol(), rop.getSlot(), *port}].push_back(rop);
+    }
+  }
+  mlir::OpBuilder builder(epoch.getContext());
+  builder.setInsertionPoint(epoch.getBody().front().getTerminator());
+  for (auto &[key, rops] : by_port) {
+    for (size_t k = 1; k < rops.size(); ++k) {
+      RopOp a = rops[k - 1];
+      RopOp b = rops[k];
+      llvm::StringSet<> loops;
+      for (InstrOp rep : reps_of(a)) {
+        if (!loop_of(rep).empty()) {
+          loops.insert(loop_of(rep));
+        }
+      }
+      for (InstrOp rep : reps_of(b)) {
+        if (loops.contains(loop_of(rep))) {
+          return b.emitError("coalesce-rops: ")
+                 << a.getSymName() << " and " << b.getSymName()
+                 << " use port " << std::get<3>(key) << " of slot "
+                 << std::get<2>(key)
+                 << " in the same loop and cannot be merged into one AGU "
+                    "program (their repetitions differ); not supported";
+        }
+      }
+      std::optional<AnchorRangeAttr> src = last_event(a);
+      if (!src) {
+        return a.emitError("coalesce-rops: ")
+               << a.getSymName() << " repeats a non-constant number of times";
+      }
+      auto dst = AnchorRangeAttr::get(
+          epoch.getContext(), mlir::FlatSymbolRefAttr::get(b.getSymNameAttr()),
+          {}, 0, {}, {}, 0, {});
+      auto cstr = CstrOp::create(
+          builder, b.getLoc(), *src, dst,
+          DelayAttr::get(epoch.getContext(), 2, std::nullopt),
+          builder.getBoolAttr(false));
+      cstr->setAttr("port_exclusive", builder.getUnitAttr());
+      cstr->setAttr("debug", builder.getStrArrayAttr(
+                                 {"CoalesceRopsPass", "port-exclusive"}));
+    }
+  }
+  return mlir::success();
+}
+
 class CoalesceRopsPass : public impl::CoalesceRopsPassBase<CoalesceRopsPass> {
 public:
   using impl::CoalesceRopsPassBase<CoalesceRopsPass>::CoalesceRopsPassBase;
@@ -262,6 +367,9 @@ public:
       }
 
       if (absorbed.empty()) {
+        if (mlir::failed(order_port_users(epoch))) {
+          signalPassFailure();
+        }
         return;
       }
 
@@ -285,6 +393,9 @@ public:
 
       for (RopOp rop : merged_away) {
         rop.erase();
+      }
+      if (mlir::failed(order_port_users(epoch))) {
+        signalPassFailure();
       }
     });
   }

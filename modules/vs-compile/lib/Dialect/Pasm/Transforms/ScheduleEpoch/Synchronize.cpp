@@ -1,4 +1,5 @@
 #include "ScheduleEpochPassDetail.hpp"
+#include "vesyla/Support/Anchor.hpp"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -306,6 +307,46 @@ int ScheduleEpochPassRewriter::synchronize(
 
   llvm::outs() << "Time table after placing ROP instructions:\n";
   print_time_table(time_table);
+
+  // A rop taking over a port (CoalesceRopsPass `port_exclusive`) must not be
+  // set up while the one before still runs: the AGU takes no new events then.
+  for (::mlir::Operation &child_op : *block) {
+    auto cstr = llvm::dyn_cast<::vesyla::pasm::CstrOp>(&child_op);
+    if (!cstr || !cstr->hasAttr("port_exclusive")) {
+      continue;
+    }
+    auto src = cstr.getSrc();
+    ::vesyla::Anchor last;
+    last.or_idx.assign(src.getOrLo().begin(), src.getOrLo().end());
+    last.mt_idx = static_cast<int>(src.getMtLo());
+    last.ir_idx.assign(src.getIrLo().begin(), src.getIrLo().end());
+    auto end_it =
+        schedule_table.find(last.flat_name(src.getInstr().getValue().str()));
+    if (end_it == schedule_table.end()) {
+      continue;
+    }
+    llvm::StringRef next = cstr.getDst().getInstr().getValue();
+    for (auto it = time_table_rop.begin(); it != time_table_rop.end(); ++it) {
+      auto rop = llvm::dyn_cast<::vesyla::pasm::RopOp>(it->first);
+      if (rop.getSymName() != next) {
+        continue;
+      }
+      auto &cell_time_table = getOrCreateCellTimeTable(
+          time_table,
+          std::to_string(rop.getRow()) + "_" + std::to_string(rop.getCol()));
+      for (auto &[cycle, instr] : cell_time_table) {
+        if (instr->getParentOp() == rop.getOperation() &&
+            cycle < end_it->second + 2) {
+          llvm::outs() << "Error: the setup of " << next << " lands at cycle "
+                       << cycle << ", while "
+                       << src.getInstr().getValue()
+                       << " still runs on its port (last event at "
+                       << end_it->second << ").\n";
+          std::exit(EXIT_FAILURE);
+        }
+      }
+    }
+  }
 
   // find out the time shift amount, so that the first operation is at
   // time 0
