@@ -50,6 +50,8 @@ pub struct Instruction {
     pub segments: Vec<Segment>,
     pub variant_opcode_bitwidth: Option<u8>,
     pub variants: Vec<InstructionVariant>,
+    // rep: whether an ext form carries the bits above the field widths.
+    pub ext: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -212,6 +214,8 @@ impl Instruction {
             ));
         }
 
+        let ext = instruction.get("ext").and_then(|v| v.as_bool());
+
         Ok(Instruction {
             name,
             opcode,
@@ -219,6 +223,7 @@ impl Instruction {
             segments,
             variant_opcode_bitwidth,
             variants,
+            ext,
         })
     }
 }
@@ -581,10 +586,13 @@ impl Serialize for Instruction {
             map.serialize_entry("variants", &self.variants)?;
             map.end()
         } else {
-            let mut map = serializer.serialize_map(Some(4))?;
+            let mut map = serializer.serialize_map(None)?;
             map.serialize_entry("name", &self.name)?;
             map.serialize_entry("opcode", &self.opcode)?;
             map.serialize_entry("instr_type", &self.instr_type.to_u8())?;
+            if let Some(ext) = self.ext {
+                map.serialize_entry("ext", &ext)?;
+            }
             map.serialize_entry("segments", &self.segments)?;
             map.end()
         }

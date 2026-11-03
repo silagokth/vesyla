@@ -45,9 +45,8 @@ struct ResourceEntry {
 };
 
 // Bit widths of the rep fields of one kind of resource, from its ISA. A base
-// rep (ext = 0) carries the lower half of each field and its repx (ext = 1)
-// the upper half, so the upper half starts at this width (agu_controller's
-// DELAY_HI, ITER_HI and STEP_HI).
+// rep (ext = 0) carries the low bits of each field and its ext rep (ext = 1)
+// the bits from this width up (agu_controller).
 struct RepWidths {
   int iter = 0;
   int step = 0;
@@ -61,15 +60,27 @@ struct Level {
   uint64_t delay = 0;
 };
 
-// Write one rep field: the lower half from a base rep, the upper half from its
-// repx, leaving the other half as it was.
-void write_half(uint64_t &field, uint64_t value, int width, bool ext) {
+// Write one rep field as agu_controller does: a base rep sets the field from
+// its low bits (step: sign-extended, it is signed), an ext rep sets the bits
+// from `width` up, keeping the low ones.
+void write_field(uint64_t &field, uint64_t value, int width, bool ext,
+                 bool is_signed) {
   uint64_t mask = (1ULL << width) - 1;
-  if (ext) {
-    field = (field & mask) | ((value & mask) << width);
-  } else {
-    field = (field & ~mask) | (value & mask);
+  value &= mask;
+  if (is_signed) {
+    uint64_t sign = 1ULL << (width - 1);
+    value = (value ^ sign) - sign;
   }
+  field = ext ? (field & mask) | (value << width) : value;
+}
+
+// Bits needed to hold `value`, at least 1.
+uint64_t bit_length(uint64_t value) {
+  uint64_t bits = 1;
+  while (bits < 64 && (value >> bits) != 0) {
+    bits++;
+  }
+  return bits;
 }
 
 // One configuration of one AGU, the values agu_controller holds when the AGU is
@@ -100,9 +111,9 @@ public:
     if (levels.size() <= level) {
       levels.resize(level + 1);
     }
-    write_half(levels[level].iter, iter, widths_.iter, ext);
-    write_half(levels[level].step, step, widths_.step, ext);
-    write_half(levels[level].delay, delay, widths_.delay, ext);
+    write_field(levels[level].iter, iter, widths_.iter, ext, false);
+    write_field(levels[level].step, step, widths_.step, ext, true);
+    write_field(levels[level].delay, delay, widths_.delay, ext, false);
     if (use_or_) {
       or_configured_ = true;
     }
@@ -194,7 +205,7 @@ public:
   nlohmann::json to_json() const {
     auto level_json = [](const Level &level) {
       return nlohmann::json{{"iter", level.iter},
-                            {"step", level.step},
+                            {"step", static_cast<int64_t>(level.step)},
                             {"delay", level.delay}};
     };
     nlohmann::json lanes = nlohmann::json::array();
@@ -658,9 +669,29 @@ public:
       // those added to switch options, so the sizes SizeAguPass set only grow,
       // and only where the resource has the parameter.
       uint64_t number_ir = 1, number_mt = 0, number_or = 0, agu_used = 0;
+      // The AGU register widths the configurations need.
+      uint64_t iter_width = 1, delay_width = 1, trans_width = 1;
+      auto fit_level = [&](const nlohmann::json &level) {
+        iter_width = std::max(iter_width,
+                              bit_length(level["iter"].get<uint64_t>()));
+        delay_width = std::max(delay_width,
+                               bit_length(level["delay"].get<uint64_t>()));
+      };
       for (const auto &[slot_port, configs] : agu_configs[i]) {
         agu_used |= 1ULL << slot_port.second;
         for (const auto &config : configs) {
+          for (const auto &lane : config["lanes"]) {
+            for (const auto &level : lane["ir"]) {
+              fit_level(level);
+            }
+          }
+          for (const auto &level : config["or"]) {
+            fit_level(level);
+          }
+          for (const auto &transition : config["mt"]) {
+            trans_width = std::max(
+                trans_width, bit_length(transition["delay"].get<uint64_t>()));
+          }
           uint64_t lanes = config["lanes"].size();
           number_mt = std::max<uint64_t>(
               number_mt, std::max<uint64_t>(lanes == 0 ? 0 : lanes - 1,
@@ -683,6 +714,16 @@ public:
       grow("NUMBER_MT", number_mt, false);
       grow("NUMBER_OR", number_or, false);
       grow("AGU_USED", agu_used, true);
+      // The register widths are set to what the program needs, where the
+      // resource has them.
+      auto set = [&](const char *name, uint64_t need) {
+        if (parameters.contains(name)) {
+          parameters[name] = need;
+        }
+      };
+      set("REP_ITER_WIDTH", iter_width);
+      set("REP_DELAY_WIDTH", delay_width);
+      set("TRANS_DELAY_WIDTH", trans_width);
 
       cfg.set_noreconf_resource_fields(
           resource.row, resource.col, resource.slot,
