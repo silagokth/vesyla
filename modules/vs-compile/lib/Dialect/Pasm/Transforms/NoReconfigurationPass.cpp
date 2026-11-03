@@ -260,6 +260,9 @@ struct ConfRule {
   int select_latency;
   std::vector<std::string> key;
   std::vector<std::string> value;
+  // the entry changes during the program: hardcoded as the values its confs
+  // set, each from the cycle it takes effect
+  bool timed = false;
 };
 
 const std::vector<ConfRule> &conf_rules() {
@@ -273,8 +276,8 @@ const std::vector<ConfRule> &conf_rules() {
       // send_links / receive_links[source] of route option `option` = target,
       // selected by AGU_ROUTE_INDEX through the registered current_option
       {"swb", "route", "route", 1, 1, {"sr", "source"}, {"target"}},
-      // wr_mask, one value for the whole program
-      {"io", "", "wr_mask", -1, 0, {}, {"wr_mask"}},
+      // wr_mask, switched at the cycles its confs take effect
+      {"io", "", "wr_mask", -1, 0, {}, {"wr_mask"}, true},
       // memory[address] = value, for every register file
       {"memory", "", "memory", -1, 0, {"address"}, {"value"}},
   };
@@ -331,6 +334,8 @@ struct OptionTable {
 struct ResourceConf {
   std::map<std::string, std::pair<InstrOp, nlohmann::json>> fixed;
   std::map<std::string, OptionTable> tables;
+  // the confs of timed entries, with the cycle each issues in
+  std::vector<std::pair<uint64_t, nlohmann::json>> timed;
 };
 
 std::optional<int64_t> int_param(InstrOp instr, llvm::StringRef name) {
@@ -649,6 +654,45 @@ public:
       nlohmann::json conf = nlohmann::json::array();
       for (const auto &[key, entry] : confs[i].fixed) {
         conf.push_back(entry.second);
+      }
+      // Timed entries: each value from the cycle it takes effect, counted from
+      // the resource's first activation (a conf issued in cycle c is seen from
+      // c + 1, an act in its own cycle). Those in effect by then start at 0.
+      if (!confs[i].timed.empty()) {
+        std::optional<uint64_t> first_act;
+        for (const auto &[cycle, masks] :
+             activations_[{resource.row, resource.col}]) {
+          if (masks.count(resource.slot) && masks.at(resource.slot) != 0) {
+            first_act = cycle;
+            break;
+          }
+        }
+        nlohmann::json timeline = nlohmann::json::array();
+        for (const auto &[cycle, value] : confs[i].timed) {
+          int64_t from = first_act ? static_cast<int64_t>(cycle + 1) -
+                                         static_cast<int64_t>(*first_act)
+                                   : 0;
+          nlohmann::json entry = value;
+          entry["cycle"] = std::max<int64_t>(from, 0);
+          if (!timeline.empty() &&
+              timeline.back()["cycle"] == entry["cycle"]) {
+            timeline.back() = entry;
+          } else {
+            timeline.push_back(entry);
+          }
+          // A value equal to the one before it changes nothing.
+          if (timeline.size() > 1) {
+            nlohmann::json last = timeline.back(), before = timeline[timeline.size() - 2];
+            last.erase("cycle");
+            before.erase("cycle");
+            if (last == before) {
+              timeline.erase(timeline.end() - 1);
+            }
+          }
+        }
+        for (const auto &entry : timeline) {
+          conf.push_back(entry);
+        }
       }
       // Each option the allocation filled, with the entries of the version
       // it holds, renumbered to that option.
@@ -981,9 +1025,9 @@ private:
     return mlir::success();
   }
 
-  // Record a conf entry of `resource`. An entry of a kind without options
-  // holds one value for the whole program, so writing it again with a
-  // different value fails. An entry of an option table that is written again
+  // Record a conf entry of `resource`. A timed entry keeps every value with
+  // its cycle. Another entry of a kind without options holds one value for the
+  // whole program, so writing it again with a different value fails. An entry of an option table that is written again
   // with a different value starts a new version of its option instead, which
   // allocate_options later gives an option of its own.
   mlir::LogicalResult
@@ -1071,6 +1115,11 @@ private:
       }
       versions.back().entries[key.dump()] = fields;
       versions.back().written.insert(key.dump());
+      return mlir::success();
+    }
+
+    if (rule->timed) {
+      confs.timed.push_back({cycle, value});
       return mlir::success();
     }
 
