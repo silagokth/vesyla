@@ -5,6 +5,7 @@
 #include "llvm/ADT/StringSet.h"
 
 #include "vesyla/Dialect/Pasm/Transforms/CoalesceRopsPass.hpp"
+#include "vesyla/Support/AguMerge.hpp"
 #include "vesyla/Support/Common.hpp"
 
 #include <map>
@@ -86,39 +87,27 @@ llvm::StringRef loop_of(InstrOp rep) {
 // lane field reaches lanes 1..3 only.
 std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
   llvm::SmallVector<llvm::SmallVector<InstrOp>> reps;
+  llvm::SmallVector<llvm::SmallVector<const void *>> chains;
   for (RopOp rop : rops) {
     reps.push_back(reps_of(rop));
+    llvm::SmallVector<const void *> chain;
+    for (auto it = reps.back().rbegin(); it != reps.back().rend(); ++it) {
+      chain.push_back(loop_of(*it).empty() ? nullptr : loop_of(*it).data());
+    }
+    chains.push_back(chain);
   }
-
-  size_t shared = 0;
-  while (true) {
-    bool all = true;
+  std::optional<size_t> shared = ::vesyla::util::shared_loops(chains);
+  if (!shared) {
+    return std::nullopt;
+  }
+  // Steps that differ on a shared loop take lane reps, which reach 3 lanes
+  // past the first.
+  for (size_t level = 0; level < *shared; ++level) {
+    InstrOp head = reps.front()[reps.front().size() - 1 - level];
     for (const auto &own : reps) {
-      if (own.size() <= shared) {
-        all = false;
-        break;
-      }
-      InstrOp rep = own[own.size() - 1 - shared];
-      InstrOp head = reps.front()[reps.front().size() - 1 - shared];
-      if (loop_of(rep).empty() || loop_of(rep) != loop_of(head)) {
-        all = false;
-        break;
-      }
+      InstrOp rep = own[own.size() - 1 - level];
       if (rep.getParam().get("step") != head.getParam().get("step") &&
           rops.size() > kMaxLanes) {
-        return std::nullopt;
-      }
-    }
-    if (!all) {
-      break;
-    }
-    ++shared;
-  }
-
-  llvm::StringSet<> seen;
-  for (const auto &own : reps) {
-    for (size_t i = 0; i + shared < own.size(); ++i) {
-      if (!loop_of(own[i]).empty() && !seen.insert(loop_of(own[i])).second) {
         return std::nullopt;
       }
     }

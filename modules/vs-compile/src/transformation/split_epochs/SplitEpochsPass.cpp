@@ -5,6 +5,8 @@
 
 #include "SplitEpochsPass.hpp"
 #include "transformation/bind_resources/Architecture.hpp"
+#include "vesyla/Support/AguMerge.hpp"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
@@ -87,6 +89,52 @@ void merge(Configs &have, const Configs &add) {
   }
 }
 
+using PortKey = std::tuple<int32_t, int32_t, int32_t, int32_t>;
+using Chains = llvm::SmallVector<llvm::SmallVector<const void *>>;
+using PortUsers = std::map<PortKey, Chains>;
+
+// The loop chains (enclosing affine.for, outermost first) of the evt rops in
+// `op`, by the (row, col, slot, port) they are bound to.
+void collect_ports(mlir::Operation *op, PortUsers &out) {
+  op->walk([&](drra::RopOp rop) {
+    auto res = mlir::dyn_cast_or_null<pasm::ResourceAttr>(rop->getAttr("resource"));
+    if (!rop.getEvtAttr() || !res) {
+      return;
+    }
+    llvm::SmallVector<const void *> chain;
+    for (mlir::Operation *p = rop->getParentOp(); p; p = p->getParentOp()) {
+      if (mlir::isa<mlir::affine::AffineForOp>(p)) {
+        chain.insert(chain.begin(), p);
+      }
+    }
+    out[{res.getRow(), res.getCol(), res.getSlot(), res.getPort()}].push_back(
+        chain);
+  });
+}
+
+// False if a port's rops, those before and those of `add`, could no longer
+// form one AGU program (CoalesceRopsPass).
+bool ports_merge(const PortUsers &have, const PortUsers &add) {
+  for (const auto &[port, chains] : add) {
+    auto it = have.find(port);
+    if (it == have.end()) {
+      continue;
+    }
+    Chains all = it->second;
+    all.append(chains.begin(), chains.end());
+    if (!::vesyla::util::shared_loops(all)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void merge_ports(PortUsers &have, const PortUsers &add) {
+  for (const auto &[port, chains] : add) {
+    have[port].append(chains.begin(), chains.end());
+  }
+}
+
 // True if an op from ops[cut] on uses a value defined before ops[cut].
 bool crosses(llvm::ArrayRef<mlir::Operation *> ops, size_t cut,
              mlir::Block &top) {
@@ -144,10 +192,14 @@ private:
       ops.push_back(&op);
     }
     Configs have;
+    PortUsers have_ports;
     for (size_t i = 0; i < ops.size(); ++i) {
       Configs add;
       collect(ops[i], add);
-      if (i > 0 && !fits(have, add, limits_)) {
+      PortUsers add_ports;
+      collect_ports(ops[i], add_ports);
+      if (i > 0 && (!fits(have, add, limits_) ||
+                    !ports_merge(have_ports, add_ports))) {
         for (size_t cut = i; cut > 0; --cut) {
           if (!crosses(ops, cut, top)) {
             return move_tail(epoch, ops, cut, ids);
@@ -155,6 +207,7 @@ private:
         }
       }
       merge(have, add);
+      merge_ports(have_ports, add_ports);
     }
     return nullptr;
   }
