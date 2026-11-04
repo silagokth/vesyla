@@ -17,6 +17,9 @@ namespace vesyla::pasm {
 
 namespace {
 
+// Lanes an AGU program can have: the rep lane field reaches lanes 1..3.
+constexpr size_t kMaxLanes = 4;
+
 // Where a rop that was merged away ended up: the rop that absorbed it, and
 // which of that rop's events it became.
 struct Absorbed {
@@ -48,11 +51,17 @@ InstrOp sole_event(RopOp rop) {
   return event;
 }
 
+// A rep that only sets one lane's step at the last outer level.
+bool is_lane_rep(InstrOp rep) {
+  auto lane = llvm::dyn_cast_or_null<mlir::IntegerAttr>(rep.getParam().get("lane"));
+  return lane && lane.getInt() != 0;
+}
+
 // A rop's reps in the order they sit in, innermost loop first.
 llvm::SmallVector<InstrOp> reps_of(RopOp rop) {
   llvm::SmallVector<InstrOp> reps;
   for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
-    if (instr.getType() == "rep") {
+    if (instr.getType() == "rep" && !is_lane_rep(instr)) {
       reps.push_back(instr);
     }
   }
@@ -71,9 +80,10 @@ llvm::StringRef loop_of(InstrOp rep) {
 // events, while every other rep is its event's own and stays inside the
 // transition with it.
 //
-// Nothing when the group cannot be merged as one: a shared loop the rops step
-// through differently has no single repetition that serves them all, and two
-// rops sharing a loop the rest do not would need a merge inside the merge.
+// A shared loop the rops step through differently gets lane reps (see
+// add_lane_steps). Nothing when the group cannot be merged as one: two rops
+// sharing a loop the rest do not would need a merge inside the merge, and the
+// lane field reaches lanes 1..3 only.
 std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
   llvm::SmallVector<llvm::SmallVector<InstrOp>> reps;
   for (RopOp rop : rops) {
@@ -94,7 +104,8 @@ std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
         all = false;
         break;
       }
-      if (rep.getParam().get("step") != head.getParam().get("step")) {
+      if (rep.getParam().get("step") != head.getParam().get("step") &&
+          rops.size() > kMaxLanes) {
         return std::nullopt;
       }
     }
@@ -113,6 +124,37 @@ std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
     }
   }
   return shared;
+}
+
+// After the base rep of each shared level, one rep per lane whose step there
+// differs from the head's: `lane` = its event index, iter and delay unused.
+void add_lane_steps(llvm::ArrayRef<InstrOp> head_shared,
+                    llvm::ArrayRef<llvm::SmallVector<InstrOp>> lane_shared) {
+  for (size_t i = 0; i < head_shared.size(); ++i) {
+    InstrOp base = head_shared[i];
+    mlir::OpBuilder builder(base.getContext());
+    builder.setInsertionPointAfter(base);
+    for (size_t k = lane_shared.size(); k-- > 0;) {
+      InstrOp rep = lane_shared[k][i];
+      if (rep.getParam().get("step") == base.getParam().get("step")) {
+        continue;
+      }
+      llvm::SmallVector<mlir::NamedAttribute> params;
+      params.push_back(builder.getNamedAttr("iter", builder.getI32IntegerAttr(0)));
+      params.push_back(builder.getNamedAttr("delay", builder.getI32IntegerAttr(0)));
+      params.push_back(builder.getNamedAttr("step", rep.getParam().get("step")));
+      params.push_back(builder.getNamedAttr(
+          "lane", builder.getI32IntegerAttr(static_cast<int32_t>(k + 1))));
+      if (mlir::Attribute port = base.getParam().get("port")) {
+        params.push_back(builder.getNamedAttr("port", port));
+      }
+      InstrOp::create(builder, base.getLoc(),
+                      builder.getStringAttr(base.getId().str() + "_lane" +
+                                            std::to_string(k + 1)),
+                      builder.getStringAttr("rep"),
+                      builder.getDictionaryAttr(params));
+    }
+  }
 }
 
 // Move `event` to the end of `head`'s body.
@@ -217,7 +259,7 @@ std::optional<AnchorRangeAttr> last_event(RopOp rop) {
       own.clear();
     } else if (instr.getType() == "trans") {
       after_trans = true;
-    } else if (instr.getType() == "rep") {
+    } else if (instr.getType() == "rep" && !is_lane_rep(instr)) {
       (after_trans ? shared : own).push_back(instr);
     }
   }
@@ -343,6 +385,7 @@ public:
         int32_t port = std::get<3>(entry.first);
         mlir::Operation *end = head.getBody().front().getTerminator();
         llvm::SmallVector<InstrOp> head_reps = reps_of(head);
+        llvm::SmallVector<llvm::SmallVector<InstrOp>> lane_shared;
         for (size_t k = 1; k < rops.size(); ++k) {
           // The event, then the reps that are its own, ahead of every
           // transition; the shared ones it carried go with the rop, the
@@ -352,6 +395,7 @@ public:
           for (size_t i = 0; i + *shared < reps.size(); ++i) {
             reps[i]->moveBefore(end);
           }
+          lane_shared.emplace_back(reps.end() - *shared, reps.end());
           absorbed[rops[k].getSymName()] =
               Absorbed{head.getSymNameAttr(), static_cast<uint32_t>(k)};
           merged_away.push_back(rops[k]);
@@ -364,6 +408,8 @@ public:
         for (size_t i = head_reps.size() - *shared; i < head_reps.size(); ++i) {
           head_reps[i]->moveBefore(end);
         }
+        add_lane_steps(llvm::ArrayRef<InstrOp>(head_reps).take_back(*shared),
+                       lane_shared);
       }
 
       if (absorbed.empty()) {

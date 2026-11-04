@@ -58,6 +58,7 @@ struct Level {
   uint64_t iter = 0;
   uint64_t step = 0;
   uint64_t delay = 0;
+  std::map<size_t, uint64_t> lane_steps; // OR level: overrides of step by lane
 };
 
 // Write one rep field as agu_controller does: a base rep sets the field from
@@ -101,10 +102,20 @@ public:
     level_ = 0;
   }
 
-  // False when no `evt` has opened a lane of this configuration.
-  bool rep(bool ext, uint64_t iter, uint64_t step, uint64_t delay) {
+  // False when no `evt` has opened a lane of this configuration. A rep with
+  // a lane field sets that lane's step at the last OR level and opens none.
+  bool rep(bool ext, uint64_t iter, uint64_t step, uint64_t delay,
+           uint64_t lane = 0) {
     if (lanes_.empty()) {
       return false;
+    }
+    if (lane != 0) {
+      if (use_or_ && level_ > 0 && level_ - 1 < or_.size()) {
+        Level &level = or_[level_ - 1];
+        auto it = level.lane_steps.try_emplace(lane, level.step).first;
+        write_field(it->second, step, widths_.step, ext, true);
+      }
+      return true;
     }
     std::vector<Level> &levels = use_or_ ? or_ : lanes_.back().ir;
     size_t level = ext ? (level_ == 0 ? 0 : level_ - 1) : level_;
@@ -164,19 +175,21 @@ public:
     if (lanes_.empty()) {
       all.insert(0);
     }
-    for (const Lane &lane : lanes_) {
-      std::set<uint64_t> addrs = {lane.init_addr};
-      for (const Level &level : lane.ir) {
+    for (size_t l = 0; l < lanes_.size(); l++) {
+      std::set<uint64_t> addrs = {lanes_[l].init_addr};
+      for (const Level &level : lanes_[l].ir) {
         if (!expand(addrs, level)) {
           return std::nullopt;
         }
       }
-      all.insert(addrs.begin(), addrs.end());
-    }
-    for (const Level &level : or_) {
-      if (!expand(all, level)) {
-        return std::nullopt;
+      for (const Level &level : or_) {
+        Level lane_level = level;
+        lane_level.step = step_of(level, l);
+        if (!expand(addrs, lane_level)) {
+          return std::nullopt;
+        }
       }
+      all.insert(addrs.begin(), addrs.end());
     }
     for (uint64_t addr : all) {
       if (addr > limit) {
@@ -197,7 +210,8 @@ public:
       addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
     }
     for (const Level &level : or_) {
-      addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
+      addr += (std::max<uint64_t>(level.iter, 1) - 1) *
+              step_of(level, lanes_.size() - 1);
     }
     return addr;
   }
@@ -222,7 +236,15 @@ public:
     }
     nlohmann::json or_levels = nlohmann::json::array();
     for (const Level &level : or_) {
-      or_levels.push_back(level_json(level));
+      nlohmann::json entry = level_json(level);
+      if (!level.lane_steps.empty()) {
+        nlohmann::json steps = nlohmann::json::array();
+        for (size_t l = 0; l < lanes_.size(); l++) {
+          steps.push_back(static_cast<int64_t>(step_of(level, l)));
+        }
+        entry["lane_steps"] = steps;
+      }
+      or_levels.push_back(entry);
     }
     return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}};
   }
@@ -232,6 +254,11 @@ private:
     uint64_t init_addr;
     std::vector<Level> ir;
   };
+
+  static uint64_t step_of(const Level &level, size_t lane) {
+    auto it = level.lane_steps.find(lane);
+    return it == level.lane_steps.end() ? level.step : it->second;
+  }
 
   RepWidths widths_;
   std::vector<Lane> lanes_;
@@ -1002,7 +1029,8 @@ private:
         it->second.second.rep(int_param(instr, "ext").value_or(0) != 0,
                               int_param(instr, "iter").value_or(0),
                               int_param(instr, "step").value_or(0),
-                              int_param(instr, "delay").value_or(0));
+                              int_param(instr, "delay").value_or(0),
+                              int_param(instr, "lane").value_or(0));
       } else {
         it->second.second.trans(int_param(instr, "delay").value_or(0));
       }

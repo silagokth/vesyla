@@ -282,7 +282,9 @@ public:
         }
         AguReplay &replay = replays[agu->second];
         if (type == "rep") {
-          replay.rep(int_param(instr, "ext").value_or(0) != 0);
+          // A lane rep, like an ext rep, opens no level.
+          replay.rep(int_param(instr, "ext").value_or(0) != 0 ||
+                     int_param(instr, "lane").value_or(0) != 0);
         } else {
           replay.trans();
         }
