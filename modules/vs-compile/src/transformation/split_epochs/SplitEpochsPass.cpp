@@ -4,6 +4,7 @@
 #include "llvm/ADT/StringSet.h"
 
 #include "SplitEpochsPass.hpp"
+#include "transformation/bind_resources/Architecture.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
@@ -18,17 +19,15 @@ namespace vesyla::transformation::split_epochs {
 
 namespace {
 
-// Config registers of a DPU.
-constexpr size_t kDpuConfigs = 4;
+using ResourceKey = std::tuple<int32_t, int32_t, int32_t>;
+using Configs = std::map<ResourceKey, std::set<const void *>>;
+using Limits = std::map<ResourceKey, int64_t>;
 
-using DpuKey = std::tuple<int32_t, int32_t, int32_t>;
-using DpuConfigs = std::map<DpuKey, std::set<const void *>>;
-
-// The distinct DPU configurations `op` runs, by DPU.
-void collect(mlir::Operation *op, DpuConfigs &out) {
+// The distinct configurations (conf without its option) `op` runs, by the
+// resource instance they are bound to.
+void collect(mlir::Operation *op, Configs &out) {
   op->walk([&](drra::RopOp rop) {
-    auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
-    if (!kind || kind.getValue() != "dpu" || !rop.getConfAttr()) {
+    if (!rop.getConfAttr()) {
       return;
     }
     pasm::ResourceAttr res;
@@ -48,23 +47,43 @@ void collect(mlir::Operation *op, DpuConfigs &out) {
   });
 }
 
-bool fits(const DpuConfigs &have, const DpuConfigs &add) {
-  for (const auto &[dpu, configs] : add) {
+// NUM_OPTIONS of each resource instance (arch.json, 4 when not given);
+// 0 means its confs take no option and are not limited.
+Limits read_limits(const bind_resources::Architecture &arch) {
+  Limits limits;
+  for (const bind_resources::ResourceInstance &r : arch.instances()) {
+    int64_t n = 4;
+    if (r.parameters.is_object() && r.parameters.contains("NUM_OPTIONS") &&
+        r.parameters.at("NUM_OPTIONS").is_number_integer()) {
+      n = r.parameters.at("NUM_OPTIONS").get<int64_t>();
+    }
+    limits[{r.row, r.col, r.slot}] = n;
+  }
+  return limits;
+}
+
+bool fits(const Configs &have, const Configs &add, const Limits &limits) {
+  for (const auto &[res, configs] : add) {
+    auto limit = limits.find(res);
+    int64_t n = limit == limits.end() ? 4 : limit->second;
+    if (n == 0) {
+      continue;
+    }
     std::set<const void *> all = configs;
-    auto it = have.find(dpu);
+    auto it = have.find(res);
     if (it != have.end()) {
       all.insert(it->second.begin(), it->second.end());
     }
-    if (all.size() > kDpuConfigs) {
+    if (static_cast<int64_t>(all.size()) > n) {
       return false;
     }
   }
   return true;
 }
 
-void merge(DpuConfigs &have, const DpuConfigs &add) {
-  for (const auto &[dpu, configs] : add) {
-    have[dpu].insert(configs.begin(), configs.end());
+void merge(Configs &have, const Configs &add) {
+  for (const auto &[res, configs] : add) {
+    have[res].insert(configs.begin(), configs.end());
   }
 }
 
@@ -95,6 +114,11 @@ public:
 
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
+    auto arch = bind_resources::Architecture::from_config(module);
+    if (mlir::failed(arch)) {
+      return signalPassFailure();
+    }
+    limits_ = read_limits(*arch);
     llvm::StringSet<> ids;
     llvm::SmallVector<pasm::EpochOp> work;
     for (auto epoch : module.getOps<pasm::EpochOp>()) {
@@ -110,6 +134,8 @@ public:
   }
 
 private:
+  Limits limits_;
+
   // Cuts `epoch` once if it has to; returns the new epoch, or null.
   pasm::EpochOp split(pasm::EpochOp epoch, llvm::StringSet<> &ids) {
     mlir::Block &top = epoch.getBody().front();
@@ -117,11 +143,11 @@ private:
     for (mlir::Operation &op : top.without_terminator()) {
       ops.push_back(&op);
     }
-    DpuConfigs have;
+    Configs have;
     for (size_t i = 0; i < ops.size(); ++i) {
-      DpuConfigs add;
+      Configs add;
       collect(ops[i], add);
-      if (i > 0 && !fits(have, add)) {
+      if (i > 0 && !fits(have, add, limits_)) {
         for (size_t cut = i; cut > 0; --cut) {
           if (!crosses(ops, cut, top)) {
             return move_tail(epoch, ops, cut, ids);

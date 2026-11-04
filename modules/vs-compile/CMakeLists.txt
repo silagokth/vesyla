@@ -460,7 +460,8 @@ add_mlir_library(
   MLIRIR
   MLIRPass
   VesylaPasm
-  VesylaDrra)
+  VesylaDrra
+  VesylaBindResources)
 
 # Resource binding: which instance each operation of instruction selection
 # runs on. Allocation is read from the architecture file.
