@@ -2,6 +2,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
+#include <climits>
 #include <bitset>
 
 namespace vesyla::pasm::schedule_epoch_detail {
@@ -34,83 +35,68 @@ int ScheduleEpochPassRewriter::allocateAndScheduleActMode2PrepInstructions(
     ::mlir::PatternRewriter &rewriter, ::vesyla::pasm::EpochOp op, int cycle,
     uint64_t ports) const {
 
-  int potential_first_reg = 4;
-  int num_regs_needed = 4; // TODO: make this configurable
-  int first_reg;
+  const int num_regs_needed = 4; // TODO: make this configurable
+  const int max_attempts = 1000;
 
-  // check if the first reg is available
-  if (reg_alloc_table[potential_first_reg].empty()) {
-    first_reg = potential_first_reg;
-  } else if (reg_alloc_table[potential_first_reg + num_regs_needed].empty()) {
-    first_reg = potential_first_reg + num_regs_needed;
-  } else {
-    llvm::outs() << "Error: Cannot allocate registers for activation mode 2 at "
-                    "cycle "
-                 << cycle
-                 << ". [r4->r7] and [r8->r11] are not available in controller.\n";
-    exit(EXIT_FAILURE);
-  }
+  // A group holds the mask from its first prep instruction to its act, which
+  // reads it. Acts come in cycle order, so a group is free again for prep
+  // instructions after the last cycle it was used.
+  for (int first_reg : {4, 4 + num_regs_needed}) {
+    const std::vector<int> &used = reg_alloc_table[first_reg];
+    int after = used.empty() ? INT_MIN : *std::max_element(used.begin(), used.end());
 
-  // add act cycle to the register allocation table
-  for (int i = 0; i < num_regs_needed; i++) {
-    reg_alloc_table[first_reg + i].push_back(cycle);
-  }
-
-  // get the list of prep instructions for activation mode 2
-  auto instrs_to_place = get_act_mode2_prep_instrs(first_reg, ports);
-  int num_instrs = instrs_to_place.size();
-  int cycles_needed = num_instrs;
-
-  // find the first empty slot
-  int max_attempts = 1000; // or some reasonable limit
-  int attempts = 0;
-  do {
-    cycle--;
-    attempts++;
-    if (attempts > max_attempts) {
-      llvm::outs() << "Error: Too many attempts to allocate registers for "
-                      "ACT mode 2 prep instructions at cycle "
-                   << cycle << ".\n";
-      exit(EXIT_FAILURE);
-    }
-    if (cell_time_table.find(cycle) != cell_time_table.end()) {
-      continue; // skip if there are already operations scheduled at this
-                // cycle
-    }
-
-    // check if the regs are available
-    bool registers_available = true;
-    for (int i = 0; i < num_regs_needed; i++) {
-      if (!reg_alloc_table[first_reg + i].empty() &&
-          std::find(reg_alloc_table[first_reg + i].begin(),
-                    reg_alloc_table[first_reg + i].end(),
-                    cycle) != reg_alloc_table[first_reg + i].end()) {
-        registers_available = false;
-        break;
+    auto instrs_to_place = get_act_mode2_prep_instrs(first_reg, ports);
+    // A reused group still holds the last mask: zero what this one leaves 0.
+    if (!used.empty()) {
+      for (int i = num_regs_needed - 1; i >= 0; --i) {
+        if (((ports >> (16 * i)) & 0xFFFF) == 0) {
+          instrs_to_place.insert(instrs_to_place.begin(),
+                                 {{"mode", 1},
+                                  {"operand1", 0},
+                                  {"operand2_sd", 0},
+                                  {"operand2", 0},
+                                  {"result", first_reg + i}});
+        }
       }
     }
-    if (!registers_available) {
+    std::vector<int> slots;
+    for (int c = cycle - 1;
+         c > after && c >= cycle - max_attempts &&
+         slots.size() < instrs_to_place.size();
+         --c) {
+      if (cell_time_table.find(c) == cell_time_table.end()) {
+        slots.push_back(c);
+      }
+    }
+    if (slots.size() < instrs_to_place.size()) {
       continue;
     }
+
     for (int i = 0; i < num_regs_needed; i++) {
       reg_alloc_table[first_reg + i].push_back(cycle);
+      for (int c : slots) {
+        reg_alloc_table[first_reg + i].push_back(c);
+      }
     }
-    llvm::outs() << "Allocating registers r" << first_reg << " to r"
-                 << (first_reg + num_regs_needed - 1)
-                 << " for ACT mode 2 prep "
-                 << "instructions for ports "
-                 << std::bitset<64>(ports).to_string() << " at cycle " << cycle
-                 << "\n";
+    // The latest slot takes the last instruction, as before.
+    for (size_t k = 0; k < slots.size(); ++k) {
+      llvm::outs() << "Allocating registers r" << first_reg << " to r"
+                   << (first_reg + num_regs_needed - 1)
+                   << " for ACT mode 2 prep instructions for ports "
+                   << std::bitset<64>(ports).to_string() << " at cycle "
+                   << slots[k] << "\n";
+      auto prep_op = compose_calc_mlir_op(
+          op, rewriter, instrs_to_place[instrs_to_place.size() - 1 - k]);
+      create_time_table_entry(cell_time_table, slots[k], prep_op);
+    }
+    return first_reg;
+  }
 
-    // place a prep instruction in the time table
-    auto prep_op = compose_calc_mlir_op(op, rewriter,
-                                        instrs_to_place[cycles_needed - 1]);
-    create_time_table_entry(cell_time_table, cycle, prep_op);
-    cycles_needed--;
-
-  } while (cycles_needed != 0);
-
-  return first_reg;
+  llvm::outs() << "Error: Cannot allocate registers for activation mode 2 at "
+                  "cycle "
+               << cycle
+               << ". [r4->r7] and [r8->r11] are both still in use.\n";
+  exit(EXIT_FAILURE);
 }
 
 std::vector<std::unordered_map<std::string, int>>
