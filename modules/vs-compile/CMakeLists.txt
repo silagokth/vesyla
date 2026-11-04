@@ -424,7 +424,7 @@ add_mlir_library(
   MLIRAffineDialect
   MLIRMemRefDialect
   VesylaSelectInstr
-  VesylaDse)
+  VesylaBindResources)
 
 # Copies a storage read twice in the same cycle, one copy per reader.
 add_custom_mlir_pass_dir(transformation/copy_storages VesylaCopyStorages)
@@ -444,18 +444,17 @@ add_mlir_library(
   MLIRMemRefDialect
   VesylaDrraToPasm)
 
-# Design space exploration: allocation, binding and scheduling over the module
-# instruction selection produced. Allocation is read from the architecture file;
-# binding and scheduling are still being written.
-add_custom_mlir_pass_dir(transformation/design_space_exploration VesylaDse)
+# Resource binding: which instance each operation of instruction selection
+# runs on. Allocation is read from the architecture file.
+add_custom_mlir_pass_dir(transformation/bind_resources VesylaBindResources)
 
-file(GLOB SOURCE_DSE "src/transformation/design_space_exploration/*.cpp")
+file(GLOB SOURCE_BIND_RESOURCES "src/transformation/bind_resources/*.cpp")
 add_mlir_library(
-  VesylaDse
-  ${SOURCE_DSE}
+  VesylaBindResources
+  ${SOURCE_BIND_RESOURCES}
   DISABLE_INSTALL
   DEPENDS
-  VesylaDseIncGen
+  VesylaBindResourcesIncGen
   VesylaPasmIncGen
   VesylaDrraIncGen
   LINK_LIBS
@@ -486,7 +485,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaCopyStorages VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaCopyStorages VesylaBindResources VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

@@ -19,7 +19,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 namespace {
 
@@ -76,13 +76,13 @@ mlir::LogicalResult read_offsets(mlir::Operation *rop,
       return mlir::success();
     }
     mlir::InFlightDiagnostic diag =
-        rop->emitError("design-space-exploration: `endpoints` declares no `");
+        rop->emitError("bind-resources: `endpoints` declares no `");
     diag << which << "`, but the operation has " << expected << " of them";
     return mlir::failure();
   }
   if (array.size() != expected) {
     mlir::InFlightDiagnostic diag =
-        rop->emitError("design-space-exploration: `endpoints` gives ");
+        rop->emitError("bind-resources: `endpoints` gives ");
     diag << array.size() << " " << which << " slot(s) for an operation with "
          << expected;
     return mlir::failure();
@@ -91,14 +91,14 @@ mlir::LogicalResult read_offsets(mlir::Operation *rop,
   for (mlir::Attribute entry : array) {
     auto offset = mlir::dyn_cast<mlir::IntegerAttr>(entry);
     if (!offset) {
-      rop->emitError("design-space-exploration: `endpoints` slot offsets must "
+      rop->emitError("bind-resources: `endpoints` slot offsets must "
                      "be integers");
       return mlir::failure();
     }
     int value = static_cast<int>(offset.getInt());
     if (value < 0 || value >= size) {
       mlir::InFlightDiagnostic diag = rop->emitError(
-          "design-space-exploration: `endpoints` names slot offset ");
+          "bind-resources: `endpoints` names slot offset ");
       diag << value << ", but the instance is " << size << " slot(s) wide";
       return mlir::failure();
     }
@@ -120,7 +120,7 @@ mlir::LogicalResult read_endpoints(mlir::Operation *rop,
     // binding and quietly routes two of them over one channel.
     if (instance.size > 1 && rop->getNumResults() + rop->getNumOperands() > 1) {
       mlir::InFlightDiagnostic diag =
-          rop->emitError("design-space-exploration: this operation has ");
+          rop->emitError("bind-resources: this operation has ");
       diag << rop->getNumResults() + rop->getNumOperands()
            << " endpoints on a resource that is " << instance.size
            << " slots wide, but declares no `endpoints` -- the library has to "
@@ -227,7 +227,7 @@ mlir::LogicalResult move_map(mlir::Operation *rop, int base, int row_words) {
     unit = vector.getNumElements();
   }
   if (unit <= 0 || row_words % unit != 0) {
-    rop->emitError("design-space-exploration: an access of ")
+    rop->emitError("bind-resources: an access of ")
         << unit << " words does not divide a memory row of " << row_words;
     return mlir::failure();
   }
@@ -245,7 +245,7 @@ mlir::LogicalResult move_map(mlir::Operation *rop, int base, int row_words) {
     map = mlir::AffineMap::get(loops, 0, mlir::getAffineConstantExpr(0, ctx));
   }
   if (map.getNumResults() != 1) {
-    rop->emitError("design-space-exploration: cannot move an address map with ")
+    rop->emitError("bind-resources: cannot move an address map with ")
         << map.getNumResults() << " results to a base row";
     return mlir::failure();
   }
@@ -293,7 +293,7 @@ public:
       mlir::Operation *rop = ops.front();
       mlir::StringAttr kind = graph.kind(node);
       if (!kind) {
-        rop->emitError("design-space-exploration: operation carries no `kind`, "
+        rop->emitError("bind-resources: operation carries no `kind`, "
                        "so there is nothing to bind it to -- instruction "
                        "selection should have written one");
         failed = true;
@@ -308,7 +308,7 @@ public:
       }
       llvm::ArrayRef<unsigned> pool = cached->second;
       if (pool.empty()) {
-        rop->emitError() << "design-space-exploration: the architecture "
+        rop->emitError() << "bind-resources: the architecture "
                             "allocates no resource of kind '"
                          << kind.getValue() << "'";
         failed = true;
@@ -334,7 +334,7 @@ public:
         // say what ran short instead of overcommitting an instance and letting
         // it surface as wrong results.
         rop->emitError()
-            << "design-space-exploration: the architecture allocates "
+            << "bind-resources: the architecture allocates "
             << pool.size() << " resource(s) of kind '" << kind.getValue()
             << "', but this conflicts with all of them -- the program needs "
                "more than the design has";
@@ -406,7 +406,7 @@ private:
       mlir::MemRefType type = types.lookup(graph.storage(node));
       if (!type || !type.hasStaticShape()) {
         graph.ops(node).front()->emitError()
-            << "design-space-exploration: storage @"
+            << "bind-resources: storage @"
             << graph.storage(node).getValue()
             << " names no memref of static shape, so its size is not known";
         failed = true;
@@ -453,7 +453,7 @@ private:
     }
     if (taking.empty()) {
       ops.front()->emitError()
-          << "design-space-exploration: the architecture has no memory that "
+          << "bind-resources: the architecture has no memory that "
              "takes the accesses to storage @"
           << storage.getValue();
       return mlir::failure();
@@ -469,7 +469,7 @@ private:
     if (fitting.empty()) {
       const ResourceInstance &largest = arch.at(taking.back());
       ops.front()->emitError()
-          << "design-space-exploration: storage @" << storage.getValue()
+          << "bind-resources: storage @" << storage.getValue()
           << " needs " << words << " words, the largest memory in the "
           << "architecture holds " << largest.depth() << " (" << largest.kind
           << ")";
@@ -515,7 +515,7 @@ private:
 
     if (!chosen) {
       mlir::InFlightDiagnostic diag = ops.front()->emitError();
-      diag << "design-space-exploration: storage @" << storage.getValue()
+      diag << "bind-resources: storage @" << storage.getValue()
            << " (" << words << " words) fits in no memory over ["
            << points_->name(live.first) << ", " << points_->name(live.last)
            << "]:";
@@ -561,6 +561,6 @@ std::unique_ptr<Binder> create_greedy_coloring_binder() {
   return std::make_unique<GreedyColoringBinder>();
 }
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla

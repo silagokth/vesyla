@@ -18,7 +18,7 @@
 #include "conversion/select_instructions/Matcher.hpp"
 #include "conversion/select_instructions/PatternLibrary.hpp"
 #include "conversion/select_instructions/Rewriter.hpp"
-#include "transformation/design_space_exploration/Architecture.hpp"
+#include "transformation/bind_resources/Architecture.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
@@ -42,7 +42,7 @@ llvm::StringRef kind_of(mlir::Operation *op) {
 
 bool is_dpu(mlir::Operation *op) { return kind_of(op) == "dpu"; }
 
-// What DSE gives a DPU of its own in a loop nest.
+// What BindResourcesPass gives a DPU of its own in a loop nest.
 bool is_dpu_mode(mlir::Operation *op) {
   return is_dpu(op) && op->hasAttr("conf");
 }
@@ -115,7 +115,7 @@ public:
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
 
-    auto arch = transformation::dse::Architecture::from_config(module);
+    auto arch = transformation::bind_resources::Architecture::from_config(module);
     if (mlir::failed(arch))
       return signalPassFailure();
     dpus_ = arch->instances_of_kind("dpu").size();

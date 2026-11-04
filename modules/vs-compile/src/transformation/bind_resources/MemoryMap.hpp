@@ -19,7 +19,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // Where each storage lives in the memories: an instance and a range of rows,
 // held from the storage's first write to its last read.
@@ -112,7 +112,7 @@ private:
   std::map<unsigned, std::vector<std::vector<Entry>>> rows_;
 };
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

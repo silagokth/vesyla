@@ -14,7 +14,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // One physical resource instance in the fabric: what exists at (row, col,
 // slot), as the architecture file says.
@@ -87,7 +87,7 @@ private:
   int cols_ = 0;
 };
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

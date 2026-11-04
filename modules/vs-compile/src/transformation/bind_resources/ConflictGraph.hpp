@@ -17,7 +17,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // Why two nodes cannot share a resource instance. A bitmask: an edge may have
 // been drawn for more than one reason, and keeping all of them is what lets the
@@ -216,7 +216,7 @@ private:
   llvm::DenseMap<EdgeKey, Edge> edges_;
 };
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

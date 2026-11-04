@@ -1,4 +1,4 @@
-#include "DesignSpaceExplorationPass.hpp"
+#include "BindResourcesPass.hpp"
 
 #include "Architecture.hpp"
 #include "ConflictGraph.hpp"
@@ -21,9 +21,9 @@
 #include <string>
 #include <utility>
 
-namespace vesyla::transformation::dse {
-#define GEN_PASS_DEF_DESIGNSPACEEXPLORATIONPASS
-#include "transformation/design_space_exploration/Passes.hpp.inc"
+namespace vesyla::transformation::bind_resources {
+#define GEN_PASS_DEF_BINDRESOURCESPASS
+#include "transformation/bind_resources/Passes.hpp.inc"
 
 namespace {
 
@@ -114,7 +114,7 @@ mlir::LogicalResult verify_all_bound(mlir::ModuleOp module) {
       return;
     }
     mlir::InFlightDiagnostic diag =
-        rop.emitError("design-space-exploration: operation was not bound to a "
+        rop.emitError("bind-resources: operation was not bound to a "
                       "resource");
     if (auto id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id")) {
       diag << " (id @" << id.getValue() << ")";
@@ -176,7 +176,7 @@ mlir::LogicalResult verify_storage_bindings(mlir::ModuleOp module) {
       return;
     }
     mlir::InFlightDiagnostic diag = rop.emitError(
-        "design-space-exploration: storage @");
+        "bind-resources: storage @");
     diag << storage.getValue() << " was bound to (" << resource.getRow() << ", "
          << resource.getCol() << ", " << resource.getSlot() << ") base row "
          << base(rop) << " here, and to (" << first.getRow() << ", "
@@ -184,18 +184,18 @@ mlir::LogicalResult verify_storage_bindings(mlir::ModuleOp module) {
          << base(entry->second.second) << " elsewhere -- every access to one register file has to land on "
             "the same rows of one register file";
     diag.attachNote(entry->second.second->getLoc())
-        << "design-space-exploration: the other binding of @"
+        << "bind-resources: the other binding of @"
         << storage.getValue();
     ok = false;
   });
   return mlir::success(ok);
 }
 
-class DesignSpaceExplorationPass
-    : public impl::DesignSpaceExplorationPassBase<DesignSpaceExplorationPass> {
+class BindResourcesPass
+    : public impl::BindResourcesPassBase<BindResourcesPass> {
 public:
-  using impl::DesignSpaceExplorationPassBase<
-      DesignSpaceExplorationPass>::DesignSpaceExplorationPassBase;
+  using impl::BindResourcesPassBase<
+      BindResourcesPass>::BindResourcesPassBase;
 
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
@@ -240,4 +240,4 @@ public:
 };
 
 } // namespace
-} // namespace vesyla::transformation::dse
+} // namespace vesyla::transformation::bind_resources

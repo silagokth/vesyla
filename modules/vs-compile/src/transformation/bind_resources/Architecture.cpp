@@ -6,7 +6,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 namespace {
 
@@ -113,7 +113,7 @@ Architecture::from_config(mlir::Operation *diag_op) {
   nlohmann::json arch_json = cfg.get_arch_json();
 
   if (!arch_json.is_object() || !arch_json.contains("cells")) {
-    diag_op->emitError("design-space-exploration: the architecture file has no "
+    diag_op->emitError("bind-resources: the architecture file has no "
                        "\"cells\" section -- it must be the elaborated "
                        "arch.json (work/system/arch/arch.json), not the source "
                        "form");
@@ -132,7 +132,7 @@ Architecture::from_config(mlir::Operation *diag_op) {
     const nlohmann::json &cell_entry = entry.value();
     if (!cell_entry.is_object() || !cell_entry.contains("coordinates") ||
         !cell_entry.contains("cell")) {
-      diag_op->emitError("design-space-exploration: cell entry \"" +
+      diag_op->emitError("bind-resources: cell entry \"" +
                          entry.key() +
                          "\" has no coordinates or no cell body -- the "
                          "architecture file is not elaborated");
@@ -143,7 +143,7 @@ Architecture::from_config(mlir::Operation *diag_op) {
     int row = int_or(coordinates, "row", -1);
     int col = int_or(coordinates, "col", -1);
     if (row < 0 || col < 0) {
-      diag_op->emitError("design-space-exploration: cell entry \"" +
+      diag_op->emitError("bind-resources: cell entry \"" +
                          entry.key() + "\" has no (row, col) coordinates");
       return mlir::failure();
     }
@@ -174,7 +174,7 @@ Architecture::from_config(mlir::Operation *diag_op) {
       }
 
       if (instance.kind.empty() || instance.slot < 0) {
-        diag_op->emitError("design-space-exploration: resource at cell (" +
+        diag_op->emitError("bind-resources: resource at cell (" +
                            std::to_string(row) + ", " + std::to_string(col) +
                            ") has no kind or no slot");
         return mlir::failure();
@@ -184,7 +184,7 @@ Architecture::from_config(mlir::Operation *diag_op) {
   }
 
   if (arch.instances_.empty()) {
-    diag_op->emitError("design-space-exploration: the architecture file "
+    diag_op->emitError("bind-resources: the architecture file "
                        "declares no resources");
     return mlir::failure();
   }
@@ -216,6 +216,6 @@ llvm::SmallVector<unsigned> Architecture::memory_instances() const {
   return indices;
 }
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla

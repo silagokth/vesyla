@@ -6,7 +6,7 @@ include "mlir/Pass/PassBase.td"
 def CopyStoragesPass : Pass<"copy-storages-pass", "::mlir::ModuleOp"> {
   let summary = "Give a storage read twice in the same cycle a copy per reader.";
   let description = [{
-    Runs between SplitEpochsPass and design space exploration. Two reads of one
+    Runs between SplitEpochsPass and BindResourcesPass. Two reads of one
     storage that the data flow ties to the same cycle on the same port cannot
     both be served by one register file. Every further reader gets a copy of
     the storage, filled by a clone of each fetch (io read and RF write) that

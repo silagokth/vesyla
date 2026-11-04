@@ -7,7 +7,7 @@ def SplitEpochsPass : Pass<"split-epochs-pass", "::mlir::ModuleOp"> {
   let summary = "Split a loop nest that needs more DPUs than the fabric has "
                 "into one epoch per group of DPU operations.";
   let description = [{
-    Runs between instruction selection and design space exploration. DSE gives
+    Runs between instruction selection and BindResourcesPass, which gives
     every DPU rop with a `conf` in one outermost loop nest its own DPU; a nest
     with more of them than the architecture has DPUs is split here.
 

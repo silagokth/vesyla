@@ -9,7 +9,7 @@ def AssignIdsPass : Pass<"assign-ids-pass", "::mlir::ModuleOp"> {
     The passes below key everything on the `id` symbol of an op: instruction
     selection names the storage of an access after its `memref.alloc`, and
     copies the id of the op a match is rooted on onto the `drra.rop` it makes,
-    which design space exploration, constraint generation and the pasm lowering
+    which resource binding, constraint generation and the pasm lowering
     then look up. A hand-written program names them by hand; a kernel lowered
     from C has none.
 

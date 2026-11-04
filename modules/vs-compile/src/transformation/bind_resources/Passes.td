@@ -1,9 +1,9 @@
-#ifndef VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
-#define VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
+#ifndef VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES
+#define VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::ModuleOp"> {
+def BindResourcesPass : Pass<"bind-resources-pass", "::mlir::ModuleOp"> {
   let summary = "Assign every selected instruction to a hardware resource.";
   let description = [{
     Runs on the module instruction selection produced, where every `drra.rop`
@@ -81,4 +81,4 @@ def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::
                            "::vesyla::pasm::PasmDialect"];
 }
 
-#endif // VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
+#endif // VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES

@@ -12,7 +12,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // Binding: which instance of the allocated resources each operation runs on.
 //
@@ -45,7 +45,7 @@ public:
 // says which kind ran short rather than overcommitting one.
 std::unique_ptr<Binder> create_greedy_coloring_binder();
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

@@ -11,14 +11,14 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 mlir::FailureOr<ProgramPoints> ProgramPoints::build(mlir::ModuleOp module) {
   ProgramPoints points;
   bool failed = false;
   module.walk<mlir::WalkOrder::PreOrder>([&](pasm::EpochOp epoch) {
     if (epoch->getParentOfType<mlir::affine::AffineForOp>()) {
-      epoch.emitError("design-space-exploration: an epoch inside a loop runs "
+      epoch.emitError("bind-resources: an epoch inside a loop runs "
                       "once per iteration, which the storage lifetimes cannot "
                       "describe");
       failed = true;
@@ -315,6 +315,6 @@ void MemoryMap::write(llvm::raw_ostream &os,
   }
 }
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla

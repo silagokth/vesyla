@@ -21,7 +21,7 @@
 #include "conversion/func_to_pasm/FuncToEpochPass.hpp"
 #include "conversion/select_instructions/SelectInstructionsPass.hpp"
 #include "transformation/assign_ids/AssignIdsPass.hpp"
-#include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
+#include "transformation/bind_resources/BindResourcesPass.hpp"
 #include "transformation/interchange_loops/InterchangeLoopsPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
@@ -120,7 +120,7 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   select_pm.addPass(
       vesyla::conversion::select_instructions::createSelectInstructionsPass());
   // SplitEpochsPass splits a loop nest that needs more DPUs than the fabric
-  // has into epochs, before DSE binds them.
+  // has into epochs, before BindResourcesPass binds them.
   select_pm.addPass(
       vesyla::transformation::split_epochs::createSplitEpochsPass());
   // CopyStoragesPass gives a storage read twice in one cycle a copy per reader.
@@ -132,16 +132,16 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   }
   save_mlir(*module, stage_file(1));
 
-  // DesignSpaceExplorationPass runs after instruction selection and before
+  // BindResourcesPass runs after instruction selection and before
   // icdep generation: selection says what each operation does, and this says
   // where it runs. Allocation comes from the architecture file; binding and
   // scheduling are decided here. It ends by checking that every operation came
   // out bound, which is what the passes below rely on.
-  mlir::PassManager dse_pm(&context);
-  dse_pm.addPass(
-      vesyla::transformation::dse::createDesignSpaceExplorationPass());
-  if (mlir::failed(dse_pm.run(*module))) {
-    LOG_FATAL << "Error: DesignSpaceExplorationPass failed.";
+  mlir::PassManager bind_pm(&context);
+  bind_pm.addPass(
+      vesyla::transformation::bind_resources::createBindResourcesPass());
+  if (mlir::failed(bind_pm.run(*module))) {
+    LOG_FATAL << "Error: BindResourcesPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(2));
@@ -340,7 +340,7 @@ int main(int argc, char **argv) {
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
   // port table, AddDefaultValuePass needs the ISA, and
-  // DesignSpaceExplorationPass needs the architecture, since that file is what
+  // BindResourcesPass needs the architecture, since that file is what
   // says which resources the design has. All three are loaded before the
   // passes run.
   vesyla::pasm::Config cfg;

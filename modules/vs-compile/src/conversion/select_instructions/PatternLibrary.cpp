@@ -118,7 +118,7 @@ mlir::LogicalResult validateSegments(const nlohmann::json &isa,
 }
 
 // Check the shape of a replacement rop's `uses` list: the parts of the resource
-// the operation holds while it is active, which design-space exploration
+// the operation holds while it is active, which BindResourcesPass
 // intersects to decide whether two operations can share an instance.
 //
 // The strings themselves are not checked against anything. There is nothing to

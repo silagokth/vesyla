@@ -13,7 +13,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 namespace {
 
@@ -443,6 +443,6 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
   os << "}\n";
 }
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla

@@ -54,7 +54,7 @@ mlir::Operation *earliest_producer(drra::RopOp rop) {
 }
 
 // Where a drra.rop runs. resource is a single ResourceAttr, which is what
-// design-space exploration writes, or an array of them on hand-written input;
+// BindResourcesPass writes, or an array of them on hand-written input;
 // either way the first resource.
 pasm::ResourceAttr resource_of(drra::RopOp rop) {
   auto resource = rop->getAttrOfType<pasm::ResourceAttr>("resource");
@@ -342,7 +342,7 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder,
   // in.
   //
   // TODO: this places each conf on its own, without looking at the confs
-  // already placed on the same (row, col, slot). Design-space exploration only
+  // already placed on the same (row, col, slot). BindResourcesPass only
   // keeps apart operations whose `uses` overlap, so two that want different
   // config registers are put on one resource on purpose, and two that want the
   // same one are never bound together -- but nothing here checks either, so a
