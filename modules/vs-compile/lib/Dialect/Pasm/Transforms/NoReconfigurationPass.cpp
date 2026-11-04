@@ -98,8 +98,10 @@ public:
   explicit AguConfig(RepWidths widths) : widths_(widths) {}
 
   void evt(uint64_t init_addr) {
+    groups_.push_back(lanes_.size());
     lanes_.push_back(Lane{init_addr, {Level{1, 0, 0}}});
     level_ = 0;
+    last_rl_ = false;
   }
 
   // False when no `evt` has opened a lane of this configuration. A rep with
@@ -108,6 +110,36 @@ public:
            uint64_t lane = 0) {
     if (lanes_.empty()) {
       return false;
+    }
+    if (lane != 0 && last_rl_) {
+      // At a range level, the lane is counted from its lo.
+      Range &range = rl_.back();
+      lane += range.lo;
+      auto it = range.level.lane_steps.try_emplace(lane, range.level.step).first;
+      write_field(it->second, step, widths_.step, ext, true);
+      return true;
+    }
+    if (ext && last_rl_) {
+      Level &level = rl_.back().level;
+      write_field(level.iter, iter, widths_.iter, true, false);
+      write_field(level.step, step, widths_.step, true, true);
+      write_field(level.delay, delay, widths_.delay, true, false);
+      return true;
+    }
+    // A base rep on a joined group: a range level over its lanes.
+    if (!ext && lane == 0 && groups_.back() + 1 < lanes_.size()) {
+      Range range;
+      range.lo = groups_.back();
+      range.hi = lanes_.size() - 1;
+      write_field(range.level.iter, iter, widths_.iter, false, false);
+      write_field(range.level.step, step, widths_.step, false, true);
+      write_field(range.level.delay, delay, widths_.delay, false, false);
+      rl_.push_back(range);
+      last_rl_ = true;
+      return true;
+    }
+    if (!ext && lane == 0) {
+      last_rl_ = false;
     }
     if (lane != 0) {
       if (use_or_ && level_ > 0 && level_ - 1 < or_.size()) {
@@ -140,6 +172,16 @@ public:
       return false;
     }
     if (or_configured_) {
+      return true;
+    }
+    // Join the top two groups: the transition into the top group's first lane.
+    if (groups_.size() >= 2) {
+      size_t boundary = groups_.back() - 1;
+      groups_.pop_back();
+      if (mt_.size() <= boundary) {
+        mt_.resize(boundary + 1, 0);
+      }
+      mt_[boundary] = delay;
       return true;
     }
     mt_.push_back(delay);
@@ -182,6 +224,16 @@ public:
           return std::nullopt;
         }
       }
+      for (const Range &range : rl_) {
+        if (l < range.lo || l > range.hi) {
+          continue;
+        }
+        Level lane_level = range.level;
+        lane_level.step = step_of(range.level, l);
+        if (!expand(addrs, lane_level)) {
+          return std::nullopt;
+        }
+      }
       for (const Level &level : or_) {
         Level lane_level = level;
         lane_level.step = step_of(level, l);
@@ -209,9 +261,15 @@ public:
     for (const Level &level : lanes_.back().ir) {
       addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
     }
+    size_t last = lanes_.size() - 1;
+    for (const Range &range : rl_) {
+      if (last >= range.lo && last <= range.hi) {
+        addr += (std::max<uint64_t>(range.level.iter, 1) - 1) *
+                step_of(range.level, last);
+      }
+    }
     for (const Level &level : or_) {
-      addr += (std::max<uint64_t>(level.iter, 1) - 1) *
-              step_of(level, lanes_.size() - 1);
+      addr += (std::max<uint64_t>(level.iter, 1) - 1) * step_of(level, last);
     }
     return addr;
   }
@@ -246,7 +304,20 @@ public:
       }
       or_levels.push_back(entry);
     }
-    return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}};
+    nlohmann::json rl = nlohmann::json::array();
+    for (const Range &range : rl_) {
+      nlohmann::json steps = nlohmann::json::array();
+      for (size_t l = 0; l < lanes_.size(); l++) {
+        bool in = l >= range.lo && l <= range.hi;
+        steps.push_back(in ? static_cast<int64_t>(step_of(range.level, l)) : 0);
+      }
+      rl.push_back({{"iter", range.level.iter},
+                    {"delay", range.level.delay},
+                    {"lo", range.lo},
+                    {"hi", range.hi},
+                    {"lane_steps", steps}});
+    }
+    return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}, {"rl", rl}};
   }
 
 private:
@@ -254,6 +325,15 @@ private:
     uint64_t init_addr;
     std::vector<Level> ir;
   };
+
+  struct Range {
+    Level level;
+    size_t lo = 0;
+    size_t hi = 0;
+  };
+  std::vector<Range> rl_;            // range levels, innermost first
+  std::vector<size_t> groups_;       // postfix groups: first lane, bottom first
+  bool last_rl_ = false;
 
   static uint64_t step_of(const Level &level, size_t lane) {
     auto it = level.lane_steps.find(lane);

@@ -122,7 +122,7 @@ bool ports_merge(const PortUsers &have, const PortUsers &add) {
     }
     Chains all = it->second;
     all.append(chains.begin(), chains.end());
-    if (!::vesyla::util::shared_loops(all)) {
+    if (!::vesyla::util::loop_tree(all)) {
       return false;
     }
   }
