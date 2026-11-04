@@ -4,25 +4,18 @@
 include "mlir/Pass/PassBase.td"
 
 def SplitEpochsPass : Pass<"split-epochs-pass", "::mlir::ModuleOp"> {
-  let summary = "Split a loop nest that needs more DPUs than the fabric has "
-                "into one epoch per group of DPU operations.";
+  let summary = "Cut an epoch where a DPU would need more configurations than "
+                "it has config registers.";
   let description = [{
-    Runs between instruction selection and BindResourcesPass, which gives
-    every DPU rop with a `conf` in one outermost loop nest its own DPU; a nest
-    with more of them than the architecture has DPUs is split here.
-
-    The body of the nest (of its innermost loop, for a perfect nest) is cut
-    into parts: store trees are packed into a part in program order while they
-    fit, and a tree that alone needs too many DPUs is cut at its operations.
-    Each part becomes its own epoch with a copy of the loop nest. A value
-    computed in one part and used in a later one goes through a new buffer,
-    written and read with the RF word patterns of the component library.
-    Reads, fetches and index ops are copied into every part that needs them.
-    Fetches before the nest move to the epoch of their first reader, ops after
-    it to the last epoch.
+    Runs after BindResourcesPass. Every distinct DPU configuration (conf
+    without its option) a DPU runs in an epoch takes one of its config
+    registers. Walking the top-level operations of an epoch in order, the
+    epoch is cut before the first one that would take a fifth register on
+    some DPU, at the latest point before it that no SSA value crosses. The
+    operations from there on go to a new epoch, which is checked the same way.
+    The binding stays valid: program order is unchanged and register files
+    keep their contents across epochs.
   }];
-  let dependentDialects = ["::mlir::affine::AffineDialect",
-                           "::mlir::memref::MemRefDialect"];
 }
 
 #endif // VESYLA_TRANSFORMATION_SPLIT_EPOCHS_PASSES

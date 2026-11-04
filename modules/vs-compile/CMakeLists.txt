@@ -406,15 +406,15 @@ add_mlir_library(
   MLIRMemRefDialect
   VesylaSelectInstr)
 
-# Splits a loop nest that needs more DPUs than the fabric has into epochs.
-add_custom_mlir_pass_dir(transformation/split_epochs VesylaSplitEpochs)
-file(GLOB SOURCE_SPLIT_EPOCHS "src/transformation/split_epochs/*.cpp")
+# Splits a loop nest that needs more DPUs than the fabric has into nests.
+add_custom_mlir_pass_dir(transformation/fission_loops VesylaFissionLoops)
+file(GLOB SOURCE_FISSION_LOOPS "src/transformation/fission_loops/*.cpp")
 add_mlir_library(
-  VesylaSplitEpochs
-  ${SOURCE_SPLIT_EPOCHS}
+  VesylaFissionLoops
+  ${SOURCE_FISSION_LOOPS}
   DISABLE_INSTALL
   DEPENDS
-  VesylaSplitEpochsIncGen
+  VesylaFissionLoopsIncGen
   VesylaPasmIncGen
   VesylaDrraIncGen
   LINK_LIBS
@@ -443,6 +443,24 @@ add_mlir_library(
   MLIRPass
   MLIRMemRefDialect
   VesylaDrraToPasm)
+
+# Cuts an epoch where a DPU would run out of config registers.
+add_custom_mlir_pass_dir(transformation/split_epochs VesylaSplitEpochs)
+file(GLOB SOURCE_SPLIT_EPOCHS "src/transformation/split_epochs/*.cpp")
+add_mlir_library(
+  VesylaSplitEpochs
+  ${SOURCE_SPLIT_EPOCHS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSplitEpochsIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  VesylaPasm
+  VesylaDrra)
 
 # Resource binding: which instance each operation of instruction selection
 # runs on. Allocation is read from the architecture file.
@@ -485,7 +503,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaSplitEpochs VesylaCopyStorages VesylaBindResources VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaFissionLoops VesylaCopyStorages VesylaBindResources VesylaSplitEpochs VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

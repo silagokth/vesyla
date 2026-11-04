@@ -26,6 +26,7 @@
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
 #include "transformation/copy_storages/CopyStoragesPass.hpp"
+#include "transformation/fission_loops/FissionLoopsPass.hpp"
 #include "transformation/split_epochs/SplitEpochsPass.hpp"
 #include "transformation/stage_io/StageIoPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
@@ -119,15 +120,15 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   mlir::PassManager select_pm(&context);
   select_pm.addPass(
       vesyla::conversion::select_instructions::createSelectInstructionsPass());
-  // SplitEpochsPass splits a loop nest that needs more DPUs than the fabric
-  // has into epochs, before BindResourcesPass binds them.
+  // FissionLoopsPass splits a loop nest that needs more DPUs than the fabric
+  // has into nests, before BindResourcesPass binds them.
   select_pm.addPass(
-      vesyla::transformation::split_epochs::createSplitEpochsPass());
+      vesyla::transformation::fission_loops::createFissionLoopsPass());
   // CopyStoragesPass gives a storage read twice in one cycle a copy per reader.
   select_pm.addPass(
       vesyla::transformation::copy_storages::createCopyStoragesPass());
   if (mlir::failed(select_pm.run(*module))) {
-    LOG_FATAL << "Error: SelectInstructionsPass, SplitEpochsPass or CopyStoragesPass failed.";
+    LOG_FATAL << "Error: SelectInstructionsPass, FissionLoopsPass or CopyStoragesPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(1));
@@ -137,11 +138,15 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   // where it runs. Allocation comes from the architecture file; binding and
   // scheduling are decided here. It ends by checking that every operation came
   // out bound, which is what the passes below rely on.
+  // SplitEpochsPass then cuts an epoch where a DPU would need more
+  // configurations than it has config registers.
   mlir::PassManager bind_pm(&context);
   bind_pm.addPass(
       vesyla::transformation::bind_resources::createBindResourcesPass());
+  bind_pm.addPass(
+      vesyla::transformation::split_epochs::createSplitEpochsPass());
   if (mlir::failed(bind_pm.run(*module))) {
-    LOG_FATAL << "Error: BindResourcesPass failed.";
+    LOG_FATAL << "Error: BindResourcesPass or SplitEpochsPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(2));
