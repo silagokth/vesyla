@@ -563,10 +563,13 @@ fn build_testcase_entries(leaf_path_vec: Vec<String>) -> Vec<TestcaseEntry> {
             .unwrap()
             .to_string();
 
-        // One entry per front end the testcase has programs for: PASM always,
-        // MLIR only when it carries mlir/*.mlir, C only when it carries c/*.c.
-        // The run.sh suite script picks between them by the frontend:<name> tag.
-        let mut frontends = vec![Frontend::Pasm];
+        // One entry per front end the testcase has programs for: pasm/*.pasm,
+        // mlir/*.mlir, c/*.c. The run.sh suite script picks between them by the
+        // frontend:<name> tag.
+        let mut frontends = vec![];
+        if !programs_with_extension(&Path::new(&path).join("pasm"), "pasm").is_empty() {
+            frontends.push(Frontend::Pasm);
+        }
         if !mlir_programs(&Path::new(&path).join("mlir")).is_empty() {
             frontends.push(Frontend::Mlir);
         }
