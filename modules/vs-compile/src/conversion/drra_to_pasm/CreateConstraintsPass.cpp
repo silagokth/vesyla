@@ -567,6 +567,206 @@ public:
   }
 };
 
+// Single-point anchor at the last iteration of each enclosing loop.
+pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx,
+                                        mlir::Operation *op,
+                                        mlir::FlatSymbolRefAttr id) {
+  llvm::SmallVector<uint32_t> idx;
+  for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
+    int64_t ub =
+        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
+    idx.push_back(static_cast<uint32_t>(ub - 1));
+  }
+  return make_ir_anchor(ctx, id, idx, idx);
+}
+
+// Evt rops feeding `op`, through rops without an evt.
+void evt_producers(mlir::Operation *op,
+                   llvm::SmallVectorImpl<mlir::Operation *> &out,
+                   std::set<mlir::Operation *> &seen) {
+  for (mlir::Value v : op->getOperands()) {
+    auto p = v.getDefiningOp<vesyla::drra::RopOp>();
+    if (!p || !seen.insert(p).second) {
+      continue;
+    }
+    if (p.getEvtAttr()) {
+      out.push_back(p);
+    } else {
+      evt_producers(p, out, seen);
+    }
+  }
+}
+
+// DPU confs of one epoch on one DPU, grouped into runs (program order) that
+// use the same configuration.
+struct DpuSegment {
+  int64_t option;
+  llvm::SmallVector<vesyla::drra::RopOp> confs;
+};
+
+constexpr int64_t kDpuOptions = 4;
+
+// Puts each distinct DPU configuration of an epoch in its own config register
+// (`option`). One configuration: the register the DPU has selected from the
+// previous epoch (`selected`), no event. Several: options 0.. in order of first
+// use, and an evt on the dpu port with `init_addr` = option before each run,
+// after the previous run's last event.
+mlir::LogicalResult select_dpu_options(
+    pasm::EpochOp epoch,
+    std::map<std::tuple<int32_t, int32_t, int32_t>, int64_t> &selected) {
+  mlir::MLIRContext *ctx = epoch.getContext();
+  std::map<std::tuple<int32_t, int32_t, int32_t>,
+           llvm::SmallVector<vesyla::drra::RopOp>>
+      by_dpu;
+  epoch.walk([&](vesyla::drra::RopOp rop) {
+    auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
+    if (!kind || kind.getValue() != "dpu" || !rop.getConfAttr()) {
+      return;
+    }
+    pasm::ResourceAttr res;
+    mlir::Attribute attr = rop->getAttr("resource");
+    if (auto arr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr)) {
+      res = arr.empty() ? nullptr : mlir::dyn_cast<pasm::ResourceAttr>(arr[0]);
+    } else {
+      res = mlir::dyn_cast_or_null<pasm::ResourceAttr>(attr);
+    }
+    if (res) {
+      by_dpu[{res.getRow(), res.getCol(), res.getSlot()}].push_back(rop);
+    }
+  });
+
+  mlir::Block &top = epoch.getBody().front();
+  mlir::OpBuilder builder(ctx);
+  auto set_option = [&](vesyla::drra::RopOp rop, int64_t option) {
+    mlir::NamedAttrList conf(rop.getConfAttr());
+    conf.set("option", builder.getI32IntegerAttr(option));
+    rop.setConfAttr(conf.getDictionary(ctx));
+  };
+  auto config_key = [&](vesyla::drra::RopOp rop) {
+    mlir::NamedAttrList conf(rop.getConfAttr());
+    conf.erase("option");
+    return conf.getDictionary(ctx);
+  };
+
+  for (auto &[key, confs] : by_dpu) {
+    llvm::SmallVector<mlir::DictionaryAttr> configs;
+    llvm::SmallVector<DpuSegment> segments;
+    for (vesyla::drra::RopOp rop : confs) {
+      mlir::DictionaryAttr cfg = config_key(rop);
+      auto it = llvm::find(configs, cfg);
+      int64_t option = it - configs.begin();
+      if (it == configs.end()) {
+        configs.push_back(cfg);
+      }
+      if (segments.empty() || segments.back().option != option) {
+        segments.push_back({option, {}});
+      }
+      segments.back().confs.push_back(rop);
+    }
+    auto [row, col, slot] = key;
+    if (configs.size() > static_cast<size_t>(kDpuOptions)) {
+      return confs.front().emitError()
+             << "the DPU at slot " << slot << " needs " << configs.size()
+             << " configurations in one epoch, more than its " << kDpuOptions
+             << " config registers";
+    }
+    if (configs.size() == 1) {
+      int64_t option = selected.count(key) ? selected[key] : 0;
+      for (vesyla::drra::RopOp rop : confs) {
+        set_option(rop, option);
+      }
+      continue;
+    }
+
+    mlir::Operation *prev_at = nullptr;
+    llvm::SmallVector<mlir::Operation *> prev_events;
+    for (auto [n, seg] : llvm::enumerate(segments)) {
+      llvm::SmallVector<mlir::Operation *> producers;
+      std::set<mlir::Operation *> seen;
+      for (vesyla::drra::RopOp rop : seg.confs) {
+        set_option(rop, seg.option);
+        evt_producers(rop, producers, seen);
+      }
+      // Before the earliest top-level op holding the run's first conf or its
+      // operands.
+      mlir::Operation *at = top.findAncestorOpInBlock(*seg.confs.front());
+      for (mlir::Operation *p : producers) {
+        mlir::Operation *a = top.findAncestorOpInBlock(*p);
+        if (a && a->isBeforeInBlock(at)) {
+          at = a;
+        }
+      }
+      if (prev_at && !prev_at->isBeforeInBlock(at)) {
+        return seg.confs.front().emitError()
+               << "DPU slot " << slot
+               << ": configurations alternate inside one loop nest";
+      }
+      builder.setInsertionPoint(at);
+      std::string name = "dpu_select_" + std::to_string(slot) + "_" +
+                         std::to_string(n) + "_" +
+                         epoch.getId().str();
+      auto sel = vesyla::drra::RopOp::create(
+          builder, at->getLoc(), mlir::TypeRange{}, mlir::ValueRange{},
+          mlir::DictionaryAttr(),
+          builder.getDictionaryAttr(
+              {builder.getNamedAttr("port", builder.getI32IntegerAttr(0)),
+               builder.getNamedAttr("init_addr",
+                                    builder.getI32IntegerAttr(seg.option))}));
+      auto sel_id = mlir::FlatSymbolRefAttr::get(ctx, name);
+      sel->setAttr("id", sel_id);
+      sel->setAttr("kind", builder.getStringAttr("dpu"));
+      sel->setAttr("resource", pasm::ResourceAttr::get(ctx, row, col, slot, 0));
+      sel->setAttr("uses", builder.getStrArrayAttr({"agu:0"}));
+
+      mlir::OpBuilder cb(ctx);
+      cb.setInsertionPoint(top.getTerminator());
+      auto sel_anchor = make_ir_anchor(ctx, sel_id, {}, {});
+      auto cstr = [&](pasm::AnchorRangeAttr src, pasm::AnchorRangeAttr dst,
+                      llvm::StringRef rule, int64_t delay) {
+        pasm::CstrOp::create(cb, sel.getLoc(), src, dst,
+                             pasm::DelayAttr::get(ctx, delay, std::nullopt),
+                             cb.getBoolAttr(false))
+            ->setAttr("debug", debug_attr(cb, rule));
+      };
+      // After every event of the previous run: its operands and its results'
+      // consumers.
+      for (mlir::Operation *e : prev_events) {
+        auto id = e->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+        if (id) {
+          cstr(build_last_anchor(ctx, e, id), sel_anchor, "dpu-select-after",
+               1);
+        }
+      }
+      // Before the run's first operand, one cycle more than the switch needs:
+      // a mac runs stage 1 every cycle it is selected, and the cycle after the
+      // switch belongs to its stage 2.
+      for (mlir::Operation *p : producers) {
+        auto id = p->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+        if (id) {
+          cstr(sel_anchor, build_first_anchor(ctx, p, id), "dpu-select-before",
+               2);
+        }
+      }
+
+      prev_at = at;
+      prev_events.clear();
+      std::set<mlir::Operation *> seen_events;
+      for (mlir::Operation *p : producers) {
+        if (seen_events.insert(p).second) {
+          prev_events.push_back(p);
+        }
+        for (const ReachedEvent &r : reached_events(p)) {
+          if (seen_events.insert(r.event).second) {
+            prev_events.push_back(r.event);
+          }
+        }
+      }
+    }
+    selected[key] = segments.back().option;
+  }
+  return mlir::success();
+}
+
 class CreateConstraintsPass
     : public impl::CreateConstraintsPassBase<CreateConstraintsPass> {
 public:
@@ -594,7 +794,13 @@ public:
     // second statement's first loop iteration, within each pass through the
     // loops the two share.
     mlir::MLIRContext *ctx = &getContext();
+    std::map<std::tuple<int32_t, int32_t, int32_t>, int64_t> dpu_selected;
+    bool failed = false;
     getOperation().walk([&](pasm::EpochOp epoch) {
+      if (failed || mlir::failed(select_dpu_options(epoch, dpu_selected))) {
+        failed = true;
+        return;
+      }
       mlir::OpBuilder builder(ctx);
       builder.setInsertionPoint(epoch.getBody().front().getTerminator());
 
@@ -822,6 +1028,9 @@ public:
         }
       }
     });
+    if (failed) {
+      signalPassFailure();
+    }
   }
 };
 
