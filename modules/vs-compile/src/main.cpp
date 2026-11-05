@@ -24,6 +24,7 @@
 #include "transformation/bind_resources/BindResourcesPass.hpp"
 #include "transformation/interchange_loops/InterchangeLoopsPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
+#include "transformation/normalize_loops/NormalizeLoopsPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
 #include "transformation/copy_storages/CopyStoragesPass.hpp"
 #include "transformation/fission_loops/FissionLoopsPass.hpp"
@@ -68,7 +69,8 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
 
-  // FuncToEpochPass runs first: a kernel lowered from C comes as a func.func
+  // NormalizeLoopsPass makes every loop start at 0 with step 1, as a rep
+  // counts. FuncToEpochPass then: a kernel lowered from C comes as a func.func
   // over the io buffers, and it rewrites that into the epoch form the passes
   // below compile. NarrowIntegersPass undoes C's integer promotion, so the
   // arithmetic is on the 16-bit word again. InterchangeLoopsPass reorders a nest so
@@ -78,8 +80,10 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   // AssignIdsPass then names whatever the program left unnamed, including the
   // ops the passes before it built. A hand-written program has no func.func,
   // no extensions, only whole-row io transfers, loads inside its loops and all
-  // its ids, and passes through all six unchanged.
+  // its ids, and passes through all seven unchanged when its loops start at 0.
   mlir::PassManager input_pm(&context);
+  input_pm.addPass(
+      vesyla::transformation::normalize_loops::createNormalizeLoopsPass());
   input_pm.addPass(vesyla::conversion::func_to_pasm::createFuncToEpochPass());
   input_pm.addPass(
       vesyla::transformation::narrow_integers::createNarrowIntegersPass());
@@ -90,7 +94,8 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
       vesyla::transformation::sink_scalar_loads::createSinkScalarLoadsPass());
   input_pm.addPass(vesyla::transformation::assign_ids::createAssignIdsPass());
   if (mlir::failed(input_pm.run(*module))) {
-    LOG_FATAL << "Error: FuncToEpochPass, NarrowIntegersPass, InterchangeLoopsPass, "
+    LOG_FATAL << "Error: NormalizeLoopsPass, FuncToEpochPass, NarrowIntegersPass, "
+                 "InterchangeLoopsPass, "
                  "StageIoPass, "
                  "SinkScalarLoadsPass or AssignIdsPass failed.";
     return nullptr;

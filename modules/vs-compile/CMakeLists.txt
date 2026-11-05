@@ -387,6 +387,23 @@ add_mlir_library(
   MLIRAffineUtils
   VesylaStageIo)
 
+# Rewrites affine.for loops to start at 0 with step 1.
+add_custom_mlir_pass_dir(transformation/normalize_loops VesylaNormalizeLoops)
+file(GLOB SOURCE_NORMALIZE_LOOPS "src/transformation/normalize_loops/*.cpp")
+add_mlir_library(
+  VesylaNormalizeLoops
+  ${SOURCE_NORMALIZE_LOOPS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaNormalizeLoopsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRAffineUtils
+  MLIRTransformUtils)
+
 # Re-reads a scalar loaded outside a loop inside every loop that uses it, so
 # the operation it feeds gets one element per iteration.
 add_custom_mlir_pass_dir(transformation/sink_scalar_loads VesylaSinkScalarLoads)
@@ -504,7 +521,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaFuncToPasm VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaFissionLoops VesylaCopyStorages VesylaBindResources VesylaSplitEpochs VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNormalizeLoops VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaFissionLoops VesylaCopyStorages VesylaBindResources VesylaSplitEpochs VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)
