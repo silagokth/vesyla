@@ -2,7 +2,9 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include <algorithm>
@@ -610,7 +612,8 @@ constexpr int64_t kDpuOptions = 4;
 // (`option`). One configuration: the register the DPU has selected from the
 // previous epoch (`selected`), no event. Several: options 0.. in order of first
 // use, and an evt on the dpu port with `init_addr` = option before each run,
-// after the previous run's last event.
+// after the previous run's last event. Runs alternating in a loop get their
+// evts inside it, repeated every pass.
 mlir::LogicalResult select_dpu_options(
     pasm::EpochOp epoch,
     std::map<std::tuple<int32_t, int32_t, int32_t>, int64_t> &selected) {
@@ -678,7 +681,84 @@ mlir::LogicalResult select_dpu_options(
       continue;
     }
 
+    // Runs in one top-level nest alternate in every pass of the innermost loop
+    // holding them all: their selects go into that loop's body.
+    llvm::DenseMap<mlir::Operation *, mlir::Block *> hosts;
+    {
+      llvm::DenseMap<mlir::Operation *,
+                     llvm::SmallVector<mlir::affine::AffineForOp>>
+          common;
+      llvm::DenseMap<mlir::Operation *, llvm::SmallSetVector<int64_t, 4>> runs;
+      for (auto [n, seg] : llvm::enumerate(segments)) {
+        for (vesyla::drra::RopOp rop : seg.confs) {
+          mlir::Operation *nest = top.findAncestorOpInBlock(*rop);
+          runs[nest].insert(n);
+          auto loops = get_enclosing_loops(rop);
+          auto it = common.find(nest);
+          if (it == common.end()) {
+            common[nest] = loops;
+            continue;
+          }
+          auto &shared = it->second;
+          size_t k = 0;
+          while (k < shared.size() && k < loops.size() && shared[k] == loops[k])
+            ++k;
+          shared.resize(k);
+        }
+      }
+      for (auto &[nest, loops] : common) {
+        if (runs[nest].size() > 1 && !loops.empty()) {
+          hosts[nest] = loops.back().getBody();
+        }
+      }
+    }
+
+    mlir::OpBuilder cb(ctx);
+    cb.setInsertionPoint(top.getTerminator());
+    auto cstr = [&](mlir::Location loc, pasm::AnchorRangeAttr src,
+                    pasm::AnchorRangeAttr dst, llvm::StringRef rule,
+                    int64_t delay) {
+      pasm::CstrOp::create(cb, loc, src, dst,
+                           pasm::DelayAttr::get(ctx, delay, std::nullopt),
+                           cb.getBoolAttr(false))
+          ->setAttr("debug", debug_attr(cb, rule));
+    };
+    // From the events of a nest's last run to its first select one pass
+    // later, for every loop around the select.
+    auto wrap = [&](vesyla::drra::RopOp first_sel,
+                    llvm::ArrayRef<mlir::Operation *> events) {
+      auto sel_id = first_sel->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+      for (mlir::Operation *e : events) {
+        auto id = e->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+        if (!id) {
+          continue;
+        }
+        auto shared = shared_loops(e, first_sel);
+        llvm::SmallVector<bool> reused(shared.size(), true);
+        for (size_t d = 0; d < shared.size(); ++d) {
+          if (trip_count(shared[d]) < 2) {
+            continue;
+          }
+          cstr(first_sel.getLoc(),
+               build_carry(ctx, e, shared, reused, id, Pin::last, d, 0),
+               build_carry(ctx, first_sel, shared, reused, sel_id, Pin::first,
+                           d, 1),
+               "dpu-select-carry", 1);
+        }
+      }
+    };
+
+    llvm::DenseMap<mlir::Attribute, llvm::SmallVector<mlir::Operation *>>
+        by_state;
+    epoch.walk([&](vesyla::drra::RopOp rop) {
+      if (auto state = rop->getAttr("state")) {
+        by_state[state].push_back(rop);
+      }
+    });
+
     mlir::Operation *prev_at = nullptr;
+    mlir::Operation *prev_nest = nullptr;
+    vesyla::drra::RopOp first_sel;
     llvm::SmallVector<mlir::Operation *> prev_events;
     for (auto [n, seg] : llvm::enumerate(segments)) {
       llvm::SmallVector<mlir::Operation *> producers;
@@ -687,19 +767,36 @@ mlir::LogicalResult select_dpu_options(
         set_option(rop, seg.option);
         evt_producers(rop, producers, seen);
       }
-      // Before the earliest top-level op holding the run's first conf or its
-      // operands.
-      mlir::Operation *at = top.findAncestorOpInBlock(*seg.confs.front());
-      for (mlir::Operation *p : producers) {
-        mlir::Operation *a = top.findAncestorOpInBlock(*p);
+      mlir::Operation *nest = top.findAncestorOpInBlock(*seg.confs.front());
+      mlir::Block *host = hosts.lookup(nest);
+      if (!host) {
+        host = &top;
+      }
+      // Before the earliest op in the host block holding the run's first conf,
+      // its operands or the clears of its state.
+      mlir::Operation *at = host->findAncestorOpInBlock(*seg.confs.front());
+      llvm::SmallVector<mlir::Operation *> before(producers);
+      for (vesyla::drra::RopOp rop : seg.confs) {
+        if (auto state = rop->getAttr("state")) {
+          llvm::append_range(before, by_state.lookup(state));
+        }
+      }
+      for (mlir::Operation *p : before) {
+        mlir::Operation *a = host->findAncestorOpInBlock(*p);
         if (a && a->isBeforeInBlock(at)) {
           at = a;
         }
       }
-      if (prev_at && !prev_at->isBeforeInBlock(at)) {
+      if (prev_at &&
+          (prev_at->getBlock() == host ? !prev_at->isBeforeInBlock(at)
+                                       : !prev_nest->isBeforeInBlock(nest))) {
         return seg.confs.front().emitError()
                << "DPU slot " << slot
-               << ": configurations alternate inside one loop nest";
+               << ": configurations alternate inside one loop";
+      }
+      if (first_sel && nest != prev_nest) {
+        wrap(first_sel, prev_events);
+        first_sel = vesyla::drra::RopOp();
       }
       builder.setInsertionPoint(at);
       std::string name = "dpu_select_" + std::to_string(slot) + "_" +
@@ -717,24 +814,25 @@ mlir::LogicalResult select_dpu_options(
       sel->setAttr("kind", builder.getStringAttr("dpu"));
       sel->setAttr("resource", pasm::ResourceAttr::get(ctx, row, col, slot, 0));
       sel->setAttr("uses", builder.getStrArrayAttr({"agu:0"}));
+      if (host != &top) {
+        // The same register on every pass.
+        unsigned dims = get_enclosing_loops(sel).size();
+        sel->setAttr("map", mlir::AffineMapAttr::get(mlir::AffineMap::get(
+                                dims, 0, mlir::getAffineConstantExpr(0, ctx))));
+        if (!first_sel) {
+          first_sel = sel;
+        }
+      }
 
-      mlir::OpBuilder cb(ctx);
-      cb.setInsertionPoint(top.getTerminator());
-      auto sel_anchor = make_ir_anchor(ctx, sel_id, {}, {});
-      auto cstr = [&](pasm::AnchorRangeAttr src, pasm::AnchorRangeAttr dst,
-                      llvm::StringRef rule, int64_t delay) {
-        pasm::CstrOp::create(cb, sel.getLoc(), src, dst,
-                             pasm::DelayAttr::get(ctx, delay, std::nullopt),
-                             cb.getBoolAttr(false))
-            ->setAttr("debug", debug_attr(cb, rule));
-      };
       // After every event of the previous run: its operands and its results'
       // consumers.
       for (mlir::Operation *e : prev_events) {
         auto id = e->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
         if (id) {
-          cstr(build_last_anchor(ctx, e, id), sel_anchor, "dpu-select-after",
-               1);
+          auto shared = shared_loops(e, sel);
+          cstr(sel.getLoc(), build_within(ctx, e, shared, id, Pin::last),
+               build_within(ctx, sel, shared, sel_id, Pin::first),
+               "dpu-select-after", 1);
         }
       }
       // Before the run's first operand, one cycle more than the switch needs:
@@ -743,12 +841,15 @@ mlir::LogicalResult select_dpu_options(
       for (mlir::Operation *p : producers) {
         auto id = p->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
         if (id) {
-          cstr(sel_anchor, build_first_anchor(ctx, p, id), "dpu-select-before",
-               2);
+          auto shared = shared_loops(sel, p);
+          cstr(sel.getLoc(), build_within(ctx, sel, shared, sel_id, Pin::first),
+               build_within(ctx, p, shared, id, Pin::first),
+               "dpu-select-before", 2);
         }
       }
 
       prev_at = at;
+      prev_nest = nest;
       prev_events.clear();
       std::set<mlir::Operation *> seen_events;
       for (mlir::Operation *p : producers) {
@@ -761,6 +862,9 @@ mlir::LogicalResult select_dpu_options(
           }
         }
       }
+    }
+    if (first_sel) {
+      wrap(first_sel, prev_events);
     }
     selected[key] = segments.back().option;
   }

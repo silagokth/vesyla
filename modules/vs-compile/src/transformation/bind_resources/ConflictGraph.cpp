@@ -1,4 +1,5 @@
 #include "ConflictGraph.hpp"
+#include "Architecture.hpp"
 
 #include "mlir/Analysis/Liveness.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -44,11 +45,9 @@ int64_t evt_port(mlir::Operation *op) {
 // A drra.rop that runs in a mode (a conf) inside a loop nest is configured
 // once and streamed over every iteration of the nest -- its map has a dim per
 // enclosing loop -- so it holds its instance from the first iteration to the
-// last. Two operations in sibling
-// inner loops of one outer loop never run at the same time, but sharing an
-// instance between them would mean re-issuing its conf on every outer
-// iteration, which the pasm lowering does not do (see the TODO in
-// DrraToPasmPass), so the whole nest is claimed.
+// last. Two operations in sibling inner loops of one outer loop never run at
+// the same time: they share an instance, each mode in its own config register
+// (CreateConstraintsPass select_dpu_options).
 mlir::Operation *outermost_loop(mlir::Operation *op) {
   mlir::Operation *outermost = nullptr;
   for (mlir::Operation *parent = op->getParentOp();
@@ -188,31 +187,59 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   }
 
   // Loop nests. A node whose operation runs in a mode -- a conf, set once and
-  // streamed over every iteration -- holds its instance for the whole nest, so
-  // two such nodes in one nest are active together whatever the schedule and
+  // streamed over every iteration -- holds its instance for its loop, so two
+  // such nodes in one loop (or one inside the other's) are active together
+  // whatever the schedule and
   // contend wherever their parts overlap, even where liveness sees one of them
   // finished before the other starts (ger's alpha * x[i] and the add two
   // operations later in the same loop). Event-driven operations (io and rf
   // transfers, the dpu rst) are single instructions the scheduler can put one
   // after the other on a shared instance, so they keep to liveness alone.
-  llvm::MapVector<mlir::Operation *, llvm::SmallVector<unsigned>> nests;
+  // Sibling loops run one after the other: where a nest has more such nodes of
+  // a kind than the fabric has instances, two contend only where one's loop
+  // holds the other's, and DPU modes share an instance through its config
+  // registers.
+  llvm::MapVector<mlir::Operation *,
+                  llvm::SmallVector<std::pair<unsigned, mlir::Operation *>>>
+      nests;
   for (unsigned i = 0; i < graph.nodes_.size(); ++i) {
     for (mlir::Operation *op : graph.nodes_[i].ops) {
       if (!op->hasAttr("conf")) {
         continue;
       }
       if (mlir::Operation *nest = outermost_loop(op)) {
-        nests[nest].push_back(i);
+        nests[nest].push_back({i, op});
       }
     }
   }
+  auto nested = [](mlir::Operation *a, mlir::Operation *b) {
+    auto la = a->getParentOfType<mlir::affine::AffineForOp>();
+    auto lb = b->getParentOfType<mlir::affine::AffineForOp>();
+    return la->isAncestor(lb) || lb->isAncestor(la);
+  };
+  mlir::FailureOr<Architecture> arch = Architecture::from_config(module);
   for (auto &entry : nests) {
-    llvm::SmallVector<unsigned> &here = entry.second;
-    llvm::sort(here);
-    here.erase(llvm::unique(here), here.end());
+    auto &here = entry.second;
+    llvm::DenseMap<mlir::StringAttr, llvm::SmallDenseSet<unsigned>> per_kind;
+    for (auto &[node, op] : here) {
+      if (auto kind = graph.nodes_[node].kind) {
+        per_kind[kind].insert(node);
+      }
+    }
+    auto short_of = [&](unsigned node) {
+      auto kind = graph.nodes_[node].kind;
+      return kind && mlir::succeeded(arch) &&
+             per_kind[kind].size() >
+                 arch->instances_of_kind(kind.getValue()).size();
+    };
     for (unsigned a = 0; a < here.size(); ++a) {
       for (unsigned b = a + 1; b < here.size(); ++b) {
-        graph.add_edge(here[a], here[b], ConflictReason::same_loop);
+        if (here[a].first != here[b].first &&
+            (!short_of(here[a].first) ||
+             nested(here[a].second, here[b].second))) {
+          graph.add_edge(here[a].first, here[b].first,
+                         ConflictReason::same_loop);
+        }
       }
     }
   }

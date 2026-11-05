@@ -47,10 +47,22 @@ bool is_dpu_mode(mlir::Operation *op) {
   return is_dpu(op) && op->hasAttr("conf");
 }
 
+// DPUs needed at once: the modes around the inner loops plus the most one of
+// them needs (sibling loops run one after the other and share).
 unsigned count_dpu_modes(mlir::Operation *op) {
-  unsigned n = 0;
-  op->walk([&](mlir::Operation *nested) { n += is_dpu_mode(nested); });
-  return n;
+  if (is_dpu_mode(op))
+    return 1;
+  unsigned own = 0, inner = 0;
+  for (mlir::Region &region : op->getRegions())
+    for (mlir::Block &block : region)
+      for (mlir::Operation &nested : block) {
+        unsigned n = count_dpu_modes(&nested);
+        if (llvm::isa<mlir::affine::AffineForOp>(nested))
+          inner = std::max(inner, n);
+        else
+          own += n;
+      }
+  return own + inner;
 }
 
 mlir::FlatSymbolRefAttr storage_of(mlir::Operation *op) {

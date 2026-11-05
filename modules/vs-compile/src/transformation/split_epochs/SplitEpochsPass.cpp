@@ -178,11 +178,15 @@ public:
       if (auto next = split(work[w], ids)) {
         work.insert(work.begin() + w + 1, next);
       }
+      if (failed_) {
+        return signalPassFailure();
+      }
     }
   }
 
 private:
   Limits limits_;
+  bool failed_ = false;
 
   // Cuts `epoch` once if it has to; returns the new epoch, or null.
   pasm::EpochOp split(pasm::EpochOp epoch, llvm::StringSet<> &ids) {
@@ -196,6 +200,21 @@ private:
     for (size_t i = 0; i < ops.size(); ++i) {
       Configs add;
       collect(ops[i], add);
+      if (!fits({}, add, limits_)) {
+        // One op cannot be cut further.
+        for (const auto &[res, configs] : add) {
+          auto limit = limits_.find(res);
+          int64_t n = limit == limits_.end() ? 4 : limit->second;
+          if (n > 0 && static_cast<int64_t>(configs.size()) > n) {
+            ops[i]->emitError("split-epochs: slot ")
+                << std::get<2>(res) << " needs " << configs.size()
+                << " configurations here, the architecture provides " << n
+                << " (NUM_OPTIONS)";
+          }
+        }
+        failed_ = true;
+        return nullptr;
+      }
       PortUsers add_ports;
       collect_ports(ops[i], add_ports);
       if (i > 0 && (!fits(have, add, limits_) ||
