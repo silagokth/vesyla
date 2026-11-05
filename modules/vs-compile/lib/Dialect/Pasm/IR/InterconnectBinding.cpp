@@ -496,10 +496,53 @@ static void release_children(RoutingDepGraph &graph, NodeKey parent,
   }
 }
 
-// Merge adjacent one-step parts on the same option (nothing switches between
-// them) and drop empty parts.
+// Whether configs `a` and `b` can be one option: no swb target with two
+// sources, no route direction (sr) used twice.
+static bool fits_one_option(const std::vector<InterconnectConfig> &a,
+                            const std::vector<InterconnectConfig> &b,
+                            llvm::StringRef kind) {
+  for (const InterconnectConfig &y : b) {
+    if (llvm::is_contained(a, y)) {
+      continue;
+    }
+    for (const InterconnectConfig &x : a) {
+      if (kind == "bulk" ? x.sr == y.sr
+                         : config_key(x).target == config_key(y).target) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Renumber options in order of first use, sharing identical ones and dropping
+// unused ones.
+static void compact_slots(InterconnectBinding &binding) {
+  std::array<std::vector<InterconnectConfigOption>, 4> slots;
+  std::array<int, 4> to{-1, -1, -1, -1};
+  std::size_t used = 0;
+  for (int &s : binding.sequence) {
+    if (to[s] < 0) {
+      for (std::size_t i = 0; i < used; ++i) {
+        if (same_configs(slots[i][0].configs, binding.slots[s][0].configs)) {
+          to[s] = static_cast<int>(i);
+        }
+      }
+      if (to[s] < 0) {
+        slots[used] = binding.slots[s];
+        to[s] = static_cast<int>(used++);
+      }
+    }
+    s = to[s];
+  }
+  binding.slots = std::move(slots);
+}
+
+// Merge adjacent one-step parts whose options fit one option (nothing
+// switches between them) and drop empty parts.
 static void merge_parts(InterconnectBinding &binding,
-                        std::vector<BindingPart> &parts) {
+                        std::vector<BindingPart> &parts,
+                        llvm::StringRef kind) {
   InterconnectBinding merged;
   std::vector<BindingPart> kept;
   for (const BindingPart &p : parts) {
@@ -509,8 +552,14 @@ static void merge_parts(InterconnectBinding &binding,
     int slot = binding.sequence[p.begin];
     if (p.end - p.begin == 1 && !kept.empty() &&
         kept.back().end - kept.back().begin == 1 &&
-        merged.sequence.back() == slot) {
-      InterconnectConfigOption &opt = binding.slots[slot][0];
+        fits_one_option(binding.slots[merged.sequence.back()][0].configs,
+                        binding.slots[slot][0].configs, kind)) {
+      InterconnectConfigOption &opt = binding.slots[merged.sequence.back()][0];
+      for (const InterconnectConfig &c : binding.slots[slot][0].configs) {
+        if (!llvm::is_contained(opt.configs, c)) {
+          opt.configs.push_back(c);
+        }
+      }
       for (const Anchor &a : binding.step_first[p.begin]) {
         add_anchor(merged.step_first.back(), a);
         add_anchor(opt.first_anchors, a);
@@ -537,6 +586,7 @@ static void merge_parts(InterconnectBinding &binding,
   binding.step_first = std::move(merged.step_first);
   binding.step_last = std::move(merged.step_last);
   parts = std::move(kept);
+  compact_slots(binding);
 }
 
 // The error for a binding that ran out of configuration options.
@@ -729,7 +779,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       }
     }
   }
-  merge_parts(binding, parts);
+  merge_parts(binding, parts, kind);
   if (parts.size() > 1 || mixed) {
     binding.parts = std::move(parts);
   }
