@@ -75,6 +75,18 @@ bool is_fetch(mlir::Operation *op) {
          });
 }
 
+// A fetch, or a loop of fetches and copyable ops.
+bool only_fetches(mlir::Operation *op) {
+  return !op->walk([](mlir::Operation *n) {
+              if (is_fetch(n) || is_copyable(n) ||
+                  llvm::isa<mlir::affine::AffineForOp,
+                            mlir::affine::AffineYieldOp>(n))
+                return mlir::WalkResult::advance();
+              return mlir::WalkResult::interrupt();
+            })
+              .wasInterrupted();
+}
+
 bool reads_storage(mlir::Operation *op, mlir::FlatSymbolRefAttr storage) {
   bool found = false;
   op->walk([&](mlir::Operation *nested) {
@@ -244,26 +256,32 @@ private:
       return nest.emitError("fission-loops: needs ")
              << count_dpu_modes(nest) << " DPUs but cannot be split";
 
-    // A fetch is repeated in every part that reads what it fetched.
+    // Fetches are repeated in every part that reads what they wrote.
     llvm::DenseMap<mlir::Operation *, llvm::SmallSetVector<unsigned, 4>> in;
     for (mlir::Operation *op : ops)
       if (!is_copyable(op))
         in[op].insert(part[op]);
     for (mlir::Operation *op : ops) {
-      mlir::FlatSymbolRefAttr storage =
-          op->getNumResults() == 0 ? storage_of(op) : nullptr;
-      if (!storage || is_copyable(op))
+      if (is_copyable(op))
         continue;
-      for (mlir::Operation *reader : ops) {
-        if (is_copyable(reader) || reader == op ||
-            !reads_storage(reader, storage) || part[reader] == part[op])
-          continue;
-        if (!is_fetch(op))
-          return reader->emitError("fission-loops: reads @")
-                 << storage.getValue()
-                 << " in another part than the loop writes it";
-        in[op].insert(part[reader]);
-      }
+      llvm::SmallSetVector<mlir::Attribute, 4> written;
+      op->walk([&](mlir::Operation *nested) {
+        if (nested->getNumResults() == 0)
+          if (auto storage = storage_of(nested))
+            written.insert(storage);
+      });
+      for (mlir::Attribute attr : written)
+        for (mlir::Operation *reader : ops) {
+          auto storage = llvm::cast<mlir::FlatSymbolRefAttr>(attr);
+          if (is_copyable(reader) || reader == op ||
+              !reads_storage(reader, storage) || part[reader] == part[op])
+            continue;
+          if (!only_fetches(op))
+            return reader->emitError("fission-loops: reads @")
+                   << storage.getValue()
+                   << " in another part than the loop writes it";
+          in[op].insert(part[reader]);
+        }
     }
 
     // Values that cross from one part to a later one.
