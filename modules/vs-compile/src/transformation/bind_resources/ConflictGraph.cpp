@@ -124,10 +124,13 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
     mlir::Operation *op = rop.getOperation();
     auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
     auto storage = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
+    // Rops on one resource state (an accumulator) are bound together too.
+    auto state = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("state");
 
     unsigned index = graph.nodes_.size();
-    if (kind && storage) {
-      auto [entry, fresh] = by_storage.try_emplace(storage, index);
+    if (kind && (storage || state)) {
+      mlir::Attribute key = storage ? storage : state;
+      auto [entry, fresh] = by_storage.try_emplace(key, index);
       index = entry->second;
       if (fresh) {
         graph.nodes_.push_back(Node{{}, kind, storage, {}});

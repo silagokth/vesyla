@@ -75,8 +75,12 @@ bool Matcher::matchValue(mlir::Value patternValue, mlir::Value inputValue,
   // register; in the program it arrives as an affine.for loop carry, which is
   // an SSA block argument with no defining op at all. Recursing would compare a
   // memref.load against nothing.
-  if (isAccumulatorRead(patternValue))
-    return vesyla::sel::is_iter_args_carry(inputValue);
+  if (isAccumulatorRead(patternValue)) {
+    if (!vesyla::sel::is_iter_args_carry(inputValue))
+      return false;
+    result.bindings.try_emplace(pattern_.accumulator, inputValue);
+    return true;
+  }
 
   if (llvm::isa<mlir::BlockArgument>(patternValue)) {
     auto [it, inserted] = result.bindings.try_emplace(patternValue, inputValue);
