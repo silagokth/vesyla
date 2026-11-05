@@ -113,7 +113,8 @@ static mlir::LogicalResult check_part_trips(const InterconnectBinding &binding,
   }
   for (std::size_t j = part.begin; j < part.end; ++j) {
     for (const Anchor &a : binding.step_first[j]) {
-      if (!leads(a.loops, part.loops)) {
+      if (part.siblings ? !leads(part.loops, a.loops)
+                        : !leads(a.loops, part.loops)) {
         return report->emitError("interconnect: transfers sharing a route "
                                  "repeat over different loops; not supported");
       }
@@ -538,8 +539,8 @@ static void compact_slots(InterconnectBinding &binding) {
   binding.slots = std::move(slots);
 }
 
-// Merge adjacent one-step parts whose options fit one option (nothing
-// switches between them) and drop empty parts.
+// Merge adjacent one-step parts, and adjacent steps of sibling nests, whose
+// options fit one option (nothing switches between them); drop empty parts.
 static void merge_parts(InterconnectBinding &binding,
                         std::vector<BindingPart> &parts,
                         llvm::StringRef kind) {
@@ -574,9 +575,31 @@ static void merge_parts(InterconnectBinding &binding,
       }
       continue;
     }
-    kept.push_back(BindingPart{merged.sequence.size(), 0, p.trips, p.loops});
+    kept.push_back(
+        BindingPart{merged.sequence.size(), 0, p.trips, p.loops, p.siblings});
     for (std::size_t j = p.begin; j < p.end; ++j) {
-      merged.sequence.push_back(binding.sequence[j]);
+      int at = binding.sequence[j];
+      if (p.siblings && j > p.begin &&
+          fits_one_option(binding.slots[merged.sequence.back()][0].configs,
+                          binding.slots[at][0].configs, kind)) {
+        InterconnectConfigOption &opt =
+            binding.slots[merged.sequence.back()][0];
+        for (const InterconnectConfig &c : binding.slots[at][0].configs) {
+          if (!llvm::is_contained(opt.configs, c)) {
+            opt.configs.push_back(c);
+          }
+        }
+        for (const Anchor &a : binding.step_first[j]) {
+          add_anchor(merged.step_first.back(), a);
+          add_anchor(opt.first_anchors, a);
+        }
+        for (const Anchor &a : binding.step_last[j]) {
+          add_anchor(merged.step_last.back(), a);
+          add_anchor(opt.last_anchors, a);
+        }
+        continue;
+      }
+      merged.sequence.push_back(at);
       merged.step_first.push_back(binding.step_first[j]);
       merged.step_last.push_back(binding.step_last[j]);
     }
@@ -677,6 +700,34 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       std::vector<uint32_t> trips = own_trips(candidate.anchor);
       bool next_part =
           part_trips && !same_nest(candidate.anchor.loops, part_loops);
+      // A sibling nest under loops the part shares stays in it: the part
+      // switches to the nest's option and replays per pass of those loops.
+      std::size_t shared = 0;
+      while (next_part && shared < part_loops.size() &&
+             shared < candidate.anchor.loops.size() &&
+             part_loops[shared] == candidate.anchor.loops[shared]) {
+        ++shared;
+      }
+      if (next_part && shared > 0 && active.empty() &&
+          (parts.back().siblings ||
+           binding.sequence.size() == parts.back().begin)) {
+        part_loops.resize(shared);
+        trips.resize(shared);
+        part_trips = trips;
+        parts.back().loops = part_loops;
+        parts.back().trips = trips;
+        parts.back().siblings = true;
+        next_part = false;
+        // Each nest its own step; steps that fit one option merge later.
+        if (!current.empty()) {
+          if (!save()) {
+            return no_free_option(report, kind, binding);
+          }
+          current.clear();
+          current_first_anchors.clear();
+          current_last_anchors.clear();
+        }
+      }
       if (next_part) {
         if (!active.empty()) {
           report->emitError("interconnect: a ")
@@ -716,6 +767,13 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
       }
       // if there is a conflict with the current configuration
       if (has_conflict(candidate, current, kind)) {
+        if (parts.back().siblings) {
+          report->emitError("interconnect: ")
+              << kind
+              << " options switch inside one of the sibling nests that "
+                 "replay per pass; not supported";
+          return mlir::failure();
+        }
         if (!save()) {
           return no_free_option(report, kind, binding);
         }
@@ -765,7 +823,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
   // A part repeats over the loops of its deepest transfer.
   bool mixed = false;
   for (BindingPart &p : parts) {
-    for (std::size_t j = p.begin; j < p.end; ++j) {
+    for (std::size_t j = p.begin; j < p.end && !p.siblings; ++j) {
       for (const Anchor &a : binding.step_first[j]) {
         if (a.loops.size() > p.loops.size()) {
           p.loops = a.loops;
@@ -1138,15 +1196,22 @@ static void emit_part_constraints(const InterconnectBinding &binding,
     return range(rop_ref, {}, mt, first_pass(part.trips), from, to, tail);
   };
   // A transfer over passes `from`..`to` of its loops; a transfer that runs
-  // once has none.
+  // once has none. Its loops inside those at their first pass, or with
+  // `last` at their last.
   auto use_at = [&](const Anchor &a, llvm::ArrayRef<uint32_t> from,
-                    llvm::ArrayRef<uint32_t> to) {
+                    llvm::ArrayRef<uint32_t> to, bool last = false) {
     llvm::ArrayRef<uint32_t> ir(a.ir_idx);
     if (own_trips(a).empty()) {
       return range(a.instr_id, a.or_idx, a.mt, none, none, none, ir);
     }
-    return range(a.instr_id, a.or_idx, a.mt, ir, from, to,
-                 ir.drop_front(from.size()));
+    std::vector<uint32_t> tail(ir.begin() + std::min(from.size(), ir.size()),
+                               ir.end());
+    for (std::size_t k = 0; last && k < tail.size(); ++k) {
+      if (from.size() + k < a.pass_hi.size()) {
+        tail[k] = a.pass_hi[from.size() + k];
+      }
+    }
+    return range(a.instr_id, a.or_idx, a.mt, ir, from, to, tail);
   };
   // A transfer's first or last pass through its own loops.
   auto use_first = [&](const Anchor &a) {
@@ -1167,7 +1232,8 @@ static void emit_part_constraints(const InterconnectBinding &binding,
   };
   auto pair_use = [&](const Anchor &a, std::size_t p,
                       llvm::ArrayRef<uint32_t> from,
-                      llvm::ArrayRef<uint32_t> to) -> std::optional<Paired> {
+                      llvm::ArrayRef<uint32_t> to,
+                      bool last = false) -> std::optional<Paired> {
     const BindingPart &part = binding.parts[p];
     std::size_t d = std::min(a.loops.size(), from.size());
     bool after = false;
@@ -1176,7 +1242,7 @@ static void emit_part_constraints(const InterconnectBinding &binding,
         after |= x.loops.size() > d && x.pos < a.pos;
       }
     }
-    Paired out{use_at(a, from.take_front(d), to.take_front(d)),
+    Paired out{use_at(a, from.take_front(d), to.take_front(d), last),
                std::vector<uint32_t>(from.begin(), from.end()),
                std::vector<uint32_t>(to.begin(), to.end())};
     for (std::size_t k = d; k < from.size(); ++k) {
@@ -1234,7 +1300,7 @@ static void emit_part_constraints(const InterconnectBinding &binding,
         const BindingPart &part = binding.parts[p];
         std::vector<uint32_t> first = first_pass(part.trips);
         std::vector<uint32_t> last = last_pass(part.trips);
-        if (auto u = pair_use(a, p, first, last)) {
+        if (auto u = pair_use(a, p, first, last, /*last=*/true)) {
           add(u->use, step_at(j, u->from, u->to), "route-last-use",
               after(ctx, a));
         }
@@ -1270,7 +1336,7 @@ static void emit_part_constraints(const InterconnectBinding &binding,
         src_from[inner] = last[inner];
       }
       for (const Anchor &a : binding.step_last[part.end - 1]) {
-        auto u = pair_use(a, p, src_from, src_to);
+        auto u = pair_use(a, p, src_from, src_to, /*last=*/true);
         if (!u) {
           continue;
         }

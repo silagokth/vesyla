@@ -61,6 +61,8 @@ struct BindingPart {
   std::size_t end;
   std::vector<uint32_t> trips;
   std::vector<mlir::Attribute> loops;
+  // Sibling nests under `loops`, one option each, replayed every pass.
+  bool siblings = false;
 };
 
 // The options and the order they are switched through. `parts` splits
