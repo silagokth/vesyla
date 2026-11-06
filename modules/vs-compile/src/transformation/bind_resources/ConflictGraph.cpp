@@ -6,7 +6,6 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 
-#include "conversion/drra_to_pasm/DataflowWalk.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
@@ -244,23 +243,34 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
     }
   }
 
-  // Accesses to different storages that must run in the same cycle on the
-  // same port need different memories.
-  module.walk([&](pasm::EpochOp epoch) {
-    for (auto &group : conversion::drra_to_pasm::tied_groups(epoch)) {
-      for (size_t a = 0; a < group.size(); ++a) {
-        for (size_t b = a + 1; b < group.size(); ++b) {
-          auto sa = group[a]->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
-          auto sb = group[b]->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
-          if (!sa || !sb || sa == sb || evt_port(group[a]) != evt_port(group[b]))
-            continue;
-          auto na = graph.node_of(group[a]), nb = graph.node_of(group[b]);
-          if (na && nb)
-            graph.add_edge(*na, *nb, ConflictReason::tied);
-        }
+  // Streams. Two evt rops in one innermost loop each run once per iteration,
+  // so on one port of one instance the scheduler could only interleave them,
+  // and a DPU mode fed by either takes an operand every cycle
+  // (CreateConstraintsPass stream-step). Accesses to different storages on one
+  // port of one loop body need different memories. Sequential liveness never
+  // sees them together: each result dies at its consumer.
+  llvm::MapVector<std::pair<mlir::Operation *, int64_t>,
+                  llvm::SmallVector<unsigned>>
+      streams;
+  for (unsigned i = 0; i < graph.nodes_.size(); ++i) {
+    if (!graph.nodes_[i].storage) {
+      continue;
+    }
+    for (mlir::Operation *op : graph.nodes_[i].ops) {
+      auto loop = op->getParentOfType<mlir::affine::AffineForOp>();
+      if (loop && op->hasAttr("evt")) {
+        streams[{loop.getOperation(), evt_port(op)}].push_back(i);
       }
     }
-  });
+  }
+  for (auto &entry : streams) {
+    auto &here = entry.second;
+    for (unsigned a = 0; a < here.size(); ++a) {
+      for (unsigned b = a + 1; b < here.size(); ++b) {
+        graph.add_edge(here[a], here[b], ConflictReason::stream);
+      }
+    }
+  }
 
   // Two nodes claiming an instance at the same point may still not contend --
   // add_edge has the last word on that, since it is what knows which parts of
@@ -461,7 +471,7 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
            {std::pair{ConflictReason::data_flow, "data flow"},
             std::pair{ConflictReason::live_overlap, "live"},
             std::pair{ConflictReason::same_loop, "loop"},
-            std::pair{ConflictReason::tied, "tied"}}) {
+            std::pair{ConflictReason::stream, "stream"}}) {
         if (has_reason(why, bit)) {
           reasons += reasons.empty() ? text : std::string(" + ") + text;
         }

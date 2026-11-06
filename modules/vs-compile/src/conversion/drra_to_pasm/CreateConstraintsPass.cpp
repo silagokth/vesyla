@@ -464,6 +464,54 @@ int64_t trip_count(mlir::affine::AffineForOp loop) {
   return (ub - lb) / step;
 }
 
+// Stream steps: an accumulating mode takes an operand every `ii` cycles, so
+// every word event in a carried loop that holds a mode steps at exactly that
+// ii. The dataflow delays assume it, being anchored on the first iteration
+// only, while the contention rules may stretch the step: two streams on one
+// port then get an interleaved schedule that satisfies everything, and the
+// mode accumulates garbage in the gaps. A loop without a carry is left free:
+// its modes are stateless, and a stretched step only costs cycles.
+void constrain_stream_steps(pasm::EpochOp epoch, mlir::OpBuilder &builder) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  epoch.walk([&](mlir::affine::AffineForOp loop) {
+    if (trip_count(loop) < 2 || loop.getNumIterOperands() == 0) {
+      return;
+    }
+    int32_t ii = 0;
+    for (mlir::Operation &op : loop.getBody()->without_terminator()) {
+      if (op.hasAttr("conf") && op.hasAttr("ii")) {
+        ii = std::max(ii, static_cast<int32_t>(
+                              op.getAttrOfType<mlir::IntegerAttr>("ii").getInt()));
+      }
+    }
+    if (ii == 0) {
+      return;
+    }
+    for (mlir::Operation &op : loop.getBody()->without_terminator()) {
+      auto id = op.getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+      if (!id || !op.hasAttr("evt") || bulk_words(&op) != 0) {
+        continue;
+      }
+      llvm::SmallVector<mlir::affine::AffineForOp> loops =
+          get_enclosing_loops(&op);
+      llvm::SmallVector<uint32_t> lo, hi;
+      for (mlir::affine::AffineForOp enclosing : loops) {
+        lo.push_back(static_cast<uint32_t>(enclosing.getConstantLowerBound()));
+        hi.push_back(static_cast<uint32_t>(enclosing.getConstantUpperBound() - 1));
+      }
+      llvm::SmallVector<uint32_t> src_hi(hi), dst_lo(lo);
+      src_hi.back() -= 1;
+      dst_lo.back() += 1;
+      pasm::CstrOp::create(builder, op.getLoc(),
+                           make_ir_anchor(ctx, id, lo, src_hi),
+                           make_ir_anchor(ctx, id, dst_lo, hi),
+                           pasm::DelayAttr::get(ctx, ii, ii),
+                           builder.getBoolAttr(false))
+          ->setAttr("debug", debug_attr(builder, "stream-step"));
+    }
+  });
+}
+
 // Time a clear against the loop it initialises: it has to happen as each pass
 // through that loop begins, which is where the accumulation it clears starts.
 //
@@ -926,6 +974,7 @@ public:
       }
       mlir::OpBuilder builder(ctx);
       builder.setInsertionPoint(epoch.getBody().front().getTerminator());
+      constrain_stream_steps(epoch, builder);
 
       // Id pairs already ordered by a dataflow constraint (the cstr ops created
       // above), so they are not also given a resource-contention constraint.

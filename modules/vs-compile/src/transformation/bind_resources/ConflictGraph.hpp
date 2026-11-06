@@ -34,8 +34,10 @@ enum class ConflictReason : unsigned {
   // is configured once and streamed over every iteration, so it holds its
   // parts for the whole nest, not only where its value is live.
   same_loop = 1u << 3,
-  // The data flow fixes both to run in the same cycle on the same port.
-  tied = 1u << 4,
+  // Both stream once per iteration of one loop on the same port: an instance
+  // could only serve them interleaved, which a DPU mode fed by either cannot
+  // take.
+  stream = 1u << 4,
 };
 
 inline ConflictReason operator|(ConflictReason a, ConflictReason b) {
