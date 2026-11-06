@@ -133,7 +133,12 @@ pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
 // the library name the state, so a dpu rst says it writes `accumulate:0` and a
 // mac says it reads it, the way `uses` already names the parts of a resource.
 // The second is the smaller of the two and fits what is already there.
-mlir::affine::AffineForOp accumulator_loop(vesyla::drra::RopOp rop) {
+struct Accumulator {
+  mlir::affine::AffineForOp loop;
+  unsigned index; // the dead iter_arg
+};
+
+std::optional<Accumulator> accumulator_loop(vesyla::drra::RopOp rop) {
   for (mlir::Value result : rop->getResults()) {
     for (mlir::OpOperand &use : result.getUses()) {
       auto loop = mlir::dyn_cast<mlir::affine::AffineForOp>(use.getOwner());
@@ -149,11 +154,11 @@ mlir::affine::AffineForOp accumulator_loop(vesyla::drra::RopOp rop) {
         continue;
       }
       if (loop.getRegionIterArgs()[index].use_empty()) {
-        return loop;
+        return Accumulator{loop, index};
       }
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
 // Which iteration of a loop that is not shared an anchor names.
@@ -461,22 +466,24 @@ int64_t trip_count(mlir::affine::AffineForOp loop) {
 // Time a clear against the loop it initialises: it has to happen as each pass
 // through that loop begins, which is where the accumulation it clears starts.
 //
-// TODO: the timing here is fixed rather than derived. [0, 0] says the clear
-// lands exactly on the first event of the pass, which is what this resource
-// wants and what the hand-written pasm for it says, but a resource whose clear
-// takes a cycle to land would need it stated -- another thing the library is
-// the right place for.
+// TODO: the timing here is fixed rather than derived. Delay 0 from a direct
+// feeder says the clear lands exactly on the first event of the pass, which is
+// what this resource wants and what the hand-written pasm for it says, but a
+// resource whose clear takes a cycle to land would need it stated -- another
+// thing the library is the right place for.
 //
-// One constraint per event inside the loop rather than a chosen one of them.
-// They all begin the pass together -- the reads that feed the accumulation are
-// simultaneous -- so constraining the clear against each says the same thing
-// twice rather than two different things, and it does not depend on which of
-// them happens to be walked first. The operation that does the accumulating is
-// not among them: a resource configured rather than triggered carries only a
-// conf, which is lifted out of the loop entirely and has no per-pass event to
-// anchor at.
+// One constraint per evt that feeds the accumulating op (the one yielded into
+// the dead iter_arg), with that evt's latency to it: a direct operand starts
+// the pass with the clear, one that goes through another DPU first
+// (acc += a * (b * c)) starts that DPU's latency earlier. Constraining every
+// feeder says the same thing as the exact dataflow delays, so it does not
+// depend on which is walked first. The accumulating op itself has no evt: it
+// carries only a conf, lifted out of the loop.
+//
+// A loop whose yield is not a rop, or whose accumulator has no feeder inside
+// the loop, falls back to every evt in the loop at delay 0.
 void constrain_accumulator_clear(vesyla::drra::RopOp rop,
-                                 mlir::affine::AffineForOp loop,
+                                 Accumulator acc,
                                  mlir::PatternRewriter &rewriter) {
   auto rop_id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
   pasm::EpochOp epoch = rop->getParentOfType<pasm::EpochOp>();
@@ -486,25 +493,36 @@ void constrain_accumulator_clear(vesyla::drra::RopOp rop,
 
   mlir::MLIRContext *ctx = rewriter.getContext();
   llvm::SmallVector<mlir::affine::AffineForOp> shared = get_enclosing_loops(rop);
-  pasm::AnchorRangeAttr src = build_anchor(ctx, rop_id, shared);
+  pasm::AnchorRangeAttr clear = build_anchor(ctx, rop_id, shared);
 
-  llvm::SmallVector<vesyla::drra::RopOp> events;
-  loop.walk([&](vesyla::drra::RopOp inner) {
-    if (inner.getEvtAttr()) {
-      events.push_back(inner);
+  llvm::SmallVector<ReachedEvent> events;
+  mlir::Value yielded =
+      acc.loop.getBody()->getTerminator()->getOperand(acc.index);
+  if (auto sink = yielded.getDefiningOp<vesyla::drra::RopOp>()) {
+    for (const ReachedEvent &feeder : feeding_events(sink)) {
+      if (acc.loop->isAncestor(feeder.event)) {
+        events.push_back(feeder);
+      }
     }
-  });
+  }
+  if (events.empty()) {
+    acc.loop.walk([&](vesyla::drra::RopOp inner) {
+      if (inner.getEvtAttr()) {
+        events.push_back({inner, 0});
+      }
+    });
+  }
 
   rewriter.setInsertionPoint(epoch.getBody().front().getTerminator());
-  for (vesyla::drra::RopOp event : events) {
-    auto id = event->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+  for (const ReachedEvent &event : events) {
+    auto id = event.event->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
     if (!id) {
       continue;
     }
-    pasm::AnchorRangeAttr dst =
-        build_within(ctx, event, shared, id, Pin::first);
-    pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst,
-                         pasm::DelayAttr::get(ctx, 0, 0),
+    pasm::AnchorRangeAttr first =
+        build_within(ctx, event.event, shared, id, Pin::first);
+    pasm::CstrOp::create(rewriter, rop.getLoc(), first, clear,
+                         pasm::DelayAttr::get(ctx, event.delay, event.delay),
                          rewriter.getBoolAttr(false))
         ->setAttr("debug", debug_attr(rewriter, "accumulator-clear"));
   }
@@ -559,8 +577,8 @@ public:
     // A clear whose loop makes nothing of the value it carries in leaves the
     // walk above with no consumer to reach, so it is timed against that loop
     // instead of against a chain that is not there.
-    if (mlir::affine::AffineForOp loop = accumulator_loop(rop)) {
-      constrain_accumulator_clear(rop, loop, rewriter);
+    if (std::optional<Accumulator> acc = accumulator_loop(rop)) {
+      constrain_accumulator_clear(rop, *acc, rewriter);
     }
 
     rewriter.modifyOpInPlace(

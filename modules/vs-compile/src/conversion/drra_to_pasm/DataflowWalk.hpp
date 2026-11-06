@@ -18,6 +18,12 @@ struct ReachedEvent {
 // are the exact delays CreateConstraintsPass turns into `==` constraints.
 llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source);
 
+// An evt rop whose data flow reaches `sink`, and the cycles it takes: the
+// latencies of the rops without an evt in between. The backward twin of
+// reached_events, within one loop body: operands with no defining rop, such as
+// iter_args, end the walk.
+llvm::SmallVector<ReachedEvent> feeding_events(mlir::Operation *sink);
+
 // Evt rops under `scope` whose times those delays fix to be equal: each group
 // has at least two members, which must run in the same cycle.
 llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>

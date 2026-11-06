@@ -111,6 +111,26 @@ llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source) {
   return reached;
 }
 
+llvm::SmallVector<ReachedEvent> feeding_events(mlir::Operation *sink) {
+  llvm::SmallVector<ReachedEvent> feeders;
+  llvm::SmallVector<WorkItem> working_set{{0, 0, sink}};
+  while (!working_set.empty()) {
+    WorkItem item = working_set.pop_back_val();
+    for (mlir::Value v : item.operation->getOperands()) {
+      auto p = v.getDefiningOp<vesyla::drra::RopOp>();
+      if (!p) {
+        continue;
+      }
+      if (p.getEvtAttr()) {
+        feeders.push_back({p, item.delay});
+      } else {
+        working_set.push_back({item.delay + rop_latency(p), 0, p});
+      }
+    }
+  }
+  return feeders;
+}
+
 llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>
 tied_groups(mlir::Operation *scope) {
   // t(to) = t(from) + delay, kept in both directions.
