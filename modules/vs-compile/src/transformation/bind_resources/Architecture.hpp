@@ -38,6 +38,9 @@ struct ResourceInstance {
   llvm::SmallVector<std::pair<std::string, int>> instructions;
 
   bool is_memory() const { return category == "memory"; }
+  // NUM_OPTIONS: the configurations the instance switches between within an
+  // epoch; 4 when the architecture gives none.
+  int num_options() const;
   bool has_instruction(llvm::StringRef name, int port) const;
   // A memory's capacity in words (RF_DEPTH), and the words in one of its rows
   // (a bulk transfer: BULK_BITWIDTH / WORD_BITWIDTH). 0 when not given.

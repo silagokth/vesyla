@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "vesyla/Dialect/Pasm/IR/InterconnectBinding.hpp"
+#include "vesyla/Dialect/Pasm/IR/OptionLimit.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/RoutingDepGraph.hpp"
 #include "vesyla/Support/Config.hpp"
@@ -293,6 +294,37 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
 }
 
 //===----------------------------------------------------------------------===//
+// The swb's NUM_OPTIONS in cell (row, col): the configuration options the
+// interconnect switches between within an epoch. 4 when the architecture does
+// not give one.
+static std::size_t swb_num_options(const nlohmann::json &arch, int row,
+                                   int col) {
+  if (!arch.is_object() || !arch.contains("cells")) {
+    return 4;
+  }
+  for (const auto &entry : arch.at("cells")) {
+    if (!entry.is_object() || !entry.contains("coordinates") ||
+        !entry.contains("cell")) {
+      continue;
+    }
+    const nlohmann::json &at = entry.at("coordinates");
+    if (at.value("row", -1) != row || at.value("col", -1) != col) {
+      continue;
+    }
+    const nlohmann::json &cell = entry.at("cell");
+    if (!cell.is_object() || !cell.contains("resources_list")) {
+      continue;
+    }
+    for (const auto &resource : cell.at("resources_list")) {
+      if (resource.value("kind", "") == "swb" &&
+          resource.contains("parameters")) {
+        return resource.at("parameters").value("NUM_OPTIONS", 4);
+      }
+    }
+  }
+  return 4;
+}
+
 class InterconnectPassRewriter : public OpRewritePattern<EpochOp> {
 public:
   // `failed` is set when a cell's transfers cannot be bound or sequenced; the
@@ -316,6 +348,7 @@ public:
       output_dir = ".";
     }
     ::vesyla::pasm::Config cfg;
+    nlohmann::json arch_json = cfg.get_arch_json();
     std::string interconnect_dir =
         output_dir + "/" + cfg.output_path("interconnect_dir");
     std::error_code dir_ec;
@@ -334,6 +367,8 @@ public:
       std::string cell_label = op.getId().str() + "_r" +
                                std::to_string(cell.getRow()) + "c" +
                                std::to_string(cell.getCol());
+      std::size_t num_options = option_limit(
+          "swb", swb_num_options(arch_json, cell.getRow(), cell.getCol()));
 
       auto build_and_dump = [&](llvm::StringRef kind, llvm::StringRef prefix) {
         llvm::errs() << "\n========================================\n"
@@ -354,7 +389,7 @@ public:
         reduced.dump_dot(dot_path);
 
         mlir::FailureOr<InterconnectBinding> binding =
-            bind_interconnect(graph, kind, op);
+            bind_interconnect(graph, kind, op, num_options);
         if (mlir::failed(binding)) {
           failed_ = true;
           return;

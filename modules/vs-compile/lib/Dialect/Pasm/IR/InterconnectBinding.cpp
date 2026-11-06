@@ -519,8 +519,9 @@ static bool fits_one_option(const std::vector<InterconnectConfig> &a,
 // Renumber options in order of first use, sharing identical ones and dropping
 // unused ones.
 static void compact_slots(InterconnectBinding &binding) {
-  std::array<std::vector<InterconnectConfigOption>, 4> slots;
-  std::array<int, 4> to{-1, -1, -1, -1};
+  std::vector<std::vector<InterconnectConfigOption>> slots(
+      binding.slots.size());
+  std::vector<int> to(binding.slots.size(), -1);
   std::size_t used = 0;
   for (int &s : binding.sequence) {
     if (to[s] < 0) {
@@ -618,7 +619,7 @@ no_free_option(mlir::Operation *report, llvm::StringRef kind,
                const InterconnectBinding &binding) {
   report->emitError("interconnect: the ")
       << kind << " transfers need more than the " << binding.slots.size()
-      << " configuration options the interconnect has; not supported";
+      << " configuration options the swb has (NUM_OPTIONS); not supported";
   return mlir::failure();
 }
 
@@ -646,13 +647,14 @@ bool has_conflict(const Node &candidate,
 
 mlir::FailureOr<InterconnectBinding>
 bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
-                  mlir::Operation *report) {
+                  mlir::Operation *report, std::size_t num_options) {
   std::vector<Node> free_set;
   std::vector<ActiveConfig> active;
   std::vector<InterconnectConfig> current;
   std::vector<Anchor> current_first_anchors;
   std::vector<Anchor> current_last_anchors;
   InterconnectBinding binding{};
+  binding.slots.resize(num_options);
 
   // Parts in walk order; `part_trips` is the current part's loops.
   std::vector<BindingPart> parts;

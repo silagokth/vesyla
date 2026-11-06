@@ -96,6 +96,10 @@ bool ResourceInstance::has_instruction(llvm::StringRef name, int port) const {
 
 int ResourceInstance::depth() const { return int_or(parameters, "RF_DEPTH", 0); }
 
+int ResourceInstance::num_options() const {
+  return int_or(parameters, "NUM_OPTIONS", 4);
+}
+
 int ResourceInstance::row_words() const {
   int word = int_or(parameters, "WORD_BITWIDTH", 0);
   int bulk = int_or(parameters, "BULK_BITWIDTH", 0);

@@ -328,6 +328,8 @@ int main(int argc, char **argv) {
     std::filesystem::create_directories(output_dir);
   }
   vesyla::util::GlobalVar::puts("__OUTPUT_DIR__", output_dir);
+  vesyla::util::GlobalVar::puts("__NO_RECONFIGURATION__",
+                                no_reconfiguration ? "1" : "0");
 
   if (!cpp_file.empty()) {
     LOG_FATAL << "Compilation from C++ model is not supported right now!";

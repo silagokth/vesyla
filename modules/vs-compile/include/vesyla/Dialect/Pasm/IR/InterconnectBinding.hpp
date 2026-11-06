@@ -70,7 +70,8 @@ struct BindingPart {
 // Options are shared between parts; `step_first`/`step_last` hold each step's
 // transfers.
 struct InterconnectBinding {
-  std::array<std::vector<InterconnectConfigOption>, 4> slots;
+  // One entry per configuration option the swb has (its NUM_OPTIONS).
+  std::vector<std::vector<InterconnectConfigOption>> slots;
   std::vector<int> sequence;
   std::vector<std::vector<Anchor>> step_first;
   std::vector<std::vector<Anchor>> step_last;
@@ -88,7 +89,7 @@ bool has_conflict(const Node &candidate, const std::vector<InterconnectConfig> &
 // error on `report`, when they need more options than the fabric has.
 mlir::FailureOr<InterconnectBinding>
 bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
-                  mlir::Operation *report);
+                  mlir::Operation *report, std::size_t num_options);
 
 void dump_binding(const InterconnectBinding &b, llvm::raw_ostream &os);
 
