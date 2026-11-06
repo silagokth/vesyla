@@ -23,7 +23,6 @@ io_buffer_size = args.io_buffer_size
 word_bitwidth = args.word_bitwidth
 instr_bitwidth = {{ parameters.INSTR_DATA_WIDTH }}
 instr_type_bitwidth = 1
-instr_opcode_width = {{ parameters.INSTR_OPCODE_BITWIDTH }}
 instr_slot_width = {{ parameters.INSTR_DATA_WIDTH - parameters.RESOURCE_INSTR_WIDTH - 1 }}
 printFrequency = args.print_frequency
 
@@ -78,7 +77,8 @@ seq_obj_{{r}}_{{c}}_params = {
     "assembly_program_path": assembly_program_path,
     "instr_bitwidth": instr_bitwidth,
     "instr_type_bitwidth": instr_type_bitwidth,
-    "instr_opcode_width": instr_opcode_width,
+    "instr_opcode_width": {{ thiscell.cell.controller.isa.format.instr_opcode_bitwidth }},
+    "resource_instr_opcode_width": {{ thiscell.cell.controller.isa.format.instr_resource_opcode_bitwidth }},
     "instr_slot_width": instr_slot_width,
     "io_data_width": io_data_width,
     "word_bitwidth": word_bitwidth,
@@ -104,7 +104,7 @@ print(f"[SST SIM] - Initializing resource {resource_name}")
     "printFrequency": printFrequency,
     "instr_bitwidth": instr_bitwidth,
     "instr_type_bitwidth": instr_type_bitwidth,
-    "instr_opcode_width": instr_opcode_width,
+    "instr_opcode_width": {{ resource.isa.format.instr_opcode_bitwidth }},
     "instr_slot_width": instr_slot_width,
     "io_data_width": io_data_width,
     "word_bitwidth": word_bitwidth,

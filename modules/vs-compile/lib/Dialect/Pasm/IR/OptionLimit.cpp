@@ -70,4 +70,36 @@ int64_t option_limit(llvm::StringRef kind, int64_t num_options) {
   return std::min(num_options, it->second);
 }
 
+int64_t option_limit_at(int row, int col, int slot) {
+  nlohmann::json arch = Config().get_arch_json();
+  if (!arch.is_object() || !arch.contains("cells")) {
+    return option_limit("", 4);
+  }
+  for (const auto &entry : arch.at("cells")) {
+    if (!entry.is_object() || !entry.contains("coordinates") ||
+        !entry.contains("cell")) {
+      continue;
+    }
+    const nlohmann::json &at = entry.at("coordinates");
+    if (at.value("row", -1) != row || at.value("col", -1) != col) {
+      continue;
+    }
+    const nlohmann::json &cell = entry.at("cell");
+    if (!cell.is_object() || !cell.contains("resources_list")) {
+      continue;
+    }
+    for (const auto &resource : cell.at("resources_list")) {
+      if (resource.value("slot", -1) != slot) {
+        continue;
+      }
+      int64_t n = 4;
+      if (resource.contains("parameters")) {
+        n = resource.at("parameters").value("NUM_OPTIONS", 4);
+      }
+      return option_limit(resource.value("kind", ""), n);
+    }
+  }
+  return option_limit("", 4);
+}
+
 } // namespace vesyla::pasm

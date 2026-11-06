@@ -14,6 +14,10 @@ namespace vesyla::pasm {
 // kind takes no option.
 int64_t option_limit(llvm::StringRef kind, int64_t num_options);
 
+// The same for the resource instance at (row, col, slot) of the loaded
+// architecture, from its kind and NUM_OPTIONS (4 when not given).
+int64_t option_limit_at(int row, int col, int slot);
+
 } // namespace vesyla::pasm
 
 #endif // __VESYLA_PASM_OPTION_LIMIT_HPP__

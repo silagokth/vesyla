@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
+#include "vesyla/Dialect/Pasm/IR/OptionLimit.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 
 #include "CreateConstraintsPass.hpp"
@@ -624,7 +625,6 @@ struct DpuSegment {
   llvm::SmallVector<vesyla::drra::RopOp> confs;
 };
 
-constexpr int64_t kDpuOptions = 4;
 
 // Puts each distinct DPU configuration of an epoch in its own config register
 // (`option`). One configuration: the register the DPU has selected from the
@@ -685,11 +685,12 @@ mlir::LogicalResult select_dpu_options(
       segments.back().confs.push_back(rop);
     }
     auto [row, col, slot] = key;
-    if (configs.size() > static_cast<size_t>(kDpuOptions)) {
+    int64_t options = pasm::option_limit_at(row, col, slot);
+    if (configs.size() > static_cast<size_t>(options)) {
       return confs.front().emitError()
              << "the DPU at slot " << slot << " needs " << configs.size()
-             << " configurations in one epoch, more than its " << kDpuOptions
-             << " config registers";
+             << " configurations in one epoch, more than its " << options
+             << " config registers (NUM_OPTIONS)";
     }
     if (configs.size() == 1) {
       int64_t option = selected.count(key) ? selected[key] : 0;

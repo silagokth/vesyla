@@ -254,8 +254,14 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
                 component_map_json[label].get<std::string>();
 
             nlohmann::json instr_json;
+            int opcode_bitwidth = instr_opcode_bitwidth;
             for (auto component : isa_json["components"]) {
               if (component["kind"] == component_kind) {
+                // Each component type has its own opcode width.
+                if (component.contains("format")) {
+                  opcode_bitwidth = component["format"].value(
+                      "instr_opcode_bitwidth", instr_opcode_bitwidth);
+                }
                 for (auto instr : component["instructions"]) {
                   if (instr["name"] == instr_type) {
                     instr_json = instr;
@@ -275,7 +281,7 @@ void Generator::emit_epoch_bin(vesyla::pasm::EpochOp epoch_op,
             instr_bin += int2bin(instr_json["instr_type"].get<int>(),
                                  instr_type_bitwidth);
             instr_bin += int2bin(instr_json["opcode"].get<int>(),
-                                 instr_opcode_bitwidth);
+                                 opcode_bitwidth);
             if (slot != -1) {
               instr_bin += int2bin(slot, instr_slot_bitwidth);
             }
