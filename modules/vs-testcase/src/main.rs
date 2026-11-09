@@ -834,9 +834,15 @@ mod tests {
         fs::create_dir_all(&testcase2).unwrap();
         let testcase2 = testcases_dir.join("type2/bar");
         fs::create_dir_all(&testcase2).unwrap();
-        // Only type1/foo carries an MLIR program.
+        // Every testcase carries a pasm program; only type1/foo an MLIR one.
+        for tc in ["type1/foo", "type1/bar", "type2/foo", "type2/bar"] {
+            fs::create_dir_all(testcases_dir.join(tc).join("pasm")).unwrap();
+            File::create(testcases_dir.join(tc).join("pasm/0.pasm")).unwrap();
+        }
         fs::create_dir_all(testcases_dir.join("type1/foo/mlir")).unwrap();
         File::create(testcases_dir.join("type1/foo/mlir/0.mlir")).unwrap();
+        // type2/empty has no programs and gets no entry.
+        fs::create_dir_all(testcases_dir.join("type2/empty")).unwrap();
     }
 
     #[test]
@@ -888,6 +894,7 @@ mod tests {
         assert!(content.contains("frontend:mlir"));
         assert!(!content.contains("style0::type1::bar::mlir"));
         assert!(!content.contains("style0::type2::foo::mlir"));
+        assert!(!content.contains("style0::type2::empty"));
     }
 
     #[test]
