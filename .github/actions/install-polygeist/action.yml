@@ -1,0 +1,69 @@
+name: 'Install Polygeist'
+description: 'Build cgeist and polygeist-opt from source together with the LLVM they pin'
+
+inputs:
+  polygeist-version:
+    description: 'llvm/Polygeist commit to build'
+    required: true
+  polygeist-install-path:
+    description: 'Directory to install bin/{cgeist,polygeist-opt} and lib/clang (resource headers) into'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      env:
+        POLYGEIST_VERSION: ${{ inputs.polygeist-version }}
+        POLYGEIST_INSTALL_PATH: ${{ inputs.polygeist-install-path }}
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends ninja-build lld
+
+        src="${RUNNER_TEMP}/polygeist-src"
+        build="${RUNNER_TEMP}/polygeist-build"
+        rm -rf "${src}" "${build}"
+        git clone https://github.com/llvm/Polygeist.git "${src}"
+        cd "${src}"
+        git checkout "${POLYGEIST_VERSION}"
+        # The pinned llvm-project submodule; a shallow fetch of its commit is enough.
+        git submodule update --init --depth 1 --recursive \
+          || git submodule update --init --recursive
+
+        # Polygeist only builds against its own LLVM, so build both in one tree
+        # (LLVM_EXTERNAL_PROJECTS). Everything that could pull in a shared
+        # library besides glibc is off or linked statically, so the binaries
+        # run on any runner.
+        mkdir -p "${build}"
+        cd "${build}"
+        cmake -G Ninja "${src}/llvm-project/llvm" \
+          -DLLVM_ENABLE_PROJECTS="clang;mlir" \
+          -DLLVM_EXTERNAL_PROJECTS=polygeist \
+          -DLLVM_EXTERNAL_POLYGEIST_SOURCE_DIR="${src}" \
+          -DLLVM_TARGETS_TO_BUILD=host \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DLLVM_ENABLE_ASSERTIONS=OFF \
+          -DLLVM_USE_LINKER=lld \
+          -DLLVM_PARALLEL_LINK_JOBS=2 \
+          -DLLVM_ENABLE_TERMINFO=OFF \
+          -DLLVM_ENABLE_ZLIB=OFF \
+          -DLLVM_ENABLE_ZSTD=OFF \
+          -DLLVM_ENABLE_LIBXML2=OFF \
+          -DLLVM_ENABLE_LIBEDIT=OFF \
+          -DLLVM_INCLUDE_TESTS=OFF \
+          -DLLVM_INCLUDE_BENCHMARKS=OFF \
+          -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+        # cgeist finds clang's resource headers (stdint.h, ...) in
+        # <bindir>/../lib/clang, so they ship next to the binaries.
+        ninja cgeist polygeist-opt clang-resource-headers
+
+        mkdir -p "${POLYGEIST_INSTALL_PATH}/bin" "${POLYGEIST_INSTALL_PATH}/lib"
+        install -m 755 bin/cgeist bin/polygeist-opt "${POLYGEIST_INSTALL_PATH}/bin/"
+        cp -r lib/clang "${POLYGEIST_INSTALL_PATH}/lib/"
+        cd / && rm -rf "${src}" "${build}"
+
+        echo "Installed Polygeist ${POLYGEIST_VERSION}:"
+        "${POLYGEIST_INSTALL_PATH}/bin/cgeist" --version
+        "${POLYGEIST_INSTALL_PATH}/bin/polygeist-opt" --version
+        ldd "${POLYGEIST_INSTALL_PATH}/bin/cgeist"
