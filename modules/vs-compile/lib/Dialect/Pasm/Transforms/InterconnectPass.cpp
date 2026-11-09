@@ -1,3 +1,4 @@
+#include "vesyla/Dialect/Pasm/IR/AnchorDomain.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
@@ -180,14 +181,20 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
             continue;
           }
 
+          // A range with a slope (AGU Slope Levels) is walked inside its box;
+          // its points pair with the other end's point for point.
+          llvm::SmallVector<RangeDim> src_dims = range_dims(src_ar);
+          llvm::SmallVector<RangeDim> dst_dims = range_dims(dst_ar);
+          auto [src_box_lo, src_box_hi] = range_box(src_dims);
+          auto [dst_box_lo, dst_box_hi] = range_box(dst_dims);
+          bool sloped = has_slopes(src_dims) || has_slopes(dst_dims);
+
           // constraints without indices should just be propagated
           if (src_ar.getIrLo().empty()) {
-            llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
-            llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
-            stack.push_back(
-                RangeRef{dst_ar.getInstr(), dst_ar.getMtLo(),
-                         std::vector<uint32_t>(dst_lo.begin(), dst_lo.end()),
-                         std::vector<uint32_t>(dst_hi.begin(), dst_hi.end())});
+            stack.push_back(RangeRef{
+                dst_ar.getInstr(), dst_ar.getMtLo(),
+                std::vector<uint32_t>(dst_box_lo.begin(), dst_box_lo.end()),
+                std::vector<uint32_t>(dst_box_hi.begin(), dst_box_hi.end())});
             continue;
           }
 
@@ -195,9 +202,9 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           // every propagated dim — clamp + map_index handles every other case.
           // Surplus src dims (beyond dst's arity) are filter dims and aren't
           // gated here.
-          llvm::ArrayRef<uint32_t> src_lo = src_ar.getIrLo();
-          llvm::ArrayRef<uint32_t> src_hi = src_ar.getIrHi();
-          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIrLo();
+          llvm::ArrayRef<uint32_t> src_lo = src_box_lo;
+          llvm::ArrayRef<uint32_t> src_hi = src_box_hi;
+          llvm::ArrayRef<uint32_t> dst_lo_ar = dst_box_lo;
           llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
           // A dst without indices propagates nothing, so src is gated on its
           // own dims.
@@ -209,8 +216,8 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
             continue;
           }
 
-          llvm::ArrayRef<uint32_t> dst_lo = dst_ar.getIrLo();
-          llvm::ArrayRef<uint32_t> dst_hi = dst_ar.getIrHi();
+          llvm::ArrayRef<uint32_t> dst_lo = dst_box_lo;
+          llvm::ArrayRef<uint32_t> dst_hi = dst_box_hi;
 
           // Clamp current.lo into src's rectangle, then map that src coord to
           // the corresponding dst coord by row-major flat-index correspondence.
@@ -219,8 +226,33 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
             uint32_t cl = (i < current.lo.size()) ? current.lo[i] : src_lo[i];
             matched_src[i] = std::min(std::max(cl, src_lo[i]), src_hi[i]);
           }
-          std::vector<uint32_t> dst_new_lo =
-              map_index(matched_src, src_lo, src_hi, dst_lo, dst_hi);
+          std::vector<uint32_t> dst_new_lo;
+          if (!sloped) {
+            dst_new_lo = map_index(matched_src, src_lo, src_hi, dst_lo, dst_hi);
+          } else {
+            // The first src point at or after the match pairs with the dst
+            // point of the same position; nothing after it means nothing to
+            // propagate.
+            auto src_pts = range_points(src_dims);
+            auto dst_pts = range_points(dst_dims);
+            std::size_t k = 0;
+            for (; k < src_pts.size(); ++k) {
+              bool after = true;
+              for (std::size_t i = 0; i < src_pts[k].size(); ++i) {
+                if (src_pts[k][i] < matched_src[i]) {
+                  after = false;
+                  break;
+                }
+              }
+              if (after) {
+                break;
+              }
+            }
+            if (k >= src_pts.size() || k >= dst_pts.size()) {
+              continue;
+            }
+            dst_new_lo = dst_pts[k];
+          }
 
           stack.push_back(RangeRef{
               dst_ar.getInstr(), dst_ar.getMtLo(), std::move(dst_new_lo),

@@ -6,6 +6,11 @@
 
 #include "vesyla/Analysis/TimingModel/TimingModel.hpp"
 
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <vector>
+
 namespace vesyla {
 namespace tm {
 
@@ -267,6 +272,12 @@ void TimingModel::extractVariables() {
           } else {
             LOG_ERROR << "Invalid delay expression: " << delay_expr;
           }
+          // The delay slope of a repeat may be a variable too.
+          auto ds = expr.parameters.find("dslope");
+          if (ds != expr.parameters.end() && !is_number(ds->second) &&
+              is_identifier(ds->second)) {
+            variables.insert(ds->second);
+          }
         }
         for (auto &child : expr.children) {
           extract_variables(child);
@@ -302,139 +313,271 @@ void TimingModel::extractAnchors() {
   }
 }
 
+namespace {
+
+// A linear expression in the delay variables with integer coefficients, the
+// form every start time and duration takes.
+struct LinExpr {
+  int64_t c = 0;
+  std::map<std::string, int64_t> terms;
+  LinExpr() {}
+  explicit LinExpr(int64_t k) : c(k) {}
+  static LinExpr of(const std::string &delay) {
+    LinExpr e;
+    if (is_number(delay)) {
+      e.c = std::stoll(delay);
+    } else {
+      e.terms[delay] = 1;
+    }
+    return e;
+  }
+  LinExpr &operator+=(const LinExpr &o) {
+    c += o.c;
+    for (const auto &[k, v] : o.terms) {
+      terms[k] += v;
+    }
+    return *this;
+  }
+  LinExpr operator*(int64_t n) const {
+    LinExpr e;
+    e.c = c * n;
+    for (const auto &[k, v] : terms) {
+      e.terms[k] = v * n;
+    }
+    return e;
+  }
+  std::string str() const {
+    std::string s = "(" + std::to_string(c);
+    for (const auto &[k, v] : terms) {
+      if (v != 0) {
+        s += "+(" + std::to_string(v) + ")*" + k;
+      }
+    }
+    return s + ")";
+  }
+};
+
+// Start times and durations of an operation's expression tree. A repeat with
+// a slope (AGU Slope Levels) runs iter + slope * (index of the repeat
+// `follows` repeats up) times, so a duration is summed pass by pass where a
+// subtree's trip counts depend on the pass, and stays the closed form
+// child * iter + delay * (iter - 1) where they do not.
+class Timer {
+public:
+  using Node = BinaryTree<BinaryTreeData> *;
+
+  explicit Timer(Node root) { collect_events(root); }
+
+  LinExpr duration(Node n) {
+    std::vector<std::pair<Node, int64_t>> ctx;
+    return dur(n, ctx);
+  }
+
+  // The start of the `indices`-th instance (outermost repeat first; missing
+  // indices read 0) of event `event_id`, relative to the operation's start.
+  LinExpr start(Node n, int event_id, const std::vector<int> &indices) {
+    std::vector<std::pair<Node, int64_t>> ctx;
+    return time(n, ctx, event_id, indices);
+  }
+
+private:
+  std::unordered_map<Node, std::set<int>> events_;
+
+  void collect_events(Node n) {
+    if (!n) {
+      return;
+    }
+    collect_events(n->left);
+    collect_events(n->right);
+    std::set<int> &e = events_[n];
+    if (n->data->expr.kind == OperationExpr::EVENT) {
+      e.insert(std::stoi(n->data->expr.parameters.at("id")));
+    }
+    if (n->left) {
+      e.insert(events_[n->left].begin(), events_[n->left].end());
+    }
+    if (n->right) {
+      e.insert(events_[n->right].begin(), events_[n->right].end());
+    }
+  }
+
+  static int64_t param(Node n, const char *key, int64_t fallback) {
+    auto it = n->data->expr.parameters.find(key);
+    return it == n->data->expr.parameters.end() ? fallback
+                                                 : std::stoll(it->second);
+  }
+
+  // The delay after pass c of repeat n: delay + dslope * (c, or the index of
+  // the repeat dfollows repeats up).
+  static LinExpr pass_delay(Node n, const std::vector<std::pair<Node, int64_t>> &ctx,
+                            int64_t c) {
+    LinExpr d = LinExpr::of(n->data->expr.parameters.at("delay"));
+    auto ds = n->data->expr.parameters.find("dslope");
+    if (ds == n->data->expr.parameters.end() || ds->second == "0") {
+      return d;
+    }
+    int64_t dfollows = param(n, "dfollows", 0);
+    int64_t x = c;
+    if (dfollows != 0) {
+      if (dfollows > static_cast<int64_t>(ctx.size())) {
+        LOG_FATAL << "A delay slope follows a repeat it does not have: "
+                  << OperationExpr(n->data->expr).to_string();
+        std::exit(EXIT_FAILURE);
+      }
+      x = ctx[ctx.size() - dfollows].second;
+    }
+    d += LinExpr::of(ds->second) * x;
+    return d;
+  }
+
+  static bool has_dslope(Node n) {
+    auto ds = n->data->expr.parameters.find("dslope");
+    return ds != n->data->expr.parameters.end() && ds->second != "0";
+  }
+
+  static int64_t trips(Node n, const std::vector<std::pair<Node, int64_t>> &ctx) {
+    int64_t iter = param(n, "iter", 1);
+    int64_t slope = param(n, "slope", 0);
+    int64_t follows = param(n, "follows", 0);
+    if (follows == 0 || slope == 0) {
+      return iter;
+    }
+    if (follows > static_cast<int64_t>(ctx.size())) {
+      LOG_FATAL << "A repeat follows a repeat it does not have: "
+                << OperationExpr(n->data->expr).to_string();
+      std::exit(EXIT_FAILURE);
+    }
+    return iter + slope * ctx[ctx.size() - follows].second;
+  }
+
+  // Whether a repeat in `sub` follows the repeat `k` repeats above `sub`'s
+  // root (1: the repeat directly around `sub`).
+  static bool depends(Node sub, int64_t k) {
+    if (!sub) {
+      return false;
+    }
+    if (sub->data->expr.kind == OperationExpr::REPEAT) {
+      if (param(sub, "slope", 0) != 0 && param(sub, "follows", 0) == k) {
+        return true;
+      }
+      return depends(sub->left, k + 1);
+    }
+    return depends(sub->left, k) || depends(sub->right, k);
+  }
+
+  LinExpr dur(Node n, std::vector<std::pair<Node, int64_t>> &ctx) {
+    const OperationExpr &e = n->data->expr;
+    if (e.kind == OperationExpr::EVENT) {
+      return LinExpr(1);
+    }
+    if (e.kind == OperationExpr::TRANSIT) {
+      LinExpr d = dur(n->left, ctx);
+      d += dur(n->right, ctx);
+      d += LinExpr::of(e.parameters.at("delay"));
+      return d;
+    }
+    int64_t t = trips(n, ctx);
+    if (t < 1) {
+      LOG_FATAL << "A repeat with no iterations: " << OperationExpr(e).to_string();
+      std::exit(EXIT_FAILURE);
+    }
+    LinExpr d;
+    if (!depends(n->left, 1)) {
+      ctx.push_back({n, 0});
+      LinExpr child = dur(n->left, ctx);
+      ctx.pop_back();
+      d = child * t;
+    } else {
+      for (int64_t c = 0; c < t; ++c) {
+        ctx.push_back({n, c});
+        d += dur(n->left, ctx);
+        ctx.pop_back();
+      }
+    }
+    if (!has_dslope(n)) {
+      d += LinExpr::of(e.parameters.at("delay")) * (t - 1);
+    } else {
+      for (int64_t c = 0; c + 1 < t; ++c) {
+        d += pass_delay(n, ctx, c);
+      }
+    }
+    return d;
+  }
+
+  LinExpr time(Node n, std::vector<std::pair<Node, int64_t>> &ctx,
+               int event_id, const std::vector<int> &indices) {
+    const OperationExpr &e = n->data->expr;
+    if (e.kind == OperationExpr::EVENT) {
+      return LinExpr(0);
+    }
+    if (e.kind == OperationExpr::TRANSIT) {
+      if (events_[n->left].count(event_id)) {
+        return time(n->left, ctx, event_id, indices);
+      }
+      LinExpr t = dur(n->left, ctx);
+      t += LinExpr::of(e.parameters.at("delay"));
+      t += time(n->right, ctx, event_id, indices);
+      return t;
+    }
+    int64_t idx = ctx.size() < indices.size() ? indices[ctx.size()] : 0;
+    int64_t t = trips(n, ctx);
+    if (idx >= t) {
+      LOG_FATAL << "Index out of range: index(" << idx << ") >= iter(" << t
+                << ") in " << OperationExpr(e).to_string();
+      std::exit(EXIT_FAILURE);
+    }
+    LinExpr s;
+    if (!depends(n->left, 1)) {
+      ctx.push_back({n, 0});
+      LinExpr child = dur(n->left, ctx);
+      ctx.pop_back();
+      s = child * idx;
+    } else {
+      for (int64_t c = 0; c < idx; ++c) {
+        ctx.push_back({n, c});
+        s += dur(n->left, ctx);
+        ctx.pop_back();
+      }
+    }
+    if (!has_dslope(n)) {
+      s += LinExpr::of(e.parameters.at("delay")) * idx;
+    } else {
+      for (int64_t c = 0; c < idx; ++c) {
+        s += pass_delay(n, ctx, c);
+      }
+    }
+    ctx.push_back({n, idx});
+    s += time(n->left, ctx, event_id, indices);
+    ctx.pop_back();
+    return s;
+  }
+};
+
+} // namespace
+
 void TimingModel::resolveOperationTiming(Operation &op) {
   OperationExpr expr = op.expr;
   BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
+  Timer timer(tree);
 
-  computeDurations(tree);
-  computeStartTimes(tree);
-  resolveAnchorTimingExpr(op, tree);
+  op.duration_expr = timer.duration(tree).str();
 
-  op.duration_expr = tree->data->duration;
-
-  delete tree;
-}
-
-void TimingModel::resolveAnchorTimingExpr(Operation &op,
-                                          BinaryTree<BinaryTreeData> *tree) {
-  std::vector<string> anchors_in_op;
   for (auto it = anchors.begin(); it != anchors.end(); ++it) {
-    if (it->second.anchor.name == op.name) {
-      anchors_in_op.push_back(it->first);
+    Anchor &anchor = it->second;
+    if (anchor.anchor.name != op.name) {
+      continue;
     }
-  }
-
-  unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>
-      node_parent_map = buildParentMap(tree);
-
-  for (auto it2 = anchors_in_op.begin(); it2 != anchors_in_op.end(); ++it2) {
-    string anchor_name = *it2;
-    string op_name = op.name;
-    Anchor &anchor = anchors[anchor_name];
-    // MT is the event id (option B).
-    string event_id = std::to_string(anchor.anchor.mt_idx);
     // OR indices (outer repeats) then IR indices (inner repeats), both
-    // outer-first, matching the outer-first repeat-ancestor stack below.
-    vector<int> indices = anchor.anchor.or_idx;
+    // outer-first, the order of the repeats around the event.
+    std::vector<int> indices = anchor.anchor.or_idx;
     indices.insert(indices.end(), anchor.anchor.ir_idx.begin(),
                    anchor.anchor.ir_idx.end());
-    for (auto it3 = node_parent_map.begin(); it3 != node_parent_map.end();
-         ++it3) {
-      if (it3->first->data->expr.kind != OperationExpr::EVENT) {
-        continue;
-      }
-      string event_id_1 = it3->first->data->expr.parameters["id"];
-      if (event_id_1 != event_id) {
-        continue;
-      }
-
-      // go through all its parents and find the repeat operation
-      std::vector<BinaryTree<BinaryTreeData> *> r_op_stack;
-      BinaryTree<BinaryTreeData> *parent = it3->second;
-      while (parent) {
-        if (parent->data->expr.kind == OperationExpr::REPEAT) {
-          r_op_stack.push_back(parent);
-        }
-
-        if (node_parent_map.find(parent) != node_parent_map.end()) {
-          parent = node_parent_map[parent];
-        } else {
-          parent = nullptr;
-        }
-      }
-
-      // reverse the stack
-      std::reverse(r_op_stack.begin(), r_op_stack.end());
-
-      if (r_op_stack.size() < indices.size()) {
-        LOG_ERROR << "r_op_stack size: " << r_op_stack.size();
-        for (auto i = 0; i < r_op_stack.size(); ++i) {
-          LOG_ERROR << "r_op_stack[" << i
-                    << "]: " << r_op_stack[i]->data->expr.to_string();
-        }
-        LOG_ERROR << "indices size: " << indices.size();
-        for (auto i = 0; i < indices.size(); ++i) {
-          LOG_ERROR << "indices[" << i << "]: " << indices[i];
-        }
-        LOG_FATAL << "Too many indices!";
-        std::exit(EXIT_FAILURE);
-      }
-
-      string expr_str = "(" + op_name + "+" + it3->first->data->start;
-      for (auto i = 0; i < indices.size(); ++i) {
-        int index = indices[i];
-        int iter = std::stoi(r_op_stack[i]->data->expr.parameters["iter"]);
-        if (index >= iter) {
-          LOG_FATAL << "Index out of range: index(" << index << ") >= iter("
-                    << iter << ")";
-          std::exit(EXIT_FAILURE);
-        }
-        expr_str = expr_str + "+(" + r_op_stack[i]->left->data->duration +
-                   "+(" + r_op_stack[i]->data->expr.parameters["delay"] +
-                   "))*" + std::to_string(index);
-      }
-      expr_str += ")";
-      anchor.timing_expr = expr_str;
-    }
+    anchor.timing_expr =
+        "(" + op.name + "+" +
+        timer.start(tree, anchor.anchor.mt_idx, indices).str() + ")";
   }
-}
 
-void TimingModel::computeDurations(BinaryTree<BinaryTreeData> *tree) {
-  tree->traverse_LRC([](BinaryTree<BinaryTreeData> *node) {
-    BinaryTreeData *tree_data = node->data;
-    BinaryTree<BinaryTreeData> *left = node->left;
-    BinaryTree<BinaryTreeData> *right = node->right;
-    if (tree_data->expr.kind == OperationExpr::TRANSIT) {
-      string left_duration = left->data->duration;
-      string right_duration = right->data->duration;
-      tree_data->duration = "(" + left_duration + "+" + right_duration + "+(" +
-                            tree_data->expr.parameters["delay"] + "))";
-    } else if (tree_data->expr.kind == OperationExpr::REPEAT) {
-      string left_duration = left->data->duration;
-      int iter = std::stoi(tree_data->expr.parameters["iter"]);
-      tree_data->duration = "(" + left_duration + "*" + std::to_string(iter) +
-                            "+(" + tree_data->expr.parameters["delay"] + ")*" +
-                            std::to_string(iter - 1) + ")";
-    } else if (tree_data->expr.kind == OperationExpr::EVENT) {
-      tree_data->duration = "(1)";
-    }
-  });
-}
-
-void TimingModel::computeStartTimes(BinaryTree<BinaryTreeData> *tree) {
-  tree->data->start = "(0)";
-  tree->traverse_CLR([](BinaryTree<BinaryTreeData> *node) {
-    BinaryTree<BinaryTreeData> *left = node->left;
-    BinaryTree<BinaryTreeData> *right = node->right;
-    BinaryTreeData *tree_data = node->data;
-    if (left) {
-      left->data->start = tree_data->start;
-    }
-    if (right) {
-      right->data->start = "(" + tree_data->start + "+" + left->data->duration +
-                           "+(" + tree_data->expr.parameters["delay"] + "))";
-    }
-  });
+  delete tree;
 }
 
 unordered_map<BinaryTree<BinaryTreeData> *, BinaryTree<BinaryTreeData> *>

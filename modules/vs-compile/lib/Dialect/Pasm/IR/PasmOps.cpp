@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
+#include "vesyla/Dialect/Pasm/IR/AnchorDomain.hpp"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Operation.h"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
@@ -36,8 +37,16 @@ LogicalResult CstrOp::verify() {
     if (a.getIrLo().size() != a.getIrHi().size()) {
       return emitOpError() << which << " ir_lo and ir_hi must have equal size";
     }
+    if (!a.getIrLoSlope().empty() &&
+        (a.getIrLoSlope().size() != a.getIrLo().size() ||
+         a.getIrHiSlope().size() != a.getIrLo().size() ||
+         a.getIrFollows().size() != a.getIrLo().size())) {
+      return emitOpError() << which << " slopes must name every IR dimension";
+    }
     for (std::size_t i = 0; i < a.getIrLo().size(); ++i) {
-      if (a.getIrLo()[i] > a.getIrHi()[i]) {
+      // A dimension with a slope may be empty at some outer index.
+      bool sloped = i < a.getIrFollows().size() && a.getIrFollows()[i] != 0;
+      if (!sloped && a.getIrLo()[i] > a.getIrHi()[i]) {
         return emitOpError()
                << which << " ir_lo must be <= ir_hi in every dimension";
       }
@@ -48,17 +57,12 @@ LogicalResult CstrOp::verify() {
     return failure();
   }
 
-  // Total elements = product of the per-dimension IR spans.
-  auto count = [](AnchorRangeAttr a) -> uint64_t {
-    uint64_t n = 1;
-    for (std::size_t i = 0; i < a.getIrLo().size(); ++i) {
-      n *= static_cast<uint64_t>(a.getIrHi()[i] - a.getIrLo()[i] + 1);
-    }
-    return n;
-  };
+  // Total elements: the points of the IR domain (AnchorDomain).
+  auto count = [](AnchorRangeAttr a) -> uint64_t { return range_size(a); };
   if (count(getSrc()) != count(getDst())) {
-    return emitOpError(
-        "src and dst must reference the same number of elements");
+    return emitOpError("src and dst must reference the same number of elements: ")
+           << count(getSrc()) << " vs " << count(getDst()) << " in " << getSrc()
+           << " and " << getDst();
   }
   return success();
 }

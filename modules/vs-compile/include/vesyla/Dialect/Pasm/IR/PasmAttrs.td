@@ -46,7 +46,28 @@ def AnchorRangeAttr : Pasm_Attr<"AnchorRange", "anchor_range"> {
     ArrayRefParameter<"uint32_t">:$ir_lo,
     ArrayRefParameter<"uint32_t">:$or_hi,
     "uint32_t":$mt_hi,
-    ArrayRefParameter<"uint32_t">:$ir_hi);
+    ArrayRefParameter<"uint32_t">:$ir_hi,
+    // Slope levels (AGU Slope Levels): per IR dimension, how its lo and hi
+    // move with the index of the dimension `ir_follows` dimensions out (0:
+    // fixed). lo_eff = lo + lo_slope * idx[d - follows], hi likewise; ir_lo
+    // and ir_hi hold the values at index 0 of the followed dimension. Empty
+    // when no dimension moves.
+    ArrayRefParameter<"int32_t">:$ir_lo_slope,
+    ArrayRefParameter<"int32_t">:$ir_hi_slope,
+    ArrayRefParameter<"uint32_t">:$ir_follows);
+  let builders = [
+    AttrBuilder<(ins "::mlir::FlatSymbolRefAttr":$instr,
+                     "::llvm::ArrayRef<uint32_t>":$or_lo,
+                     "uint32_t":$mt_lo,
+                     "::llvm::ArrayRef<uint32_t>":$ir_lo,
+                     "::llvm::ArrayRef<uint32_t>":$or_hi,
+                     "uint32_t":$mt_hi,
+                     "::llvm::ArrayRef<uint32_t>":$ir_hi), [{
+      return $_get($_ctxt, instr, or_lo, mt_lo, ir_lo, or_hi, mt_hi, ir_hi,
+                   ::llvm::ArrayRef<int32_t>(), ::llvm::ArrayRef<int32_t>(),
+                   ::llvm::ArrayRef<uint32_t>());
+    }]>
+  ];
   let hasCustomAssemblyFormat = 1;
 }
 

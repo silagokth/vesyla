@@ -1,3 +1,4 @@
+#include "vesyla/Support/LoopShape.hpp"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -92,17 +93,19 @@ AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
                         llvm::ArrayRef<mlir::affine::AffineForOp> loops,
                         bool is_last, int32_t delay, size_t pass = 0) {
   llvm::SmallVector<int32_t> idx;
+  llvm::SmallVector<int64_t> at;
   size_t depth = 0;
   for (mlir::affine::AffineForOp loop : loops) {
     if (is_last && depth >= pass) {
-      int64_t ub =
-          loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 0;
-      idx.push_back(static_cast<int32_t>(ub - 1));
+      // The last iteration in the pass the outer indices name (AGU Slope
+      // Levels: a trip count may follow an outer loop).
+      at.push_back(vesyla::util::trips_at(loop, at) - 1);
     } else {
       int64_t lb =
           loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-      idx.push_back(static_cast<int32_t>(lb));
+      at.push_back(lb);
     }
+    idx.push_back(static_cast<int32_t>(at.back()));
     ++depth;
   }
   // Loop dimensions map to IR indices; MT (event id) is 0 and there is no OR.
@@ -223,10 +226,8 @@ public:
           llvm::SmallVector<int32_t> pass_hi;
           llvm::SmallVector<mlir::Attribute> pass_loops;
           for (size_t depth = 0; depth < pass; ++depth) {
-            int64_t ub = loops[depth].hasConstantUpperBound()
-                             ? loops[depth].getConstantUpperBound()
-                             : 1;
-            pass_hi.push_back(static_cast<int32_t>(ub - 1));
+            pass_hi.push_back(static_cast<int32_t>(
+                vesyla::util::trips_at_last(loops[depth]) - 1));
             auto id = loops[depth]->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
             if (!id) {
               loops[depth]->emitError("generate-icdep: loop has no id");

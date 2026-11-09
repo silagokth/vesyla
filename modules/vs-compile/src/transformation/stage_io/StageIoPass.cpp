@@ -12,6 +12,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include "StageIoPass.hpp"
+#include "vesyla/Support/LoopShape.hpp"
 #include "IoAccess.hpp"
 #include "conversion/select_instructions/NativeHelpers.hpp"
 
@@ -61,6 +62,40 @@ AffineExpr substitute(AffineExpr e, unsigned pos, int64_t w,
     }
   }
   return e;
+}
+
+// `e` with every `x floordiv w` replaced by `floorDiv` and every `x mod w` by
+// `mod`, for one affine expression `x` (compared structurally).
+AffineExpr fold_split(AffineExpr e, AffineExpr x, int64_t w, AffineExpr floorDiv,
+                      AffineExpr mod) {
+  if (auto bin = llvm::dyn_cast<mlir::AffineBinaryOpExpr>(e)) {
+    auto rhs = llvm::dyn_cast<mlir::AffineConstantExpr>(bin.getRHS());
+    if (rhs && rhs.getValue() == w && bin.getLHS() == x) {
+      if (e.getKind() == mlir::AffineExprKind::FloorDiv) {
+        return floorDiv;
+      }
+      if (e.getKind() == mlir::AffineExprKind::Mod) {
+        return mod;
+      }
+    }
+    return mlir::getAffineBinaryOpExpr(
+        e.getKind(), fold_split(bin.getLHS(), x, w, floorDiv, mod),
+        fold_split(bin.getRHS(), x, w, floorDiv, mod));
+  }
+  return e;
+}
+
+// Every `x` with `x floordiv w` in `e`.
+void floordiv_terms(AffineExpr e, int64_t w, llvm::SmallVectorImpl<AffineExpr> &out) {
+  if (auto bin = llvm::dyn_cast<mlir::AffineBinaryOpExpr>(e)) {
+    auto rhs = llvm::dyn_cast<mlir::AffineConstantExpr>(bin.getRHS());
+    if (bin.getKind() == mlir::AffineExprKind::FloorDiv && rhs &&
+        rhs.getValue() == w) {
+      out.push_back(bin.getLHS());
+    }
+    floordiv_terms(bin.getLHS(), w, out);
+    floordiv_terms(bin.getRHS(), w, out);
+  }
 }
 
 bool is_constant_loop(AffineForOp loop, int64_t &upper) {
@@ -301,15 +336,40 @@ bool splits_a_reduction(AffineForOp loop, int64_t w) {
 }
 
 // Calls `visit` with `e` at every point of the loops it reads. False when they
-// are not known at compile time.
+// are not known at compile time. The loops are walked outermost first, so a
+// loop whose trip count follows an outer one (AGU Slope Levels) runs its exact
+// count at every point.
 bool for_each_value(const IoAccess &access, AffineExpr e,
                     llvm::function_ref<void(int64_t)> visit) {
-  llvm::SmallVector<AffineExpr> dims;
-  for (unsigned pos = 0; pos < access.map.getNumDims(); ++pos) {
-    dims.push_back(mlir::getAffineConstantExpr(0, access.op->getContext()));
+  mlir::MLIRContext *ctx = access.op->getContext();
+  unsigned ndims = access.map.getNumDims();
+  llvm::SmallVector<AffineExpr> dims(ndims, mlir::getAffineConstantExpr(0, ctx));
+  llvm::SmallVector<int64_t> values(ndims, 0);
+  // The dims `e` reads, outermost loop first.
+  llvm::SmallVector<unsigned> order;
+  for (unsigned pos = 0; pos < ndims; ++pos) {
+    if (e.isFunctionOfDim(pos)) {
+      order.push_back(pos);
+    }
   }
-  std::function<bool(unsigned)> walk = [&](unsigned pos) {
-    if (pos == dims.size()) {
+  auto depth = [&](unsigned pos) {
+    unsigned d = 0;
+    for (mlir::Operation *op =
+             mlir::affine::getForInductionVarOwner(access.operands[pos]);
+         op; op = op->getParentOp()) {
+      d += llvm::isa<AffineForOp>(op);
+    }
+    return d;
+  };
+  llvm::stable_sort(order, [&](unsigned a, unsigned b) { return depth(a) < depth(b); });
+  for (unsigned pos : order) {
+    if (!vesyla::util::loop_shape(
+            mlir::affine::getForInductionVarOwner(access.operands[pos]))) {
+      return false;
+    }
+  }
+  std::function<bool(unsigned)> walk = [&](unsigned k) -> bool {
+    if (k == order.size()) {
       auto value = llvm::dyn_cast<mlir::AffineConstantExpr>(
           mlir::simplifyAffineExpr(e.replaceDims(dims), 0, 0));
       if (!value) {
@@ -318,17 +378,27 @@ bool for_each_value(const IoAccess &access, AffineExpr e,
       visit(value.getValue());
       return true;
     }
-    if (!e.isFunctionOfDim(pos)) {
-      return walk(pos + 1);
-    }
+    unsigned pos = order[k];
     AffineForOp loop = mlir::affine::getForInductionVarOwner(access.operands[pos]);
-    if (!loop.hasConstantBounds()) {
-      return false;
+    vesyla::util::LoopShape shape = *vesyla::util::loop_shape(loop);
+    int64_t trips = shape.iter;
+    if (!shape.constant()) {
+      AffineForOp followed = vesyla::util::followed_loop(loop);
+      bool found = false;
+      for (unsigned q : order) {
+        if (mlir::affine::getForInductionVarOwner(access.operands[q]) == followed) {
+          trips = shape.iter + shape.slope * values[q];
+          found = true;
+        }
+      }
+      if (!found) {
+        trips = vesyla::util::max_trips(loop);
+      }
     }
-    for (int64_t i = loop.getConstantLowerBound();
-         i < loop.getConstantUpperBound(); i += loop.getStepAsInt()) {
-      dims[pos] = mlir::getAffineConstantExpr(i, access.op->getContext());
-      if (!walk(pos + 1)) {
+    for (int64_t i = 0; i < trips; ++i) {
+      dims[pos] = mlir::getAffineConstantExpr(i, ctx);
+      values[pos] = i;
+      if (!walk(k + 1)) {
         return false;
       }
     }
@@ -360,6 +430,18 @@ bool crosses_rows(const IoAccess &access) {
   return llvm::any_of(loops_of(access, access.word()), [&](AffineForOp loop) {
     return llvm::is_contained(rows, loop);
   });
+}
+
+// Whether a sloped loop (AGU Slope Levels) follows `loop`: its bound reads
+// the counter, which strip-mining would replace by a sum of two.
+bool followed_by_slope(AffineForOp loop) {
+  bool followed = false;
+  loop->getParentOfType<mlir::ModuleOp>().walk([&](AffineForOp other) {
+    if (vesyla::util::followed_loop(other) == loop) {
+      followed = true;
+    }
+  });
+  return followed;
 }
 
 // The most io rows a flat buffer holds: the largest RF, rf_4row.
@@ -405,13 +487,42 @@ std::optional<FlatPlan> plan_flat(const IoAccess &access, int64_t w) {
         return std::nullopt;
       }
     }
-    AffineExpr lo = mlir::simplifyAffineExpr(access.row().replaceDims(starts),
-                                             dims, 0);
-    AffineExpr index = mlir::simplifyAffineExpr(
-        (access.row() - lo) * w + access.word(), dims, 0);
+    // An index x that picks both the row (x floordiv w) and the word (x mod
+    // w) reads the flat buffer at x: the two terms fold into one, which a loop
+    // of varying length (AGU Slope Levels) needs, since it cannot be
+    // strip-mined into rows and words. x may be any affine expression, such
+    // as a counter shifted by an outer one.
+    // The word is `x mod w` for an `x floordiv w` of the row; the mod may
+    // have been rewritten as x - (x floordiv w) * w, so it is compared after
+    // simplification.
+    AffineExpr rowx = access.row();
+    AffineExpr wordx = access.word();
+    llvm::SmallVector<AffineExpr> candidates;
+    floordiv_terms(rowx, w, candidates);
+    for (AffineExpr x : candidates) {
+      auto diff = llvm::dyn_cast<mlir::AffineConstantExpr>(
+          mlir::simplifyAffineExpr(wordx - x % w, dims, 0));
+      if (!diff || diff.getValue() != 0) {
+        continue;
+      }
+      AffineExpr rest =
+          fold_split(rowx, x, w, mlir::getAffineConstantExpr(0, ctx),
+                     mlir::getAffineConstantExpr(0, ctx));
+      if (rest != rowx) {
+        rowx = rest;
+        wordx = x;
+        break;
+      }
+    }
+    AffineExpr lo = mlir::simplifyAffineExpr(rowx.replaceDims(starts), dims, 0);
+    AffineExpr index =
+        mlir::simplifyAffineExpr((rowx - lo) * w + wordx, dims, 0);
+    // A counter of the level or above it picks the rows; it may shift the
+    // index too (a loop starting at that counter, AGU Slope Levels) when the
+    // rows move with it, the range check below holding for every value.
     if (!index.isPureAffine() ||
         llvm::any_of(fixed, [&](unsigned pos) {
-          return index.isFunctionOfDim(pos);
+          return index.isFunctionOfDim(pos) && !lo.isFunctionOfDim(pos);
         })) {
       continue;
     }
@@ -560,15 +671,21 @@ public:
             loop && !splits_a_reduction(*loop, w)) {
           if (loop->getConstantUpperBound() <= w) {
             fold_short_loop(*loop, w);
-          } else {
-            strip_mine(*loop, w);
+            changed = true;
+            break;
           }
-          changed = true;
-          break;
+          // A loop a sloped loop follows stays whole: its access goes
+          // through a flat buffer below.
+          if (!followed_by_slope(*loop)) {
+            strip_mine(*loop, w);
+            changed = true;
+            break;
+          }
         }
         if (crosses_rows(access) && unbufferable(access).empty() &&
             !plan_flat(access, w)) {
-          if (auto loop = window_loop(access, w)) {
+          if (auto loop = window_loop(access, w);
+              loop && !followed_by_slope(*loop)) {
             strip_mine(*loop, w);
             changed = true;
             break;

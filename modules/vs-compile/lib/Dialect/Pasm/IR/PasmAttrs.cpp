@@ -5,6 +5,9 @@
 #include "vesyla/Support/Anchor.hpp"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include <cstdio>
+#include <sstream>
+
 using namespace vesyla::pasm;
 
 #define GET_ATTRDEF_CLASSES
@@ -92,6 +95,31 @@ mlir::Attribute AnchorRangeAttr::parse(mlir::AsmParser &p, mlir::Type) {
     }
   }
 
+  // Slopes (AGU Slope Levels): `, slope "lo:hi@follows,..."`, one entry per
+  // IR dimension.
+  llvm::SmallVector<int32_t> lo_slope, hi_slope;
+  llvm::SmallVector<uint32_t> follows;
+  if (mlir::succeeded(p.parseOptionalComma())) {
+    std::string slope_text;
+    if (p.parseKeyword("slope") || p.parseString(&slope_text)) {
+      return {};
+    }
+    std::stringstream ss(slope_text);
+    std::string entry;
+    while (std::getline(ss, entry, ',')) {
+      int lo = 0, hi = 0;
+      unsigned f = 0;
+      if (std::sscanf(entry.c_str(), "%d:%d@%u", &lo, &hi, &f) != 3) {
+        p.emitError(p.getCurrentLocation(), "invalid anchor_range slope text: ")
+            << slope_text;
+        return {};
+      }
+      lo_slope.push_back(lo);
+      hi_slope.push_back(hi);
+      follows.push_back(f);
+    }
+  }
+
   if (p.parseGreater()) {
     return {};
   }
@@ -102,6 +130,11 @@ mlir::Attribute AnchorRangeAttr::parse(mlir::AsmParser &p, mlir::Type) {
         << idx_text;
     return {};
   }
+  if (!lo_slope.empty() && lo_slope.size() != range->lo.ir_idx.size()) {
+    p.emitError(p.getCurrentLocation(),
+                "anchor_range slope text has to name every IR dimension");
+    return {};
+  }
 
   auto to_u = [](const std::vector<int> &v) {
     return llvm::SmallVector<uint32_t>(v.begin(), v.end());
@@ -110,7 +143,7 @@ mlir::Attribute AnchorRangeAttr::parse(mlir::AsmParser &p, mlir::Type) {
       p.getContext(), instr, to_u(range->lo.or_idx),
       static_cast<uint32_t>(range->lo.mt_idx), to_u(range->lo.ir_idx),
       to_u(range->hi.or_idx), static_cast<uint32_t>(range->hi.mt_idx),
-      to_u(range->hi.ir_idx));
+      to_u(range->hi.ir_idx), lo_slope, hi_slope, follows);
 }
 
 void AnchorRangeAttr::print(mlir::AsmPrinter &p) const {
@@ -129,6 +162,21 @@ void AnchorRangeAttr::print(mlir::AsmPrinter &p) const {
   std::string idx = ::vesyla::AnchorRange{lo, hi}.to_string();
   if (!idx.empty()) {
     p << ", \"" << idx << "\"";
+  }
+  bool sloped = false;
+  for (size_t d = 0; d < getIrLoSlope().size(); ++d) {
+    sloped |= getIrLoSlope()[d] != 0 || getIrHiSlope()[d] != 0;
+  }
+  if (sloped) {
+    p << ", slope \"";
+    for (size_t d = 0; d < getIrLoSlope().size(); ++d) {
+      if (d) {
+        p << ",";
+      }
+      p << getIrLoSlope()[d] << ":" << getIrHiSlope()[d] << "@"
+        << getIrFollows()[d];
+    }
+    p << "\"";
   }
   p << ">";
 }

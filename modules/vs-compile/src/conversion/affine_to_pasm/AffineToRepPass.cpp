@@ -2,12 +2,15 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include "AffineToRepPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmOps.hpp"
 #include "vesyla/Support/Common.hpp"
 #include "vesyla/Support/Config.hpp"
+#include "vesyla/Support/LoopShape.hpp"
 
 namespace vesyla::conversion::affine_to_pasm {
 #define GEN_PASS_DEF_AFFINETOREPPASS
@@ -185,6 +188,53 @@ mlir::LogicalResult set_init_addr(pasm::RopOp rop,
   return mlir::success();
 }
 
+// A sloped loop (AGU Slope Levels), recorded before any loop is lowered: its
+// tag and the loops around it up to the one it follows. It is erased before
+// those are lowered, so nothing here points at it.
+struct Follower {
+  std::string tag;
+  llvm::SmallPtrSet<mlir::Operation *, 4> enclosing;
+};
+
+// The sloped loops that follow each loop.
+using Followers =
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<Follower, 2>>;
+
+// Whether `rop` sat inside the loop tagged `tag`: it was lowered against it
+// already, so it carries a rep with that tag.
+bool rop_inside(pasm::RopOp rop, llvm::StringRef tag) {
+  for (pasm::InstrOp instr : rop.getBody().front().getOps<pasm::InstrOp>()) {
+    auto loop = instr->getAttrOfType<mlir::StringAttr>("loop");
+    if (loop && loop.getValue() == tag) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Whether the passes of `loop` grow for `rop`: a sloped loop J nested in
+// `loop` that `rop` is not part of follows `loop` or a loop around it, so
+// rop's events, one or more per pass, have to spread out with J. The levels
+// up to the loop J follows (0: `loop` itself), or nothing.
+std::optional<unsigned> delay_follows(pasm::RopOp rop,
+                                      mlir::affine::AffineForOp loop,
+                                      const Followers &followers) {
+  unsigned distance = 0;
+  for (mlir::Operation *ancestor = loop; ancestor;
+       ancestor = ancestor->getParentOfType<mlir::affine::AffineForOp>()) {
+    auto it = followers.find(ancestor);
+    if (it != followers.end()) {
+      for (const Follower &sloped : it->second) {
+        if (sloped.enclosing.contains(loop) && !rop_inside(rop, sloped.tag)) {
+          return distance;
+        }
+      }
+    }
+    ++distance;
+  }
+  return std::nullopt;
+}
+
 // Number of affine.for ops enclosing `op`.
 unsigned enclosing_loop_count(mlir::Operation *op) {
   unsigned count = 0;
@@ -206,7 +256,8 @@ unsigned enclosing_loop_count(mlir::Operation *op) {
 mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
                                          mlir::affine::AffineForOp loop,
                                          llvm::StringRef loop_tag,
-                                         mlir::PatternRewriter &rewriter) {
+                                         mlir::PatternRewriter &rewriter,
+                                         const Followers &followers) {
   if (!rop.getMapAttr()) {
     return mlir::failure();
   }
@@ -226,8 +277,10 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
     rop.emitError("affine map contains operations other than add and mul");
     return mlir::failure();
   }
-  // the iterations should be the same as the affine.for
-  int64_t iter = loop.getConstantUpperBound();
+  // The iterations of the affine.for: a constant, or one that follows an
+  // enclosing loop (AGU Slope Levels), checked in runOnOperation.
+  vesyla::util::LoopShape shape = *vesyla::util::loop_shape(loop);
+  int64_t iter = shape.iter;
 
   // use the location of the affine.for for debugging purposes
   mlir::StringAttr loc_name;
@@ -263,14 +316,30 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
   }
 
   // insert the rep instructions
-  auto params = rewriter.getDictionaryAttr({
+  llvm::SmallVector<mlir::NamedAttribute> attrs{
       rewriter.getNamedAttr("delay", rewriter.getStringAttr(delay_value)),
       rewriter.getNamedAttr(
           "iter", rewriter.getI32IntegerAttr(static_cast<int32_t>(iter))),
       rewriter.getNamedAttr(
           "step", rewriter.getI32IntegerAttr(static_cast<int32_t>(*step))),
       rewriter.getNamedAttr("port", rewriter.getI32IntegerAttr(port)),
-  });
+  };
+  if (!shape.constant()) {
+    attrs.push_back(rewriter.getNamedAttr(
+        "slope", rewriter.getI32IntegerAttr(static_cast<int32_t>(shape.slope))));
+    attrs.push_back(rewriter.getNamedAttr(
+        "follows", rewriter.getI32IntegerAttr(static_cast<int32_t>(shape.follows))));
+  }
+  // The delay between passes grows for a rop beside a sloped loop; by how
+  // much is the scheduler's to find, one variable per rop and loop, as the
+  // delay itself.
+  if (std::optional<unsigned> dfollows = delay_follows(rop, loop, followers)) {
+    attrs.push_back(rewriter.getNamedAttr(
+        "dslope", rewriter.getStringAttr("ds_" + loc_name.str())));
+    attrs.push_back(rewriter.getNamedAttr(
+        "dfollows", rewriter.getI32IntegerAttr(static_cast<int32_t>(*dfollows))));
+  }
+  auto params = rewriter.getDictionaryAttr(attrs);
   pasm::InstrOp::create(rewriter, loop.getLoc(),
                         rewriter.getStringAttr(instr_id),
                         rewriter.getStringAttr("rep"), params)
@@ -287,7 +356,8 @@ mlir::LogicalResult rewrite_rop_for_loop(pasm::RopOp rop,
 class RopLoopRewriter
     : public mlir::OpRewritePattern<mlir::affine::AffineForOp> {
 public:
-  using OpRewritePattern::OpRewritePattern;
+  RopLoopRewriter(mlir::MLIRContext *ctx, const Followers &followers)
+      : OpRewritePattern(ctx), followers_(followers) {}
 
   mlir::LogicalResult
   matchAndRewrite(mlir::affine::AffineForOp loop,
@@ -306,9 +376,11 @@ public:
     }
 
     // lower each rop against this loop
-    std::string loop_tag = vesyla::util::Common::gen_random_string(8);
+    std::string loop_tag =
+        loop->getAttrOfType<mlir::StringAttr>("vesyla.tag").getValue().str();
     for (pasm::RopOp rop : rops) {
-      if (mlir::failed(rewrite_rop_for_loop(rop, loop, loop_tag, rewriter))) {
+      if (mlir::failed(
+              rewrite_rop_for_loop(rop, loop, loop_tag, rewriter, followers_))) {
         return mlir::failure();
       }
     }
@@ -321,6 +393,9 @@ public:
 
     return mlir::success();
   }
+
+private:
+  const Followers &followers_;
 };
 
 class AffineToRepPass
@@ -369,8 +444,10 @@ public:
           rop.emitError("affine.for parent must have step 1");
           fatal = true;
         }
-        if (!loop.hasConstantUpperBound()) {
-          rop.emitError("affine.for parent must have a constant upper bound");
+        if (!vesyla::util::loop_shape(loop)) {
+          rop.emitError("affine.for parent must have a constant upper bound, "
+                        "or one of the form a * i + k over one enclosing "
+                        "induction variable i");
           fatal = true;
         }
       }
@@ -395,8 +472,36 @@ public:
       return;
     }
 
+    // Every loop gets its tag before any is lowered, and the sloped loops
+    // are listed under the loop they follow.
+    mlir::OpBuilder builder(&getContext());
+    Followers followers;
+    getOperation().walk([&](mlir::affine::AffineForOp loop) {
+      loop->setAttr("vesyla.tag", builder.getStringAttr(
+                                      vesyla::util::Common::gen_random_string(8)));
+    });
+    getOperation().walk([&](mlir::affine::AffineForOp loop) {
+      mlir::affine::AffineForOp followed = vesyla::util::followed_loop(loop);
+      if (!followed) {
+        return;
+      }
+      Follower follower;
+      follower.tag =
+          loop->getAttrOfType<mlir::StringAttr>("vesyla.tag").getValue().str();
+      for (mlir::Operation *parent = loop->getParentOp(); parent;
+           parent = parent->getParentOp()) {
+        if (llvm::isa<mlir::affine::AffineForOp>(parent)) {
+          follower.enclosing.insert(parent);
+          if (parent == followed) {
+            break;
+          }
+        }
+      }
+      followers[followed].push_back(follower);
+    });
+
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RopLoopRewriter>(&getContext());
+    patterns.add<RopLoopRewriter>(&getContext(), followers);
     if (mlir::failed(applyPatternsGreedily(
             getOperation(),
             mlir::FrozenRewritePatternSet(std::move(patterns))))) {

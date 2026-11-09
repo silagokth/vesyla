@@ -68,15 +68,28 @@ OperationExpr::OperationExpr(string str) {
       std::exit(EXIT_FAILURE);
     }
   } else if (kind == REPEAT) {
-    // use regex to match R<iter, delay>(expr)
-    // e.g. R<2, 3>(e1)
+    // use regex to match R<iter, delay>(expr) or, with slopes (AGU Slope
+    // Levels), R<iter, delay, slope, follows[, dslope, dfollows]>(expr): the
+    // trip count is iter + slope * (index of the repeat `follows` repeats up),
+    // the delay after pass c is delay + dslope * (index of the repeat
+    // `dfollows` repeats up, 0 being c itself). dslope may be a variable.
     // e.g. R<2, 3>(e1) -> iter = 2, delay = 3, expr = e1
-    auto regex = std::regex("^R<([0-9a-zA-Z_]+),([0-9a-zA-Z_]+)>\\((.*)\\)$");
+    auto regex = std::regex(
+        "^R<([0-9a-zA-Z_]+),([0-9a-zA-Z_]+)(?:,(-?[0-9]+),([0-9]+)"
+        "(?:,(-?[0-9a-zA-Z_]+),([0-9]+))?)?>\\((.*)\\)$");
     std::smatch match;
     if (std::regex_match(str, match, regex)) {
       parameters["iter"] = match[1];
       parameters["delay"] = match[2];
-      children.push_back(OperationExpr(match[3]));
+      if (match[3].matched) {
+        parameters["slope"] = match[3];
+        parameters["follows"] = match[4];
+      }
+      if (match[5].matched) {
+        parameters["dslope"] = match[5];
+        parameters["dfollows"] = match[6];
+      }
+      children.push_back(OperationExpr(match[7]));
     } else {
       LOG_FATAL << "Invalid repeat operator string: " << str;
       std::exit(EXIT_FAILURE);
@@ -151,7 +164,14 @@ string OperationExpr::to_string() {
   if (kind == EVENT) {
     str = "e" + parameters["id"];
   } else if (kind == REPEAT) {
-    str = "R<" + parameters["iter"] + ", " + parameters["delay"] + ">(";
+    str = "R<" + parameters["iter"] + ", " + parameters["delay"];
+    if (parameters.count("slope")) {
+      str += ", " + parameters["slope"] + ", " + parameters["follows"];
+    }
+    if (parameters.count("dslope")) {
+      str += ", " + parameters["dslope"] + ", " + parameters["dfollows"];
+    }
+    str += ">(";
     for (auto &child : children) {
       str += child.to_string() + ", ";
     }
@@ -173,54 +193,69 @@ string Operation::to_string() {
 
 namespace {
 
-// While walking up from an event, a repeat is classified as outer (OR) once a
-// transition has been seen below it on the path, otherwise inner (IR). A path
-// with no transition puts every repeat in IR (the IR-default rule).
+// A repeat is classified as outer (OR) when a transition lies between it and
+// the event, otherwise inner (IR). A path with no transition puts every
+// repeat in IR (the IR-default rule). A repeat with a slope repeats its child
+// iter + slope * (index of the repeat `follows` repeats up) times.
 struct PartialAnchor {
   int event_id;
   std::vector<int> or_idx;
   std::vector<int> ir_idx;
-  bool transit_seen;
 };
 
-std::vector<PartialAnchor> collect_anchors(const OperationExpr &e) {
-  std::vector<PartialAnchor> result;
+struct Ancestor {
+  const OperationExpr *repeat;
+  int index;
+};
+
+int64_t trips_of(const OperationExpr &e, const std::vector<Ancestor> &anc) {
+  int64_t iter = std::stoll(e.parameters.at("iter"));
+  auto slope_it = e.parameters.find("slope");
+  if (slope_it == e.parameters.end()) {
+    return iter;
+  }
+  int64_t slope = std::stoll(slope_it->second);
+  size_t follows = std::stoull(e.parameters.at("follows"));
+  if (follows == 0 || follows > anc.size()) {
+    LOG_FATAL << "A repeat follows a repeat it does not have: " << follows
+              << " up of " << anc.size();
+    std::exit(EXIT_FAILURE);
+  }
+  return iter + slope * anc[anc.size() - follows].index;
+}
+
+// `or_boundary`: the ancestors before it are above a transition (OR).
+void collect_anchors(const OperationExpr &e, std::vector<Ancestor> &anc,
+                     size_t or_boundary, std::vector<PartialAnchor> &out) {
   if (e.kind == OperationExpr::EVENT) {
     PartialAnchor p;
     p.event_id = std::stoi(e.parameters.at("id"));
-    p.transit_seen = false;
-    result.push_back(std::move(p));
+    for (size_t i = 0; i < anc.size(); ++i) {
+      (i < or_boundary ? p.or_idx : p.ir_idx).push_back(anc[i].index);
+    }
+    out.push_back(std::move(p));
   } else if (e.kind == OperationExpr::TRANSIT) {
     for (const auto &child : e.children) {
-      for (auto &p : collect_anchors(child)) {
-        p.transit_seen = true;
-        result.push_back(std::move(p));
-      }
+      collect_anchors(child, anc, anc.size(), out);
     }
   } else if (e.kind == OperationExpr::REPEAT) {
-    std::vector<PartialAnchor> child_anchors = collect_anchors(e.children[0]);
-    int iter = std::stoi(e.parameters.at("iter"));
-    for (int i = 0; i < iter; i++) {
-      for (const PartialAnchor &cp : child_anchors) {
-        PartialAnchor p = cp;
-        // Insert at the front so each field ends up outer-index-first.
-        if (p.transit_seen) {
-          p.or_idx.insert(p.or_idx.begin(), i);
-        } else {
-          p.ir_idx.insert(p.ir_idx.begin(), i);
-        }
-        result.push_back(std::move(p));
-      }
+    int64_t trips = trips_of(e, anc);
+    for (int64_t i = 0; i < trips; i++) {
+      anc.push_back({&e, static_cast<int>(i)});
+      collect_anchors(e.children[0], anc, or_boundary, out);
+      anc.pop_back();
     }
   }
-  return result;
 }
 
 } // namespace
 
 std::vector<::vesyla::Anchor> OperationExpr::get_all_anchors() {
   std::vector<::vesyla::Anchor> anchors;
-  for (const PartialAnchor &p : collect_anchors(*this)) {
+  std::vector<PartialAnchor> partial;
+  std::vector<Ancestor> anc;
+  collect_anchors(*this, anc, 0, partial);
+  for (const PartialAnchor &p : partial) {
     ::vesyla::Anchor a;
     a.mt_idx = p.event_id;
     a.or_idx = p.or_idx;

@@ -236,7 +236,9 @@ AnchorRangeAttr remap(AnchorRangeAttr anchor,
                               mlir::FlatSymbolRefAttr::get(it->second.into),
                               anchor.getOrLo(), it->second.event,
                               anchor.getIrLo(), anchor.getOrHi(),
-                              it->second.event, anchor.getIrHi());
+                              it->second.event, anchor.getIrHi(),
+                              anchor.getIrLoSlope(), anchor.getIrHiSlope(),
+                              anchor.getIrFollows());
 }
 
 AnchorAttr remap(AnchorAttr anchor, const llvm::StringMap<Absorbed> &absorbed) {
@@ -286,7 +288,11 @@ std::optional<AnchorRangeAttr> last_event(RopOp rop) {
       (after_trans ? shared : own).push_back(instr);
     }
   }
+  // The last index of each rep, outermost first. A rep with a slope (AGU
+  // Slope Levels) runs iter + slope * (last index of the rep `follows` reps
+  // out) times in the last pass.
   std::vector<uint32_t> ir;
+  llvm::SmallVector<int64_t> last;
   for (auto *reps : {&shared, &own}) {
     for (auto it = reps->rbegin(); it != reps->rend(); ++it) {
       auto iter =
@@ -294,7 +300,22 @@ std::optional<AnchorRangeAttr> last_event(RopOp rop) {
       if (!iter) {
         return std::nullopt;
       }
-      ir.push_back(static_cast<uint32_t>(std::max<int64_t>(iter.getInt(), 1) - 1));
+      int64_t trips = iter.getInt();
+      auto slope =
+          llvm::dyn_cast_or_null<mlir::IntegerAttr>(it->getParam().get("slope"));
+      if (slope && slope.getInt() != 0) {
+        auto follows_attr = llvm::dyn_cast_or_null<mlir::IntegerAttr>(
+            it->getParam().get("follows"));
+        size_t follows = follows_attr && follows_attr.getInt() > 0
+                             ? static_cast<size_t>(follows_attr.getInt())
+                             : 1;
+        if (follows <= last.size()) {
+          trips += slope.getInt() * last[last.size() - follows];
+        }
+      }
+      trips = std::max<int64_t>(trips, 1);
+      last.push_back(trips - 1);
+      ir.push_back(static_cast<uint32_t>(trips - 1));
     }
   }
   return AnchorRangeAttr::get(rop.getContext(),

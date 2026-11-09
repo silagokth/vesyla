@@ -1,4 +1,5 @@
 #include "vesyla/Analysis/TimingModel/Constraint.hpp"
+#include "vesyla/Dialect/Pasm/IR/AnchorDomain.hpp"
 
 namespace vesyla {
 namespace tm {
@@ -70,7 +71,10 @@ string Constraint::to_string() {
   return s;
 }
 
-std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
+std::vector<Constraint>
+Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op,
+                         const std::vector<bool> &src_nonlinear,
+                         const std::vector<bool> &dst_nonlinear) {
   std::vector<Constraint> result;
 
   auto src_ar = cstr_op.getSrc();
@@ -150,6 +154,73 @@ std::vector<Constraint> Constraint::from_cstr_op(vesyla::pasm::CstrOp cstr_op) {
       extents(src_ar.getIrLo(), src_ar.getIrHi());
   std::vector<uint64_t> dst_ext =
       extents(dst_ar.getIrLo(), dst_ar.getIrHi());
+
+  // A range with a slope (AGU Slope Levels) is no box: the bounds of a sloped
+  // dimension move with the index of the dimension it follows. Its points
+  // are enumerated, both ends in lockstep, and the pair is stated at the
+  // points the box rule below would pick -- every value of a followed
+  // dimension, since the distance is no longer affine in it, the origin and
+  // one step (exact) or both ends (bounded) of every other dimension.
+  llvm::SmallVector<vesyla::pasm::RangeDim> src_dims =
+      vesyla::pasm::range_dims(src_ar);
+  llvm::SmallVector<vesyla::pasm::RangeDim> dst_dims =
+      vesyla::pasm::range_dims(dst_ar);
+  // The dimensions along which the distance is not affine: those a sloped
+  // dimension follows, and those an end's own repetitions make so.
+  std::vector<bool> driver(src_dims.size(), false);
+  bool nonlinear = false;
+  for (std::size_t d = 0; d < src_dims.size(); ++d) {
+    if (src_dims[d].follows != 0 &&
+        (src_dims[d].lo_slope != 0 || src_dims[d].hi_slope != 0) &&
+        src_dims[d].follows <= d) {
+      driver[d - src_dims[d].follows] = true;
+    }
+    if (d < src_nonlinear.size() && src_nonlinear[d]) {
+      driver[d] = true;
+    }
+    if (src_dims.size() == dst_dims.size() && d < dst_nonlinear.size() &&
+        dst_nonlinear[d]) {
+      driver[d] = true;
+    }
+    nonlinear |= driver[d];
+  }
+  if (vesyla::pasm::has_slopes(src_dims) ||
+      vesyla::pasm::has_slopes(dst_dims) || nonlinear) {
+    auto src_pts = vesyla::pasm::range_points(src_dims);
+    auto dst_pts = vesyla::pasm::range_points(dst_dims);
+    bool exact_pair = min_delay && max_delay && *min_delay == *max_delay;
+    bool all = is_neq || src_pts.size() != dst_pts.size();
+    std::size_t n = std::min(src_pts.size(), dst_pts.size());
+    for (std::size_t k = 0; k < n; ++k) {
+      const std::vector<uint32_t> &pt = src_pts[k];
+      bool sample = true;
+      std::size_t steps = 0;
+      for (std::size_t d = 0; d < src_dims.size() && !all; ++d) {
+        if (driver[d]) {
+          continue;
+        }
+        int64_t lo = vesyla::pasm::dim_lo(src_dims, d, pt);
+        int64_t hi = vesyla::pasm::dim_hi(src_dims, d, pt);
+        if (pt[d] == lo) {
+          continue;
+        }
+        if (exact_pair && pt[d] == lo + 1) {
+          ++steps;
+          continue;
+        }
+        if (!exact_pair && pt[d] == hi) {
+          continue;
+        }
+        sample = false;
+      }
+      if (all || (sample && steps <= 1)) {
+        src_cur = pt;
+        dst_cur = dst_pts[k];
+        emit();
+      }
+    }
+    return result;
+  }
 
   // Which points of the range the pair actually has to be stated at.
   //

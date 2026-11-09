@@ -59,6 +59,14 @@ struct Level {
   uint64_t step = 0;
   uint64_t delay = 0;
   std::map<size_t, uint64_t> lane_steps; // OR level: overrides of step by lane
+  // AGU Slope Levels: the trip count is iter + slope * (count of the level
+  // `follows` levels up); 0: constant.
+  int64_t slope = 0;
+  uint64_t follows = 0;
+  // The delay grows by dslope with the count of the level `dfollows` levels
+  // up (0: this level's own count).
+  uint64_t dslope = 0;
+  uint64_t dfollows = 0;
 };
 
 // Write one rep field as agu_controller does: a base rep sets the field from
@@ -107,9 +115,30 @@ public:
   // False when no `evt` has opened a lane of this configuration. A rep with
   // a lane field sets that lane's step at the last OR level and opens none.
   bool rep(bool ext, uint64_t iter, uint64_t step, uint64_t delay,
-           uint64_t lane = 0) {
+           uint64_t lane = 0, uint64_t tri = 0) {
     if (lanes_.empty()) {
       return false;
+    }
+    if (tri != 0) {
+      // A slope rep: the slope (step) and the levels up to the followed one
+      // (lane), for the level opened last; nothing on an OR level.
+      Level *level = nullptr;
+      if (last_rl_) {
+        level = &rl_.back().level;
+      } else if (!use_or_ && level_ > 0 && level_ - 1 < lanes_.back().ir.size()) {
+        level = &lanes_.back().ir[level_ - 1];
+      }
+      if (level) {
+        uint64_t slope = static_cast<uint64_t>(level->slope);
+        write_field(slope, step, widths_.step, ext, true);
+        level->slope = static_cast<int64_t>(slope);
+        write_field(level->dslope, delay, widths_.delay, ext, false);
+        if (!ext) {
+          level->follows = lane;
+          level->dfollows = iter & 3;
+        }
+      }
+      return true;
     }
     if (lane != 0 && last_rl_) {
       // At a range level, the lane is counted from its lo.
@@ -195,10 +224,11 @@ public:
   // all lanes each OR level's. An AGU no `evt` configured generates address 0
   // alone. Nothing when an address exceeds `limit`.
   std::optional<std::set<uint64_t>> addresses(uint64_t limit) const {
-    auto expand = [&](std::set<uint64_t> &addrs, const Level &level) {
+    auto expand = [&](std::set<uint64_t> &addrs, const Level &level,
+                      uint64_t trips) {
       std::set<uint64_t> next;
       for (uint64_t addr : addrs) {
-        for (uint64_t k = 0; k < std::max<uint64_t>(level.iter, 1); k++) {
+        for (uint64_t k = 0; k < std::max<uint64_t>(trips, 1); k++) {
           uint64_t expanded = addr + k * level.step;
           if (expanded > limit) {
             return false;
@@ -219,25 +249,26 @@ public:
     }
     for (size_t l = 0; l < lanes_.size(); l++) {
       std::set<uint64_t> addrs = {lanes_[l].init_addr};
-      for (const Level &level : lanes_[l].ir) {
-        if (!expand(addrs, level)) {
+      for (size_t i = 0; i < lanes_[l].ir.size(); i++) {
+        if (!expand(addrs, lanes_[l].ir[i], max_trips(l, i))) {
           return std::nullopt;
         }
       }
-      for (const Range &range : rl_) {
+      for (size_t r = 0; r < rl_.size(); r++) {
+        const Range &range = rl_[r];
         if (l < range.lo || l > range.hi) {
           continue;
         }
         Level lane_level = range.level;
         lane_level.step = step_of(range.level, l);
-        if (!expand(addrs, lane_level)) {
+        if (!expand(addrs, lane_level, range_max_trips(r))) {
           return std::nullopt;
         }
       }
       for (const Level &level : or_) {
         Level lane_level = level;
         lane_level.step = step_of(level, l);
-        if (!expand(addrs, lane_level)) {
+        if (!expand(addrs, lane_level, level.iter)) {
           return std::nullopt;
         }
       }
@@ -258,13 +289,15 @@ public:
       return 0;
     }
     uint64_t addr = lanes_.back().init_addr;
-    for (const Level &level : lanes_.back().ir) {
-      addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
-    }
     size_t last = lanes_.size() - 1;
-    for (const Range &range : rl_) {
+    for (size_t i = 0; i < lanes_[last].ir.size(); i++) {
+      addr += (std::max<uint64_t>(last_trips(last, i), 1) - 1) *
+              lanes_[last].ir[i].step;
+    }
+    for (size_t r = 0; r < rl_.size(); r++) {
+      const Range &range = rl_[r];
       if (last >= range.lo && last <= range.hi) {
-        addr += (std::max<uint64_t>(range.level.iter, 1) - 1) *
+        addr += (std::max<uint64_t>(range_last_trips(r), 1) - 1) *
                 step_of(range.level, last);
       }
     }
@@ -276,9 +309,18 @@ public:
 
   nlohmann::json to_json() const {
     auto level_json = [](const Level &level) {
-      return nlohmann::json{{"iter", level.iter},
-                            {"step", static_cast<int64_t>(level.step)},
-                            {"delay", level.delay}};
+      nlohmann::json j{{"iter", level.iter},
+                       {"step", static_cast<int64_t>(level.step)},
+                       {"delay", level.delay}};
+      if (level.follows != 0 && level.slope != 0) {
+        j["slope"] = level.slope;
+        j["follows"] = level.follows;
+      }
+      if (level.dslope != 0) {
+        j["dslope"] = level.dslope;
+        j["dfollows"] = level.dfollows;
+      }
+      return j;
     };
     nlohmann::json lanes = nlohmann::json::array();
     for (const Lane &lane : lanes_) {
@@ -311,11 +353,20 @@ public:
         bool in = l >= range.lo && l <= range.hi;
         steps.push_back(in ? static_cast<int64_t>(step_of(range.level, l)) : 0);
       }
-      rl.push_back({{"iter", range.level.iter},
-                    {"delay", range.level.delay},
-                    {"lo", range.lo},
-                    {"hi", range.hi},
-                    {"lane_steps", steps}});
+      nlohmann::json entry{{"iter", range.level.iter},
+                           {"delay", range.level.delay},
+                           {"lo", range.lo},
+                           {"hi", range.hi},
+                           {"lane_steps", steps}};
+      if (range.level.follows != 0 && range.level.slope != 0) {
+        entry["slope"] = range.level.slope;
+        entry["follows"] = range.level.follows;
+      }
+      if (range.level.dslope != 0) {
+        entry["dslope"] = range.level.dslope;
+        entry["dfollows"] = range.level.dfollows;
+      }
+      rl.push_back(entry);
     }
     return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}, {"rl", rl}};
   }
@@ -338,6 +389,60 @@ private:
   static uint64_t step_of(const Level &level, size_t lane) {
     auto it = level.lane_steps.find(lane);
     return it == level.lane_steps.end() ? level.step : it->second;
+  }
+
+  // The trip count of a level as a signed count: at least one.
+  static uint64_t clamp(int64_t trips) {
+    return trips < 1 ? 1 : static_cast<uint64_t>(trips);
+  }
+
+  // The last count of the chain level enclosing lane `l`: the innermost range
+  // level around it, else OR level 0, else none.
+  int64_t chain_last(size_t l) const {
+    for (size_t r = 0; r < rl_.size(); r++) {
+      if (rl_[r].lo <= l && l <= rl_[r].hi) {
+        return static_cast<int64_t>(range_last_trips(r)) - 1;
+      }
+    }
+    return or_.empty() ? 0 : static_cast<int64_t>(std::max<uint64_t>(or_[0].iter, 1)) - 1;
+  }
+
+  // The trip count of IR level `i` of lane `l` in the last pass of the levels
+  // around it (AGU Slope Levels), and the largest it takes.
+  uint64_t last_trips(size_t l, size_t i) const {
+    const Level &level = lanes_[l].ir[i];
+    if (level.follows == 0 || level.slope == 0) {
+      return level.iter;
+    }
+    size_t f = i + level.follows;
+    int64_t followed = f < lanes_[l].ir.size()
+                           ? static_cast<int64_t>(last_trips(l, f)) - 1
+                           : chain_last(l);
+    return clamp(static_cast<int64_t>(level.iter) + level.slope * followed);
+  }
+  uint64_t max_trips(size_t l, size_t i) const {
+    return std::max<uint64_t>(lanes_[l].ir[i].iter, last_trips(l, i));
+  }
+
+  // The same for range level `r`, following the innermost range level around
+  // it, else OR level 0.
+  uint64_t range_last_trips(size_t r) const {
+    const Level &level = rl_[r].level;
+    if (level.follows == 0 || level.slope == 0) {
+      return level.iter;
+    }
+    int64_t followed =
+        or_.empty() ? 0 : static_cast<int64_t>(std::max<uint64_t>(or_[0].iter, 1)) - 1;
+    for (size_t r2 = r + 1; r2 < rl_.size(); r2++) {
+      if (rl_[r2].lo <= rl_[r].lo && rl_[r].hi <= rl_[r2].hi) {
+        followed = static_cast<int64_t>(range_last_trips(r2)) - 1;
+        break;
+      }
+    }
+    return clamp(static_cast<int64_t>(level.iter) + level.slope * followed);
+  }
+  uint64_t range_max_trips(size_t r) const {
+    return std::max<uint64_t>(rl_[r].level.iter, range_last_trips(r));
   }
 
   RepWidths widths_;
@@ -1110,7 +1215,8 @@ private:
                               int_param(instr, "iter").value_or(0),
                               int_param(instr, "step").value_or(0),
                               int_param(instr, "delay").value_or(0),
-                              int_param(instr, "lane").value_or(0));
+                              int_param(instr, "lane").value_or(0),
+                              int_param(instr, "tri").value_or(0));
       } else {
         it->second.second.trans(int_param(instr, "delay").value_or(0));
       }

@@ -1,3 +1,4 @@
+#include "vesyla/Support/LoopShape.hpp"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/DenseMap.h"
@@ -97,9 +98,11 @@ llvm::SmallVector<mlir::affine::AffineForOp> enclosing_loops(mlir::Operation *op
 // The first or last repeat of a rop.
 pasm::AnchorRangeAttr anchor_at(drra::RopOp rop, bool last) {
   llvm::SmallVector<uint32_t> idx;
-  for (mlir::affine::AffineForOp loop : enclosing_loops(rop)) {
-    idx.push_back(static_cast<uint32_t>(last ? loop.getConstantUpperBound() - 1
-                                             : loop.getConstantLowerBound()));
+  llvm::SmallVector<mlir::affine::AffineForOp> loops = enclosing_loops(rop);
+  llvm::SmallVector<int64_t> last_idx = vesyla::util::last_indices(loops);
+  for (auto [d, loop] : llvm::enumerate(loops)) {
+    idx.push_back(static_cast<uint32_t>(
+        last ? last_idx[d] : loop.getConstantLowerBound()));
   }
   return pasm::AnchorRangeAttr::get(
       rop.getContext(), rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id"), {}, 0,

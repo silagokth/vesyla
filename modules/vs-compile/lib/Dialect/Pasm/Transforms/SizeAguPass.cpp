@@ -35,6 +35,7 @@ struct ResourceEntry {
   int col;
   int slot;
   std::vector<std::string> parameters;
+  nlohmann::json parameter_values;
 };
 
 // The AGU parameters this pass sizes. They start at what an AGU the program
@@ -47,12 +48,15 @@ struct AguSize {
   // AGU_USED: bit p set if the program configures the AGU of port p. An AGU
   // no `evt` ever opens is not built (agu_array's AGU_USED).
   uint64_t agu_used = 0;
+  // The program uses a slope rep (AGU Slope Levels), which needs AGU_SLOPE.
+  bool slope = false;
 
   void merge(const AguSize &other) {
     number_ir = std::max(number_ir, other.number_ir);
     number_mt = std::max(number_mt, other.number_mt);
     number_or = std::max(number_or, other.number_or);
     agu_used |= other.agu_used;
+    slope |= other.slope;
   }
 };
 
@@ -72,6 +76,9 @@ public:
     lanes_++;
     level_ = 0;
   }
+
+  // A slope rep opens no level; it needs AGU_SLOPE.
+  void slope() { slope_ = true; }
 
   void rep(bool ext) {
     if (ext) {
@@ -114,10 +121,12 @@ public:
     size.number_ir = std::max<uint64_t>(ir_levels_, 1);
     size.number_mt = std::max(lanes_ - 1, transitions_);
     size.number_or = std::max(or_levels_, range_levels_);
+    size.slope = slope_;
     return size;
   }
 
 private:
+  bool slope_ = false;
   uint64_t lanes_ = 0;
   uint64_t level_ = 0;
   uint64_t transitions_ = 0;
@@ -205,8 +214,9 @@ public:
       for (const auto &resource : cell["cell"]["resources_list"]) {
         int first_slot = resource["slot"];
         int size = resource["size"];
-        ResourceEntry entry{row, col, first_slot, {}};
+        ResourceEntry entry{row, col, first_slot, {}, {}};
         if (resource.contains("parameters")) {
+          entry.parameter_values = resource["parameters"];
           for (const auto &parameter : resource["parameters"].items()) {
             entry.parameters.push_back(parameter.key());
           }
@@ -292,6 +302,10 @@ public:
         }
         AguReplay &replay = replays[agu->second];
         if (type == "rep") {
+          if (int_param(instr, "tri").value_or(0) != 0) {
+            replay.slope();
+            continue;
+          }
           // A lane rep, like an ext rep, opens no level.
           replay.rep(int_param(instr, "ext").value_or(0) != 0 ||
                      int_param(instr, "lane").value_or(0) != 0);
@@ -310,6 +324,21 @@ public:
     if (result.wasInterrupted()) {
       signalPassFailure();
       return;
+    }
+
+    // A slope rep needs the resource's AGU_SLOPE (AGU Slope Levels): a
+    // compile error points at the architecture rather than a program that
+    // runs with constant trip counts.
+    for (size_t i = 0; i < resources.size(); i++) {
+      const ResourceEntry &resource = resources[i];
+      if (sizes[i].slope && resource.parameter_values.value("AGU_SLOPE", 0) == 0) {
+        getOperation().emitError("size-agu-pass: the program uses a rep with a "
+                                 "slope on slot ")
+            << resource.slot << " of cell (" << resource.row << ", "
+            << resource.col << "), whose AGU_SLOPE is 0";
+        signalPassFailure();
+        return;
+      }
     }
 
     // Only a parameter the resource already has is set, so a kind of resource

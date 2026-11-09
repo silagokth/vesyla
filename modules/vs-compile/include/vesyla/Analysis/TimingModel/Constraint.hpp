@@ -56,7 +56,14 @@ struct Constraint {
   // Expand a pasm.cstr op's index range into one Constraint per
   // (src_idx, dst_idx) atom. Each returned Constraint has src_id/dst_id,
   // min/max_delay, is_neq, and (optional) src_anchor/dst_anchor populated.
-  static std::vector<Constraint> from_cstr_op(vesyla::pasm::CstrOp cstr_op);
+  // `src_nonlinear` / `dst_nonlinear` flag the IR dimensions (outermost
+  // first) along which an end's time is not affine -- a repetition with a
+  // slope or a delay slope (AGU Slope Levels) -- so the pair is stated at
+  // every point of them rather than sampled.
+  static std::vector<Constraint>
+  from_cstr_op(vesyla::pasm::CstrOp cstr_op,
+               const std::vector<bool> &src_nonlinear = {},
+               const std::vector<bool> &dst_nonlinear = {});
 };
 
 } // namespace tm

@@ -21,6 +21,7 @@
 
 #include "CreateConstraintsPass.hpp"
 #include "DataflowWalk.hpp"
+#include "vesyla/Support/LoopShape.hpp"
 
 namespace vesyla::conversion::drra_to_pasm {
 #define GEN_PASS_DEF_CREATECONSTRAINTSPASS
@@ -64,45 +65,123 @@ pasm::AnchorRangeAttr make_ir_anchor(mlir::MLIRContext *ctx,
                                     /*or_hi=*/{}, /*mt_hi=*/0, ir_hi);
 }
 
+// How an anchor spans one enclosing loop: all of it, its first iteration or
+// its last.
+enum class Span { all, first, last };
+
+// One IR dimension of an anchor: its bounds at index 0 of the loop it
+// follows and how they move with that loop (AGU Slope Levels).
+struct DimSpec {
+  int64_t lo = 0;
+  int64_t hi = 0;
+  int32_t lo_slope = 0;
+  int32_t hi_slope = 0;
+  uint32_t follows = 0;
+};
+
+// The dimension for `loop` spanned as `span` says, its bounds shifted by the
+// offsets. A loop with a slope keeps it on the bounds that move with the
+// followed loop: the high one when the loop is spanned, both when it is
+// pinned to its last iteration.
+DimSpec dim_of(mlir::affine::AffineForOp loop, Span span, int64_t lo_off = 0,
+               int64_t hi_off = 0) {
+  std::optional<vesyla::util::LoopShape> shape = vesyla::util::loop_shape(loop);
+  int64_t iter = shape ? shape->iter
+                       : (loop.hasConstantUpperBound() ? loop.getConstantUpperBound()
+                                                       : 1);
+  int64_t lb = loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
+  int32_t slope = shape && !shape->constant() ? static_cast<int32_t>(shape->slope) : 0;
+  uint32_t follows = shape && !shape->constant() ? shape->follows : 0;
+  DimSpec d;
+  switch (span) {
+  case Span::all:
+    d.lo = lb + lo_off;
+    d.hi = lb + iter - 1 + hi_off;
+    d.hi_slope = slope;
+    d.follows = follows;
+    break;
+  case Span::first:
+    d.lo = d.hi = lb + lo_off;
+    break;
+  case Span::last:
+    d.lo = lb + iter - 1 + lo_off;
+    d.hi = lb + iter - 1 + hi_off;
+    d.lo_slope = d.hi_slope = slope;
+    d.follows = follows;
+    break;
+  }
+  return d;
+}
+
+// The anchor of `dims`. A dimension whose followed dimension is a fixed point
+// is folded to a constant; the rest keep their slopes.
+pasm::AnchorRangeAttr make_anchor(mlir::MLIRContext *ctx,
+                                  mlir::FlatSymbolRefAttr id,
+                                  llvm::MutableArrayRef<DimSpec> dims) {
+  for (size_t d = 0; d < dims.size(); ++d) {
+    DimSpec &dim = dims[d];
+    if (dim.follows == 0 || dim.follows > d) {
+      dim.follows = 0;
+      dim.lo_slope = dim.hi_slope = 0;
+      continue;
+    }
+    const DimSpec &followed = dims[d - dim.follows];
+    if (followed.lo == followed.hi && followed.lo_slope == 0 &&
+        followed.hi_slope == 0) {
+      dim.lo += int64_t(dim.lo_slope) * followed.lo;
+      dim.hi += int64_t(dim.hi_slope) * followed.lo;
+      dim.lo_slope = dim.hi_slope = 0;
+      dim.follows = 0;
+    }
+  }
+  llvm::SmallVector<uint32_t> lo, hi;
+  llvm::SmallVector<int32_t> lo_slope, hi_slope;
+  llvm::SmallVector<uint32_t> follows;
+  bool sloped = false;
+  for (const DimSpec &dim : dims) {
+    // A sloped dimension's bound at index 0 of the followed one may be
+    // negative (an empty first pass): kept as a signed value (AnchorDomain).
+    if (dim.follows != 0) {
+      lo.push_back(static_cast<uint32_t>(static_cast<int32_t>(dim.lo)));
+      hi.push_back(static_cast<uint32_t>(static_cast<int32_t>(dim.hi)));
+    } else {
+      lo.push_back(static_cast<uint32_t>(std::max<int64_t>(dim.lo, 0)));
+      hi.push_back(static_cast<uint32_t>(std::max<int64_t>(dim.hi, 0)));
+    }
+    lo_slope.push_back(dim.lo_slope);
+    hi_slope.push_back(dim.hi_slope);
+    follows.push_back(dim.follows);
+    sloped |= dim.follows != 0;
+  }
+  if (!sloped) {
+    return make_ir_anchor(ctx, id, lo, hi);
+  }
+  return pasm::AnchorRangeAttr::get(ctx, id, {}, 0, lo, {}, 0, hi, lo_slope,
+                                    hi_slope, follows);
+}
+
 // Build an anchor for the given instruction symbol over `loops`: MT event 0 and
-// one IR index dimension per loop, spanning [lower_bound, upper_bound - 1] (the
-// affine.for upper bound is exclusive). With no loops the anchor is bare.
+// one IR index dimension per loop, spanning all of it. With no loops the
+// anchor is bare.
 pasm::AnchorRangeAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr id,
                              llvm::ArrayRef<mlir::affine::AffineForOp> loops) {
-  if (loops.empty()) {
-    return make_ir_anchor(ctx, id, {}, {});
-  }
-
-  llvm::SmallVector<uint32_t> idx_lo;
-  llvm::SmallVector<uint32_t> idx_hi;
+  llvm::SmallVector<DimSpec> dims;
   for (mlir::affine::AffineForOp loop : loops) {
-    int64_t lb =
-        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-    int64_t ub =
-        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
-    idx_lo.push_back(static_cast<uint32_t>(lb));
-    idx_hi.push_back(static_cast<uint32_t>(ub - 1));
+    dims.push_back(dim_of(loop, Span::all));
   }
-  return make_ir_anchor(ctx, id, idx_lo, idx_hi);
+  return make_anchor(ctx, id, dims);
 }
 
 // Build a single-point anchor fixed to the first iteration of each enclosing
-// loop (each dimension = lower_bound). Bare when there are no loops.
+// loop. Bare when there are no loops.
 pasm::AnchorRangeAttr build_first_anchor(mlir::MLIRContext *ctx,
                                          mlir::Operation *op,
                                          mlir::FlatSymbolRefAttr id) {
-  llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
-  if (loops.empty()) {
-    return make_ir_anchor(ctx, id, {}, {});
+  llvm::SmallVector<DimSpec> dims;
+  for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
+    dims.push_back(dim_of(loop, Span::first));
   }
-
-  llvm::SmallVector<uint32_t> idx;
-  for (mlir::affine::AffineForOp loop : loops) {
-    int64_t lb =
-        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-    idx.push_back(static_cast<uint32_t>(lb));
-  }
-  return make_ir_anchor(ctx, id, idx, idx);
+  return make_anchor(ctx, id, dims);
 }
 
 // The loop an operation's result initialises, when that loop then makes nothing
@@ -182,27 +261,26 @@ enum class Pin { first, last };
 // constraint graph and maps an index through a pair by where it falls in these
 // rectangles. Sampling belongs in the timing model, which is the only consumer
 // that pays per point.
+//
+// Loops in `last` are pinned to their last iteration whatever `pin` says: the
+// data flow left them through their result, so it is their last pass the
+// consumer sees.
 pasm::AnchorRangeAttr
 build_within(mlir::MLIRContext *ctx, mlir::Operation *op,
              llvm::ArrayRef<mlir::affine::AffineForOp> shared,
-             mlir::FlatSymbolRefAttr id, Pin pin) {
-  llvm::SmallVector<uint32_t> idx_lo;
-  llvm::SmallVector<uint32_t> idx_hi;
+             mlir::FlatSymbolRefAttr id, Pin pin,
+             llvm::ArrayRef<mlir::affine::AffineForOp> last = {}) {
+  llvm::SmallVector<DimSpec> dims;
   for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
-    int64_t lb =
-        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-    int64_t ub =
-        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
     if (llvm::is_contained(shared, loop)) {
-      idx_lo.push_back(static_cast<uint32_t>(lb));
-      idx_hi.push_back(static_cast<uint32_t>(ub - 1));
+      dims.push_back(dim_of(loop, Span::all));
+    } else if (llvm::is_contained(last, loop) || pin == Pin::last) {
+      dims.push_back(dim_of(loop, Span::last));
     } else {
-      uint32_t at = static_cast<uint32_t>(pin == Pin::last ? ub - 1 : lb);
-      idx_lo.push_back(at);
-      idx_hi.push_back(at);
+      dims.push_back(dim_of(loop, Span::first));
     }
   }
-  return make_ir_anchor(ctx, id, idx_lo, idx_hi);
+  return make_anchor(ctx, id, dims);
 }
 
 // The enclosing loops two operations have in common, outermost first.
@@ -289,34 +367,33 @@ build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
             llvm::ArrayRef<bool> reused, mlir::FlatSymbolRefAttr id, Pin pin,
             size_t carry, int64_t offset,
             llvm::ArrayRef<int64_t> inner = {}) {
-  llvm::SmallVector<uint32_t> idx_lo;
-  llvm::SmallVector<uint32_t> idx_hi;
+  llvm::SmallVector<DimSpec> dims;
   size_t depth = 0;
   for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
-    int64_t lb =
-        loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-    int64_t ub =
-        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
     if (!inner.empty() && depth >= shared.size()) {
       // An explicit point in the loops the pair does not share.
-      uint32_t at = static_cast<uint32_t>(inner[depth - shared.size()]);
-      idx_lo.push_back(at);
-      idx_hi.push_back(at);
+      DimSpec d;
+      d.lo = d.hi = inner[depth - shared.size()];
+      dims.push_back(d);
     } else if (depth == carry) {
-      idx_lo.push_back(static_cast<uint32_t>(lb + offset));
-      idx_hi.push_back(static_cast<uint32_t>(ub - 2 + offset));
+      dims.push_back(dim_of(loop, Span::all, offset, offset - 1));
     } else if (llvm::is_contained(shared, loop) &&
                !(depth > carry && reused[depth])) {
-      idx_lo.push_back(static_cast<uint32_t>(lb));
-      idx_hi.push_back(static_cast<uint32_t>(ub - 1));
+      dims.push_back(dim_of(loop, Span::all));
     } else {
-      uint32_t at = static_cast<uint32_t>(pin == Pin::last ? ub - 1 : lb);
-      idx_lo.push_back(at);
-      idx_hi.push_back(at);
+      dims.push_back(dim_of(loop, pin == Pin::last ? Span::last : Span::first));
+    }
+    // A dimension whose trip count follows the carried loop (AGU Slope
+    // Levels) is taken at the pass the other end names, so that pass i pairs
+    // with pass i + 1 index for index and both ends hold as many points.
+    DimSpec &d = dims.back();
+    if (d.follows != 0 && depth >= d.follows && depth - d.follows == carry) {
+      d.lo -= int64_t(d.lo_slope) * offset;
+      d.hi -= int64_t(d.hi_slope) * offset;
     }
     ++depth;
   }
-  return make_ir_anchor(ctx, id, idx_lo, idx_hi);
+  return make_anchor(ctx, id, dims);
 }
 
 // Words per row when `op` moves a whole row (its value is a vector), else 0.
@@ -453,15 +530,9 @@ std::pair<std::string, std::string> ordered_id_pair(llvm::StringRef a,
                : std::make_pair(b.str(), a.str());
 }
 
-// Number of iterations of an affine.for: (upper - lower) / step.
+// The largest number of iterations of an affine.for over any pass.
 int64_t trip_count(mlir::affine::AffineForOp loop) {
-  int64_t lb = loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-  int64_t ub = loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 0;
-  int64_t step = loop.getStepAsInt();
-  if (step == 0) {
-    return 0;
-  }
-  return (ub - lb) / step;
+  return vesyla::util::max_trips(loop);
 }
 
 // Stream steps: an accumulating mode takes an operand every `ii` cycles, so
@@ -494,17 +565,15 @@ void constrain_stream_steps(pasm::EpochOp epoch, mlir::OpBuilder &builder) {
       }
       llvm::SmallVector<mlir::affine::AffineForOp> loops =
           get_enclosing_loops(&op);
-      llvm::SmallVector<uint32_t> lo, hi;
-      for (mlir::affine::AffineForOp enclosing : loops) {
-        lo.push_back(static_cast<uint32_t>(enclosing.getConstantLowerBound()));
-        hi.push_back(static_cast<uint32_t>(enclosing.getConstantUpperBound() - 1));
+      llvm::SmallVector<DimSpec> src_dims, dst_dims;
+      for (size_t d = 0; d < loops.size(); ++d) {
+        bool innermost = d + 1 == loops.size();
+        src_dims.push_back(dim_of(loops[d], Span::all, 0, innermost ? -1 : 0));
+        dst_dims.push_back(dim_of(loops[d], Span::all, innermost ? 1 : 0, 0));
       }
-      llvm::SmallVector<uint32_t> src_hi(hi), dst_lo(lo);
-      src_hi.back() -= 1;
-      dst_lo.back() += 1;
       pasm::CstrOp::create(builder, op.getLoc(),
-                           make_ir_anchor(ctx, id, lo, src_hi),
-                           make_ir_anchor(ctx, id, dst_lo, hi),
+                           make_anchor(ctx, id, src_dims),
+                           make_anchor(ctx, id, dst_dims),
                            pasm::DelayAttr::get(ctx, ii, ii),
                            builder.getBoolAttr(false))
           ->setAttr("debug", debug_attr(builder, "stream-step"));
@@ -598,7 +667,9 @@ public:
       return mlir::failure();
     }
 
-    for (auto [consumer, consumer_delay] : reached_events(rop)) {
+    for (const ReachedEvent &reached : reached_events(rop)) {
+      mlir::Operation *consumer = reached.event;
+      int32_t consumer_delay = reached.delay;
       // Reached an evt: emit a pasm.cstr carrying the delay walked to it.
       mlir::MLIRContext *ctx = rewriter.getContext();
       llvm::SmallVector<mlir::affine::AffineForOp> consumer_loops =
@@ -616,7 +687,7 @@ public:
       // dataflow leaves are pinned to their first iteration, their remaining
       // iterations being already folded into the delay.
       pasm::AnchorRangeAttr src =
-          build_within(ctx, rop, shared, rop_id, Pin::first);
+          build_within(ctx, rop, shared, rop_id, Pin::first, reached.last_of);
       pasm::AnchorRangeAttr dst = build_anchor(ctx, consumer_id, consumer_loops);
       pasm::CstrOp::create(rewriter, rop.getLoc(), src, dst, delay_attr,
                            rewriter.getBoolAttr(false))
@@ -640,13 +711,11 @@ public:
 pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx,
                                         mlir::Operation *op,
                                         mlir::FlatSymbolRefAttr id) {
-  llvm::SmallVector<uint32_t> idx;
+  llvm::SmallVector<DimSpec> dims;
   for (mlir::affine::AffineForOp loop : get_enclosing_loops(op)) {
-    int64_t ub =
-        loop.hasConstantUpperBound() ? loop.getConstantUpperBound() : 1;
-    idx.push_back(static_cast<uint32_t>(ub - 1));
+    dims.push_back(dim_of(loop, Span::last));
   }
-  return make_ir_anchor(ctx, id, idx, idx);
+  return make_anchor(ctx, id, dims);
 }
 
 // Evt rops feeding `op`, through rops without an evt.

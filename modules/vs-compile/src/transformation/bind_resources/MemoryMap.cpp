@@ -1,3 +1,4 @@
+#include "vesyla/Support/LoopShape.hpp"
 #include "MemoryMap.hpp"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -96,16 +97,8 @@ std::optional<int64_t> evaluate(mlir::AffineExpr expr,
 // False when it cannot tell: loops without constant bounds, a map whose dims
 // are not the enclosing loops, or more iterations than are worth walking.
 bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written) {
-  llvm::SmallVector<mlir::affine::AffineForOp> loops;
-  for (mlir::Operation *parent = op->getParentOp(); parent;
-       parent = parent->getParentOp()) {
-    if (auto loop = llvm::dyn_cast<mlir::affine::AffineForOp>(parent)) {
-      if (!loop.hasConstantBounds()) {
-        return false;
-      }
-      loops.insert(loops.begin(), loop);
-    }
-  }
+  llvm::SmallVector<mlir::affine::AffineForOp> loops =
+      vesyla::util::enclosing_loops(op);
 
   int64_t width = 1;
   if (op->getNumOperands() > 0) {
@@ -124,37 +117,24 @@ bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written) {
   }
 
   constexpr int64_t kMaxIterations = 1 << 16;
-  int64_t iterations = 0;
-  llvm::SmallVector<int64_t> dims(loops.size());
-  std::function<bool(unsigned)> walk = [&](unsigned depth) -> bool {
-    if (depth == loops.size()) {
-      if (++iterations > kMaxIterations) {
-        return false;
-      }
-      std::optional<int64_t> address =
-          map ? evaluate(map.getResult(0), dims) : int64_t(0);
-      if (!address) {
-        return false;
-      }
-      for (int64_t word = *address * width;
-           word < (*address + 1) * width && word >= 0 &&
-           word < static_cast<int64_t>(written.size());
-           ++word) {
-        written[word] = true;
-      }
-      return true;
-    }
-    mlir::affine::AffineForOp loop = loops[depth];
-    for (int64_t i = loop.getConstantLowerBound();
-         i < loop.getConstantUpperBound(); i += loop.getStepAsInt()) {
-      dims[depth] = i;
-      if (!walk(depth + 1)) {
-        return false;
-      }
-    }
-    return true;
-  };
-  return walk(0);
+  bool ok = true;
+  bool walked = vesyla::util::for_each_point(
+      loops, kMaxIterations, [&](llvm::ArrayRef<int64_t> idx) {
+        llvm::SmallVector<int64_t> dims(idx.begin(), idx.end());
+        std::optional<int64_t> address =
+            map ? evaluate(map.getResult(0), dims) : int64_t(0);
+        if (!address) {
+          ok = false;
+          return;
+        }
+        for (int64_t word = *address * width;
+             word < (*address + 1) * width && word >= 0 &&
+             word < static_cast<int64_t>(written.size());
+             ++word) {
+          written[word] = true;
+        }
+      });
+  return walked && ok;
 }
 
 } // namespace

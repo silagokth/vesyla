@@ -54,6 +54,79 @@ void dump_schedule_table(
   std::string originalIdStr = op.getId().str();
   ::mlir::Block *entryBlock = getEpochBodyEntryBlock(op, rewriter);
   std::set<std::string> operation_type_set;
+
+  // Per rop, the IR dimensions (outermost first) along which its time is not
+  // affine: a rep with a slope or a delay slope and the levels those follow
+  // (AGU Slope Levels). A rop with transitions is taken as such throughout:
+  // its dimensions span several lanes. Constraint::from_cstr_op states a pair
+  // at every point of these dimensions.
+  std::unordered_map<std::string, std::vector<bool>> nonlinear_dims;
+  for (::mlir::Operation &child_op : *entryBlock) {
+    auto rop = llvm::dyn_cast<::vesyla::pasm::RopOp>(&child_op);
+    if (!rop) {
+      continue;
+    }
+    llvm::SmallVector<::vesyla::pasm::InstrOp> reps;
+    bool trans = false;
+    for (auto instr : rop.getBody().front().getOps<::vesyla::pasm::InstrOp>()) {
+      if (instr.getType() == "trans") {
+        trans = true;
+      } else if (instr.getType() == "rep") {
+        auto lane = llvm::dyn_cast_or_null<::mlir::IntegerAttr>(instr.getParam().get("lane"));
+        auto tri = llvm::dyn_cast_or_null<::mlir::IntegerAttr>(instr.getParam().get("tri"));
+        if ((lane && lane.getInt() != 0) || (tri && tri.getInt() != 0)) {
+          continue;
+        }
+        reps.push_back(instr);
+      }
+    }
+    std::vector<bool> flags(reps.size(), false);
+    bool any = false;
+    for (size_t level = 0; level < reps.size(); ++level) {
+      auto param = reps[level].getParam();
+      auto nonzero = [&](const char *name) {
+        ::mlir::Attribute a = param.get(name);
+        if (!a) {
+          return false;
+        }
+        if (auto i = llvm::dyn_cast<::mlir::IntegerAttr>(a)) {
+          return i.getInt() != 0;
+        }
+        return true; // a scheduler variable
+      };
+      auto up = [&](const char *name) -> int64_t {
+        auto i = llvm::dyn_cast_or_null<::mlir::IntegerAttr>(param.get(name));
+        return i ? i.getInt() : 0;
+      };
+      size_t d = reps.size() - 1 - level; // reps are innermost first
+      if (nonzero("slope")) {
+        flags[d] = true;
+        int64_t f = up("follows");
+        if (f > 0 && f <= static_cast<int64_t>(d)) {
+          flags[d - f] = true;
+        }
+        any = true;
+      }
+      if (nonzero("dslope")) {
+        flags[d] = true;
+        int64_t f = up("dfollows");
+        if (f > 0 && f <= static_cast<int64_t>(d)) {
+          flags[d - f] = true;
+        }
+        any = true;
+      }
+    }
+    if (any && trans) {
+      std::fill(flags.begin(), flags.end(), true);
+    }
+    if (any) {
+      nonlinear_dims[rop.getSymName().str()] = flags;
+    }
+  }
+  auto flags_of = [&](llvm::StringRef id) {
+    auto it = nonlinear_dims.find(id.str());
+    return it == nonlinear_dims.end() ? std::vector<bool>() : it->second;
+  };
   for (::mlir::Operation &child_op : *entryBlock) {
     if (auto rop_op = llvm::dyn_cast<::vesyla::pasm::RopOp>(&child_op)) {
 
@@ -105,6 +178,11 @@ void dump_schedule_table(
                              std::istreambuf_iterator<char>());
       output_file.close();
 
+      if (getenv("VESYLA_DEBUG_TM")) {
+        llvm::errs() << "timing model: " << rop_json["id"].get<std::string>()
+                     << " = " << output_str << "\n"
+                     << rop_json.dump() << "\n";
+      }
       ::vesyla::tm::Operation operation = ::vesyla::tm::Operation(
           rop_json["id"].get<std::string>(), output_str);
       operation.col = rop_json["col"].get<int>();
@@ -145,11 +223,19 @@ void dump_schedule_table(
             continue;
           }
           for (auto instr : rop.getBody().front().getOps<::vesyla::pasm::InstrOp>()) {
-            lead += instr.getType() == "rep" ? 2 : 1;
+            // A rep with a slope is followed by a slope rep, with its own
+            // extension word.
+            lead += instr.getType() != "rep" ? 1
+                    : (instr.getParam().get("slope") ||
+                       instr.getParam().get("dslope"))
+                        ? 4
+                        : 2;
           }
         }
       }
-      for (auto &c : ::vesyla::tm::Constraint::from_cstr_op(cstr_op)) {
+      for (auto &c : ::vesyla::tm::Constraint::from_cstr_op(
+               cstr_op, flags_of(cstr_op.getSrc().getInstr().getValue()),
+               flags_of(cstr_op.getDst().getInstr().getValue()))) {
         if (lead && c.min_delay) {
           *c.min_delay += lead;
         }

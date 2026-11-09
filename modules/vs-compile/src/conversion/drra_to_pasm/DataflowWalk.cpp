@@ -2,6 +2,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
+#include "vesyla/Support/LoopShape.hpp"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
@@ -19,6 +20,7 @@ struct WorkItem {
   int32_t delay;
   int32_t ii;
   mlir::Operation *operation;
+  llvm::SmallVector<mlir::affine::AffineForOp, 2> last_of;
 };
 
 // Cycles from the event that starts one pass to its result; `delay` is the
@@ -47,11 +49,17 @@ int64_t trip_count(mlir::affine::AffineForOp loop) {
   return step == 0 ? 0 : (ub - lb) / step;
 }
 
+// A loop whose trip count changes from pass to pass.
+bool varying(mlir::affine::AffineForOp loop) {
+  std::optional<vesyla::util::LoopShape> shape = vesyla::util::loop_shape(loop);
+  return shape && !shape->constant();
+}
+
 } // namespace
 
 llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source) {
   llvm::SmallVector<ReachedEvent> reached;
-  llvm::SmallVector<WorkItem> working_set{{0, 0, source}};
+  llvm::SmallVector<WorkItem> working_set{{0, 0, source, {}}};
   while (!working_set.empty()) {
     WorkItem item = working_set.pop_back_val();
     int32_t delay = item.delay + rop_latency(item.operation);
@@ -61,24 +69,27 @@ llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source) {
       mlir::Value value;
       int32_t delay;
       int32_t ii;
+      llvm::SmallVector<mlir::affine::AffineForOp, 2> last_of;
     };
     llvm::SmallVector<Source> sources;
     if (auto loop = mlir::dyn_cast<mlir::affine::AffineForOp>(item.operation)) {
       for (mlir::BlockArgument iter_arg : loop.getRegionIterArgs()) {
-        sources.push_back({iter_arg, delay, ii});
+        sources.push_back({iter_arg, delay, ii, item.last_of});
       }
     } else {
       for (mlir::Value result : item.operation->getResults()) {
-        sources.push_back({result, delay, ii});
+        sources.push_back({result, delay, ii, item.last_of});
       }
     }
 
     // A yield is followed out to the loop result: one pass plus (trips - 1)
-    // intervals, and the interval starts over.
+    // intervals, and the interval starts over. A loop whose trip count varies
+    // is left at its last pass instead (last_of), with no intervals added.
     struct Consumer {
       mlir::Operation *operation;
       int32_t delay;
       int32_t ii;
+      llvm::SmallVector<mlir::affine::AffineForOp, 2> last_of;
     };
     llvm::SmallVector<Consumer> consumers;
     while (!sources.empty()) {
@@ -89,22 +100,30 @@ llvm::SmallVector<ReachedEvent> reached_events(mlir::Operation *source) {
           auto loop =
               mlir::dyn_cast<mlir::affine::AffineForOp>(owner->getParentOp());
           if (loop && use.getOperandNumber() < loop.getNumResults()) {
-            int32_t trips = static_cast<int32_t>(trip_count(loop));
-            int32_t scaled = trips > 0 ? s.delay + (trips - 1) * s.ii : 0;
-            sources.push_back({loop.getResult(use.getOperandNumber()), scaled, 0});
+            llvm::SmallVector<mlir::affine::AffineForOp, 2> last_of = s.last_of;
+            int32_t scaled;
+            if (varying(loop)) {
+              last_of.push_back(loop);
+              scaled = s.delay;
+            } else {
+              int32_t trips = static_cast<int32_t>(trip_count(loop));
+              scaled = trips > 0 ? s.delay + (trips - 1) * s.ii : 0;
+            }
+            sources.push_back(
+                {loop.getResult(use.getOperandNumber()), scaled, 0, last_of});
           }
           continue;
         }
-        consumers.push_back({owner, s.delay, s.ii});
+        consumers.push_back({owner, s.delay, s.ii, s.last_of});
       }
     }
 
-    for (auto [consumer, consumer_delay, consumer_ii] : consumers) {
+    for (auto &[consumer, consumer_delay, consumer_ii, last_of] : consumers) {
       auto rop = mlir::dyn_cast<vesyla::drra::RopOp>(consumer);
       if (rop && rop.getEvtAttr()) {
-        reached.push_back({consumer, consumer_delay});
+        reached.push_back({consumer, consumer_delay, last_of});
       } else {
-        working_set.push_back({consumer_delay, consumer_ii, consumer});
+        working_set.push_back({consumer_delay, consumer_ii, consumer, last_of});
       }
     }
   }
@@ -141,9 +160,9 @@ tied_groups(mlir::Operation *scope) {
     if (!rop.getEvtAttr()) {
       return;
     }
-    for (auto [event, delay] : reached_events(rop)) {
-      edges[rop].push_back({event, delay});
-      edges[event].push_back({rop, -static_cast<int64_t>(delay)});
+    for (const ReachedEvent &r : reached_events(rop)) {
+      edges[rop].push_back({r.event, r.delay});
+      edges[r.event].push_back({rop, -static_cast<int64_t>(r.delay)});
     }
   });
 
