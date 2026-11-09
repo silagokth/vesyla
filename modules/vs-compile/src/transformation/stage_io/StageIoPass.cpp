@@ -775,7 +775,9 @@ public:
     // place (a copy: `out[r][e] = in[r][e]`) needs no second buffer and no
     // scalar copy: the read's staging buffer is written out as it is.
     llvm::DenseMap<size_t, size_t> copiedFrom; // write group -> read group
-    for (auto [w, written] : llvm::enumerate(groups)) {
+    for (size_t w = 0; w < groups.size(); ++w) {
+      // Not a structured binding: the lambda below captures it (C++17).
+      const Group &written = groups[w];
       if (!written.write) {
         continue;
       }
