@@ -1,0 +1,48 @@
+name: Install Polygeist
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  # llvm/Polygeist commit to build. It pins its own LLVM 18 submodule, so it
+  # is built from source and cached per commit; only cgeist and polygeist-opt
+  # are kept. The c frontend of `vesyla testcase run` calls them.
+  POLYGEIST_VERSION: "77c04bb2a7a2406ca9480bcc9e729b07d2c8d077"
+  POLYGEIST_INSTALL_PATH: ${{ github.workspace }}/polygeist-install
+
+jobs:
+  polygeist-install:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        path: vesyla
+
+    - name: Restore Polygeist cache if available
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.POLYGEIST_INSTALL_PATH }}
+        key: ${{ runner.os }}-polygeist-${{ env.POLYGEIST_VERSION }}
+
+    - name: Check if Polygeist is already installed
+      id: check-polygeist
+      uses: ./vesyla/.github/actions/check-polygeist-install
+      with:
+        polygeist-install-path: ${{ env.POLYGEIST_INSTALL_PATH }}
+
+    - name: Build Polygeist if not cached
+      if: steps.check-polygeist.outputs.polygeist_installed == 'false'
+      uses: ./vesyla/.github/actions/install-polygeist
+      with:
+        polygeist-version: ${{ env.POLYGEIST_VERSION }}
+        polygeist-install-path: ${{ env.POLYGEIST_INSTALL_PATH }}
+
+    - name: Upload Polygeist artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: polygeist
+        path: ${{ env.POLYGEIST_INSTALL_PATH }}
+        overwrite: true
