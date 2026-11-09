@@ -121,6 +121,15 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
     if (auto pos = icdep->getAttrOfType<mlir::IntegerAttr>("pos")) {
       first_anchor.pos = last_anchor.pos = static_cast<int32_t>(pos.getInt());
     }
+    if (auto slope = icdep->getAttrOfType<mlir::DenseI32ArrayAttr>("loop_slope")) {
+      first_anchor.loop_slope.assign(slope.asArrayRef().begin(),
+                                     slope.asArrayRef().end());
+      last_anchor.loop_slope = first_anchor.loop_slope;
+      auto follows = icdep->getAttrOfType<mlir::DenseI32ArrayAttr>("loop_follows");
+      first_anchor.loop_follows = to_u(follows.asArrayRef());
+      last_anchor.loop_follows = first_anchor.loop_follows;
+    }
+    last_anchor.is_last = true;
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,

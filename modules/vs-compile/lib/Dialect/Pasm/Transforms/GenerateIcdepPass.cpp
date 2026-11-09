@@ -93,19 +93,23 @@ AnchorAttr build_anchor(mlir::MLIRContext *ctx, mlir::FlatSymbolRefAttr instr,
                         llvm::ArrayRef<mlir::affine::AffineForOp> loops,
                         bool is_last, int32_t delay, size_t pass = 0) {
   llvm::SmallVector<int32_t> idx;
-  llvm::SmallVector<int64_t> at;
   size_t depth = 0;
   for (mlir::affine::AffineForOp loop : loops) {
     if (is_last && depth >= pass) {
-      // The last iteration in the pass the outer indices name (AGU Slope
-      // Levels: a trip count may follow an outer loop).
-      at.push_back(vesyla::util::trips_at(loop, at) - 1);
+      // The last iteration. A loop whose trip count follows an outer one
+      // (AGU Slope Levels) gives its base: the last index at index 0 of the
+      // followed loop; the icdep's loop_slope / loop_follows carry the rest.
+      std::optional<vesyla::util::LoopShape> shape = vesyla::util::loop_shape(loop);
+      int64_t iter = shape ? shape->iter
+                           : (loop.hasConstantUpperBound()
+                                  ? loop.getConstantUpperBound()
+                                  : 1);
+      idx.push_back(static_cast<int32_t>(iter - 1));
     } else {
       int64_t lb =
           loop.hasConstantLowerBound() ? loop.getConstantLowerBound() : 0;
-      at.push_back(lb);
+      idx.push_back(static_cast<int32_t>(lb));
     }
-    idx.push_back(static_cast<int32_t>(at.back()));
     ++depth;
   }
   // Loop dimensions map to IR indices; MT (event id) is 0 and there is no OR.
@@ -226,8 +230,10 @@ public:
           llvm::SmallVector<int32_t> pass_hi;
           llvm::SmallVector<mlir::Attribute> pass_loops;
           for (size_t depth = 0; depth < pass; ++depth) {
+            std::optional<vesyla::util::LoopShape> shape =
+                vesyla::util::loop_shape(loops[depth]);
             pass_hi.push_back(static_cast<int32_t>(
-                vesyla::util::trips_at_last(loops[depth]) - 1));
+                (shape ? shape->iter : vesyla::util::trips_at_last(loops[depth])) - 1));
             auto id = loops[depth]->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
             if (!id) {
               loops[depth]->emitError("generate-icdep: loop has no id");
@@ -235,11 +241,27 @@ public:
             }
             pass_loops.push_back(id);
           }
+          // The slope of every enclosing loop (AGU Slope Levels), outermost
+          // first, for the interconnect binding's anchors and option walks.
+          llvm::SmallVector<int32_t> loop_slope, loop_follows;
+          bool sloped = false;
+          for (mlir::affine::AffineForOp loop : loops) {
+            std::optional<vesyla::util::LoopShape> shape = vesyla::util::loop_shape(loop);
+            bool s = shape && !shape->constant();
+            loop_slope.push_back(s ? static_cast<int32_t>(shape->slope) : 0);
+            loop_follows.push_back(s ? static_cast<int32_t>(shape->follows) : 0);
+            sloped |= s;
+          }
           auto mark = [&](IcDepOp icdep) {
             if (pass > 0) {
               icdep->setAttr("pass_hi", builder.getDenseI32ArrayAttr(pass_hi));
               icdep->setAttr("loops", builder.getArrayAttr(pass_loops));
               icdep->setAttr("pos", builder.getI32IntegerAttr(pos));
+            }
+            if (sloped) {
+              icdep->setAttr("loop_slope", builder.getDenseI32ArrayAttr(loop_slope));
+              icdep->setAttr("loop_follows",
+                             builder.getDenseI32ArrayAttr(loop_follows));
             }
           };
           if (kind == "bulk") {

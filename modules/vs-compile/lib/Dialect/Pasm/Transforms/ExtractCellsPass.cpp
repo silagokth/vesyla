@@ -118,7 +118,7 @@ public:
           send->setAttr("pass_hi", pass_hi);
           recv->setAttr("pass_hi", pass_hi);
         }
-        for (llvm::StringRef name : {"loops", "pos"}) {
+        for (llvm::StringRef name : {"loops", "pos", "loop_slope", "loop_follows"}) {
           if (mlir::Attribute attr = bulk->getAttr(name)) {
             send->setAttr(name, attr);
             recv->setAttr(name, attr);

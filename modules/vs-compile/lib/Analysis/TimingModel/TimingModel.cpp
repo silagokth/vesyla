@@ -130,7 +130,12 @@ int TimingModel::to_mzn(std::ostream &mzn_file, std::ostream &dzn_file,
 
   // add variables
   for (auto it = variables.begin(); it != variables.end(); ++it) {
-    mzn_file << "var 0..MAX_LATENCY: " + *it + ";\n";
+    mzn_file << (slope_variables.count(*it) ? "var -MAX_LATENCY..MAX_LATENCY: "
+                                             : "var 0..MAX_LATENCY: ") +
+                    *it + ";\n";
+  }
+  for (const string &bound : delay_bounds) {
+    mzn_file << "constraint " + bound + " >= 0;\n";
   }
 
   // add anchors
@@ -277,6 +282,7 @@ void TimingModel::extractVariables() {
           if (ds != expr.parameters.end() && !is_number(ds->second) &&
               is_identifier(ds->second)) {
             variables.insert(ds->second);
+            slope_variables.insert(ds->second);
           }
         }
         for (auto &child : expr.children) {
@@ -366,7 +372,11 @@ class Timer {
 public:
   using Node = BinaryTree<BinaryTreeData> *;
 
-  explicit Timer(Node root) { collect_events(root); }
+  // `bounds` collects every delay a variable delay slope moves, to be kept
+  // at least 0.
+  Timer(Node root, std::set<std::string> *bounds) : bounds_(bounds) {
+    collect_events(root);
+  }
 
   LinExpr duration(Node n) {
     std::vector<std::pair<Node, int64_t>> ctx;
@@ -382,6 +392,12 @@ public:
 
 private:
   std::unordered_map<Node, std::set<int>> events_;
+  std::set<std::string> *bounds_;
+
+public:
+  std::string anchor_; // the anchor being timed, for error messages
+
+private:
 
   void collect_events(Node n) {
     if (!n) {
@@ -409,8 +425,8 @@ private:
 
   // The delay after pass c of repeat n: delay + dslope * (c, or the index of
   // the repeat dfollows repeats up).
-  static LinExpr pass_delay(Node n, const std::vector<std::pair<Node, int64_t>> &ctx,
-                            int64_t c) {
+  LinExpr pass_delay(Node n, const std::vector<std::pair<Node, int64_t>> &ctx,
+                     int64_t c) {
     LinExpr d = LinExpr::of(n->data->expr.parameters.at("delay"));
     auto ds = n->data->expr.parameters.find("dslope");
     if (ds == n->data->expr.parameters.end() || ds->second == "0") {
@@ -427,6 +443,9 @@ private:
       x = ctx[ctx.size() - dfollows].second;
     }
     d += LinExpr::of(ds->second) * x;
+    if (!is_number(ds->second) && x != 0) {
+      bounds_->insert(d.str());
+    }
     return d;
   }
 
@@ -450,14 +469,18 @@ private:
     return iter + slope * ctx[ctx.size() - follows].second;
   }
 
-  // Whether a repeat in `sub` follows the repeat `k` repeats above `sub`'s
-  // root (1: the repeat directly around `sub`).
+  // Whether a repeat in `sub` follows, with its trip count or its delay, the
+  // repeat `k` repeats above `sub`'s root (1: the repeat directly around
+  // `sub`).
   static bool depends(Node sub, int64_t k) {
     if (!sub) {
       return false;
     }
     if (sub->data->expr.kind == OperationExpr::REPEAT) {
       if (param(sub, "slope", 0) != 0 && param(sub, "follows", 0) == k) {
+        return true;
+      }
+      if (has_dslope(sub) && param(sub, "dfollows", 0) == k) {
         return true;
       }
       return depends(sub->left, k + 1);
@@ -522,8 +545,13 @@ private:
     int64_t idx = ctx.size() < indices.size() ? indices[ctx.size()] : 0;
     int64_t t = trips(n, ctx);
     if (idx >= t) {
+      std::string at;
+      for (int i : indices) {
+        at += "[" + std::to_string(i) + "]";
+      }
       LOG_FATAL << "Index out of range: index(" << idx << ") >= iter(" << t
-                << ") in " << OperationExpr(e).to_string();
+                << ") in " << OperationExpr(e).to_string() << " at " << at
+                << " of event " << event_id << " of " << anchor_;
       std::exit(EXIT_FAILURE);
     }
     LinExpr s;
@@ -558,7 +586,7 @@ private:
 void TimingModel::resolveOperationTiming(Operation &op) {
   OperationExpr expr = op.expr;
   BinaryTree<BinaryTreeData> *tree = build_binary_tree(expr);
-  Timer timer(tree);
+  Timer timer(tree, &delay_bounds);
 
   op.duration_expr = timer.duration(tree).str();
 
@@ -572,6 +600,7 @@ void TimingModel::resolveOperationTiming(Operation &op) {
     std::vector<int> indices = anchor.anchor.or_idx;
     indices.insert(indices.end(), anchor.anchor.ir_idx.begin(),
                    anchor.anchor.ir_idx.end());
+    timer.anchor_ = anchor.name;
     anchor.timing_expr =
         "(" + op.name + "+" +
         timer.start(tree, anchor.anchor.mt_idx, indices).str() + ")";

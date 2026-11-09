@@ -31,6 +31,14 @@ struct Anchor {
   std::vector<mlir::Attribute> loops;
   // Program order of the transfer in its epoch; -1 without loops.
   int32_t pos = -1;
+  // AGU Slope Levels: per enclosing loop (outermost first), the slope of its
+  // trip count and the loops up to the one it follows (0: constant). `ir_idx`
+  // and `pass_hi` hold the values at index 0 of the followed loop. Empty when
+  // no loop is sloped. `is_last`: the anchor names the last event, so its
+  // sloped indices move. Not part of the identity.
+  std::vector<int32_t> loop_slope;
+  std::vector<uint32_t> loop_follows;
+  bool is_last = false;
 
   bool operator<(const Anchor &o) const;
   bool operator==(const Anchor &o) const;

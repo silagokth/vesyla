@@ -24,6 +24,11 @@ public:
   unordered_map<string, Anchor> anchors;
   std::vector<Constraint> constraints;
   std::set<string> variables;
+  // Delay slopes (AGU Slope Levels) among `variables`: they may be negative,
+  // every delay they move staying at least 0 (`delay_bounds`, one expression
+  // per pass).
+  std::set<string> slope_variables;
+  std::set<string> delay_bounds;
 
   enum state_t { INITIALIZED, COMPILED };
   state_t state = INITIALIZED;

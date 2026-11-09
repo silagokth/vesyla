@@ -518,12 +518,9 @@ std::optional<FlatPlan> plan_flat(const IoAccess &access, int64_t w) {
     AffineExpr index =
         mlir::simplifyAffineExpr((rowx - lo) * w + wordx, dims, 0);
     // A counter of the level or above it picks the rows; it may shift the
-    // index too (a loop starting at that counter, AGU Slope Levels) when the
-    // rows move with it, the range check below holding for every value.
-    if (!index.isPureAffine() ||
-        llvm::any_of(fixed, [&](unsigned pos) {
-          return index.isFunctionOfDim(pos) && !lo.isFunctionOfDim(pos);
-        })) {
+    // index too (a loop starting at that counter, AGU Slope Levels), the
+    // range check below holding for every value.
+    if (!index.isPureAffine()) {
       continue;
     }
     int64_t low = 0, high = 0;

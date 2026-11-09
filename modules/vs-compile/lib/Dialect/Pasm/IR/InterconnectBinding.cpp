@@ -56,6 +56,42 @@ static std::vector<uint32_t> own_trips(const Anchor &a) {
   return own;
 }
 
+// An anchor range from lo/hi with the slopes of `a`'s loops on the tail
+// dimensions (from `n_pass` on) flagged in `tail_last`: a sloped loop's last
+// index moves with the loop it follows (AGU Slope Levels). Pass dimensions
+// with a slope are not supported (checked in emit_sequence_instructions).
+static AnchorRangeAttr sloped_range(mlir::MLIRContext *ctx,
+                                    mlir::FlatSymbolRefAttr id,
+                                    llvm::ArrayRef<uint32_t> or_idx, uint32_t mt,
+                                    llvm::ArrayRef<uint32_t> lo,
+                                    llvm::ArrayRef<uint32_t> hi,
+                                    const Anchor *a, std::size_t n_pass,
+                                    llvm::ArrayRef<uint8_t> tail_last) {
+  bool sloped = false;
+  llvm::SmallVector<int32_t> lo_slope(lo.size(), 0), hi_slope(lo.size(), 0);
+  llvm::SmallVector<uint32_t> follows(lo.size(), 0);
+  if (a) {
+    for (std::size_t k = n_pass; k < lo.size() && k < a->loop_slope.size(); ++k) {
+      bool last = k - n_pass < tail_last.size() && tail_last[k - n_pass];
+      if (a->loop_slope[k] != 0 && a->loop_follows[k] != 0 && last) {
+        lo_slope[k] = hi_slope[k] = a->loop_slope[k];
+        follows[k] = a->loop_follows[k];
+        sloped = true;
+      }
+    }
+  }
+  if (!sloped) {
+    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+  }
+  return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi, lo_slope,
+                              hi_slope, follows);
+}
+
+// Whether a transfer's loop at depth `d` is sloped.
+static bool loop_sloped(const Anchor &a, std::size_t d) {
+  return d < a.loop_slope.size() && a.loop_slope[d] != 0 && a.loop_follows[d] != 0;
+}
+
 // Same loop nest: both run once, or one's loops enclose the other's. Sibling
 // nests (a main loop and its remainder) are not.
 static bool same_nest(llvm::ArrayRef<mlir::Attribute> a,
@@ -1007,7 +1043,8 @@ static void add_instr(mlir::OpBuilder &builder, mlir::Location loc,
 // a sequence that changes stride (0, 1, 0) would need one rep per run.
 static mlir::LogicalResult emit_stride(llvm::ArrayRef<int> steps, RopOp rop,
                                        mlir::OpBuilder &builder,
-                                       llvm::StringRef delay, int32_t port) {
+                                       llvm::StringRef delay, int32_t port,
+                                       std::optional<int32_t> dfollows = {}) {
   if (steps.size() <= 1) {
     return mlir::success();
   }
@@ -1018,12 +1055,17 @@ static mlir::LogicalResult emit_stride(llvm::ArrayRef<int> steps, RopOp rop,
                             "epoch is not one fixed stride; not supported");
     }
   }
-  add_instr(builder, rop.getLoc(), "rep",
-            {{"delay", builder.getStringAttr(delay)},
-             {"iter", builder.getI32IntegerAttr(
-                          static_cast<int32_t>(steps.size()))},
-             {"step", builder.getI32IntegerAttr(stride)},
-             {"port", builder.getI32IntegerAttr(port)}});
+  llvm::SmallVector<std::pair<llvm::StringRef, mlir::Attribute>> params{
+      {"delay", builder.getStringAttr(delay)},
+      {"iter", builder.getI32IntegerAttr(static_cast<int32_t>(steps.size()))},
+      {"step", builder.getI32IntegerAttr(stride)},
+      {"port", builder.getI32IntegerAttr(port)}};
+  std::string ds = delay.str() + "_ds";
+  if (dfollows) {
+    params.push_back({"dslope", builder.getStringAttr(ds)});
+    params.push_back({"dfollows", builder.getI32IntegerAttr(*dfollows)});
+  }
+  add_instr(builder, rop.getLoc(), "rep", params);
   return mlir::success();
 }
 
@@ -1088,7 +1130,47 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
       return rop->emitError("interconnect: the first route option is not "
                             "option 0");
     }
-    if (mlir::failed(emit_stride(steps, rop, builder, span.delay, port))) {
+
+    // AGU Slope Levels: a transfer loop inside the pass loops whose trip
+    // count follows pass loop `f` makes every pass from `f` in grow, so the
+    // walk's levels from `f` in get a delay slope the scheduler solves
+    // (dfollows: levels up to `f`). A sloped pass loop itself, or growth from
+    // two different pass loops, is not supported.
+    std::size_t T = span.trips.size();
+    std::optional<std::size_t> grow_from;
+    for (std::size_t j = span.begin; j < span.end; ++j) {
+      for (const Anchor &a : binding.step_first[j]) {
+        for (std::size_t d = 0; d < a.loop_slope.size(); ++d) {
+          if (!loop_sloped(a, d)) {
+            continue;
+          }
+          if (d < T) {
+            return rop->emitError("interconnect: a loop the route options "
+                                  "repeat over has a sloped trip count; not "
+                                  "supported");
+          }
+          if (a.loop_follows[d] > d) {
+            continue;
+          }
+          std::size_t f = d - a.loop_follows[d];
+          if (f >= T) {
+            continue; // follows a loop inside the transfer: its own business
+          }
+          if (grow_from && *grow_from != f) {
+            return rop->emitError("interconnect: the passes of the route "
+                                  "options grow with two different loops; "
+                                  "not supported");
+          }
+          grow_from = f;
+        }
+      }
+    }
+    std::optional<int32_t> stride_dfollows;
+    if (grow_from && steps.size() > 1) {
+      stride_dfollows = static_cast<int32_t>(T - *grow_from);
+    }
+    if (mlir::failed(emit_stride(steps, rop, builder, span.delay, port,
+                                 stride_dfollows))) {
       return mlir::failure();
     }
 
@@ -1098,13 +1180,20 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
     // option stays configured across every pass and needs none.
     if (steps.size() > 1) {
       for (std::size_t k = span.trips.size(); k-- > 0;) {
-        add_instr(builder, loc, "rep",
-                  {{"delay", builder.getStringAttr(span.delay + "_" +
-                                                   std::to_string(k))},
-                   {"iter", builder.getI32IntegerAttr(
-                                static_cast<int32_t>(span.trips[k]))},
-                   {"step", builder.getI32IntegerAttr(0)},
-                   {"port", builder.getI32IntegerAttr(port)}});
+        std::string d = span.delay + "_" + std::to_string(k);
+        llvm::SmallVector<std::pair<llvm::StringRef, mlir::Attribute>> params{
+            {"delay", builder.getStringAttr(d)},
+            {"iter", builder.getI32IntegerAttr(
+                         static_cast<int32_t>(span.trips[k]))},
+            {"step", builder.getI32IntegerAttr(0)},
+            {"port", builder.getI32IntegerAttr(port)}};
+        std::string ds = d + "_ds";
+        if (grow_from && k >= *grow_from) {
+          params.push_back({"dslope", builder.getStringAttr(ds)});
+          params.push_back({"dfollows", builder.getI32IntegerAttr(
+                                            static_cast<int32_t>(k - *grow_from))});
+        }
+        add_instr(builder, loc, "rep", params);
       }
     }
   }
@@ -1170,7 +1259,8 @@ static void emit_part_constraints(const InterconnectBinding &binding,
   auto range = [&](mlir::FlatSymbolRefAttr id, llvm::ArrayRef<uint32_t> or_idx,
                    uint32_t mt, llvm::ArrayRef<uint32_t> base,
                    llvm::ArrayRef<uint32_t> from, llvm::ArrayRef<uint32_t> to,
-                   llvm::ArrayRef<uint32_t> tail) {
+                   llvm::ArrayRef<uint32_t> tail, const Anchor *a = nullptr,
+                   llvm::ArrayRef<uint8_t> tail_last = {}) {
     std::vector<uint32_t> lo;
     std::vector<uint32_t> hi;
     for (std::size_t k = 0; k < from.size(); ++k) {
@@ -1179,7 +1269,7 @@ static void emit_part_constraints(const InterconnectBinding &binding,
     }
     lo.insert(lo.end(), tail.begin(), tail.end());
     hi.insert(hi.end(), tail.begin(), tail.end());
-    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+    return sloped_range(ctx, id, or_idx, mt, lo, hi, a, from.size(), tail_last);
   };
   // Step `j` of the rop over passes `from`..`to` of its part (ignored for an
   // evt that does not repeat over them).
@@ -1204,16 +1294,20 @@ static void emit_part_constraints(const InterconnectBinding &binding,
                     llvm::ArrayRef<uint32_t> to, bool last = false) {
     llvm::ArrayRef<uint32_t> ir(a.ir_idx);
     if (own_trips(a).empty()) {
-      return range(a.instr_id, a.or_idx, a.mt, none, none, none, ir);
+      std::vector<uint8_t> tail_last(ir.size(), a.is_last);
+      return range(a.instr_id, a.or_idx, a.mt, none, none, none, ir, &a,
+                   tail_last);
     }
     std::vector<uint32_t> tail(ir.begin() + std::min(from.size(), ir.size()),
                                ir.end());
+    std::vector<uint8_t> tail_last(tail.size(), a.is_last);
     for (std::size_t k = 0; last && k < tail.size(); ++k) {
       if (from.size() + k < a.pass_hi.size()) {
         tail[k] = a.pass_hi[from.size() + k];
+        tail_last[k] = true;
       }
     }
-    return range(a.instr_id, a.or_idx, a.mt, ir, from, to, tail);
+    return range(a.instr_id, a.or_idx, a.mt, ir, from, to, tail, &a, tail_last);
   };
   // A transfer's first or last pass through its own loops.
   auto use_first = [&](const Anchor &a) {
@@ -1386,7 +1480,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
                       llvm::ArrayRef<uint32_t> base,
                       llvm::ArrayRef<uint32_t> from,
                       llvm::ArrayRef<uint32_t> to,
-                      llvm::ArrayRef<uint32_t> tail) {
+                      llvm::ArrayRef<uint32_t> tail, const Anchor *a = nullptr) {
     std::vector<uint32_t> lo;
     std::vector<uint32_t> hi;
     for (std::size_t k = 0; k < from.size(); ++k) {
@@ -1395,14 +1489,15 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
     }
     lo.insert(lo.end(), tail.begin(), tail.end());
     hi.insert(hi.end(), tail.begin(), tail.end());
-    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+    std::vector<uint8_t> tail_last(tail.size(), a && a->is_last);
+    return sloped_range(ctx, id, or_idx, mt, lo, hi, a, from.size(), tail_last);
   };
   // A transfer's anchor, and a step of this rop's sequence, over those passes.
   auto of_use = [&](const Anchor &a, llvm::ArrayRef<uint32_t> from,
                     llvm::ArrayRef<uint32_t> to) {
     llvm::ArrayRef<uint32_t> ir(a.ir_idx);
     return spanning(a.instr_id, a.or_idx, a.mt, ir, from, to,
-                    ir.drop_front(from.size()));
+                    ir.drop_front(from.size()), &a);
   };
   auto of_step = [&](llvm::ArrayRef<uint32_t> step,
                      llvm::ArrayRef<uint32_t> from,

@@ -63,9 +63,9 @@ struct Level {
   // `follows` levels up); 0: constant.
   int64_t slope = 0;
   uint64_t follows = 0;
-  // The delay grows by dslope with the count of the level `dfollows` levels
-  // up (0: this level's own count).
-  uint64_t dslope = 0;
+  // The delay grows by dslope (signed) with the count of the level `dfollows`
+  // levels up (0: this level's own count).
+  int64_t dslope = 0;
   uint64_t dfollows = 0;
 };
 
@@ -132,7 +132,9 @@ public:
         uint64_t slope = static_cast<uint64_t>(level->slope);
         write_field(slope, step, widths_.step, ext, true);
         level->slope = static_cast<int64_t>(slope);
-        write_field(level->dslope, delay, widths_.delay, ext, false);
+        uint64_t dslope = static_cast<uint64_t>(level->dslope);
+        write_field(dslope, delay, widths_.delay, ext, true);
+        level->dslope = static_cast<int64_t>(dslope);
         if (!ext) {
           level->follows = lane;
           level->dfollows = iter & 3;
