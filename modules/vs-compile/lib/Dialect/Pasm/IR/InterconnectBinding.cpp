@@ -613,6 +613,35 @@ static void merge_parts(InterconnectBinding &binding,
   compact_slots(binding);
 }
 
+// Split a part whose options do not step by one stride into runs that do,
+// each with an evt and a rep of its own (0,1,0,2: 0 to 1, then 0 to 2). A
+// part that replays per pass keeps its steps: its runs would each replay on
+// their own.
+static void split_strides(const InterconnectBinding &binding,
+                          std::vector<BindingPart> &parts) {
+  const std::vector<int> &seq = binding.sequence;
+  std::vector<BindingPart> split;
+  for (const BindingPart &p : parts) {
+    if (!p.trips.empty() || p.siblings) {
+      split.push_back(p);
+      continue;
+    }
+    std::size_t begin = p.begin;
+    for (std::size_t j = p.begin + 2; j < p.end; ++j) {
+      if (j >= begin + 2 &&
+          seq[j] - seq[j - 1] != seq[begin + 1] - seq[begin]) {
+        split.push_back(p);
+        split.back().begin = begin;
+        split.back().end = j;
+        begin = j;
+      }
+    }
+    split.push_back(p);
+    split.back().begin = begin;
+  }
+  parts = std::move(split);
+}
+
 // The error for a binding that ran out of configuration options.
 static mlir::FailureOr<InterconnectBinding>
 no_free_option(mlir::Operation *report, llvm::StringRef kind,
@@ -840,6 +869,7 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
     }
   }
   merge_parts(binding, parts, kind);
+  split_strides(binding, parts);
   if (parts.size() > 1 || mixed) {
     binding.parts = std::move(parts);
   }
