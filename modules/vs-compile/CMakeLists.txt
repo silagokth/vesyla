@@ -65,8 +65,8 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 # Bison-generated PasmParser.hpp lands directly in this subproject's build dir
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Vendored third-party headers
-include_directories(${PROJECT_SOURCE_DIR}/third_party/plog)
-include_directories(${PROJECT_SOURCE_DIR}/third_party)
+include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third_party/plog)
+include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third_party)
 
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
@@ -173,7 +173,7 @@ set(SOURCES_SCHEDULE
     ${SOURCES_PARSER}
     ${SOURCES_CODEGEN})
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC")
+set(CMAKE_CXX_FLAGS "-pedantic -pthread -g -O3 -fPIC")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

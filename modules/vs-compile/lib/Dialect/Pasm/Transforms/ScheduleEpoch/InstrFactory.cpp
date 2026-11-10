@@ -119,7 +119,7 @@ ScheduleEpochPassRewriter::create_wait_instr(int cycle) const {
 ::vesyla::pasm::InstrOp ScheduleEpochPassRewriter::compose_act_mlir_op(
     ::vesyla::pasm::EpochOp op, ::mlir::PatternRewriter &rewriter,
     std::unordered_map<std::string, uint64_t> &act_instr_param_map) const {
-  return rewriter.create<::vesyla::pasm::InstrOp>(
+  return ::vesyla::pasm::InstrOp::create(rewriter, 
       op->getLoc(),
       rewriter.getStringAttr(::vesyla::util::Common::gen_random_string(8)),
       rewriter.getStringAttr("act"),
@@ -136,7 +136,7 @@ ScheduleEpochPassRewriter::create_wait_instr(int cycle) const {
 ::vesyla::pasm::InstrOp ScheduleEpochPassRewriter::compose_calc_mlir_op(
     ::vesyla::pasm::EpochOp op, ::mlir::PatternRewriter &rewriter,
     std::unordered_map<std::string, int> &calc_instr_param_map) const {
-  return rewriter.create<::vesyla::pasm::InstrOp>(
+  return ::vesyla::pasm::InstrOp::create(rewriter, 
       op->getLoc(),
       rewriter.getStringAttr(::vesyla::util::Common::gen_random_string(8)),
       rewriter.getStringAttr("calc"),

@@ -413,7 +413,7 @@ int ScheduleEpochPassRewriter::synchronize(
                rewriter.getNamedAttr(
                    "cycle", rewriter.getI32IntegerAttr(
                                 wait_instr_param_map["cycle"]))});
-          auto wait_instr = rewriter.create<::vesyla::pasm::InstrOp>(
+          auto wait_instr = ::vesyla::pasm::InstrOp::create(rewriter, 
               time_op_vec[i].second->getLoc(), id, type, param);
           new_time_op_vec.push_back(
               std::make_pair(prev_t + 1, wait_instr.getOperation()));
@@ -439,7 +439,7 @@ int ScheduleEpochPassRewriter::synchronize(
                "cycle", rewriter.getI32IntegerAttr(
                             wait_instr_param_map["cycle"]))});
       rewriter.setInsertionPointToEnd(block);
-      auto wait_instr = rewriter.create<::vesyla::pasm::InstrOp>(
+      auto wait_instr = ::vesyla::pasm::InstrOp::create(rewriter, 
           op->getLoc(), id, type, param);
       new_time_op_vec.push_back(
           std::make_pair(prev_t + 1, wait_instr.getOperation()));
@@ -467,7 +467,7 @@ int ScheduleEpochPassRewriter::synchronize(
   // operations
   rewriter.setInsertionPointToEnd(block);
   auto yield_instr =
-      rewriter.create<::vesyla::pasm::YieldOp>(op->getLoc());
+      ::vesyla::pasm::YieldOp::create(rewriter, op->getLoc());
 
   // insert a RawOp for each cell at the end of the block
   for (auto it = ordered_time_table.begin(); it != ordered_time_table.end();
@@ -482,7 +482,7 @@ int ScheduleEpochPassRewriter::synchronize(
     ::mlir::IntegerAttr col_attr =
         rewriter.getIntegerAttr(rewriter.getI32Type(), col);
     rewriter.setInsertionPointToEnd(block);
-    auto raw_op = rewriter.create<::vesyla::pasm::RawOp>(op->getLoc(), id,
+    auto raw_op = ::vesyla::pasm::RawOp::create(rewriter, op->getLoc(), id,
                                                          row_attr, col_attr);
     ::mlir::Region &raw_op_body = raw_op.getBody();
     ::mlir::Block *raw_op_entry_block;
@@ -497,7 +497,7 @@ int ScheduleEpochPassRewriter::synchronize(
       rewriter.clone(**it2);
     }
     rewriter.setInsertionPointToEnd(raw_op_entry_block);
-    rewriter.create<::vesyla::pasm::YieldOp>(raw_op->getLoc());
+    ::vesyla::pasm::YieldOp::create(rewriter, raw_op->getLoc());
 
     // Verifier: per-cell stream cycles must equal total_latency.
     int stream_cycles = 0;
@@ -554,7 +554,7 @@ int ScheduleEpochPassRewriter::synchronize(
   }
 
   rewriter.setInsertionPointToEnd(block);
-  rewriter.create<::vesyla::pasm::YieldOp>(op->getLoc());
+  ::vesyla::pasm::YieldOp::create(rewriter, op->getLoc());
 
   llvm::outs() << "Block contents after synchronization:\n";
   for (::mlir::Operation &child_op : *block) {
