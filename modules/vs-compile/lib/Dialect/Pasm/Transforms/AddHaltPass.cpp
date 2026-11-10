@@ -41,7 +41,7 @@ public:
 
     rewriter.setInsertionPoint(op_block->getTerminator());
     // Create a new Halt instruction
-    auto halt_op = rewriter.create<vesyla::pasm::InstrOp>(
+    auto halt_op = vesyla::pasm::InstrOp::create(rewriter, 
         op.getLoc(), rewriter.getStringAttr(util::RandName::generate(8)),
         rewriter.getStringAttr("halt"), rewriter.getDictionaryAttr({}));
 

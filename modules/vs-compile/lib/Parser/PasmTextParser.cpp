@@ -30,7 +30,7 @@ void Parser::parse(std::string &filename_, mlir::ModuleOp *module_) {
   mlir::OpBuilder builder(module->getBodyRegion());
   auto loc = builder.getUnknownLoc();
   builder.setInsertionPointToEnd(&module->getBodyRegion().front());
-  auto epoch_op = builder.create<vesyla::pasm::EpochOp>(
+  auto epoch_op = vesyla::pasm::EpochOp::create(builder, 
       loc, builder.getStringAttr("__temp__"));
   // add a block to the epoch operation
 
