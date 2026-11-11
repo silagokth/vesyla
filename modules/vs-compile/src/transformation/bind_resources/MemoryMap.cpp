@@ -92,18 +92,29 @@ std::optional<int64_t> evaluate(mlir::AffineExpr expr,
   }
 }
 
-// Mark the words the write `op` covers over all iterations of its loops.
-// False when it cannot tell: loops without constant bounds, a map whose dims
-// are not the enclosing loops, or more iterations than are worth walking.
-bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written) {
+// The affine loops enclosing `op`, outermost first.
+llvm::SmallVector<mlir::affine::AffineForOp>
+enclosing_loops(mlir::Operation *op) {
   llvm::SmallVector<mlir::affine::AffineForOp> loops;
   for (mlir::Operation *parent = op->getParentOp(); parent;
        parent = parent->getParentOp()) {
     if (auto loop = llvm::dyn_cast<mlir::affine::AffineForOp>(parent)) {
-      if (!loop.hasConstantBounds()) {
-        return false;
-      }
       loops.insert(loops.begin(), loop);
+    }
+  }
+  return loops;
+}
+
+// Mark the words the write `op` covers over all iterations of its loops, the
+// outermost `fixed` of them held at their first pass. False when it cannot
+// tell: loops without constant bounds, a map whose dims are not the enclosing
+// loops, or more iterations than are worth walking.
+bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written,
+                  unsigned fixed = 0) {
+  llvm::SmallVector<mlir::affine::AffineForOp> loops = enclosing_loops(op);
+  for (mlir::affine::AffineForOp loop : loops) {
+    if (!loop.hasConstantBounds()) {
+      return false;
     }
   }
 
@@ -145,8 +156,11 @@ bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written) {
       return true;
     }
     mlir::affine::AffineForOp loop = loops[depth];
-    for (int64_t i = loop.getConstantLowerBound();
-         i < loop.getConstantUpperBound(); i += loop.getStepAsInt()) {
+    int64_t end = depth < fixed ? std::min(loop.getConstantLowerBound() + 1,
+                                           loop.getConstantUpperBound())
+                                : loop.getConstantUpperBound();
+    for (int64_t i = loop.getConstantLowerBound(); i < end;
+         i += loop.getStepAsInt()) {
       dims[depth] = i;
       if (!walk(depth + 1)) {
         return false;
@@ -155,6 +169,26 @@ bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written) {
     return true;
   };
   return walk(0);
+}
+
+// The ancestors of `a` and `b` in the closest block that holds both, or nulls
+// when they share none.
+std::pair<mlir::Operation *, mlir::Operation *>
+common_block_ancestors(mlir::Operation *a, mlir::Operation *b) {
+  for (mlir::Operation *bb = b; bb; bb = bb->getParentOp()) {
+    for (mlir::Operation *aa = a; aa; aa = aa->getParentOp()) {
+      if (aa->getBlock() == bb->getBlock()) {
+        return {aa, bb};
+      }
+    }
+  }
+  return {nullptr, nullptr};
+}
+
+// Whether `a` runs before `b` in program order.
+bool precedes(mlir::Operation *a, mlir::Operation *b) {
+  auto [aa, bb] = common_block_ancestors(a, b);
+  return aa && aa != bb && aa->isBeforeInBlock(bb);
 }
 
 } // namespace
@@ -181,14 +215,33 @@ Interval storage_lifetime(const ConflictGraph &graph, unsigned node,
     return {0, points.last()};
   }
   // Held from its first write only if the writes before its first read cover
-  // every word; otherwise the read sees reset values.
+  // every word; otherwise the read sees reset values. A write at the point of
+  // the first read counts when it precedes the read in program order, over
+  // the first pass of the loops the two share: the read's first pass sees
+  // only that much of it.
   bool covered = first_write.has_value();
   if (covered && first_read) {
+    mlir::Operation *read = nullptr;
+    for (mlir::Operation *op : graph.ops(node)) {
+      if (op->getNumResults() > 0 && points.point(op) == first_read &&
+          (!read || precedes(op, read))) {
+        read = op;
+      }
+    }
     llvm::SmallVector<bool> written(std::max<int64_t>(words, 0), false);
     for (mlir::Operation *op : graph.ops(node)) {
       std::optional<unsigned> at = points.point(op);
-      if (op->getNumResults() == 0 && at && *at < *first_read &&
-          !mark_written(op, written)) {
+      if (op->getNumResults() > 0 || !at || *at > *first_read) {
+        continue;
+      }
+      unsigned fixed = 0;
+      if (*at == *first_read) {
+        if (!precedes(op, read)) {
+          continue;
+        }
+        fixed = enclosing_loops(common_block_ancestors(op, read).first).size();
+      }
+      if (!mark_written(op, written, fixed)) {
         covered = false;
       }
     }

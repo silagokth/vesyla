@@ -41,8 +41,10 @@ namespace bind_resources {
 // wrote only word 0), so it is held from the start of the program, on rows
 // nothing used before. The words written before the first read are worked out
 // from each write's map and constant loop bounds; a write that cannot be read
-// that way counts as covering nothing. A storage that is written again after
-// it was last read still holds its rows in between.
+// that way counts as covering nothing. A write at the same point as the first
+// read, earlier in program order, counts for the first pass of the loops the
+// two share (a buffer filled and read inside one loop). A storage that is
+// written again after it was last read still holds its rows in between.
 //
 // ROWS. A storage takes whole rows (a bulk transfer each), so its base is a
 // row and every bulk access to it stays aligned.
