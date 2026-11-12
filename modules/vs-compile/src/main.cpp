@@ -25,6 +25,7 @@
 #include "transformation/interchange_loops/InterchangeLoopsPass.hpp"
 #include "transformation/narrow_integers/NarrowIntegersPass.hpp"
 #include "transformation/normalize_loops/NormalizeLoopsPass.hpp"
+#include "transformation/double_buffer/DoubleBufferPass.hpp"
 #include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
 #include "transformation/copy_storages/CopyStoragesPass.hpp"
 #include "transformation/fission_loops/FissionLoopsPass.hpp"
@@ -75,7 +76,8 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   // below compile. NarrowIntegersPass undoes C's integer promotion, so the
   // arithmetic is on the 16-bit word again. InterchangeLoopsPass reorders a nest so
   // each io write keeps its row over its words. StageIoPass moves the io rows a C
-  // kernel accesses word by word through staging buffers. SinkScalarLoadsPass
+  // kernel accesses word by word through staging buffers. DoubleBufferPass gives
+  // a staging buffer refilled every pass a second slot. SinkScalarLoadsPass
   // re-reads a scalar loaded once (alpha) inside every loop that uses it.
   // AssignIdsPass then names whatever the program left unnamed, including the
   // ops the passes before it built. A hand-written program has no func.func,
@@ -91,12 +93,14 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
       vesyla::transformation::interchange_loops::createInterchangeLoopsPass());
   input_pm.addPass(vesyla::transformation::stage_io::createStageIoPass());
   input_pm.addPass(
+      vesyla::transformation::double_buffer::createDoubleBufferPass());
+  input_pm.addPass(
       vesyla::transformation::sink_scalar_loads::createSinkScalarLoadsPass());
   input_pm.addPass(vesyla::transformation::assign_ids::createAssignIdsPass());
   if (mlir::failed(input_pm.run(*module))) {
     LOG_FATAL << "Error: NormalizeLoopsPass, FuncToEpochPass, NarrowIntegersPass, "
                  "InterchangeLoopsPass, "
-                 "StageIoPass, "
+                 "StageIoPass, DoubleBufferPass, "
                  "SinkScalarLoadsPass or AssignIdsPass failed.";
     return nullptr;
   }
@@ -272,7 +276,7 @@ int main(int argc, char **argv) {
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
                 "[--config FILE] [--output DIR] [--allow-unsafe] "
-                "[--no-reconfiguration] [--double-buffer] [-d|--debug]";
+                "[--no-reconfiguration] [--no-double-buffer] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
                 "[--config FILE] [--output DIR]";
@@ -298,7 +302,8 @@ int main(int argc, char **argv) {
   // controllers only issue the activations and whose resources hardcode the
   // rest of the program.
   bool no_reconfiguration = args.flag("no-reconfiguration");
-  bool double_buffer = args.flag("double-buffer");
+  // Staging buffers refilled every pass get a second slot (DoubleBufferPass).
+  bool double_buffer = !args.flag("no-double-buffer");
 
   if (arch_file.empty() || isa_file.empty()) {
     LOG_FATAL << "Required arguments missing, see --help for usage.";
@@ -369,7 +374,7 @@ int main(int argc, char **argv) {
     vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__",
                                   double_buffer ? "1" : "0");
     module = run_mlir_mode(mlir_file, output_dir, context);
-    // Double buffering needs RF rows the fabric may not have.
+    // The second slots need RF rows the fabric may not have.
     if (!module && double_buffer) {
       LOG_WARNING << "Double buffering does not fit; compiling without it.";
       vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__", "0");
