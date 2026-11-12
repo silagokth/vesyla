@@ -1,3 +1,9 @@
+#include <unistd.h>
+#include <sys/wait.h>
+#include <optional>
+#include <sstream>
+#include <fstream>
+#include <regex>
 #include "plog/Log.h"
 #include "vesyla/Parser/PasmTextParser.hpp"
 #include "vesyla/Pipeline/PasmPipeline.hpp"
@@ -42,6 +48,96 @@
 #include "vesyla/Support/SysPath.hpp"
 
 namespace {
+
+// Total cycles of a compile in `dir`: the epochs' total_latency, summed over
+// the timetables it wrote.
+std::optional<long> compiled_cycles(const std::string &dir) {
+  static const std::regex latency("\"total_latency\"\\s*:\\s*([0-9]+)");
+  long total = 0;
+  bool found = false;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(dir)) {
+    std::string name = entry.path().filename().string();
+    if (!entry.is_regular_file() || name.rfind("schedule_", 0) != 0 ||
+        entry.path().extension() != ".json") {
+      continue;
+    }
+    std::ifstream in(entry.path());
+    std::stringstream text;
+    text << in.rdbuf();
+    std::smatch m;
+    std::string body = text.str();
+    if (std::regex_search(body, m, latency)) {
+      total += std::stol(m[1]);
+      found = true;
+    }
+  }
+  return found ? std::optional<long>(total) : std::nullopt;
+}
+
+// This vs-compile again in a child, output to `dir`, plus `flag`; its exit
+// code.
+int compile_variant(int argc, char **argv, const std::string &dir,
+                    const std::string &flag) {
+  std::string self = std::filesystem::read_symlink("/proc/self/exe").string();
+  std::vector<std::string> args{self};
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "-o" || a == "--output") {
+      ++i;
+      continue;
+    }
+    args.push_back(a);
+  }
+  args.insert(args.end(), {"-o", dir, flag});
+  std::vector<char *> cargs;
+  for (std::string &a : args) {
+    cargs.push_back(a.data());
+  }
+  cargs.push_back(nullptr);
+  std::filesystem::create_directories(dir);
+  pid_t pid = fork();
+  if (pid == 0) {
+    execv(self.c_str(), cargs.data());
+    _exit(127);
+  }
+  int status = 0;
+  waitpid(pid, &status, 0);
+  return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+
+// Word reads (IO input_word) and staged rows each win on some kernels:
+// compile both and keep the one with fewer cycles, staged on a tie. Only
+// when the word-read compile used a word read.
+int select_word_reads(int argc, char **argv, const std::string &output_dir) {
+  std::string words = output_dir + "/variant_word_reads";
+  std::string staged = output_dir + "/variant_staged";
+  int words_rc = compile_variant(argc, argv, words, "--word-reads");
+  bool used = std::filesystem::exists(words + "/word_reads_used");
+  std::string pick = words;
+  int rc = words_rc;
+  if (words_rc != 0 || used) {
+    int staged_rc = compile_variant(argc, argv, staged, "--no-word-reads");
+    std::optional<long> w = words_rc == 0 ? compiled_cycles(words) : std::nullopt;
+    std::optional<long> st =
+        staged_rc == 0 ? compiled_cycles(staged) : std::nullopt;
+    if (staged_rc == 0 && (words_rc != 0 || (st && w && *st <= *w))) {
+      pick = staged;
+      rc = 0;
+    }
+    LOG_INFO << "Word reads: " << (w ? std::to_string(*w) : "failed")
+             << " cycles, staged: " << (st ? std::to_string(*st) : "failed")
+             << " cycles; keeping " << (pick == staged ? "staged" : "word reads");
+  }
+  if (rc == 0) {
+    std::filesystem::copy(pick, output_dir,
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::overwrite_existing);
+  }
+  std::filesystem::remove_all(words);
+  std::filesystem::remove_all(staged);
+  return rc;
+}
 
 // Dump a module to a file, mirroring the scheduler's debug-mlir dumps.
 void save_mlir(mlir::ModuleOp module, const std::string &filename) {
@@ -276,7 +372,7 @@ int main(int argc, char **argv) {
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
                 "[--config FILE] [--output DIR] [--allow-unsafe] "
-                "[--no-reconfiguration] [--no-double-buffer] [-d|--debug]";
+                "[--no-reconfiguration] [--no-double-buffer] [--word-reads | --no-word-reads] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
                 "[--config FILE] [--output DIR]";
@@ -298,6 +394,13 @@ int main(int argc, char **argv) {
   std::string output_dir = args.get("output", args.get("o", "."));
   bool allow_unsafe = args.flag("allow-unsafe");
   bool keep_debug = args.flag("d") || args.flag("debug");
+  // IO word reads: forced on or off, else both compiled and the faster kept.
+  bool word_reads_forced = args.flag("word-reads") || args.flag("no-word-reads");
+  if (!mlir_file.empty() && !word_reads_forced) {
+    return select_word_reads(argc, argv, output_dir);
+  }
+  vesyla::util::GlobalVar::puts("__WORD_READS__",
+                                args.flag("no-word-reads") ? "0" : "1");
   // Also write arch_noreconf.json, the architecture of a fabric whose
   // controllers only issue the activations and whose resources hardcode the
   // rest of the program.
@@ -403,6 +506,11 @@ int main(int argc, char **argv) {
     LOG_FATAL << "Error: the no-reconfiguration fields name a cell or slot "
                  "the architecture does not have.";
     return -1;
+  }
+
+  std::string used;
+  if (vesyla::util::GlobalVar::gets("__WORD_READS_USED__", used) && used == "1") {
+    std::ofstream(output_dir + "/word_reads_used") << "1\n";
   }
 
   // clean up debug intermediates unless -d/--debug was passed

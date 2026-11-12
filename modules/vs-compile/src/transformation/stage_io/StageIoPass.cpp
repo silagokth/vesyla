@@ -14,6 +14,7 @@
 #include "StageIoPass.hpp"
 #include "IoAccess.hpp"
 #include "conversion/select_instructions/NativeHelpers.hpp"
+#include "vesyla/Support/GlobalVar.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -557,6 +558,13 @@ bool reads_once(const IoAccess &access, int64_t w) {
       return false;
     }
   }
+  // A copy to the output moves whole rows (the staging below), not words.
+  if (llvm::all_of(access.op->getUsers(), [](mlir::Operation *user) {
+        auto store = llvm::dyn_cast<mlir::affine::AffineStoreOp>(user);
+        return store && vesyla::sel::is_io_buffer(store.getMemRef());
+      })) {
+    return false;
+  }
   unsigned dims = access.map.getNumDims();
   AffineExpr address = mlir::simplifyAffineExpr(
       access.row() * w + access.word(), dims, access.map.getNumSymbols());
@@ -610,13 +618,19 @@ bool reads_once(const IoAccess &access, int64_t w) {
 }
 
 // The io has one word port: per block, the first read that reads its words
-// once takes it.
+// once takes it. Off with vs-compile --no-word-reads (__WORD_READS__ = 0);
+// whether any read took it is left in __WORD_READS_USED__.
 void mark_word_reads(mlir::ModuleOp module) {
+  std::string on;
+  if (vesyla::util::GlobalVar::gets("__WORD_READS__", on) && on == "0") {
+    return;
+  }
   llvm::DenseSet<mlir::Block *> taken;
   for (const IoAccess &access : collect_io_accesses(module)) {
     if (reads_once(access, row_words(access.buffer)) &&
         taken.insert(access.op->getBlock()).second) {
       access.op->setAttr(WORD_READ, mlir::UnitAttr::get(module.getContext()));
+      vesyla::util::GlobalVar::puts("__WORD_READS_USED__", "1");
     }
   }
 }
