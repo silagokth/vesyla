@@ -715,6 +715,24 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
         pick = i;
       }
     }
+    // Otherwise the part that runs next: the earliest transfer in program
+    // order, not one that is merely free (an io read waits on nothing).
+    for (std::size_t i = 0; pick == free_set.size() && i < free_set.size();
+         ++i) {
+      const Node &n = free_set[i];
+      if (n.id == 0 || n.kind != NodeKind::First || n.anchor.pos < 0) {
+        continue;
+      }
+      std::size_t best = i;
+      for (std::size_t k = i + 1; k < free_set.size(); ++k) {
+        const Node &m = free_set[k];
+        if (m.id != 0 && m.kind == NodeKind::First && m.anchor.pos >= 0 &&
+            m.anchor.pos < free_set[best].anchor.pos) {
+          best = k;
+        }
+      }
+      pick = best;
+    }
     if (pick == free_set.size()) {
       pick = 0;
     }
