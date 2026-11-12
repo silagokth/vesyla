@@ -319,6 +319,52 @@ build_carry(mlir::MLIRContext *ctx, mlir::Operation *op,
   return make_ir_anchor(ctx, id, idx_lo, idx_hi);
 }
 
+// Two io reads that share nothing but the external read port. They only
+// must not use it in the same cycle; neither writes a storage the other uses.
+bool share_only_external_read(mlir::Operation *a, mlir::Operation *b) {
+  auto kind_a = a->getAttrOfType<mlir::StringAttr>("kind");
+  auto kind_b = b->getAttrOfType<mlir::StringAttr>("kind");
+  auto uses_a = a->getAttrOfType<mlir::ArrayAttr>("uses");
+  auto uses_b = b->getAttrOfType<mlir::ArrayAttr>("uses");
+  if (!kind_a || !kind_b || kind_a.getValue() != "io" ||
+      kind_b.getValue() != "io" || !uses_a || !uses_b) {
+    return false;
+  }
+  llvm::SmallVector<llvm::StringRef> shared;
+  for (mlir::Attribute u : uses_a) {
+    if (llvm::is_contained(uses_b, u)) {
+      shared.push_back(mlir::cast<mlir::StringAttr>(u).getValue());
+    }
+  }
+  return shared.size() == 1 && shared.front() == "external_read:0";
+}
+
+// The points of `op` in the loops it does not share, at most `limit` of
+// them, or nothing.
+std::optional<llvm::SmallVector<llvm::SmallVector<int64_t>>>
+inner_points(mlir::Operation *op, size_t num_shared, size_t limit) {
+  llvm::SmallVector<mlir::affine::AffineForOp> loops = get_enclosing_loops(op);
+  llvm::SmallVector<llvm::SmallVector<int64_t>> points{{}};
+  for (size_t d = num_shared; d < loops.size(); ++d) {
+    if (!loops[d].hasConstantBounds()) {
+      return std::nullopt;
+    }
+    llvm::SmallVector<llvm::SmallVector<int64_t>> next;
+    for (auto &p : points) {
+      for (int64_t i = loops[d].getConstantLowerBound();
+           i < loops[d].getConstantUpperBound(); ++i) {
+        next.push_back(p);
+        next.back().push_back(i);
+      }
+    }
+    points = std::move(next);
+    if (points.size() > limit) {
+      return std::nullopt;
+    }
+  }
+  return points;
+}
+
 // Words per row when `op` moves a whole row (its value is a vector), else 0.
 int64_t bulk_words(mlir::Operation *op) {
   mlir::Value value = op->getNumResults() > 0 ? op->getResult(0)
@@ -1105,6 +1151,53 @@ public:
               same_storage && storage_delay(b, a) == 0
                   ? row_war_points(b, a, shared.size())
                   : decltype(row_war_points(b, a, 0)){};
+          // Two io reads in a double-buffered loop (innermost shared loop of
+          // two passes, DoubleBufferPass) that share only the external read
+          // port: the next pass's `a` may come before this pass's `b` (a row
+          // fetch ahead of the previous pass's word read). Ordered two passes
+          // apart instead of one, and kept off the cycles they could now
+          // share: a(p+1) != b(p), for every point of either.
+          auto a_points = inner_points(a, shared.size(), 4);
+          auto b_points = inner_points(b, shared.size(), 4);
+          if (!same_storage && !shared.empty() &&
+              trip_count(shared.back()) == 2 &&
+              share_only_external_read(a, b) && a_points && b_points) {
+            llvm::SmallVector<bool> two_apart(reused);
+            two_apart.back() = false;
+            for (size_t carry = 0; carry + 1 < shared.size(); ++carry) {
+              if (!reused[carry] || trip_count(shared[carry]) < 2) {
+                continue;
+              }
+              pasm::CstrOp::create(
+                  builder, b->getLoc(),
+                  build_carry(ctx, b, shared, two_apart, b_id, Pin::last,
+                              carry, 0),
+                  build_carry(ctx, a, shared, two_apart, a_id, Pin::first,
+                              carry, 1),
+                  delay_of(b, a), builder.getBoolAttr(false))
+                  ->setAttr("debug", debug_attr(builder, "contention-carry-2"));
+            }
+            auto zero = pasm::DelayAttr::get(ctx, 0, std::nullopt);
+            for (size_t carry = 0; carry < shared.size(); ++carry) {
+              if (!reused[carry] || trip_count(shared[carry]) < 2) {
+                continue;
+              }
+              for (auto &bp : *b_points) {
+                for (auto &ap : *a_points) {
+                  pasm::CstrOp::create(
+                      builder, b->getLoc(),
+                      build_carry(ctx, b, shared, reused, b_id, Pin::last,
+                                  carry, 0, bp),
+                      build_carry(ctx, a, shared, reused, a_id, Pin::first,
+                                  carry, 1, ap),
+                      zero, builder.getBoolAttr(true))
+                      ->setAttr("debug",
+                                debug_attr(builder, "contention-not-same-cycle"));
+                }
+              }
+            }
+            continue;
+          }
           for (size_t carry = 0; carry < shared.size(); ++carry) {
             if (!reused[carry] || trip_count(shared[carry]) < 2) {
               continue;
