@@ -21,6 +21,11 @@ def StageIoPass : Pass<"stage-io-pass", "::mlir::ModuleOp"> {
     out right after that loop. Accesses to the same row at the same place share
     one staging buffer.
 
+    A read whose words are each read once (its address `row * 16 + word` is
+    linear and reads every loop around it) is not staged: the io passes it
+    word by word (its input_word port). The io has one word port, so per
+    block only the first such read; the others are staged.
+
     A loop whose counter `x` picks the row as `x floordiv 16` and the word as
     `x mod 16` (a matrix row spanning several io rows, as in mvm) is first
     strip-mined into a loop over rows and a loop over the 16 words, so the row
@@ -36,8 +41,8 @@ def StageIoPass : Pass<"stage-io-pass", "::mlir::ModuleOp"> {
       - a read whose row changes inside a reduction loop longer than a row
         (mvm, mmm with K > 16): split, the accumulation would run over two
         loops (C frontend G18).
-    No word-by-word io access is left afterwards, so none can fall through to
-    the RF patterns. A program that only moves whole rows -- every
+    No other word-by-word io access is left afterwards, so none can fall
+    through to the RF patterns. A program that only moves whole rows -- every
     hand-written one -- passes through unchanged.
   }];
   let dependentDialects = ["::mlir::affine::AffineDialect",

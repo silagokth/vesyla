@@ -61,12 +61,31 @@ unsigned enclosing_loop_depth(mlir::Operation *op) {
   return depth;
 }
 
-// The address the access names outright, when it names a fixed one.
-//
-// An affine.load and its siblings carry their own map, whose first result is
-// the bulk the access starts at -- the remaining results index within the bulk,
-// which the AGU does not address. A constant there is the base; anything else
-// is a value some loop supplies and belongs to the stepping instead.
+// The address the AGU sweeps for an access, over its map's dims. An
+// affine.load and its siblings carry their own map, whose first result is the
+// bulk the access starts at -- the remaining results index within the bulk,
+// which the AGU does not address. A word of a 2-D buffer (an io word read) is
+// addressed row * words + word.
+static mlir::AffineExpr address_expr(mlir::Operation *access,
+                                     mlir::AffineMap map) {
+  auto type = llvm::dyn_cast<mlir::MemRefType>(
+      access->getOperand(llvm::isa<mlir::affine::AffineWriteOpInterface>(access)
+                             ? 1
+                             : 0)
+          .getType());
+  if (llvm::isa<mlir::affine::AffineLoadOp, mlir::affine::AffineStoreOp>(
+          access) &&
+      type && type.getRank() == 2 && map.getNumResults() == 2) {
+    return mlir::simplifyAffineExpr(
+        map.getResult(0) * type.getDimSize(1) + map.getResult(1),
+        map.getNumDims(), map.getNumSymbols());
+  }
+  return map.getResult(0);
+}
+
+// The address the access names outright, when it names a fixed one. A constant
+// address is the base; anything else is a value some loop supplies and belongs
+// to the stepping instead.
 static std::optional<int64_t> constant_base(mlir::Operation *access) {
   mlir::AffineMap map;
   if (auto read = llvm::dyn_cast<mlir::affine::AffineReadOpInterface>(access)) {
@@ -80,7 +99,8 @@ static std::optional<int64_t> constant_base(mlir::Operation *access) {
   if (map.getNumResults() == 0) {
     return std::nullopt;
   }
-  auto constant = llvm::dyn_cast<mlir::AffineConstantExpr>(map.getResult(0));
+  auto constant =
+      llvm::dyn_cast<mlir::AffineConstantExpr>(address_expr(access, map));
   if (!constant) {
     return std::nullopt;
   }
@@ -105,8 +125,11 @@ static mlir::AffineMapAttr lift_own_map(mlir::Operation *access,
   } else {
     return {};
   }
-  if (map.getNumResults() == 0 || map.getNumSymbols() != 0 ||
-      llvm::isa<mlir::AffineConstantExpr>(map.getResult(0))) {
+  if (map.getNumResults() == 0 || map.getNumSymbols() != 0) {
+    return {};
+  }
+  mlir::AffineExpr address = address_expr(access, map);
+  if (llvm::isa<mlir::AffineConstantExpr>(address)) {
     return {};
   }
 
@@ -128,7 +151,7 @@ static mlir::AffineMapAttr lift_own_map(mlir::Operation *access,
     dims.push_back(mlir::getAffineDimExpr(at - loops.begin(), ctx));
   }
   mlir::AffineExpr addr = mlir::simplifyAffineExpr(
-      map.getResult(0).replaceDims(dims), depth, /*numSymbols=*/0);
+      address.replaceDims(dims), depth, /*numSymbols=*/0);
   return mlir::AffineMapAttr::get(
       mlir::AffineMap::get(depth, /*symbolCount=*/0, addr));
 }

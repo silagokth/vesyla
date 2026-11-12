@@ -542,6 +542,93 @@ mlir::Operation *op_in_level(AffineForOp level, mlir::Operation *op) {
   return top;
 }
 
+// Marks a read the io passes word by word (its input_word port).
+constexpr llvm::StringLiteral WORD_READ = "io_word_read";
+
+// A read whose words are each read once: its address row * w + word is linear
+// and reads every loop around it, and no use sits in a loop it is outside of.
+bool reads_once(const IoAccess &access, int64_t w) {
+  if (access.write || !unbufferable(access).empty()) {
+    return false;
+  }
+  for (mlir::Operation *user : access.op->getUsers()) {
+    auto loop = user->getParentOfType<AffineForOp>();
+    if (loop && !loop->isAncestor(access.op)) {
+      return false;
+    }
+  }
+  unsigned dims = access.map.getNumDims();
+  AffineExpr address = mlir::simplifyAffineExpr(
+      access.row() * w + access.word(), dims, access.map.getNumSymbols());
+  if (!address.isPureAffine() || access.map.getNumSymbols() != 0) {
+    return false;
+  }
+  for (auto loop = access.op->getParentOfType<AffineForOp>(); loop;
+       loop = loop->getParentOfType<AffineForOp>()) {
+    auto at = llvm::find(access.operands, loop.getInductionVar());
+    if (at == access.operands.end() ||
+        !address.isFunctionOfDim(at - access.operands.begin())) {
+      return false;
+    }
+  }
+
+  // What the io's AGU takes: a 16-bit init_addr, rep steps of two 7-bit
+  // signed fields, addresses of IO_ADDR_WIDTH (16) + 4 bits.
+  mlir::MLIRContext *ctx = access.op->getContext();
+  auto at = [&](llvm::ArrayRef<int64_t> point) -> std::optional<int64_t> {
+    llvm::SmallVector<AffineExpr> values;
+    for (int64_t v : point) {
+      values.push_back(mlir::getAffineConstantExpr(v, ctx));
+    }
+    auto c = llvm::dyn_cast<mlir::AffineConstantExpr>(
+        mlir::simplifyAffineExpr(address.replaceDims(values), 0, 0));
+    return c ? std::optional<int64_t>(c.getValue()) : std::nullopt;
+  };
+  llvm::SmallVector<int64_t> point(dims, 0);
+  std::optional<int64_t> base = at(point);
+  if (!base || *base < 0 || *base >= (1 << 16)) {
+    return false;
+  }
+  int64_t high = *base;
+  for (unsigned pos = 0; pos < dims; ++pos) {
+    point.assign(dims, 0);
+    point[pos] = 1;
+    std::optional<int64_t> next = at(point);
+    int64_t upper;
+    AffineForOp loop =
+        mlir::affine::getForInductionVarOwner(access.operands[pos]);
+    if (!next || !is_constant_loop(loop, upper)) {
+      return false;
+    }
+    int64_t step = *next - *base; // forward only, to bound the range simply
+    if (step < 0 || step >= (1 << 13)) {
+      return false;
+    }
+    high += step * (upper - 1);
+  }
+  return high < (int64_t{1} << 20);
+}
+
+// The io has one word port: per block, the first read that reads its words
+// once takes it.
+void mark_word_reads(mlir::ModuleOp module) {
+  llvm::DenseSet<mlir::Block *> taken;
+  for (const IoAccess &access : collect_io_accesses(module)) {
+    if (reads_once(access, row_words(access.buffer)) &&
+        taken.insert(access.op->getBlock()).second) {
+      access.op->setAttr(WORD_READ, mlir::UnitAttr::get(module.getContext()));
+    }
+  }
+}
+
+// The io accesses that go through a staging buffer.
+llvm::SmallVector<IoAccess> staged_accesses(mlir::ModuleOp module) {
+  auto accesses = collect_io_accesses(module);
+  llvm::erase_if(accesses,
+                 [](const IoAccess &a) { return a.op->hasAttr(WORD_READ); });
+  return accesses;
+}
+
 class StageIoPass : public impl::StageIoPassBase<StageIoPass> {
 public:
   using impl::StageIoPassBase<StageIoPass>::StageIoPassBase;
@@ -550,11 +637,13 @@ public:
     mlir::ModuleOp module = getOperation();
     mlir::MLIRContext *ctx = &getContext();
 
+    mark_word_reads(module);
+
     // Strip-mine (or fold) until no access picks its row and word out of one
     // counter. Each change rebuilds accesses, so collect afresh after it.
     for (bool changed = true; changed;) {
       changed = false;
-      for (const IoAccess &access : collect_io_accesses(module)) {
+      for (const IoAccess &access : staged_accesses(module)) {
         int64_t w = row_words(access.buffer);
         if (auto loop = loop_to_split(access, w);
             loop && !splits_a_reduction(*loop, w)) {
@@ -582,7 +671,7 @@ public:
     llvm::SmallVector<Group> groups;
     llvm::SmallVector<FlatGroup, 0> flats;
     bool failed = false;
-    for (const IoAccess &access : collect_io_accesses(module)) {
+    for (const IoAccess &access : staged_accesses(module)) {
       int64_t w = row_words(access.buffer);
       if (crosses_rows(access) && unbufferable(access).empty()) {
         std::optional<FlatPlan> plan = plan_flat(access, w);
@@ -891,6 +980,25 @@ public:
         loop->erase();
       }
     }
+
+    // A word leaves the io as it is read: right before its first use, no
+    // other io access in between. The input buffer is read-only, so moving
+    // the read changes nothing else.
+    module.walk([](mlir::Operation *op) {
+      if (!op->removeAttr(WORD_READ)) {
+        return;
+      }
+      mlir::Operation *first = nullptr;
+      for (mlir::Operation *user : op->getUsers()) {
+        mlir::Operation *at = op->getBlock()->findAncestorOpInBlock(*user);
+        if (at && (!first || at->isBeforeInBlock(first))) {
+          first = at;
+        }
+      }
+      if (first && op->isBeforeInBlock(first)) {
+        op->moveBefore(first);
+      }
+    });
   }
 };
 
