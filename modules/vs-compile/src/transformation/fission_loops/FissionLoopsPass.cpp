@@ -52,6 +52,8 @@ bool is_dpu_mode(mlir::Operation *op) {
 unsigned count_dpu_modes(mlir::Operation *op) {
   if (is_dpu_mode(op))
     return 1;
+  if (auto shared = op->getAttrOfType<mlir::IntegerAttr>("dpu_shared"))
+    return shared.getInt();
   unsigned own = 0, inner = 0;
   for (mlir::Region &region : op->getRegions())
     for (mlir::Block &block : region)
@@ -193,20 +195,13 @@ private:
     return name;
   }
 
-  mlir::LogicalResult split(mlir::ModuleOp module,
-                            mlir::affine::AffineForOp nest) {
-    auto epoch = llvm::cast<pasm::EpochOp>(nest->getParentOp());
-    auto chain = loop_chain(nest);
-    mlir::Block *body = chain.back().getBody();
-    llvm::SmallVector<mlir::Operation *> ops;
-    for (mlir::Operation &op : body->without_terminator())
-      ops.push_back(&op);
-    llvm::DenseMap<mlir::Operation *, unsigned> order;
-    for (auto [i, op] : llvm::enumerate(ops))
-      order[op] = i;
+  using Deps =
+      llvm::DenseMap<mlir::Operation *, llvm::SetVector<mlir::Operation *>>;
 
-    // Body ops each one depends on through SSA values.
-    llvm::DenseMap<mlir::Operation *, llvm::SetVector<mlir::Operation *>> deps;
+  // Body ops each one depends on through SSA values, and how many use each.
+  static void dependences(mlir::Block *body,
+                          llvm::ArrayRef<mlir::Operation *> ops, Deps &deps,
+                          llvm::DenseMap<mlir::Operation *, unsigned> &users) {
     for (mlir::Operation *op : ops) {
       op->walk([&](mlir::Operation *nested) {
         for (mlir::Value v : nested->getOperands()) {
@@ -219,13 +214,18 @@ private:
         }
       });
     }
-    llvm::DenseMap<mlir::Operation *, unsigned> users;
     for (auto &entry : deps)
       for (mlir::Operation *dep : entry.second)
         ++users[dep];
+  }
 
-    // Pack store trees into parts.
-    llvm::DenseMap<mlir::Operation *, unsigned> part;
+  // Store trees packed into parts in program order while they fit; a tree
+  // that alone needs too many DPUs is cut at its operations.
+  mlir::LogicalResult
+  pack(llvm::ArrayRef<mlir::Operation *> ops, Deps &deps,
+       const llvm::DenseMap<mlir::Operation *, unsigned> &users,
+       const llvm::DenseMap<mlir::Operation *, unsigned> &order,
+       llvm::DenseMap<mlir::Operation *, unsigned> &part, unsigned &parts) {
     unsigned current = 0, used = 0;
     for (mlir::Operation *sink : ops) {
       if (is_copyable(sink) || users.lookup(sink))
@@ -241,7 +241,7 @@ private:
       }
       auto members = tree.takeVector();
       llvm::sort(members, [&](mlir::Operation *a, mlir::Operation *b) {
-        return order[a] < order[b];
+        return order.lookup(a) < order.lookup(b);
       });
       unsigned need = 0;
       for (mlir::Operation *op : members)
@@ -263,7 +263,137 @@ private:
         used += n;
       }
     }
-    unsigned parts = current + 1;
+    parts = current + 1;
+    return mlir::success();
+  }
+
+  // A loop inside a nest that needs more DPUs than the fabric has: its body
+  // is packed into groups that take turns on the DPUs every pass (the DPU
+  // switches config registers between them). A value one group passes to a
+  // later one goes through an RF word. Groups are marked `dpu_share` =
+  // [loop, group], which binding lets share a DPU.
+  mlir::LogicalResult share(mlir::ModuleOp module,
+                            mlir::affine::AffineForOp loop) {
+    auto chain = loop_chain(loop);
+    mlir::Block *body = chain.back().getBody();
+    llvm::SmallVector<mlir::Operation *> ops;
+    for (mlir::Operation &op : body->without_terminator())
+      ops.push_back(&op);
+    for (mlir::Operation *op : ops)
+      if (count_dpu_modes(op) > dpus_)
+        if (auto inner = llvm::dyn_cast<mlir::affine::AffineForOp>(op))
+          return share(module, inner);
+
+    llvm::DenseMap<mlir::Operation *, unsigned> order;
+    for (auto [i, op] : llvm::enumerate(ops))
+      order[op] = i;
+    Deps deps;
+    llvm::DenseMap<mlir::Operation *, unsigned> users;
+    dependences(body, ops, deps, users);
+    llvm::DenseMap<mlir::Operation *, unsigned> part;
+    unsigned parts;
+    if (mlir::failed(pack(ops, deps, users, order, part, parts)))
+      return mlir::failure();
+    if (parts < 2)
+      return loop.emitError("fission-loops: needs ")
+             << count_dpu_modes(loop) << " DPUs but cannot be shared";
+
+    mlir::MLIRContext *ctx = module.getContext();
+    mlir::OpBuilder builder(ctx);
+    auto tag = mlir::FlatSymbolRefAttr::get(ctx, fresh_id("dpu_share"));
+    unsigned need = 0;
+    llvm::DenseMap<unsigned, unsigned> per_group;
+    for (mlir::Operation *op : ops) {
+      if (!part.count(op))
+        continue;
+      auto group = mlir::ArrayAttr::get(
+          ctx, {tag, builder.getI32IntegerAttr(part[op])});
+      op->walk([&](mlir::Operation *nested) {
+        if (is_dpu_mode(nested))
+          nested->setAttr("dpu_share", group);
+      });
+      need = std::max(need, per_group[part[op]] += count_dpu_modes(op));
+    }
+
+    // Values crossing to a later group: one RF word, written after the
+    // producer, read before the first user of each later group.
+    for (mlir::Operation *op : ops) {
+      if (is_copyable(op) || !part.count(op))
+        continue;
+      for (mlir::Value result : op->getResults()) {
+        llvm::MapVector<unsigned, mlir::Operation *> first;
+        for (mlir::Operation *user : result.getUsers()) {
+          mlir::Operation *at = ancestor_in(body, user);
+          if (!at)
+            return user->emitError("fission-loops: uses a value of a shared "
+                                   "loop outside of it");
+          unsigned k = part.lookup(at);
+          if (k == part[op])
+            continue;
+          if (k < part[op])
+            return user->emitError("fission-loops: internal error, a group "
+                                   "uses a value of a later one");
+          auto [it, fresh] = first.insert({k, at});
+          if (!fresh && order[at] < order[it->second])
+            it->second = at;
+        }
+        if (first.empty())
+          continue;
+        builder.setInsertionPoint(
+            (*module.getOps<pasm::EpochOp>().begin()).getOperation());
+        auto alloc = mlir::memref::AllocOp::create(
+            builder, op->getLoc(), mlir::MemRefType::get({1}, result.getType()));
+        std::string name = fresh_id("share_" + std::to_string(buffers_++));
+        alloc->setAttr("id", mlir::FlatSymbolRefAttr::get(ctx, name));
+        auto zero = mlir::AffineMap::get(0, 0, mlir::getAffineConstantExpr(0, ctx));
+        builder.setInsertionPointAfter(op);
+        auto store = mlir::affine::AffineStoreOp::create(
+            builder, op->getLoc(), result, alloc, zero, mlir::ValueRange{});
+        store->setAttr("id", mlir::FlatSymbolRefAttr::get(ctx, fresh_id(name + "_w")));
+        new_accesses_.push_back(store);
+        for (auto [k, at] : first) {
+          builder.setInsertionPoint(at);
+          auto load = mlir::affine::AffineLoadOp::create(
+              builder, op->getLoc(), alloc, zero, mlir::ValueRange{});
+          load->setAttr("id", mlir::FlatSymbolRefAttr::get(ctx, fresh_id(name + "_r")));
+          new_accesses_.push_back(load);
+          result.replaceUsesWithIf(load, [&, k = k](mlir::OpOperand &use) {
+            mlir::Operation *u = ancestor_in(body, use.getOwner());
+            return u && part.lookup(u) == k && use.getOwner() != store;
+          });
+        }
+      }
+    }
+    loop->setAttr("dpu_shared", builder.getI32IntegerAttr(need));
+    return mlir::success();
+  }
+
+  mlir::LogicalResult split(mlir::ModuleOp module,
+                            mlir::affine::AffineForOp nest) {
+    auto epoch = llvm::cast<pasm::EpochOp>(nest->getParentOp());
+    auto chain = loop_chain(nest);
+    mlir::Block *body = chain.back().getBody();
+    llvm::SmallVector<mlir::Operation *> ops;
+    for (mlir::Operation &op : body->without_terminator())
+      ops.push_back(&op);
+    llvm::DenseMap<mlir::Operation *, unsigned> order;
+    for (auto [i, op] : llvm::enumerate(ops))
+      order[op] = i;
+
+    Deps deps;
+    llvm::DenseMap<mlir::Operation *, unsigned> users;
+    dependences(body, ops, deps, users);
+
+    // A loop in the body that alone needs too many DPUs shares them instead.
+    for (mlir::Operation *op : ops)
+      if (count_dpu_modes(op) > dpus_)
+        if (auto loop = llvm::dyn_cast<mlir::affine::AffineForOp>(op))
+          return share(module, loop);
+
+    llvm::DenseMap<mlir::Operation *, unsigned> part;
+    unsigned parts;
+    if (mlir::failed(pack(ops, deps, users, order, part, parts)))
+      return mlir::failure();
     if (parts < 2)
       return nest.emitError("fission-loops: needs ")
              << count_dpu_modes(nest) << " DPUs but cannot be split";

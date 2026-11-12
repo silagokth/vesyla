@@ -211,6 +211,12 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
       }
     }
   }
+  // Groups of one shared loop take turns on a DPU (FissionLoopsPass).
+  auto take_turns = [](mlir::Operation *a, mlir::Operation *b) {
+    auto ga = a->getAttrOfType<mlir::ArrayAttr>("dpu_share");
+    auto gb = b->getAttrOfType<mlir::ArrayAttr>("dpu_share");
+    return ga && gb && ga[0] == gb[0] && ga[1] != gb[1];
+  };
   auto nested = [](mlir::Operation *a, mlir::Operation *b) {
     auto la = a->getParentOfType<mlir::affine::AffineForOp>();
     auto lb = b->getParentOfType<mlir::affine::AffineForOp>();
@@ -234,6 +240,7 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
     for (unsigned a = 0; a < here.size(); ++a) {
       for (unsigned b = a + 1; b < here.size(); ++b) {
         if (here[a].first != here[b].first &&
+            !take_turns(here[a].second, here[b].second) &&
             (!short_of(here[a].first) ||
              nested(here[a].second, here[b].second))) {
           graph.add_edge(here[a].first, here[b].first,
