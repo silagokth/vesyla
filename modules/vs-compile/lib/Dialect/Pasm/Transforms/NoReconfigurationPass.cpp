@@ -1230,6 +1230,28 @@ private:
       }
       versions.back().entries[key.dump()] = fields;
       versions.back().written.insert(key.dump());
+      // A route send gives each direction in its mask this slot as the one
+      // sender, as the swb does: other slots stop sending there.
+      if (rule->table == "route" && fields.value("sr", 1) == 0) {
+        uint64_t mask = fields.value("target", uint64_t{0});
+        int64_t source = fields.value("source", int64_t{-1});
+        auto &entries = versions.back().entries;
+        for (auto it = entries.begin(); it != entries.end();) {
+          nlohmann::json &other = it->second;
+          if (other.value("sr", 1) != 0 ||
+              other.value("source", int64_t{-1}) == source) {
+            ++it;
+            continue;
+          }
+          uint64_t left = other.value("target", uint64_t{0}) & ~mask;
+          if (left == 0) {
+            it = entries.erase(it);
+            continue;
+          }
+          other["target"] = left;
+          ++it;
+        }
+      }
       return mlir::success();
     }
 
