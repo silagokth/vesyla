@@ -839,6 +839,9 @@ public:
           for (const auto &level : config["or"]) {
             fit_level(level);
           }
+          for (const auto &level : config["rl"]) {
+            fit_level(level);
+          }
           for (const auto &transition : config["mt"]) {
             trans_width = std::max(
                 trans_width, bit_length(transition["delay"].get<uint64_t>()));
@@ -872,6 +875,10 @@ public:
           parameters[name] = need;
         }
       };
+      // The options the allocation needed (it grows NUM_OPTIONS tables).
+      for (const auto &[name, table] : confs[i].tables) {
+        grow("NUM_OPTIONS", table.slots.size(), false);
+      }
       set("REP_ITER_WIDTH", iter_width);
       set("REP_DELAY_WIDTH", delay_width);
       set("TRANS_DELAY_WIDTH", trans_width);
@@ -1337,7 +1344,18 @@ private:
           return b;
         }
       }
-      return std::nullopt;
+      // A table sized by NUM_OPTIONS (the swb) gets the options it needs:
+      // without reconfiguration every version has to stay in hardware.
+      if (!resource.parameters.contains("NUM_OPTIONS")) {
+        return std::nullopt;
+      }
+      uint64_t b = table.slots.size();
+      table.slots.resize(b + span + 1);
+      table.num_options = static_cast<int>(table.slots.size());
+      for (const auto &[addr, entries] : reads) {
+        table.slots[b + addr] = entries;
+      }
+      return b;
     };
 
     for (OptionUse &use : table.uses) {
