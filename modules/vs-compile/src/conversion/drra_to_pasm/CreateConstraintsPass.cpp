@@ -649,11 +649,26 @@ pasm::AnchorRangeAttr build_last_anchor(mlir::MLIRContext *ctx,
   return make_ir_anchor(ctx, id, idx, idx);
 }
 
-// Evt rops feeding `op`, through rops without an evt.
+// Evt rops feeding `op`, through rops without an evt and through the values
+// loops yield.
 void evt_producers(mlir::Operation *op,
                    llvm::SmallVectorImpl<mlir::Operation *> &out,
                    std::set<mlir::Operation *> &seen) {
   for (mlir::Value v : op->getOperands()) {
+    if (auto loop = v.getDefiningOp<mlir::affine::AffineForOp>()) {
+      if (!seen.insert(loop.getOperation()).second) {
+        continue;
+      }
+      mlir::Value yielded = loop.getBody()->getTerminator()->getOperand(
+          llvm::cast<mlir::OpResult>(v).getResultNumber());
+      auto p = yielded.getDefiningOp<vesyla::drra::RopOp>();
+      if (p && p.getEvtAttr()) {
+        out.push_back(p);
+      } else if (p && seen.insert(p).second) {
+        evt_producers(p, out, seen);
+      }
+      continue;
+    }
     auto p = v.getDefiningOp<vesyla::drra::RopOp>();
     if (!p || !seen.insert(p).second) {
       continue;
@@ -1172,15 +1187,16 @@ public:
         // that starts, so the search above can come back empty, and the config
         // is then free to land after the data has gone by. The events that
         // produce its operands are its first uses.
+        // Producers without an evt (another DPU mode, a loop's result) are
+        // followed back to the events that feed them.
         auto cfg_rop = mlir::dyn_cast<vesyla::drra::RopOp>(cfg);
         if (cfg_rop && !cfg_rop.getEvtAttr()) {
-          for (mlir::Value operand : cfg->getOperands()) {
-            auto producer = mlir::dyn_cast_or_null<vesyla::drra::RopOp>(
-                operand.getDefiningOp());
-            if (producer && producer.getEvtAttr() &&
-                seen.insert(producer.getOperation()).second) {
-              first_uses.push_back(
-                  {producer.getOperation(), "config-before-operand"});
+          llvm::SmallVector<mlir::Operation *> producers;
+          std::set<mlir::Operation *> walked;
+          evt_producers(cfg, producers, walked);
+          for (mlir::Operation *producer : producers) {
+            if (seen.insert(producer).second) {
+              first_uses.push_back({producer, "config-before-operand"});
             }
           }
         }
