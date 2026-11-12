@@ -104,7 +104,7 @@ static bool leads(llvm::ArrayRef<mlir::Attribute> a,
 
 // A part that switches options replays them per pass of its loops. A transfer
 // over fewer of them runs before or after the deeper loops, so in one pass of
-// them (pinned_passes).
+// them (pinned_passes); one over more holds its option across the extra ones.
 static mlir::LogicalResult check_part_trips(const InterconnectBinding &binding,
                                             const BindingPart &part,
                                             mlir::Operation *report) {
@@ -113,8 +113,10 @@ static mlir::LogicalResult check_part_trips(const InterconnectBinding &binding,
   }
   for (std::size_t j = part.begin; j < part.end; ++j) {
     for (const Anchor &a : binding.step_first[j]) {
+      // A deeper transfer holds its step's option across its own loops.
       if (part.siblings ? !leads(part.loops, a.loops)
-                        : !leads(a.loops, part.loops)) {
+                        : !leads(a.loops, part.loops) &&
+                              !leads(part.loops, a.loops)) {
         return report->emitError("interconnect: transfers sharing a route "
                                  "repeat over different loops; not supported");
       }
@@ -708,30 +710,33 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
         break;
       }
     }
-    for (std::size_t i = 0; pick == free_set.size() && i < free_set.size();
-         ++i) {
-      if (free_set[i].id != 0 && part_trips &&
-          same_nest(free_set[i].anchor.loops, part_loops)) {
-        pick = i;
-      }
-    }
-    // Otherwise the part that runs next: the earliest transfer in program
-    // order, not one that is merely free (an io read waits on nothing).
-    for (std::size_t i = 0; pick == free_set.size() && i < free_set.size();
-         ++i) {
-      const Node &n = free_set[i];
-      if (n.id == 0 || n.kind != NodeKind::First || n.anchor.pos < 0) {
-        continue;
-      }
-      std::size_t best = i;
-      for (std::size_t k = i + 1; k < free_set.size(); ++k) {
-        const Node &m = free_set[k];
-        if (m.id != 0 && m.kind == NodeKind::First && m.anchor.pos >= 0 &&
-            m.anchor.pos < free_set[best].anchor.pos) {
-          best = k;
+    // Then a First of the current part, else of the part that runs next; the
+    // earliest in program order, not one that is merely free (an io read
+    // waits on nothing).
+    auto earliest = [&](auto &&eligible) {
+      std::size_t best = free_set.size();
+      for (std::size_t i = 0; i < free_set.size(); ++i) {
+        const Node &n = free_set[i];
+        if (n.id == 0 || !eligible(n)) {
+          continue;
+        }
+        if (best == free_set.size() ||
+            (n.anchor.pos >= 0 &&
+             (free_set[best].anchor.pos < 0 ||
+              n.anchor.pos < free_set[best].anchor.pos))) {
+          best = i;
         }
       }
-      pick = best;
+      return best;
+    };
+    if (pick == free_set.size() && part_trips) {
+      pick = earliest([&](const Node &n) {
+        return same_nest(n.anchor.loops, part_loops);
+      });
+    }
+    if (pick == free_set.size()) {
+      pick = earliest(
+          [](const Node &n) { return n.kind == NodeKind::First && n.anchor.pos >= 0; });
     }
     if (pick == free_set.size()) {
       pick = 0;
@@ -869,17 +874,43 @@ bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
   if (!parts.empty()) {
     parts.back().end = binding.sequence.size();
   }
-  // A part repeats over the loops of its deepest transfer.
+  // A part repeats over the deepest loops holding transfers of two of its
+  // steps; a step alone in deeper loops (a stream inside the loop the steps
+  // take turns in) keeps its option across them.
   bool mixed = false;
   for (BindingPart &p : parts) {
-    for (std::size_t j = p.begin; j < p.end && !p.siblings; ++j) {
+    if (p.siblings) {
+      continue;
+    }
+    std::vector<std::size_t> depth; // per step, its deepest transfer
+    const Anchor *deepest = nullptr;
+    for (std::size_t j = p.begin; j < p.end; ++j) {
+      std::size_t d = 0;
       for (const Anchor &a : binding.step_first[j]) {
-        if (a.loops.size() > p.loops.size()) {
-          p.loops = a.loops;
-          p.trips = own_trips(a);
+        d = std::max(d, a.loops.size());
+        if (!deepest || a.loops.size() > deepest->loops.size()) {
+          deepest = &a;
         }
       }
+      depth.push_back(d);
     }
+    if (!deepest) {
+      continue;
+    }
+    std::size_t d = deepest->loops.size();
+    if (depth.size() > 1) {
+      std::sort(depth.begin(), depth.end(), std::greater<>());
+      d = depth[1];
+    } else if (d <= p.loops.size()) {
+      continue;
+    }
+    std::vector<uint32_t> trips = own_trips(*deepest);
+    p.loops.assign(deepest->loops.begin(),
+                   deepest->loops.begin() + std::min(d, deepest->loops.size()));
+    p.trips.assign(trips.begin(),
+                   trips.begin() + std::min(d, trips.size()));
+  }
+  for (BindingPart &p : parts) {
     for (std::size_t j = p.begin; j < p.end; ++j) {
       for (const Anchor &a : binding.step_first[j]) {
         mixed |= p.end - p.begin > 1 && a.loops != p.loops;
@@ -1075,6 +1106,17 @@ static mlir::LogicalResult emit_stride(llvm::ArrayRef<int> steps, RopOp rop,
   return mlir::success();
 }
 
+// One part that switches options every pass: each step its own evt and
+// trans, so the switches need not be evenly spaced, and the pass reps after
+// the trans replay the whole sequence.
+static bool steps_as_transitions(const InterconnectBinding &binding) {
+  if (binding.parts.size() != 1) {
+    return false;
+  }
+  const BindingPart &p = binding.parts.front();
+  return p.end - p.begin > 1 && !p.trips.empty() && !p.siblings;
+}
+
 mlir::LogicalResult
 emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
                            mlir::OpBuilder &builder) {
@@ -1120,6 +1162,38 @@ emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
     }
     spans.push_back(
         {p.begin, p.end, p.trips, delay_name + "_part" + std::to_string(s)});
+  }
+
+  if (steps_as_transitions(binding)) {
+    const Span &span = spans.front();
+    if (mlir::failed(check_part_trips(binding, binding.parts.front(), rop))) {
+      return mlir::failure();
+    }
+    if (binding.sequence.front() != 0) {
+      return rop->emitError("interconnect: the first route option is not "
+                            "option 0");
+    }
+    for (std::size_t j = 1; j < n; ++j) {
+      add_instr(builder, loc, "evt",
+                {{"port", builder.getI32IntegerAttr(port)},
+                 {"init_addr", builder.getI32IntegerAttr(binding.sequence[j])}});
+    }
+    for (std::size_t j = 1; j < n; ++j) {
+      add_instr(builder, loc, "trans",
+                {{"delay", builder.getStringAttr(delay_name + "_trans" +
+                                                 std::to_string(j))},
+                 {"port", builder.getI32IntegerAttr(port)}});
+    }
+    for (std::size_t k = span.trips.size(); k-- > 0;) {
+      add_instr(builder, loc, "rep",
+                {{"delay", builder.getStringAttr(span.delay + "_" +
+                                                 std::to_string(k))},
+                 {"iter", builder.getI32IntegerAttr(
+                              static_cast<int32_t>(span.trips[k]))},
+                 {"step", builder.getI32IntegerAttr(0)},
+                 {"port", builder.getI32IntegerAttr(port)}});
+    }
+    return mlir::success();
   }
 
   // One evt plus reps per part, then all trans: the AGU reads a rep after a
@@ -1235,6 +1309,10 @@ static void emit_part_constraints(const InterconnectBinding &binding,
                      llvm::ArrayRef<uint32_t> to) {
     std::size_t p = part_of(j);
     const BindingPart &part = binding.parts[p];
+    if (steps_as_transitions(binding)) {
+      return range(rop_ref, {}, static_cast<uint32_t>(j - part.begin),
+                   first_pass(part.trips), from, to, none);
+    }
     std::vector<uint32_t> tail;
     if (part.end - part.begin > 1) {
       tail.push_back(static_cast<uint32_t>(j - part.begin));
