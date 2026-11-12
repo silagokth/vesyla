@@ -272,7 +272,7 @@ int main(int argc, char **argv) {
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
                 "[--config FILE] [--output DIR] [--allow-unsafe] "
-                "[--no-reconfiguration] [-d|--debug]";
+                "[--no-reconfiguration] [--double-buffer] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
                 "[--config FILE] [--output DIR]";
@@ -298,6 +298,7 @@ int main(int argc, char **argv) {
   // controllers only issue the activations and whose resources hardcode the
   // rest of the program.
   bool no_reconfiguration = args.flag("no-reconfiguration");
+  bool double_buffer = args.flag("double-buffer");
 
   if (arch_file.empty() || isa_file.empty()) {
     LOG_FATAL << "Required arguments missing, see --help for usage.";
@@ -365,7 +366,15 @@ int main(int argc, char **argv) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
     LOG_INFO << "Running mlir mode";
+    vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__",
+                                  double_buffer ? "1" : "0");
     module = run_mlir_mode(mlir_file, output_dir, context);
+    // Double buffering needs RF rows the fabric may not have.
+    if (!module && double_buffer) {
+      LOG_WARNING << "Double buffering does not fit; compiling without it.";
+      vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__", "0");
+      module = run_mlir_mode(mlir_file, output_dir, context);
+    }
   } else {
     LOG_INFO << "Running pasm mode";
     module = run_pasm_mode(pasm_file, context);

@@ -1,4 +1,6 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
@@ -14,6 +16,7 @@
 #include "StageIoPass.hpp"
 #include "IoAccess.hpp"
 #include "conversion/select_instructions/NativeHelpers.hpp"
+#include "vesyla/Support/GlobalVar.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -629,6 +632,66 @@ llvm::SmallVector<IoAccess> staged_accesses(mlir::ModuleOp module) {
   return accesses;
 }
 
+// vs-compile --double-buffer.
+bool double_buffer() {
+  std::string v;
+  return vesyla::util::GlobalVar::gets("__DOUBLE_BUFFER__", v) && v == "1";
+}
+
+// Double buffering: a loop whose every pass fetches rows for a loop inside
+// it is unrolled by 2, so the two copies stage into separate buffers and the
+// fetch of one can run during the other's loop. Even trip counts only.
+mlir::LogicalResult unroll_for_double_buffering(mlir::ModuleOp module) {
+  llvm::SetVector<AffineForOp> loops;
+  for (const IoAccess &access : collect_io_accesses(module)) {
+    if (access.write) {
+      continue;
+    }
+    AffineForOp innermost;
+    for (AffineForOp loop : loops_of(access, access.row())) {
+      if (!innermost || innermost->isProperAncestor(loop)) {
+        innermost = loop;
+      }
+    }
+    int64_t upper;
+    if (innermost && access.op->getParentOfType<AffineForOp>() != innermost &&
+        is_constant_loop(innermost, upper) && upper >= 2 && upper % 2 == 0) {
+      loops.insert(innermost);
+    }
+  }
+  for (AffineForOp loop : loops) {
+    if (mlir::failed(mlir::affine::loopUnrollByFactor(loop, 2)) ||
+        mlir::failed(mlir::affine::normalizeAffineFor(loop))) {
+      return loop.emitError("stage-io: cannot unroll for double buffering");
+    }
+    // The counter arithmetic the two steps leave goes into the accesses.
+    llvm::SmallVector<mlir::Operation *> accesses;
+    llvm::SmallVector<mlir::Operation *> applies;
+    loop.walk([&](mlir::Operation *op) {
+      if (llvm::isa<mlir::affine::AffineLoadOp, mlir::affine::AffineStoreOp,
+                    mlir::affine::AffineVectorLoadOp,
+                    mlir::affine::AffineVectorStoreOp>(op)) {
+        accesses.push_back(op);
+      } else if (llvm::isa<mlir::affine::AffineApplyOp>(op)) {
+        applies.push_back(op);
+      }
+    });
+    for (mlir::Operation *op : accesses) {
+      AffineMap map = access_map(op);
+      llvm::SmallVector<mlir::Value> operands = access_operands(op);
+      mlir::affine::fullyComposeAffineMapAndOperands(&map, &operands);
+      mlir::affine::canonicalizeMapAndOperands(&map, &operands);
+      rebuild_access(op, map, operands);
+    }
+    for (mlir::Operation *apply : llvm::reverse(applies)) {
+      if (apply->use_empty()) {
+        apply->erase();
+      }
+    }
+  }
+  return mlir::success();
+}
+
 class StageIoPass : public impl::StageIoPassBase<StageIoPass> {
 public:
   using impl::StageIoPassBase<StageIoPass>::StageIoPassBase;
@@ -637,7 +700,15 @@ public:
     mlir::ModuleOp module = getOperation();
     mlir::MLIRContext *ctx = &getContext();
 
-    mark_word_reads(module);
+    // Double buffering reads rows into RFs; word reads would keep the io's
+    // read port busy during the loop the fetches should overlap.
+    if (double_buffer()) {
+      if (mlir::failed(unroll_for_double_buffering(module))) {
+        return signalPassFailure();
+      }
+    } else {
+      mark_word_reads(module);
+    }
 
     // Strip-mine (or fold) until no access picks its row and word out of one
     // counter. Each change rebuilds accesses, so collect afresh after it.

@@ -26,6 +26,11 @@ def StageIoPass : Pass<"stage-io-pass", "::mlir::ModuleOp"> {
     word by word (its input_word port). The io has one word port, so per
     block only the first such read; the others are staged.
 
+    With vs-compile --double-buffer there are no word reads; a loop whose
+    passes fetch rows for a loop inside it (even trip count) is unrolled by 2,
+    so the copies stage into separate buffers and a fetch can overlap the
+    other copy's loop.
+
     A loop whose counter `x` picks the row as `x floordiv 16` and the word as
     `x mod 16` (a matrix row spanning several io rows, as in mvm) is first
     strip-mined into a loop over rows and a loop over the 16 words, so the row

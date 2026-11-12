@@ -365,6 +365,7 @@ add_mlir_library(
   MLIRIR
   MLIRPass
   MLIRAffineDialect
+  MLIRAffineUtils
   MLIRMemRefDialect
   MLIRVectorDialect
   VesylaSelectInstr)
