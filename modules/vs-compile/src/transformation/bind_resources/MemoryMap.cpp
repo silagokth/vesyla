@@ -105,12 +105,13 @@ enclosing_loops(mlir::Operation *op) {
   return loops;
 }
 
-// Mark the words the write `op` covers over all iterations of its loops, the
-// outermost `fixed` of them held at their first pass. False when it cannot
-// tell: loops without constant bounds, a map whose dims are not the enclosing
-// loops, or more iterations than are worth walking.
+// Mark the words the access `op` covers over all iterations of its loops, the
+// outermost `fixed` of them held at their first pass; of a bulk, only the
+// words in `mask`. False when it cannot tell: loops without constant bounds, a
+// map whose dims are not the enclosing loops, or more iterations than are
+// worth walking.
 bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written,
-                  unsigned fixed = 0) {
+                  unsigned fixed = 0, int64_t mask = -1) {
   llvm::SmallVector<mlir::affine::AffineForOp> loops = enclosing_loops(op);
   for (mlir::affine::AffineForOp loop : loops) {
     if (!loop.hasConstantBounds()) {
@@ -119,11 +120,11 @@ bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written,
   }
 
   int64_t width = 1;
-  if (op->getNumOperands() > 0) {
-    if (auto vector =
-            mlir::dyn_cast<mlir::VectorType>(op->getOperand(0).getType())) {
-      width = vector.getNumElements();
-    }
+  mlir::Type value = op->getNumResults() > 0 ? op->getResult(0).getType()
+                     : op->getNumOperands() > 0 ? op->getOperand(0).getType()
+                                                : mlir::Type();
+  if (auto vector = mlir::dyn_cast_or_null<mlir::VectorType>(value)) {
+    width = vector.getNumElements();
   }
   mlir::AffineMap map;
   if (auto attr = op->getAttrOfType<mlir::AffineMapAttr>("map")) {
@@ -151,7 +152,9 @@ bool mark_written(mlir::Operation *op, llvm::MutableArrayRef<bool> written,
            word < (*address + 1) * width && word >= 0 &&
            word < static_cast<int64_t>(written.size());
            ++word) {
-        written[word] = true;
+        if (width == 1 || (mask >> (word - *address * width)) & 1) {
+          written[word] = true;
+        }
       }
       return true;
     }
@@ -185,6 +188,16 @@ common_block_ancestors(mlir::Operation *a, mlir::Operation *b) {
   return {nullptr, nullptr};
 }
 
+// The words of a read's bulk that matter: those the io write it feeds stores.
+int64_t read_mask(mlir::Operation *read) {
+  if (read->getNumResults() != 1 || !read->getResult(0).hasOneUse()) {
+    return -1;
+  }
+  auto mask = (*read->getResult(0).getUsers().begin())
+                  ->getAttrOfType<mlir::IntegerAttr>("wr_mask");
+  return mask ? mask.getInt() : -1;
+}
+
 // Whether `a` runs before `b` in program order.
 bool precedes(mlir::Operation *a, mlir::Operation *b) {
   auto [aa, bb] = common_block_ancestors(a, b);
@@ -215,7 +228,7 @@ Interval storage_lifetime(const ConflictGraph &graph, unsigned node,
     return {0, points.last()};
   }
   // Held from its first write only if the writes before its first read cover
-  // every word; otherwise the read sees reset values. A write at the point of
+  // every word that is read; otherwise the read sees reset values. A write at the point of
   // the first read counts when it precedes the read in program order, over
   // the first pass of the loops the two share: the read's first pass sees
   // only that much of it.
@@ -245,7 +258,18 @@ Interval storage_lifetime(const ConflictGraph &graph, unsigned node,
         covered = false;
       }
     }
-    covered = covered && llvm::all_of(written, [](bool word) { return word; });
+    // Words no read uses need no write. Unknown: every word is read.
+    llvm::SmallVector<bool> read_words(written.size(), false);
+    for (mlir::Operation *op : graph.ops(node)) {
+      if (op->getNumResults() > 0 &&
+          !mark_written(op, read_words, 0, read_mask(op))) {
+        read_words.assign(written.size(), true);
+        break;
+      }
+    }
+    for (auto [w, r] : llvm::zip(written, read_words)) {
+      covered = covered && (w || !r);
+    }
   }
   Interval live;
   live.first = covered ? *first_write : 0;
