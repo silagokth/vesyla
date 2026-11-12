@@ -327,6 +327,9 @@ private:
           if (!at)
             return user->emitError("fission-loops: uses a value of a shared "
                                    "loop outside of it");
+          // A yielded value is the loop's carry, kept by its own group.
+          if (at == body->getTerminator())
+            continue;
           unsigned k = part.lookup(at);
           if (k == part[op])
             continue;
@@ -426,6 +429,24 @@ private:
         }
     }
 
+    // A carried value belongs to the part that computes it; the other copies
+    // of the loop do without it.
+    auto inner = chain.back();
+    unsigned carries = inner.getNumIterOperands();
+    llvm::SmallVector<unsigned> owner(carries, 0);
+    if (carries) {
+      if (inner != nest)
+        return inner.emitError("fission-loops: a split loop inside a perfect "
+                               "nest carries a value; not supported");
+      mlir::Operation *yield = body->getTerminator();
+      for (unsigned i = 0; i < carries; ++i) {
+        mlir::Operation *def = yield->getOperand(i).getDefiningOp();
+        mlir::Operation *at = def ? ancestor_in(body, def) : nullptr;
+        if (at && part.count(at))
+          owner[i] = part[at];
+      }
+    }
+
     // Values that cross from one part to a later one.
     struct Crossing {
       mlir::Value value;
@@ -442,6 +463,8 @@ private:
           if (!at)
             return user->emitError("fission-loops: uses a value of a split "
                                    "loop outside of it");
+          if (at == body->getTerminator())
+            continue;
           if (part[at] < part[op])
             return user->emitError("fission-loops: internal error, a part uses "
                                    "a value of a later one");
@@ -538,6 +561,21 @@ private:
       }
     }
 
+    // Outside, the loop's carried results come from the copy that keeps them;
+    // the others yield their carry unchanged until rebuilt without it below.
+    for (unsigned i = 0; i < carries; ++i) {
+      auto keeper = llvm::cast<mlir::affine::AffineForOp>(nests[owner[i]]);
+      if (owner[i] != 0)
+        nest->getResult(i).replaceAllUsesWith(keeper.getResult(i));
+      for (unsigned k = 0; k < parts; ++k) {
+        if (k == owner[i])
+          continue;
+        auto copy = llvm::cast<mlir::affine::AffineForOp>(nests[k]);
+        copy.getBody()->getTerminator()->setOperand(
+            i, copy.getRegionIterArgs()[i]);
+      }
+    }
+
     // Each copy keeps its part and what it reads.
     for (unsigned k = 0; k < parts; ++k) {
       for (mlir::Operation *op : llvm::reverse(ops)) {
@@ -566,11 +604,66 @@ private:
       }
     }
 
+    // Copies that keep no carry are rebuilt without it.
+    for (unsigned k = 0; k < parts && carries; ++k) {
+      auto copy = llvm::cast<mlir::affine::AffineForOp>(nests[k]);
+      llvm::SmallVector<unsigned> kept;
+      for (unsigned i = 0; i < carries; ++i)
+        if (owner[i] == k)
+          kept.push_back(i);
+      if (kept.size() == carries)
+        continue;
+      llvm::SmallVector<mlir::Value> inits;
+      for (unsigned i : kept)
+        inits.push_back(copy.getInits()[i]);
+      builder.setInsertionPoint(copy);
+      auto rebuilt = mlir::affine::AffineForOp::create(
+          builder, copy.getLoc(), copy.getConstantLowerBound(),
+          copy.getConstantUpperBound(), copy.getStepAsInt(), inits);
+      rebuilt->setDiscardableAttrs(copy->getDiscardableAttrDictionary());
+      mlir::Block *from = copy.getBody();
+      mlir::Block *to = rebuilt.getBody();
+      copy.getInductionVar().replaceAllUsesWith(rebuilt.getInductionVar());
+      for (auto [j, i] : llvm::enumerate(kept))
+        copy.getRegionIterArgs()[i].replaceAllUsesWith(
+            rebuilt.getRegionIterArgs()[j]);
+      mlir::Operation *yield = from->getTerminator();
+      llvm::SmallVector<mlir::Value> yielded;
+      for (unsigned i : kept)
+        yielded.push_back(yield->getOperand(i));
+      if (!to->empty())
+        to->back().erase(); // the yield a loop without carries is built with
+      to->getOperations().splice(to->end(), from->getOperations(),
+                                 from->begin(), mlir::Block::iterator(yield));
+      builder.setInsertionPointToEnd(to);
+      mlir::affine::AffineYieldOp::create(builder, yield->getLoc(), yielded);
+      for (auto [j, i] : llvm::enumerate(kept))
+        copy.getResult(i).replaceAllUsesWith(rebuilt.getResult(j));
+      for (mlir::Value r : copy.getResults())
+        if (!r.use_empty())
+          return copy.emitError("fission-loops: internal error, a dropped "
+                                "carry is still used");
+      copy->erase();
+      nests[k] = rebuilt;
+    }
+
+    // A carry's start value (the accumulator clear) goes with its copy, so it
+    // does not hold the DPU across the copies before it.
+    for (unsigned i = 0; i < carries; ++i) {
+      auto keeper = llvm::cast<mlir::affine::AffineForOp>(nests[owner[i]]);
+      unsigned j = llvm::count_if(llvm::seq(0u, i),
+                                  [&](unsigned c) { return owner[c] == owner[i]; });
+      mlir::Operation *init = keeper.getInits()[j].getDefiningOp();
+      if (init && init->getBlock() == keeper->getBlock() &&
+          init->isBeforeInBlock(nests.front()) && init->hasOneUse())
+        init->moveBefore(keeper);
+    }
+
     // Fetches before the nest go before the part of their first reader.
     mlir::Block &top = epoch.getBody().front();
     llvm::SmallVector<mlir::Operation *> before;
     for (mlir::Operation &op : top.without_terminator()) {
-      if (&op == nest.getOperation())
+      if (&op == nests.front())
         break;
       before.push_back(&op);
     }
