@@ -36,6 +36,8 @@ struct ResourceEntry {
   int col;
   int slot;
   std::string kind;
+  // its component category ("memory", ...)
+  std::string category;
   // its parameters in the architecture
   nlohmann::json parameters;
   // cycles from an act to the first address of its AGUs
@@ -43,9 +45,8 @@ struct ResourceEntry {
 };
 
 // Bit widths of the rep fields of one kind of resource, from its ISA. A base
-// rep (ext = 0) carries the lower half of each field and its repx (ext = 1)
-// the upper half, so the upper half starts at this width (agu_controller's
-// DELAY_HI, ITER_HI and STEP_HI).
+// rep (ext = 0) carries the low bits of each field and its ext rep (ext = 1)
+// the bits from this width up (agu_controller).
 struct RepWidths {
   int iter = 0;
   int step = 0;
@@ -57,17 +58,30 @@ struct Level {
   uint64_t iter = 0;
   uint64_t step = 0;
   uint64_t delay = 0;
+  std::map<size_t, uint64_t> lane_steps; // OR level: overrides of step by lane
 };
 
-// Write one rep field: the lower half from a base rep, the upper half from its
-// repx, leaving the other half as it was.
-void write_half(uint64_t &field, uint64_t value, int width, bool ext) {
+// Write one rep field as agu_controller does: a base rep sets the field from
+// its low bits (step: sign-extended, it is signed), an ext rep sets the bits
+// from `width` up, keeping the low ones.
+void write_field(uint64_t &field, uint64_t value, int width, bool ext,
+                 bool is_signed) {
   uint64_t mask = (1ULL << width) - 1;
-  if (ext) {
-    field = (field & mask) | ((value & mask) << width);
-  } else {
-    field = (field & ~mask) | (value & mask);
+  value &= mask;
+  if (is_signed) {
+    uint64_t sign = 1ULL << (width - 1);
+    value = (value ^ sign) - sign;
   }
+  field = ext ? (field & mask) | (value << width) : value;
+}
+
+// Bits needed to hold `value`, at least 1.
+uint64_t bit_length(uint64_t value) {
+  uint64_t bits = 1;
+  while (bits < 64 && (value >> bits) != 0) {
+    bits++;
+  }
+  return bits;
 }
 
 // One configuration of one AGU, the values agu_controller holds when the AGU is
@@ -84,23 +98,65 @@ public:
   explicit AguConfig(RepWidths widths) : widths_(widths) {}
 
   void evt(uint64_t init_addr) {
+    groups_.push_back(lanes_.size());
     lanes_.push_back(Lane{init_addr, {Level{1, 0, 0}}});
     level_ = 0;
+    last_rl_ = false;
   }
 
-  // False when no `evt` has opened a lane of this configuration.
-  bool rep(bool ext, uint64_t iter, uint64_t step, uint64_t delay) {
+  // False when no `evt` has opened a lane of this configuration. A rep with
+  // a lane field sets that lane's step at the last OR level and opens none.
+  bool rep(bool ext, uint64_t iter, uint64_t step, uint64_t delay,
+           uint64_t lane = 0) {
     if (lanes_.empty()) {
       return false;
+    }
+    if (lane != 0 && last_rl_) {
+      // At a range level, the lane is counted from its lo.
+      Range &range = rl_.back();
+      lane += range.lo;
+      auto it = range.level.lane_steps.try_emplace(lane, range.level.step).first;
+      write_field(it->second, step, widths_.step, ext, true);
+      return true;
+    }
+    if (ext && last_rl_) {
+      Level &level = rl_.back().level;
+      write_field(level.iter, iter, widths_.iter, true, false);
+      write_field(level.step, step, widths_.step, true, true);
+      write_field(level.delay, delay, widths_.delay, true, false);
+      return true;
+    }
+    // A base rep on a joined group: a range level over its lanes.
+    if (!ext && lane == 0 && groups_.back() + 1 < lanes_.size()) {
+      Range range;
+      range.lo = groups_.back();
+      range.hi = lanes_.size() - 1;
+      write_field(range.level.iter, iter, widths_.iter, false, false);
+      write_field(range.level.step, step, widths_.step, false, true);
+      write_field(range.level.delay, delay, widths_.delay, false, false);
+      rl_.push_back(range);
+      last_rl_ = true;
+      return true;
+    }
+    if (!ext && lane == 0) {
+      last_rl_ = false;
+    }
+    if (lane != 0) {
+      if (use_or_ && level_ > 0 && level_ - 1 < or_.size()) {
+        Level &level = or_[level_ - 1];
+        auto it = level.lane_steps.try_emplace(lane, level.step).first;
+        write_field(it->second, step, widths_.step, ext, true);
+      }
+      return true;
     }
     std::vector<Level> &levels = use_or_ ? or_ : lanes_.back().ir;
     size_t level = ext ? (level_ == 0 ? 0 : level_ - 1) : level_;
     if (levels.size() <= level) {
       levels.resize(level + 1);
     }
-    write_half(levels[level].iter, iter, widths_.iter, ext);
-    write_half(levels[level].step, step, widths_.step, ext);
-    write_half(levels[level].delay, delay, widths_.delay, ext);
+    write_field(levels[level].iter, iter, widths_.iter, ext, false);
+    write_field(levels[level].step, step, widths_.step, ext, true);
+    write_field(levels[level].delay, delay, widths_.delay, ext, false);
     if (use_or_) {
       or_configured_ = true;
     }
@@ -116,6 +172,16 @@ public:
       return false;
     }
     if (or_configured_) {
+      return true;
+    }
+    // Join the top two groups: the transition into the top group's first lane.
+    if (groups_.size() >= 2) {
+      size_t boundary = groups_.back() - 1;
+      groups_.pop_back();
+      if (mt_.size() <= boundary) {
+        mt_.resize(boundary + 1, 0);
+      }
+      mt_[boundary] = delay;
       return true;
     }
     mt_.push_back(delay);
@@ -151,19 +217,31 @@ public:
     if (lanes_.empty()) {
       all.insert(0);
     }
-    for (const Lane &lane : lanes_) {
-      std::set<uint64_t> addrs = {lane.init_addr};
-      for (const Level &level : lane.ir) {
+    for (size_t l = 0; l < lanes_.size(); l++) {
+      std::set<uint64_t> addrs = {lanes_[l].init_addr};
+      for (const Level &level : lanes_[l].ir) {
         if (!expand(addrs, level)) {
           return std::nullopt;
         }
       }
-      all.insert(addrs.begin(), addrs.end());
-    }
-    for (const Level &level : or_) {
-      if (!expand(all, level)) {
-        return std::nullopt;
+      for (const Range &range : rl_) {
+        if (l < range.lo || l > range.hi) {
+          continue;
+        }
+        Level lane_level = range.level;
+        lane_level.step = step_of(range.level, l);
+        if (!expand(addrs, lane_level)) {
+          return std::nullopt;
+        }
       }
+      for (const Level &level : or_) {
+        Level lane_level = level;
+        lane_level.step = step_of(level, l);
+        if (!expand(addrs, lane_level)) {
+          return std::nullopt;
+        }
+      }
+      all.insert(addrs.begin(), addrs.end());
     }
     for (uint64_t addr : all) {
       if (addr > limit) {
@@ -183,8 +261,15 @@ public:
     for (const Level &level : lanes_.back().ir) {
       addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
     }
+    size_t last = lanes_.size() - 1;
+    for (const Range &range : rl_) {
+      if (last >= range.lo && last <= range.hi) {
+        addr += (std::max<uint64_t>(range.level.iter, 1) - 1) *
+                step_of(range.level, last);
+      }
+    }
     for (const Level &level : or_) {
-      addr += (std::max<uint64_t>(level.iter, 1) - 1) * level.step;
+      addr += (std::max<uint64_t>(level.iter, 1) - 1) * step_of(level, last);
     }
     return addr;
   }
@@ -192,7 +277,7 @@ public:
   nlohmann::json to_json() const {
     auto level_json = [](const Level &level) {
       return nlohmann::json{{"iter", level.iter},
-                            {"step", level.step},
+                            {"step", static_cast<int64_t>(level.step)},
                             {"delay", level.delay}};
     };
     nlohmann::json lanes = nlohmann::json::array();
@@ -209,9 +294,30 @@ public:
     }
     nlohmann::json or_levels = nlohmann::json::array();
     for (const Level &level : or_) {
-      or_levels.push_back(level_json(level));
+      nlohmann::json entry = level_json(level);
+      if (!level.lane_steps.empty()) {
+        nlohmann::json steps = nlohmann::json::array();
+        for (size_t l = 0; l < lanes_.size(); l++) {
+          steps.push_back(static_cast<int64_t>(step_of(level, l)));
+        }
+        entry["lane_steps"] = steps;
+      }
+      or_levels.push_back(entry);
     }
-    return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}};
+    nlohmann::json rl = nlohmann::json::array();
+    for (const Range &range : rl_) {
+      nlohmann::json steps = nlohmann::json::array();
+      for (size_t l = 0; l < lanes_.size(); l++) {
+        bool in = l >= range.lo && l <= range.hi;
+        steps.push_back(in ? static_cast<int64_t>(step_of(range.level, l)) : 0);
+      }
+      rl.push_back({{"iter", range.level.iter},
+                    {"delay", range.level.delay},
+                    {"lo", range.lo},
+                    {"hi", range.hi},
+                    {"lane_steps", steps}});
+    }
+    return {{"lanes", lanes}, {"mt", mt}, {"or", or_levels}, {"rl", rl}};
   }
 
 private:
@@ -219,6 +325,20 @@ private:
     uint64_t init_addr;
     std::vector<Level> ir;
   };
+
+  struct Range {
+    Level level;
+    size_t lo = 0;
+    size_t hi = 0;
+  };
+  std::vector<Range> rl_;            // range levels, innermost first
+  std::vector<size_t> groups_;       // postfix groups: first lane, bottom first
+  bool last_rl_ = false;
+
+  static uint64_t step_of(const Level &level, size_t lane) {
+    auto it = level.lane_steps.find(lane);
+    return it == level.lane_steps.end() ? level.step : it->second;
+  }
 
   RepWidths widths_;
   std::vector<Lane> lanes_;
@@ -229,9 +349,9 @@ private:
   bool or_configured_ = false;
 };
 
-// How a kind of resource addresses its conf entries: a conf writes the entry
-// named by the `key` fields with the `value` fields, as the resource's RTL
-// decodes it. `variant` is the conf variant, empty for a conf without any.
+// How a kind of resource, or every resource of a category, addresses its conf
+// entries: a conf writes the entry named by the `key` fields with the `value`
+// fields, as the resource's RTL decodes it. `variant` is the conf variant, empty for a conf without any.
 //
 // The entries of an option table are grouped into options by the conf's
 // `option` field, and the resource uses the option the AGU of port
@@ -240,13 +360,16 @@ private:
 // switches to an option `select_latency` cycles after the selector presents
 // its address.
 struct ConfRule {
-  const char *kind;
+  const char *kind; // a kind, or a category
   const char *variant;
   const char *table;
   int selector_port;
   int select_latency;
   std::vector<std::string> key;
   std::vector<std::string> value;
+  // the entry changes during the program: hardcoded as the values its confs
+  // set, each from the cycle it takes effect
+  bool timed = false;
 };
 
 const std::vector<ConfRule> &conf_rules() {
@@ -260,9 +383,10 @@ const std::vector<ConfRule> &conf_rules() {
       // send_links / receive_links[source] of route option `option` = target,
       // selected by AGU_ROUTE_INDEX through the registered current_option
       {"swb", "route", "route", 1, 1, {"sr", "source"}, {"target"}},
-      // memory[address] = value
-      {"rf", "", "memory", -1, 0, {"address"}, {"value"}},
-      {"rf_row", "", "memory", -1, 0, {"address"}, {"value"}},
+      // wr_mask, switched at the cycles its confs take effect
+      {"io", "", "wr_mask", -1, 0, {}, {"wr_mask"}, true},
+      // memory[address] = value, for every register file
+      {"memory", "", "memory", -1, 0, {"address"}, {"value"}},
   };
   return rules;
 }
@@ -317,6 +441,8 @@ struct OptionTable {
 struct ResourceConf {
   std::map<std::string, std::pair<InstrOp, nlohmann::json>> fixed;
   std::map<std::string, OptionTable> tables;
+  // the confs of timed entries, with the cycle each issues in
+  std::vector<std::pair<uint64_t, nlohmann::json>> timed;
 };
 
 std::optional<int64_t> int_param(InstrOp instr, llvm::StringRef name) {
@@ -549,7 +675,9 @@ public:
         nlohmann::json parameters =
             resource.value("parameters", nlohmann::json::object());
         resources.push_back({row, col, first_slot,
-                             resource.value("kind", std::string()), parameters,
+                             resource.value("kind", std::string()),
+                             resource.value("category", std::string()),
+                             parameters,
                              parameters.value("AGU_LATENCY", 1)});
       }
     }
@@ -634,6 +762,45 @@ public:
       for (const auto &[key, entry] : confs[i].fixed) {
         conf.push_back(entry.second);
       }
+      // Timed entries: each value from the cycle it takes effect, counted from
+      // the resource's first activation (a conf issued in cycle c is seen from
+      // c + 1, an act in its own cycle). Those in effect by then start at 0.
+      if (!confs[i].timed.empty()) {
+        std::optional<uint64_t> first_act;
+        for (const auto &[cycle, masks] :
+             activations_[{resource.row, resource.col}]) {
+          if (masks.count(resource.slot) && masks.at(resource.slot) != 0) {
+            first_act = cycle;
+            break;
+          }
+        }
+        nlohmann::json timeline = nlohmann::json::array();
+        for (const auto &[cycle, value] : confs[i].timed) {
+          int64_t from = first_act ? static_cast<int64_t>(cycle + 1) -
+                                         static_cast<int64_t>(*first_act)
+                                   : 0;
+          nlohmann::json entry = value;
+          entry["cycle"] = std::max<int64_t>(from, 0);
+          if (!timeline.empty() &&
+              timeline.back()["cycle"] == entry["cycle"]) {
+            timeline.back() = entry;
+          } else {
+            timeline.push_back(entry);
+          }
+          // A value equal to the one before it changes nothing.
+          if (timeline.size() > 1) {
+            nlohmann::json last = timeline.back(), before = timeline[timeline.size() - 2];
+            last.erase("cycle");
+            before.erase("cycle");
+            if (last == before) {
+              timeline.erase(timeline.end() - 1);
+            }
+          }
+        }
+        for (const auto &entry : timeline) {
+          conf.push_back(entry);
+        }
+      }
       // Each option the allocation filled, with the entries of the version
       // it holds, renumbered to that option.
       for (const auto &[name, table] : confs[i].tables) {
@@ -653,9 +820,32 @@ public:
       // those added to switch options, so the sizes SizeAguPass set only grow,
       // and only where the resource has the parameter.
       uint64_t number_ir = 1, number_mt = 0, number_or = 0, agu_used = 0;
+      // The AGU register widths the configurations need.
+      uint64_t iter_width = 1, delay_width = 1, trans_width = 1;
+      auto fit_level = [&](const nlohmann::json &level) {
+        iter_width = std::max(iter_width,
+                              bit_length(level["iter"].get<uint64_t>()));
+        delay_width = std::max(delay_width,
+                               bit_length(level["delay"].get<uint64_t>()));
+      };
       for (const auto &[slot_port, configs] : agu_configs[i]) {
         agu_used |= 1ULL << slot_port.second;
         for (const auto &config : configs) {
+          for (const auto &lane : config["lanes"]) {
+            for (const auto &level : lane["ir"]) {
+              fit_level(level);
+            }
+          }
+          for (const auto &level : config["or"]) {
+            fit_level(level);
+          }
+          for (const auto &level : config["rl"]) {
+            fit_level(level);
+          }
+          for (const auto &transition : config["mt"]) {
+            trans_width = std::max(
+                trans_width, bit_length(transition["delay"].get<uint64_t>()));
+          }
           uint64_t lanes = config["lanes"].size();
           number_mt = std::max<uint64_t>(
               number_mt, std::max<uint64_t>(lanes == 0 ? 0 : lanes - 1,
@@ -678,6 +868,20 @@ public:
       grow("NUMBER_MT", number_mt, false);
       grow("NUMBER_OR", number_or, false);
       grow("AGU_USED", agu_used, true);
+      // The register widths are set to what the program needs, where the
+      // resource has them.
+      auto set = [&](const char *name, uint64_t need) {
+        if (parameters.contains(name)) {
+          parameters[name] = need;
+        }
+      };
+      // The options the allocation needed (it grows NUM_OPTIONS tables).
+      for (const auto &[name, table] : confs[i].tables) {
+        grow("NUM_OPTIONS", table.slots.size(), false);
+      }
+      set("REP_ITER_WIDTH", iter_width);
+      set("REP_DELAY_WIDTH", delay_width);
+      set("TRANS_DELAY_WIDTH", trans_width);
 
       cfg.set_noreconf_resource_fields(
           resource.row, resource.col, resource.slot,
@@ -912,7 +1116,8 @@ private:
         it->second.second.rep(int_param(instr, "ext").value_or(0) != 0,
                               int_param(instr, "iter").value_or(0),
                               int_param(instr, "step").value_or(0),
-                              int_param(instr, "delay").value_or(0));
+                              int_param(instr, "delay").value_or(0),
+                              int_param(instr, "lane").value_or(0));
       } else {
         it->second.second.trans(int_param(instr, "delay").value_or(0));
       }
@@ -935,9 +1140,9 @@ private:
     return mlir::success();
   }
 
-  // Record a conf entry of `resource`. An entry of a kind without options
-  // holds one value for the whole program, so writing it again with a
-  // different value fails. An entry of an option table that is written again
+  // Record a conf entry of `resource`. A timed entry keeps every value with
+  // its cycle. Another entry of a kind without options holds one value for the
+  // whole program, so writing it again with a different value fails. An entry of an option table that is written again
   // with a different value starts a new version of its option instead, which
   // allocate_options later gives an option of its own.
   mlir::LogicalResult
@@ -948,7 +1153,9 @@ private:
     std::string variant = string_param(instr, "variant");
     const ConfRule *rule = nullptr;
     for (const ConfRule &candidate : conf_rules()) {
-      if (resource.kind == candidate.kind && variant == candidate.variant) {
+      if ((resource.kind == candidate.kind ||
+           resource.category == candidate.kind) &&
+          variant == candidate.variant) {
         rule = &candidate;
         break;
       }
@@ -1023,6 +1230,33 @@ private:
       }
       versions.back().entries[key.dump()] = fields;
       versions.back().written.insert(key.dump());
+      // A route send gives each direction in its mask this slot as the one
+      // sender, as the swb does: other slots stop sending there.
+      if (rule->table == "route" && fields.value("sr", 1) == 0) {
+        uint64_t mask = fields.value("target", uint64_t{0});
+        int64_t source = fields.value("source", int64_t{-1});
+        auto &entries = versions.back().entries;
+        for (auto it = entries.begin(); it != entries.end();) {
+          nlohmann::json &other = it->second;
+          if (other.value("sr", 1) != 0 ||
+              other.value("source", int64_t{-1}) == source) {
+            ++it;
+            continue;
+          }
+          uint64_t left = other.value("target", uint64_t{0}) & ~mask;
+          if (left == 0) {
+            it = entries.erase(it);
+            continue;
+          }
+          other["target"] = left;
+          ++it;
+        }
+      }
+      return mlir::success();
+    }
+
+    if (rule->timed) {
+      confs.timed.push_back({cycle, value});
       return mlir::success();
     }
 
@@ -1132,7 +1366,18 @@ private:
           return b;
         }
       }
-      return std::nullopt;
+      // A table sized by NUM_OPTIONS (the swb) gets the options it needs:
+      // without reconfiguration every version has to stay in hardware.
+      if (!resource.parameters.contains("NUM_OPTIONS")) {
+        return std::nullopt;
+      }
+      uint64_t b = table.slots.size();
+      table.slots.resize(b + span + 1);
+      table.num_options = static_cast<int>(table.slots.size());
+      for (const auto &[addr, entries] : reads) {
+        table.slots[b + addr] = entries;
+      }
+      return b;
     };
 
     for (OptionUse &use : table.uses) {

@@ -21,6 +21,9 @@ pub struct Resource {
     pub size: Option<u64>,
     pub io_input: Option<bool>,
     pub io_output: Option<bool>,
+    // What the resource is to the compiler ("memory", ...); the component
+    // schema's `category`. Written out as "uncategorized" when unset.
+    pub category: Option<String>,
     pub component_type: String,
     pub parameters: ParameterList,
     pub required_parameters: Vec<String>,
@@ -42,6 +45,7 @@ impl Resource {
             size,
             io_input: None,
             io_output: None,
+            category: None,
             component_type: "resource".to_string(),
             parameters: ParameterList::new(),
             required_parameters: Vec::new(),
@@ -93,6 +97,9 @@ impl Resource {
         }
         if other.io_output.is_some() {
             self.io_output = other.io_output;
+        }
+        if other.category.is_some() {
+            self.category = other.category.clone();
         }
         if other.isa.is_some() {
             if self.isa.is_none() {
@@ -160,6 +167,10 @@ impl Resource {
         let io_output = json_value.get("io_output");
         if let Some(io_output) = io_output {
             resource.io_output = Some(io_output.as_bool().unwrap());
+        }
+        // Category (optional)
+        if let Some(category) = json_value.get("category") {
+            resource.category = Some(category.as_str().unwrap().to_string());
         }
 
         // Check component type
@@ -281,6 +292,10 @@ impl Resource {
             if (resource_from_pool.io_output.is_some() && self.io_output.is_none()) || overwrite {
                 self.io_output = resource_from_pool.io_output;
             }
+            // check category
+            if (resource_from_pool.category.is_some() && self.category.is_none()) || overwrite {
+                self.category = resource_from_pool.category;
+            }
 
             // get isa from resource_from_pool if is not already defined
             if (resource_from_pool.isa.is_some() && self.isa.is_none()) || overwrite {
@@ -353,11 +368,12 @@ impl Serialize for Resource {
         // - size
         // - io_input
         // - io_output
+        // - category
         // - component_type
         // - custom_properties
         // - required_parameters
 
-        let mut state = serializer.serialize_map(Some(8))?;
+        let mut state = serializer.serialize_map(None)?;
         state.serialize_entry("name", &self.name)?;
         if let Some(fingerprint) = &self.fingerprint {
             state.serialize_entry("fingerprint", fingerprint)?;
@@ -378,6 +394,10 @@ impl Serialize for Resource {
         if let Some(io_output) = self.io_output {
             state.serialize_entry("io_output", &io_output)?;
         }
+        state.serialize_entry(
+            "category",
+            self.category.as_deref().unwrap_or("uncategorized"),
+        )?;
         state.serialize_entry("component_type", &self.component_type)?;
         if !self.parameters.is_empty() {
             state.serialize_entry("parameters", &self.parameters)?;

@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,6 +30,18 @@ bool is_selectable_source(mlir::Operation *op) {
                    mlir::affine::AffineLoadOp, mlir::affine::AffineStoreOp,
                    mlir::affine::AffineVectorLoadOp,
                    mlir::affine::AffineVectorStoreOp>(op);
+}
+
+// A constant stored into a buffer has no resource to stream it: the DPU has no
+// constant mode. Zero is let through, as it was before this check: the buffer
+// then relies on its reset value (Bug Tracker #8, C frontend G10).
+bool stores_nonzero_constant(mlir::affine::AffineWriteOpInterface write) {
+  mlir::Value value = write.getValueToStore();
+  if (!value.getDefiningOp<mlir::arith::ConstantOp>()) {
+    return false;
+  }
+  return !mlir::matchPattern(value, mlir::m_Zero()) &&
+         !mlir::matchPattern(value, mlir::m_AnyZeroFloat());
 }
 
 class SelectInstructionsPass
@@ -60,6 +73,22 @@ public:
     for (const auto &[what, why] : library.skipped()) {
       llvm::errs() << "select-instructions: not matching " << what << " -- "
                    << why << "\n";
+    }
+
+    // Checked before matching: once the tiers run, a zero constant is claimed
+    // as the DPU rst and the store no longer points at it. Every offending
+    // store is reported before failing, so one run shows them all.
+    bool constantStore = false;
+    module.walk([&](mlir::affine::AffineWriteOpInterface write) {
+      if (stores_nonzero_constant(write)) {
+        write->emitError("select-instructions: storing a non-zero constant is "
+                         "not supported -- no resource streams constants (the "
+                         "DPU has no constant mode)");
+        constantStore = true;
+      }
+    });
+    if (constantStore) {
+      return signalPassFailure();
     }
 
     llvm::DenseSet<mlir::Operation *> claimed;

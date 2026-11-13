@@ -1,3 +1,9 @@
+#include <unistd.h>
+#include <sys/wait.h>
+#include <optional>
+#include <sstream>
+#include <fstream>
+#include <regex>
 #include "plog/Log.h"
 #include "vesyla/Parser/PasmTextParser.hpp"
 #include "vesyla/Pipeline/PasmPipeline.hpp"
@@ -18,8 +24,19 @@
 #include "conversion/affine_to_pasm/AffineToRepPass.hpp"
 #include "conversion/drra_to_pasm/CreateConstraintsPass.hpp"
 #include "conversion/drra_to_pasm/DrraToPasmPass.hpp"
+#include "conversion/func_to_pasm/FuncToEpochPass.hpp"
 #include "conversion/select_instructions/SelectInstructionsPass.hpp"
-#include "transformation/design_space_exploration/DesignSpaceExplorationPass.hpp"
+#include "transformation/assign_ids/AssignIdsPass.hpp"
+#include "transformation/bind_resources/BindResourcesPass.hpp"
+#include "transformation/interchange_loops/InterchangeLoopsPass.hpp"
+#include "transformation/narrow_integers/NarrowIntegersPass.hpp"
+#include "transformation/normalize_loops/NormalizeLoopsPass.hpp"
+#include "transformation/double_buffer/DoubleBufferPass.hpp"
+#include "transformation/sink_scalar_loads/SinkScalarLoadsPass.hpp"
+#include "transformation/copy_storages/CopyStoragesPass.hpp"
+#include "transformation/fission_loops/FissionLoopsPass.hpp"
+#include "transformation/split_epochs/SplitEpochsPass.hpp"
+#include "transformation/stage_io/StageIoPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraDialect.hpp"
 #include "vesyla/Dialect/Pasm/IR/PasmDialect.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/ExtractCellsPass.hpp"
@@ -31,6 +48,96 @@
 #include "vesyla/Support/SysPath.hpp"
 
 namespace {
+
+// Total cycles of a compile in `dir`: the epochs' total_latency, summed over
+// the timetables it wrote.
+std::optional<long> compiled_cycles(const std::string &dir) {
+  static const std::regex latency("\"total_latency\"\\s*:\\s*([0-9]+)");
+  long total = 0;
+  bool found = false;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(dir)) {
+    std::string name = entry.path().filename().string();
+    if (!entry.is_regular_file() || name.rfind("schedule_", 0) != 0 ||
+        entry.path().extension() != ".json") {
+      continue;
+    }
+    std::ifstream in(entry.path());
+    std::stringstream text;
+    text << in.rdbuf();
+    std::smatch m;
+    std::string body = text.str();
+    if (std::regex_search(body, m, latency)) {
+      total += std::stol(m[1]);
+      found = true;
+    }
+  }
+  return found ? std::optional<long>(total) : std::nullopt;
+}
+
+// This vs-compile again in a child, output to `dir`, plus `flag`; its exit
+// code.
+int compile_variant(int argc, char **argv, const std::string &dir,
+                    const std::string &flag) {
+  std::string self = std::filesystem::read_symlink("/proc/self/exe").string();
+  std::vector<std::string> args{self};
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "-o" || a == "--output") {
+      ++i;
+      continue;
+    }
+    args.push_back(a);
+  }
+  args.insert(args.end(), {"-o", dir, flag});
+  std::vector<char *> cargs;
+  for (std::string &a : args) {
+    cargs.push_back(a.data());
+  }
+  cargs.push_back(nullptr);
+  std::filesystem::create_directories(dir);
+  pid_t pid = fork();
+  if (pid == 0) {
+    execv(self.c_str(), cargs.data());
+    _exit(127);
+  }
+  int status = 0;
+  waitpid(pid, &status, 0);
+  return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+
+// Word reads (IO input_word) and staged rows each win on some kernels:
+// compile both and keep the one with fewer cycles, staged on a tie. Only
+// when the word-read compile used a word read.
+int select_word_reads(int argc, char **argv, const std::string &output_dir) {
+  std::string words = output_dir + "/variant_word_reads";
+  std::string staged = output_dir + "/variant_staged";
+  int words_rc = compile_variant(argc, argv, words, "--word-reads");
+  bool used = std::filesystem::exists(words + "/word_reads_used");
+  std::string pick = words;
+  int rc = words_rc;
+  if (words_rc != 0 || used) {
+    int staged_rc = compile_variant(argc, argv, staged, "--no-word-reads");
+    std::optional<long> w = words_rc == 0 ? compiled_cycles(words) : std::nullopt;
+    std::optional<long> st =
+        staged_rc == 0 ? compiled_cycles(staged) : std::nullopt;
+    if (staged_rc == 0 && (words_rc != 0 || (st && w && *st <= *w))) {
+      pick = staged;
+      rc = 0;
+    }
+    LOG_INFO << "Word reads: " << (w ? std::to_string(*w) : "failed")
+             << " cycles, staged: " << (st ? std::to_string(*st) : "failed")
+             << " cycles; keeping " << (pick == staged ? "staged" : "word reads");
+  }
+  if (rc == 0) {
+    std::filesystem::copy(pick, output_dir,
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::overwrite_existing);
+  }
+  std::filesystem::remove_all(words);
+  std::filesystem::remove_all(staged);
+  return rc;
+}
 
 // Dump a module to a file, mirroring the scheduler's debug-mlir dumps.
 void save_mlir(mlir::ModuleOp module, const std::string &filename) {
@@ -59,10 +166,45 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
     return nullptr;
   }
 
+  // NormalizeLoopsPass makes every loop start at 0 with step 1, as a rep
+  // counts. FuncToEpochPass then: a kernel lowered from C comes as a func.func
+  // over the io buffers, and it rewrites that into the epoch form the passes
+  // below compile. NarrowIntegersPass undoes C's integer promotion, so the
+  // arithmetic is on the 16-bit word again. InterchangeLoopsPass reorders a nest so
+  // each io write keeps its row over its words. StageIoPass moves the io rows a C
+  // kernel accesses word by word through staging buffers. DoubleBufferPass gives
+  // a staging buffer refilled every pass a second slot. SinkScalarLoadsPass
+  // re-reads a scalar loaded once (alpha) inside every loop that uses it.
+  // AssignIdsPass then names whatever the program left unnamed, including the
+  // ops the passes before it built. A hand-written program has no func.func,
+  // no extensions, only whole-row io transfers, loads inside its loops and all
+  // its ids, and passes through all seven unchanged when its loops start at 0.
+  mlir::PassManager input_pm(&context);
+  input_pm.addPass(
+      vesyla::transformation::normalize_loops::createNormalizeLoopsPass());
+  input_pm.addPass(vesyla::conversion::func_to_pasm::createFuncToEpochPass());
+  input_pm.addPass(
+      vesyla::transformation::narrow_integers::createNarrowIntegersPass());
+  input_pm.addPass(
+      vesyla::transformation::interchange_loops::createInterchangeLoopsPass());
+  input_pm.addPass(vesyla::transformation::stage_io::createStageIoPass());
+  input_pm.addPass(
+      vesyla::transformation::double_buffer::createDoubleBufferPass());
+  input_pm.addPass(
+      vesyla::transformation::sink_scalar_loads::createSinkScalarLoadsPass());
+  input_pm.addPass(vesyla::transformation::assign_ids::createAssignIdsPass());
+  if (mlir::failed(input_pm.run(*module))) {
+    LOG_FATAL << "Error: NormalizeLoopsPass, FuncToEpochPass, NarrowIntegersPass, "
+                 "InterchangeLoopsPass, "
+                 "StageIoPass, DoubleBufferPass, "
+                 "SinkScalarLoadsPass or AssignIdsPass failed.";
+    return nullptr;
+  }
+
   // Dump the module after each pass into a debug folder, mirroring the
-  // scheduler. The <prefix>0 file is the parsed input; subsequent files follow
-  // the passes. The debug folder, stage-file prefix, and extension all come
-  // from the "output" section of config.json.
+  // scheduler. The <prefix>0 file is the input after AssignIdsPass;
+  // subsequent files follow the passes. The debug folder, stage-file prefix,
+  // and extension all come from the "output" section of config.json.
   vesyla::pasm::Config cfg;
   std::string module_debug_path =
       output_dir + "/" + cfg.output_path("compile_debug_dir");
@@ -83,22 +225,33 @@ mlir::OwningOpRef<mlir::ModuleOp> run_mlir_mode(const std::string &mlir_file,
   mlir::PassManager select_pm(&context);
   select_pm.addPass(
       vesyla::conversion::select_instructions::createSelectInstructionsPass());
+  // FissionLoopsPass splits a loop nest that needs more DPUs than the fabric
+  // has into nests, before BindResourcesPass binds them.
+  select_pm.addPass(
+      vesyla::transformation::fission_loops::createFissionLoopsPass());
+  // CopyStoragesPass gives a storage read twice in one cycle a copy per reader.
+  select_pm.addPass(
+      vesyla::transformation::copy_storages::createCopyStoragesPass());
   if (mlir::failed(select_pm.run(*module))) {
-    LOG_FATAL << "Error: SelectInstructionsPass failed.";
+    LOG_FATAL << "Error: SelectInstructionsPass, FissionLoopsPass or CopyStoragesPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(1));
 
-  // DesignSpaceExplorationPass runs after instruction selection and before
+  // BindResourcesPass runs after instruction selection and before
   // icdep generation: selection says what each operation does, and this says
   // where it runs. Allocation comes from the architecture file; binding and
   // scheduling are decided here. It ends by checking that every operation came
   // out bound, which is what the passes below rely on.
-  mlir::PassManager dse_pm(&context);
-  dse_pm.addPass(
-      vesyla::transformation::dse::createDesignSpaceExplorationPass());
-  if (mlir::failed(dse_pm.run(*module))) {
-    LOG_FATAL << "Error: DesignSpaceExplorationPass failed.";
+  // SplitEpochsPass then cuts an epoch where a DPU would need more
+  // configurations than it has config registers.
+  mlir::PassManager bind_pm(&context);
+  bind_pm.addPass(
+      vesyla::transformation::bind_resources::createBindResourcesPass());
+  bind_pm.addPass(
+      vesyla::transformation::split_epochs::createSplitEpochsPass());
+  if (mlir::failed(bind_pm.run(*module))) {
+    LOG_FATAL << "Error: BindResourcesPass or SplitEpochsPass failed.";
     return nullptr;
   }
   save_mlir(*module, stage_file(2));
@@ -219,7 +372,7 @@ int main(int argc, char **argv) {
   if (args.flag("h") || args.flag("help")) {
     LOG_INFO << "Usage: vesyla compile --arch FILE --isa FILE --pasm FILE "
                 "[--config FILE] [--output DIR] [--allow-unsafe] "
-                "[--no-reconfiguration] [-d|--debug]";
+                "[--no-reconfiguration] [--no-double-buffer] [--word-reads | --no-word-reads] [-d|--debug]";
     LOG_INFO << "Or";
     LOG_INFO << "vesyla compile --arch FILE --isa FILE --mlir FILE "
                 "[--config FILE] [--output DIR]";
@@ -241,10 +394,19 @@ int main(int argc, char **argv) {
   std::string output_dir = args.get("output", args.get("o", "."));
   bool allow_unsafe = args.flag("allow-unsafe");
   bool keep_debug = args.flag("d") || args.flag("debug");
+  // IO word reads: forced on or off, else both compiled and the faster kept.
+  bool word_reads_forced = args.flag("word-reads") || args.flag("no-word-reads");
+  if (!mlir_file.empty() && !word_reads_forced) {
+    return select_word_reads(argc, argv, output_dir);
+  }
+  vesyla::util::GlobalVar::puts("__WORD_READS__",
+                                args.flag("no-word-reads") ? "0" : "1");
   // Also write arch_noreconf.json, the architecture of a fabric whose
   // controllers only issue the activations and whose resources hardcode the
   // rest of the program.
   bool no_reconfiguration = args.flag("no-reconfiguration");
+  // Staging buffers refilled every pass get a second slot (DoubleBufferPass).
+  bool double_buffer = !args.flag("no-double-buffer");
 
   if (arch_file.empty() || isa_file.empty()) {
     LOG_FATAL << "Required arguments missing, see --help for usage.";
@@ -275,6 +437,8 @@ int main(int argc, char **argv) {
     std::filesystem::create_directories(output_dir);
   }
   vesyla::util::GlobalVar::puts("__OUTPUT_DIR__", output_dir);
+  vesyla::util::GlobalVar::puts("__NO_RECONFIGURATION__",
+                                no_reconfiguration ? "1" : "0");
 
   if (!cpp_file.empty()) {
     LOG_FATAL << "Compilation from C++ model is not supported right now!";
@@ -292,10 +456,12 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::affine::AffineDialect>();
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
+  // A kernel lowered from C comes as a func.func; FuncToEpochPass unwraps it.
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
 
   // Passes run during mlir mode read the config: GenerateIcdepPass needs the
   // port table, AddDefaultValuePass needs the ISA, and
-  // DesignSpaceExplorationPass needs the architecture, since that file is what
+  // BindResourcesPass needs the architecture, since that file is what
   // says which resources the design has. All three are loaded before the
   // passes run.
   vesyla::pasm::Config cfg;
@@ -308,7 +474,15 @@ int main(int argc, char **argv) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (!mlir_file.empty()) {
     LOG_INFO << "Running mlir mode";
+    vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__",
+                                  double_buffer ? "1" : "0");
     module = run_mlir_mode(mlir_file, output_dir, context);
+    // The second slots need RF rows the fabric may not have.
+    if (!module && double_buffer) {
+      LOG_WARNING << "Double buffering does not fit; compiling without it.";
+      vesyla::util::GlobalVar::puts("__DOUBLE_BUFFER__", "0");
+      module = run_mlir_mode(mlir_file, output_dir, context);
+    }
   } else {
     LOG_INFO << "Running pasm mode";
     module = run_pasm_mode(pasm_file, context);
@@ -332,6 +506,11 @@ int main(int argc, char **argv) {
     LOG_FATAL << "Error: the no-reconfiguration fields name a cell or slot "
                  "the architecture does not have.";
     return -1;
+  }
+
+  std::string used;
+  if (vesyla::util::GlobalVar::gets("__WORD_READS_USED__", used) && used == "1") {
+    std::ofstream(output_dir + "/word_reads_used") << "1\n";
   }
 
   // clean up debug intermediates unless -d/--debug was passed

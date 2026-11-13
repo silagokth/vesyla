@@ -22,6 +22,9 @@ pub struct ISAFormat {
     pub type_bitwidth: u8,
     pub opcode_bitwidth: u8,
     pub slot_bitwidth: u8,
+    // A controller's: the opcode width of the resource instructions it
+    // dispatches, which have their own layout (type | opcode | slot | payload).
+    pub resource_opcode_bitwidth: Option<u8>,
 }
 
 impl ISAFormat {
@@ -31,7 +34,16 @@ impl ISAFormat {
             type_bitwidth: 0,
             opcode_bitwidth: 0,
             slot_bitwidth: 0,
+            resource_opcode_bitwidth: None,
         }
+    }
+
+    // Components of one fabric share the word, type and slot widths; the
+    // opcode width is per component type.
+    pub fn compatible(&self, other: &ISAFormat) -> bool {
+        self.instr_bitwidth == other.instr_bitwidth
+            && self.type_bitwidth == other.type_bitwidth
+            && self.slot_bitwidth == other.slot_bitwidth
     }
 
     pub fn is_none(&self) -> bool {
@@ -50,6 +62,8 @@ pub struct Instruction {
     pub segments: Vec<Segment>,
     pub variant_opcode_bitwidth: Option<u8>,
     pub variants: Vec<InstructionVariant>,
+    // rep: whether an ext form carries the bits above the field widths.
+    pub ext: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -212,6 +226,8 @@ impl Instruction {
             ));
         }
 
+        let ext = instruction.get("ext").and_then(|v| v.as_bool());
+
         Ok(Instruction {
             name,
             opcode,
@@ -219,6 +235,7 @@ impl Instruction {
             segments,
             variant_opcode_bitwidth,
             variants,
+            ext,
         })
     }
 }
@@ -310,11 +327,16 @@ impl ISAFormat {
                 "Slot bitwidth not found in ISA format JSON",
             ))?,
         };
+        let resource_opcode_bitwidth = format_json
+            .get("instr_resource_opcode_bitwidth")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u8);
         Ok(ISAFormat {
             instr_bitwidth,
             type_bitwidth,
             opcode_bitwidth,
             slot_bitwidth,
+            resource_opcode_bitwidth,
         })
     }
 }
@@ -330,7 +352,7 @@ impl InstructionSet {
     pub fn add_format(&mut self, format: ISAFormat) -> Result<(), Error> {
         if self.format.is_none() {
             self.format = format;
-        } else if self.format != format {
+        } else if !self.format.compatible(&format) {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Incompatible ISA formats",
@@ -355,9 +377,14 @@ impl InstructionSet {
         &mut self,
         component_isa: ComponentInstructionSet,
     ) -> Result<(), Error> {
-        if self.format.is_none() {
+        // The fabric's format is a controller's, which also names the
+        // resource opcode width.
+        let controller = component_isa.component_type == Some(InstructionType::ControlInstruction);
+        if self.format.is_none()
+            || (controller && self.format.resource_opcode_bitwidth.is_none())
+        {
             self.format = component_isa.format.clone();
-        } else if self.format != component_isa.format {
+        } else if !self.format.compatible(&component_isa.format) {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Incompatible ISA formats",
@@ -581,10 +608,13 @@ impl Serialize for Instruction {
             map.serialize_entry("variants", &self.variants)?;
             map.end()
         } else {
-            let mut map = serializer.serialize_map(Some(4))?;
+            let mut map = serializer.serialize_map(None)?;
             map.serialize_entry("name", &self.name)?;
             map.serialize_entry("opcode", &self.opcode)?;
             map.serialize_entry("instr_type", &self.instr_type.to_u8())?;
+            if let Some(ext) = self.ext {
+                map.serialize_entry("ext", &ext)?;
+            }
             map.serialize_entry("segments", &self.segments)?;
             map.end()
         }
@@ -643,11 +673,14 @@ impl Serialize for ISAFormat {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(4))?;
+        let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("instr_bitwidth", &self.instr_bitwidth)?;
         map.serialize_entry("instr_type_bitwidth", &self.type_bitwidth)?;
         map.serialize_entry("instr_opcode_bitwidth", &self.opcode_bitwidth)?;
         map.serialize_entry("instr_slot_bitwidth", &self.slot_bitwidth)?;
+        if let Some(width) = self.resource_opcode_bitwidth {
+            map.serialize_entry("instr_resource_opcode_bitwidth", &width)?;
+        }
         map.end()
     }
 }

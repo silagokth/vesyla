@@ -34,6 +34,7 @@ struct ResourceEntry {
   int row;
   int col;
   int slot;
+  std::string kind;
   std::vector<std::string> parameters;
 };
 
@@ -47,34 +48,69 @@ struct AguSize {
   // AGU_USED: bit p set if the program configures the AGU of port p. An AGU
   // no `evt` ever opens is not built (agu_array's AGU_USED).
   uint64_t agu_used = 0;
+  // Register widths: bits of the largest iter, delay and trans delay loaded.
+  uint64_t iter_width = 1;
+  uint64_t delay_width = 1;
+  uint64_t trans_width = 1;
 
   void merge(const AguSize &other) {
     number_ir = std::max(number_ir, other.number_ir);
     number_mt = std::max(number_mt, other.number_mt);
     number_or = std::max(number_or, other.number_or);
     agu_used |= other.agu_used;
+    iter_width = std::max(iter_width, other.iter_width);
+    delay_width = std::max(delay_width, other.delay_width);
+    trans_width = std::max(trans_width, other.trans_width);
   }
 };
 
-// One configuration of one AGU, replayed the way agu_controller decodes it.
-//
-// An `evt` opens the next lane and restarts the level count. A base `rep`
-// (ext = 0) takes the next level: an IR level of the current lane until a
-// `trans` has been seen, an OR level after it; its `repx` (ext = 1) fills the
-// upper half of the same level and takes none. A `trans` takes the next MT
-// entry and sends every later `rep` to OR, which a later `evt` does not undo;
-// it is dropped once an OR level was written. The IR levels are sized to the
-// deepest lane, so none of them spills into OR the way the controller spills a
-// lane deeper than NUMBER_IR.
+// Bits needed to hold `value`, at least 1.
+uint64_t bit_length(uint64_t value) {
+  uint64_t bits = 1;
+  while (bits < 64 && (value >> bits) != 0) {
+    bits++;
+  }
+  return bits;
+}
+
+// Bits of a rep field's register: a base rep loads the field, an ext rep the
+// field shifted above the base field (agu_controller's load_iter/load_delay).
+uint64_t rep_bits(uint64_t field, bool ext, uint64_t field_width) {
+  if (!ext) {
+    return bit_length(field);
+  }
+  return field == 0 ? 1 : bit_length(field) + field_width;
+}
+
+// Widths of the rep iter and delay fields of one kind of resource.
+struct RepFieldWidths {
+  uint64_t iter = 0;
+  uint64_t delay = 0;
+};
+
+// One configuration of one AGU, replayed the way agu_controller decodes it:
+// postfix. An `evt` opens the next lane as a group of its own and restarts the
+// level count; a `trans` joins the top two groups; a base `rep` (ext = 0)
+// repeats the top group: an IR level of its lane for a single lane, a range
+// level for a joined group. A `trans` with no second group sends every later
+// `rep` to OR (and is dropped once an OR level was written). A `repx` fills the
+// upper half of the level before and takes none. Range levels use the OR
+// entries, so NUMBER_OR covers both. The IR levels are sized to the deepest
+// lane, so none of them spills into OR.
 class AguReplay {
 public:
   void evt() {
+    groups_.push_back(lanes_);
     lanes_++;
     level_ = 0;
   }
 
   void rep(bool ext) {
     if (ext) {
+      return;
+    }
+    if (!groups_.empty() && groups_.back() + 1 < lanes_) {
+      range_levels_++;
       return;
     }
     if (use_or_) {
@@ -91,6 +127,10 @@ public:
       return;
     }
     transitions_++;
+    if (groups_.size() >= 2) {
+      groups_.pop_back();
+      return;
+    }
     use_or_ = true;
     level_ = 0;
   }
@@ -105,7 +145,7 @@ public:
     AguSize size;
     size.number_ir = std::max<uint64_t>(ir_levels_, 1);
     size.number_mt = std::max(lanes_ - 1, transitions_);
-    size.number_or = or_levels_;
+    size.number_or = std::max(or_levels_, range_levels_);
     return size;
   }
 
@@ -115,6 +155,8 @@ private:
   uint64_t transitions_ = 0;
   uint64_t ir_levels_ = 0;
   uint64_t or_levels_ = 0;
+  uint64_t range_levels_ = 0;
+  std::vector<uint64_t> groups_; // first lane of each group, bottom first
   bool use_or_ = false;
   bool or_configured_ = false;
 };
@@ -183,6 +225,28 @@ public:
   void runOnOperation() final {
     Config cfg;
     nlohmann::json arch = cfg.get_arch_json();
+    nlohmann::json isa = cfg.get_isa_json();
+
+    std::map<std::string, RepFieldWidths> field_widths;
+    for (const auto &component : isa["components"]) {
+      if (!component.contains("kind")) {
+        continue;
+      }
+      for (const auto &instruction : component["instructions"]) {
+        if (instruction["name"] != "rep") {
+          continue;
+        }
+        RepFieldWidths widths;
+        for (const auto &segment : instruction["segments"]) {
+          if (segment["name"] == "iter") {
+            widths.iter = segment["bitwidth"];
+          } else if (segment["name"] == "delay") {
+            widths.delay = segment["bitwidth"];
+          }
+        }
+        field_widths[component["kind"]] = widths;
+      }
+    }
 
     // Every resource in the architecture, and which one occupies each slot.
     // A slot no resource occupies is in neither, and anything addressed to it
@@ -195,7 +259,8 @@ public:
       for (const auto &resource : cell["cell"]["resources_list"]) {
         int first_slot = resource["slot"];
         int size = resource["size"];
-        ResourceEntry entry{row, col, first_slot, {}};
+        ResourceEntry entry{row, col, first_slot,
+                            resource.value("kind", std::string()), {}};
         if (resource.contains("parameters")) {
           for (const auto &parameter : resource["parameters"].items()) {
             entry.parameters.push_back(parameter.key());
@@ -281,8 +346,25 @@ public:
           continue;
         }
         AguReplay &replay = replays[agu->second];
+        AguSize &size = sizes[resource->second];
         if (type == "rep") {
-          replay.rep(int_param(instr, "ext").value_or(0) != 0);
+          bool ext = int_param(instr, "ext").value_or(0) != 0;
+          const RepFieldWidths &widths =
+              field_widths[resources[resource->second].kind];
+          size.iter_width = std::max(
+              size.iter_width,
+              rep_bits(int_param(instr, "iter").value_or(0), ext, widths.iter));
+          size.delay_width = std::max(
+              size.delay_width, rep_bits(int_param(instr, "delay").value_or(0),
+                                         ext, widths.delay));
+        } else {
+          size.trans_width = std::max(
+              size.trans_width, bit_length(int_param(instr, "delay").value_or(0)));
+        }
+        if (type == "rep") {
+          // A lane rep, like an ext rep, opens no level.
+          replay.rep(int_param(instr, "ext").value_or(0) != 0 ||
+                     int_param(instr, "lane").value_or(0) != 0);
         } else {
           replay.trans();
         }
@@ -309,6 +391,9 @@ public:
           {"NUMBER_MT", sizes[i].number_mt},
           {"NUMBER_OR", sizes[i].number_or},
           {"AGU_USED", sizes[i].agu_used},
+          {"REP_ITER_WIDTH", sizes[i].iter_width},
+          {"REP_DELAY_WIDTH", sizes[i].delay_width},
+          {"TRANS_DELAY_WIDTH", sizes[i].trans_width},
       };
       for (const auto &[name, value] : values) {
         if (std::find(resource.parameters.begin(), resource.parameters.end(),

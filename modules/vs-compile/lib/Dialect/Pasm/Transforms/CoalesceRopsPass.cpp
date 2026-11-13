@@ -5,6 +5,7 @@
 #include "llvm/ADT/StringSet.h"
 
 #include "vesyla/Dialect/Pasm/Transforms/CoalesceRopsPass.hpp"
+#include "vesyla/Support/AguMerge.hpp"
 #include "vesyla/Support/Common.hpp"
 
 #include <map>
@@ -16,6 +17,9 @@ namespace vesyla::pasm {
 #include "vesyla/Dialect/Pasm/Transforms/Passes.hpp.inc"
 
 namespace {
+
+// Members of a group that can step on their own: the lane field reaches 1..3.
+constexpr size_t kMaxLanes = 4;
 
 // Where a rop that was merged away ended up: the rop that absorbed it, and
 // which of that rop's events it became.
@@ -48,11 +52,17 @@ InstrOp sole_event(RopOp rop) {
   return event;
 }
 
+// A rep that only sets one lane's step at the last outer level.
+bool is_lane_rep(InstrOp rep) {
+  auto lane = llvm::dyn_cast_or_null<mlir::IntegerAttr>(rep.getParam().get("lane"));
+  return lane && lane.getInt() != 0;
+}
+
 // A rop's reps in the order they sit in, innermost loop first.
 llvm::SmallVector<InstrOp> reps_of(RopOp rop) {
   llvm::SmallVector<InstrOp> reps;
   for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
-    if (instr.getType() == "rep") {
+    if (instr.getType() == "rep" && !is_lane_rep(instr)) {
       reps.push_back(instr);
     }
   }
@@ -66,81 +76,134 @@ llvm::StringRef loop_of(InstrOp rep) {
   return tag ? tag.getValue() : llvm::StringRef();
 }
 
-// How many of their outermost reps the rops of a group have in common: the
-// loops all of them sat in. Those stay one repetition around the merged
-// events, while every other rep is its event's own and stays inside the
-// transition with it.
-//
-// Nothing when the group cannot be merged as one: a shared loop the rops step
-// through differently has no single repetition that serves them all, and two
-// rops sharing a loop the rest do not would need a merge inside the merge.
-std::optional<size_t> shared_reps(llvm::ArrayRef<RopOp> rops) {
-  llvm::SmallVector<llvm::SmallVector<InstrOp>> reps;
-  for (RopOp rop : rops) {
-    reps.push_back(reps_of(rop));
+// One AGU program from the rops on one port, nested by their loop tree
+// (vesyla/Support/AguMerge.hpp) and written postfix, the way the AGU
+// controller and the timing model read it: an evt with its own reps per rop, a
+// trans joining each further member of a group, then the group's rep (a range
+// level over its lanes). Where a member steps through a group's loop
+// differently from the first, a lane rep follows (lane = its place in the
+// group, which the lane field reaches up to 3).
+class Merger {
+public:
+  explicit Merger(llvm::ArrayRef<RopOp> rops) : rops_(rops) {
+    for (RopOp rop : rops) {
+      reps_.push_back(reps_of(rop));
+      llvm::SmallVector<const void *> chain;
+      for (auto it = reps_.back().rbegin(); it != reps_.back().rend(); ++it) {
+        chain.push_back(loop_of(*it).empty() ? nullptr : loop_of(*it).data());
+      }
+      chains_.push_back(chain);
+    }
+    tree_ = ::vesyla::util::loop_tree(chains_);
   }
 
-  size_t shared = 0;
-  while (true) {
-    bool all = true;
-    for (const auto &own : reps) {
-      if (own.size() <= shared) {
-        all = false;
-        break;
-      }
-      InstrOp rep = own[own.size() - 1 - shared];
-      InstrOp head = reps.front()[reps.front().size() - 1 - shared];
-      if (loop_of(rep).empty() || loop_of(rep) != loop_of(head)) {
-        all = false;
-        break;
-      }
-      if (rep.getParam().get("step") != head.getParam().get("step")) {
-        return std::nullopt;
-      }
-    }
-    if (!all) {
-      break;
-    }
-    ++shared;
+  bool ok() const { return tree_ && lanes_fit(0); }
+
+  // The instructions of the merged rop in order; new trans and lane reps are
+  // created in `head`.
+  llvm::SmallVector<mlir::Operation *> emit(RopOp head, int32_t port) {
+    llvm::SmallVector<mlir::Operation *> seq;
+    emit_node(0, head, port, seq);
+    return seq;
   }
 
-  llvm::StringSet<> seen;
-  for (const auto &own : reps) {
-    for (size_t i = 0; i + shared < own.size(); ++i) {
-      if (!loop_of(own[i]).empty() && !seen.insert(loop_of(own[i])).second) {
-        return std::nullopt;
+private:
+  // Rop k's rep for its loop at chain index d (outermost 0).
+  InstrOp rep_at(size_t k, size_t d) const {
+    return reps_[k][reps_[k].size() - 1 - d];
+  }
+
+  bool lanes_fit(size_t node) const {
+    const auto &n = tree_->nodes[node];
+    if (node != 0 && n.rops > 1) {
+      InstrOp base = rep_at(n.first, n.depth - 1);
+      for (size_t j = n.first + 1; j < n.first + n.rops; ++j) {
+        if (rep_at(j, n.depth - 1).getParam().get("step") !=
+                base.getParam().get("step") &&
+            j - n.first >= kMaxLanes) {
+          return false;
+        }
+      }
+    }
+    for (const auto &c : n.children) {
+      if (!c.is_rop && !lanes_fit(c.index)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Rop k's event and its own reps, innermost first, from chain index `from`.
+  void emit_rop(size_t k, size_t from,
+                llvm::SmallVector<mlir::Operation *> &seq) const {
+    seq.push_back(sole_event(rops_[k]));
+    for (size_t d = chains_[k].size(); d-- > from;) {
+      seq.push_back(rep_at(k, d));
+    }
+  }
+
+  void emit_node(size_t node, RopOp head, int32_t port,
+                 llvm::SmallVector<mlir::Operation *> &seq) const {
+    const auto &n = tree_->nodes[node];
+    if (node != 0 && n.rops == 1) {
+      emit_rop(n.first, n.depth - 1, seq);
+      return;
+    }
+    for (const auto &c : n.children) {
+      if (c.is_rop) {
+        emit_rop(c.index, n.depth, seq);
+      } else {
+        emit_node(c.index, head, port, seq);
+      }
+    }
+    for (size_t i = 1; i < n.children.size(); ++i) {
+      seq.push_back(append_transition(head, port));
+    }
+    if (node == 0) {
+      return;
+    }
+    InstrOp base = rep_at(n.first, n.depth - 1);
+    seq.push_back(base);
+    for (size_t j = n.first + 1; j < n.first + n.rops; ++j) {
+      InstrOp rep = rep_at(j, n.depth - 1);
+      if (rep.getParam().get("step") != base.getParam().get("step")) {
+        seq.push_back(lane_rep(base, rep, j - n.first));
       }
     }
   }
-  return shared;
-}
 
-// Move `event` to the end of `head`'s body.
-//
-// A resource asked for two things in succession wants one instruction stream
-// with a transition joining them, not two instructions: on a second
-// instruction it retriggers, and the transfer the first one started is lost.
-// The events keep their own parameters -- each addresses wherever it addressed
-// before.
-void move_event(RopOp head, InstrOp event) {
-  event->moveBefore(head.getBody().front().getTerminator());
-}
+  // A rep setting lane `lane`'s step at the level `base` opens; iter and delay
+  // unused.
+  static mlir::Operation *lane_rep(InstrOp base, InstrOp rep, size_t lane) {
+    mlir::OpBuilder builder(base.getContext());
+    builder.setInsertionPointAfter(base);
+    llvm::SmallVector<mlir::NamedAttribute> params;
+    params.push_back(builder.getNamedAttr("iter", builder.getI32IntegerAttr(0)));
+    params.push_back(builder.getNamedAttr("delay", builder.getI32IntegerAttr(0)));
+    params.push_back(builder.getNamedAttr("step", rep.getParam().get("step")));
+    params.push_back(builder.getNamedAttr(
+        "lane", builder.getI32IntegerAttr(static_cast<int32_t>(lane))));
+    if (mlir::Attribute port = base.getParam().get("port")) {
+      params.push_back(builder.getNamedAttr("port", port));
+    }
+    return InstrOp::create(builder, base.getLoc(),
+                           builder.getStringAttr(base.getId().str() + "_lane" +
+                                                 std::to_string(lane)),
+                           builder.getStringAttr("rep"),
+                           builder.getDictionaryAttr(params));
+  }
 
-// Add one transition to the end of `head`'s body.
-//
-// A transition follows the event it joins to the one before it -- after the
-// second evt, then after the third, and so on. The resource reads its own
-// instruction list as a postfix stack when it works out the timing model: an
-// evt pushes, a trans pops the two below it and combines them. So a trans
-// written between two events finds only one on the stack, is silently
-// declined, and the operation loses an event; written after the second it
-// closes the pair. Joining them as it goes leaves the expression nested to the
-// left, T<..>(T<..>(e0, e1), e2), which is the order they run in.
-//
-// The delay is a fresh symbol; how far apart the two events sit is the
-// scheduler's to decide, and the constraints that used to order the separate
-// rops now order the events.
-void append_transition(RopOp head, int32_t port) {
+  static mlir::Operation *append_transition(RopOp head, int32_t port);
+
+  llvm::ArrayRef<RopOp> rops_;
+  llvm::SmallVector<llvm::SmallVector<InstrOp>> reps_;
+  llvm::SmallVector<llvm::SmallVector<const void *>> chains_;
+  std::optional<::vesyla::util::LoopTree> tree_;
+};
+
+// A new trans at the end of `head`'s body; its delay is a fresh symbol for the
+// scheduler.
+mlir::Operation *Merger::append_transition(RopOp head, int32_t port) {
   mlir::OpBuilder builder(head.getContext());
   builder.setInsertionPoint(head.getBody().front().getTerminator());
 
@@ -150,10 +213,10 @@ void append_transition(RopOp head, int32_t port) {
       builder.getNamedAttr("delay", builder.getStringAttr("t_" + suffix)));
   params.push_back(
       builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-  InstrOp::create(builder, head.getLoc(),
-                  builder.getStringAttr(head.getSymName().str() + "_" + suffix),
-                  builder.getStringAttr("trans"),
-                  builder.getDictionaryAttr(params));
+  return InstrOp::create(builder, head.getLoc(),
+                         builder.getStringAttr(head.getSymName().str() + "_" + suffix),
+                         builder.getStringAttr("trans"),
+                         builder.getDictionaryAttr(params));
 }
 
 // The same anchor, re-pointed at the event it became.
@@ -186,6 +249,113 @@ AnchorAttr remap(AnchorAttr anchor, const llvm::StringMap<Absorbed> &absorbed) {
                          anchor.getOrIdx(),
                          static_cast<int32_t>(it->second.event),
                          anchor.getIrIdx(), anchor.getDelay());
+}
+
+// The port a rop's events run on, or nothing for a rop without events.
+std::optional<int32_t> event_port(RopOp rop) {
+  for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
+    if (instr.getType() != "evt") {
+      continue;
+    }
+    if (auto port =
+            llvm::dyn_cast_or_null<mlir::IntegerAttr>(instr.getParam().get("port"))) {
+      return static_cast<int32_t>(port.getInt());
+    }
+  }
+  return std::nullopt;
+}
+
+// The anchor of a rop's last event: its last event, at the last iteration of
+// every rep around it, outermost first. Nothing when a rep's count is not a
+// number.
+std::optional<AnchorRangeAttr> last_event(RopOp rop) {
+  uint32_t event = 0;
+  uint32_t events = 0;
+  llvm::SmallVector<InstrOp> own;    // reps of the last event, innermost first
+  llvm::SmallVector<InstrOp> shared; // reps after the transitions
+  bool after_trans = false;
+  for (InstrOp instr : rop.getBody().front().getOps<InstrOp>()) {
+    if (instr.getType() == "evt") {
+      event = events++;
+      own.clear();
+      shared.clear();
+      after_trans = false;
+    } else if (instr.getType() == "trans") {
+      after_trans = true;
+    } else if (instr.getType() == "rep" && !is_lane_rep(instr)) {
+      (after_trans ? shared : own).push_back(instr);
+    }
+  }
+  std::vector<uint32_t> ir;
+  for (auto *reps : {&shared, &own}) {
+    for (auto it = reps->rbegin(); it != reps->rend(); ++it) {
+      auto iter =
+          llvm::dyn_cast_or_null<mlir::IntegerAttr>(it->getParam().get("iter"));
+      if (!iter) {
+        return std::nullopt;
+      }
+      ir.push_back(static_cast<uint32_t>(std::max<int64_t>(iter.getInt(), 1) - 1));
+    }
+  }
+  return AnchorRangeAttr::get(rop.getContext(),
+                              mlir::FlatSymbolRefAttr::get(rop.getSymNameAttr()),
+                              {}, event, ir, {}, event, ir);
+}
+
+// A port runs one AGU program, so rops with events on the same port that were
+// not merged run one after the other, in program order: each one's setup comes
+// after the last event of the one before (`port_exclusive`; ScheduleEpochPass
+// adds the setup lead). Two that share a loop would have to interleave, which
+// no ordering allows: an error.
+mlir::LogicalResult order_port_users(EpochOp epoch) {
+  std::map<std::tuple<int32_t, int32_t, int32_t, int32_t>,
+           llvm::SmallVector<RopOp>>
+      by_port;
+  for (RopOp rop : epoch.getBody().front().getOps<RopOp>()) {
+    if (std::optional<int32_t> port = event_port(rop)) {
+      by_port[{rop.getRow(), rop.getCol(), rop.getSlot(), *port}].push_back(rop);
+    }
+  }
+  mlir::OpBuilder builder(epoch.getContext());
+  builder.setInsertionPoint(epoch.getBody().front().getTerminator());
+  for (auto &[key, rops] : by_port) {
+    for (size_t k = 1; k < rops.size(); ++k) {
+      RopOp a = rops[k - 1];
+      RopOp b = rops[k];
+      llvm::StringSet<> loops;
+      for (InstrOp rep : reps_of(a)) {
+        if (!loop_of(rep).empty()) {
+          loops.insert(loop_of(rep));
+        }
+      }
+      for (InstrOp rep : reps_of(b)) {
+        if (loops.contains(loop_of(rep))) {
+          return b.emitError("coalesce-rops: ")
+                 << a.getSymName() << " and " << b.getSymName()
+                 << " use port " << std::get<3>(key) << " of slot "
+                 << std::get<2>(key)
+                 << " in the same loop and cannot be merged into one AGU "
+                    "program (their repetitions differ); not supported";
+        }
+      }
+      std::optional<AnchorRangeAttr> src = last_event(a);
+      if (!src) {
+        return a.emitError("coalesce-rops: ")
+               << a.getSymName() << " repeats a non-constant number of times";
+      }
+      auto dst = AnchorRangeAttr::get(
+          epoch.getContext(), mlir::FlatSymbolRefAttr::get(b.getSymNameAttr()),
+          {}, 0, {}, {}, 0, {});
+      auto cstr = CstrOp::create(
+          builder, b.getLoc(), *src, dst,
+          DelayAttr::get(epoch.getContext(), 2, std::nullopt),
+          builder.getBoolAttr(false));
+      cstr->setAttr("port_exclusive", builder.getUnitAttr());
+      cstr->setAttr("debug", builder.getStrArrayAttr(
+                                 {"CoalesceRopsPass", "port-exclusive"}));
+    }
+  }
+  return mlir::success();
 }
 
 class CoalesceRopsPass : public impl::CoalesceRopsPassBase<CoalesceRopsPass> {
@@ -230,35 +400,27 @@ public:
         if (rops.size() < 2) {
           continue;
         }
-        std::optional<size_t> shared = shared_reps(rops);
-        if (!shared) {
+        Merger merger(rops);
+        if (!merger.ok()) {
           continue;
         }
         RopOp head = rops.front();
         int32_t port = std::get<3>(entry.first);
         mlir::Operation *end = head.getBody().front().getTerminator();
-        llvm::SmallVector<InstrOp> head_reps = reps_of(head);
+        for (mlir::Operation *op : merger.emit(head, port)) {
+          op->moveBefore(end);
+        }
         for (size_t k = 1; k < rops.size(); ++k) {
-          // The event, then the reps that are its own; the shared ones it
-          // carried go with the rop, the head's standing for them.
-          llvm::SmallVector<InstrOp> reps = reps_of(rops[k]);
-          move_event(head, sole_event(rops[k]));
-          for (size_t i = 0; i + *shared < reps.size(); ++i) {
-            reps[i]->moveBefore(end);
-          }
-          append_transition(head, port);
           absorbed[rops[k].getSymName()] =
               Absorbed{head.getSymNameAttr(), static_cast<uint32_t>(k)};
           merged_away.push_back(rops[k]);
         }
-        // The shared reps close the rop, after the last transition, so they
-        // repeat the whole sequence of events.
-        for (size_t i = head_reps.size() - *shared; i < head_reps.size(); ++i) {
-          head_reps[i]->moveBefore(end);
-        }
       }
 
       if (absorbed.empty()) {
+        if (mlir::failed(order_port_users(epoch))) {
+          signalPassFailure();
+        }
         return;
       }
 
@@ -282,6 +444,9 @@ public:
 
       for (RopOp rop : merged_away) {
         rop.erase();
+      }
+      if (mlir::failed(order_port_users(epoch))) {
+        signalPassFailure();
       }
     });
   }

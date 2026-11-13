@@ -1,0 +1,33 @@
+name: 'Check Polygeist Installation'
+description: 'Checks if cgeist, polygeist-opt and the clang resource headers are installed'
+
+inputs:
+  polygeist-install-path:
+    description: 'Path to Polygeist installation'
+    required: true
+
+outputs:
+  polygeist_installed:
+    description: 'Whether cgeist and polygeist-opt run and the clang resource headers are present'
+    value: ${{ steps.check-polygeist.outputs.polygeist_installed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: check-polygeist
+      shell: bash
+      run: |
+        bin="${{ inputs.polygeist-install-path }}/bin"
+        for tool in cgeist polygeist-opt; do
+          if ! "${bin}/${tool}" --version >/dev/null 2>&1; then
+            echo "${bin}/${tool} is missing or does not run"
+            echo "polygeist_installed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+        done
+        if ! ls "${{ inputs.polygeist-install-path }}"/lib/clang/*/include/stdint.h >/dev/null 2>&1; then
+          echo "clang resource headers are missing"
+          echo "polygeist_installed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        echo "polygeist_installed=true" >> $GITHUB_OUTPUT

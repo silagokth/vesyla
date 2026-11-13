@@ -148,7 +148,7 @@ ScheduleEpochPassRewriter::op2json(::mlir::Operation *op) const {
 void ScheduleEpochPassRewriter::json2op(
     nlohmann::json op_json, ::mlir::PatternRewriter &rewriter) const {
   if (op_json["kind"].get<std::string>() == "rop") {
-    auto rop_op = rewriter.create<::vesyla::pasm::RopOp>(
+    auto rop_op = ::vesyla::pasm::RopOp::create(rewriter, 
         rewriter.getUnknownLoc(),
         rewriter.getStringAttr(op_json["id"].get<std::string>()),
         rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
@@ -191,16 +191,16 @@ void ScheduleEpochPassRewriter::json2op(
         }
       }
       ::mlir::DictionaryAttr param = rewriter.getDictionaryAttr(attrs);
-      rewriter.create<::vesyla::pasm::InstrOp>(
+      ::vesyla::pasm::InstrOp::create(rewriter, 
           rop_op.getLoc(),
           rewriter.getStringAttr(instr["id"].get<std::string>()),
           rewriter.getStringAttr(instr["kind"].get<std::string>()), param);
     }
     // insert a yield operation at the end of the RopOp
-    rewriter.create<::vesyla::pasm::YieldOp>(rop_op.getLoc());
+    ::vesyla::pasm::YieldOp::create(rewriter, rop_op.getLoc());
 
   } else if (op_json["kind"] == "cop") {
-    auto cop_op = rewriter.create<::vesyla::pasm::CopOp>(
+    auto cop_op = ::vesyla::pasm::CopOp::create(rewriter, 
         rewriter.getUnknownLoc(),
         rewriter.getStringAttr(op_json["id"].get<std::string>()),
         rewriter.getI32IntegerAttr(op_json["row"].get<int>()),
@@ -239,13 +239,13 @@ void ScheduleEpochPassRewriter::json2op(
         }
       }
       ::mlir::DictionaryAttr param = rewriter.getDictionaryAttr(attrs);
-      rewriter.create<::vesyla::pasm::InstrOp>(
+      ::vesyla::pasm::InstrOp::create(rewriter, 
           cop_op.getLoc(),
           rewriter.getStringAttr(instr["id"].get<std::string>()),
           rewriter.getStringAttr(instr["kind"].get<std::string>()), param);
     }
     // insert a yield operation at the end of the CopOp
-    rewriter.create<::vesyla::pasm::YieldOp>(cop_op.getLoc());
+    ::vesyla::pasm::YieldOp::create(rewriter, cop_op.getLoc());
   } else {
     llvm::outs() << "Unsupported operation kind: "
                  << op_json["kind"].get<std::string>() << "\n";

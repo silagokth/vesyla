@@ -17,7 +17,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // Why two nodes cannot share a resource instance. A bitmask: an edge may have
 // been drawn for more than one reason, and keeping all of them is what lets the
@@ -30,8 +30,14 @@ enum class ConflictReason : unsigned {
   // Their occupancies overlap: at some point in the program both lay claim to
   // an instance.
   live_overlap = 1u << 1,
-  // They hold different storage, and one instance holds one storage.
-  distinct_storage = 1u << 2,
+  // Both run in a mode (a conf) inside the same loop nest. Such an operation
+  // is configured once and streamed over every iteration, so it holds its
+  // parts for the whole nest, not only where its value is live.
+  same_loop = 1u << 3,
+  // Both stream once per iteration of one loop on the same port: an instance
+  // could only serve them interleaved, which a DPU mode fed by either cannot
+  // take.
+  stream = 1u << 4,
 };
 
 inline ConflictReason operator|(ConflictReason a, ConflictReason b) {
@@ -56,20 +62,16 @@ inline bool has_reason(ConflictReason set, ConflictReason bit) {
 // two things must differ but never that two things must agree, so what must
 // agree is merged before the graph is built rather than constrained inside it.
 // Operations that hold no storage, and a resource that computes rather than
-// stores, are each a node of their own.
+// stores, are each a node of their own. A storage node is grouped on the
+// storage alone, whatever kind of memory its accesses matched: any memory it
+// fits in will do (see MemoryMap).
 //
-// THE MODEL. Two nodes conflict when they are of the same kind -- two of
-// different kinds cannot land on one instance whatever the program does -- and
-// then either of the following.
-//
-//   DIFFERENT STORAGE. One instance holds one storage, so two nodes that hold
-//   different ones never share, whatever else is true of them. This is the
-//   conservative reading: two arrays could in principle sit in one register
-//   file if their lifetimes were disjoint or their addresses could not collide,
-//   but neither is established here. Lifetimes are not reconstructible from the
-//   rops alone -- selection drops the memref, which is why `storage` is lifted
-//   in the first place -- and address disjointness is a capacity question
-//   against RF_DEPTH that this graph has no way to express.
+// THE MODEL. Two nodes conflict when they compete for the same instances --
+// the same kind, or both storage nodes, which compete for the memories --
+// and their occupancies and parts overlap, as below. Two storage nodes are not
+// kept apart by holding different storage: a memory holds several, each in
+// rows of its own for as long as it is live, and that is decided against
+// RF_DEPTH and the storage lifetimes when binding (MemoryMap), not here.
 //
 //   OVERLAPPING OCCUPANCY AND OVERLAPPING PARTS. Both must hold.
 //
@@ -114,8 +116,8 @@ public:
   // not about any one epoch. Building an epoch at a time would let the `@rf1`
   // written in one epoch and the `@rf1` read in the next be two nodes, free to
   // be bound to two different register files -- and the read would find an
-  // empty one. Two storages must likewise stay on different instances across
-  // the whole program, not merely within an epoch.
+  // empty one. Where two storages may share an instance is likewise a question
+  // about their lifetimes over the whole program (MemoryMap).
   //
   // Nothing is lost by widening the scope, because the conflicts that are about
   // time bound themselves: an SSA value never crosses an epoch, so two
@@ -133,8 +135,8 @@ public:
     return nodes_[node].ops;
   }
 
-  // The `kind` attribute instruction selection wrote, or null when it wrote
-  // none. A node with no kind is joined to nothing: there is no telling what it
+  // The `kind` attribute instruction selection wrote (for a storage node, the
+  // first access's), or null when it wrote none. A node with no kind is joined to nothing: there is no telling what it
   // would contend with. The binder reports it.
   mlir::StringAttr kind(unsigned node) const { return nodes_[node].kind; }
 
@@ -163,9 +165,8 @@ public:
   ConflictReason reason(unsigned a, unsigned b) const;
 
   // The parts `a` and `b` contend for -- what makes them conflict rather than
-  // merely coincide. Empty when they do not conflict, when one of them declared
-  // no parts and so was read as holding the whole resource, or when what keeps
-  // them apart is their storage rather than any part.
+  // merely coincide. Empty when they do not conflict, or when one of them
+  // declared no parts and so was read as holding the whole resource.
   llvm::ArrayRef<mlir::StringAttr> shared_parts(unsigned a, unsigned b) const;
 
   // The node `op` was bound as, or nothing when `op` is not a drra.rop of this
@@ -188,14 +189,20 @@ private:
 
   struct Edge {
     ConflictReason why = ConflictReason::none;
-    // The parts both endpoints hold. Empty when one of them declared none, or
-    // when the edge is there because the storage differs.
+    // The parts both endpoints hold. Empty when one of them declared none.
     llvm::SmallVector<mlir::StringAttr> shared;
   };
 
   // Join `a` and `b`, unless they are the same node, cannot contend at all, or
   // want no part of the resource in common.
   void add_edge(unsigned a, unsigned b, ConflictReason why);
+
+  // Whether `a` and `b` compete for the same instances: the same kind, or both
+  // storage nodes.
+  bool same_pool(unsigned a, unsigned b) const;
+
+  // The pool a node is bound from, for the dumped graph: its kind, or "memory".
+  std::string pool_name(unsigned node) const;
 
   static EdgeKey edge_key(unsigned a, unsigned b) {
     return a < b ? EdgeKey(a, b) : EdgeKey(b, a);
@@ -211,7 +218,7 @@ private:
   llvm::DenseMap<EdgeKey, Edge> edges_;
 };
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

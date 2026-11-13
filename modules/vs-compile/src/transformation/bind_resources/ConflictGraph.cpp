@@ -1,6 +1,9 @@
 #include "ConflictGraph.hpp"
+#include "Architecture.hpp"
 
 #include "mlir/Analysis/Liveness.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
@@ -10,7 +13,7 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 namespace {
 
@@ -26,6 +29,34 @@ using OccupancyMap =
 // instance the carried value is sitting in.
 void occupy(OccupancyMap &occupancy, mlir::Operation *op, unsigned index) {
   op->walk([&](mlir::Operation *nested) { occupancy[nested].push_back(index); });
+}
+
+// The port of a rop's evt, or -1.
+int64_t evt_port(mlir::Operation *op) {
+  auto evt = op->getAttrOfType<mlir::DictionaryAttr>("evt");
+  auto port = evt ? evt.getAs<mlir::IntegerAttr>("port") : nullptr;
+  return port ? port.getInt() : -1;
+}
+
+// The outermost affine.for around `op` inside its epoch, or null outside any
+// loop.
+//
+// A drra.rop that runs in a mode (a conf) inside a loop nest is configured
+// once and streamed over every iteration of the nest -- its map has a dim per
+// enclosing loop -- so it holds its instance from the first iteration to the
+// last. Two operations in sibling inner loops of one outer loop never run at
+// the same time: they share an instance, each mode in its own config register
+// (CreateConstraintsPass select_dpu_options).
+mlir::Operation *outermost_loop(mlir::Operation *op) {
+  mlir::Operation *outermost = nullptr;
+  for (mlir::Operation *parent = op->getParentOp();
+       parent && !llvm::isa<pasm::EpochOp>(parent);
+       parent = parent->getParentOp()) {
+    if (llvm::isa<mlir::affine::AffineForOp>(parent)) {
+      outermost = parent;
+    }
+  }
+  return outermost;
 }
 
 // The parts of its resource the operation says it holds, in declaration order.
@@ -80,23 +111,24 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   ConflictGraph graph;
   mlir::Operation *scope = module.getOperation();
 
-  // The nodes. Operations that hold the same storage on the same kind are one
-  // node, because they have to be bound together; everything else is a node of
-  // its own. Grouping on the kind as well as the storage keeps a node from
-  // being asked to be two kinds of instance at once, which could otherwise
-  // happen where two resources match accesses to one buffer.
+  // The nodes. Operations that hold the same storage are one node, because
+  // they have to be bound together; everything else is a node of its own. The
+  // kind is not part of the key: every memory that fits the storage is a
+  // candidate, whichever memory's pattern matched the access.
   // Keyed on the generic Attribute: DenseMapInfo for a concrete attribute class
   // hands back its base, which will not convert to the derived type.
-  llvm::DenseMap<std::pair<mlir::Attribute, mlir::Attribute>, unsigned>
-      by_storage;
+  llvm::DenseMap<mlir::Attribute, unsigned> by_storage;
   scope->walk([&](drra::RopOp rop) {
     mlir::Operation *op = rop.getOperation();
     auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
     auto storage = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("storage");
+    // Rops on one resource state (an accumulator) are bound together too.
+    auto state = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("state");
 
     unsigned index = graph.nodes_.size();
-    if (kind && storage) {
-      auto [entry, fresh] = by_storage.try_emplace({kind, storage}, index);
+    if (kind && (storage || state)) {
+      mlir::Attribute key = storage ? storage : state;
+      auto [entry, fresh] = by_storage.try_emplace(key, index);
       index = entry->second;
       if (fresh) {
         graph.nodes_.push_back(Node{{}, kind, storage, {}});
@@ -117,22 +149,6 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
   graph.adjacency_.resize(graph.nodes_.size());
   if (graph.nodes_.empty()) {
     return graph;
-  }
-
-  // Different storage on one kind. One instance holds one storage, so these
-  // conflict whether or not they ever run at the same time -- which is why the
-  // pairs are walked here rather than left to the occupancies below.
-  for (unsigned a = 0; a < graph.nodes_.size(); ++a) {
-    if (!graph.nodes_[a].storage) {
-      continue;
-    }
-    for (unsigned b = a + 1; b < graph.nodes_.size(); ++b) {
-      if (!graph.nodes_[b].storage ||
-          graph.nodes_[a].storage == graph.nodes_[b].storage) {
-        continue;
-      }
-      graph.add_edge(a, b, ConflictReason::distinct_storage);
-    }
   }
 
   // Data flow. A producer still holds its value when its consumer reads it, so
@@ -169,6 +185,100 @@ ConflictGraph ConflictGraph::build(mlir::ModuleOp module) {
     }
   }
 
+  // Loop nests. A node whose operation runs in a mode -- a conf, set once and
+  // streamed over every iteration -- holds its instance for its loop, so two
+  // such nodes in one loop (or one inside the other's) are active together
+  // whatever the schedule and
+  // contend wherever their parts overlap, even where liveness sees one of them
+  // finished before the other starts (ger's alpha * x[i] and the add two
+  // operations later in the same loop). Event-driven operations (io and rf
+  // transfers, the dpu rst) are single instructions the scheduler can put one
+  // after the other on a shared instance, so they keep to liveness alone.
+  // Sibling loops run one after the other: where a nest has more such nodes of
+  // a kind than the fabric has instances, two contend only where one's loop
+  // holds the other's, and DPU modes share an instance through its config
+  // registers.
+  llvm::MapVector<mlir::Operation *,
+                  llvm::SmallVector<std::pair<unsigned, mlir::Operation *>>>
+      nests;
+  for (unsigned i = 0; i < graph.nodes_.size(); ++i) {
+    for (mlir::Operation *op : graph.nodes_[i].ops) {
+      if (!op->hasAttr("conf")) {
+        continue;
+      }
+      if (mlir::Operation *nest = outermost_loop(op)) {
+        nests[nest].push_back({i, op});
+      }
+    }
+  }
+  // Groups of one shared loop take turns on a DPU (FissionLoopsPass).
+  auto take_turns = [](mlir::Operation *a, mlir::Operation *b) {
+    auto ga = a->getAttrOfType<mlir::ArrayAttr>("dpu_share");
+    auto gb = b->getAttrOfType<mlir::ArrayAttr>("dpu_share");
+    return ga && gb && ga[0] == gb[0] && ga[1] != gb[1];
+  };
+  auto nested = [](mlir::Operation *a, mlir::Operation *b) {
+    auto la = a->getParentOfType<mlir::affine::AffineForOp>();
+    auto lb = b->getParentOfType<mlir::affine::AffineForOp>();
+    return la->isAncestor(lb) || lb->isAncestor(la);
+  };
+  mlir::FailureOr<Architecture> arch = Architecture::from_config(module);
+  for (auto &entry : nests) {
+    auto &here = entry.second;
+    llvm::DenseMap<mlir::StringAttr, llvm::SmallDenseSet<unsigned>> per_kind;
+    for (auto &[node, op] : here) {
+      if (auto kind = graph.nodes_[node].kind) {
+        per_kind[kind].insert(node);
+      }
+    }
+    auto short_of = [&](unsigned node) {
+      auto kind = graph.nodes_[node].kind;
+      return kind && mlir::succeeded(arch) &&
+             per_kind[kind].size() >
+                 arch->instances_of_kind(kind.getValue()).size();
+    };
+    for (unsigned a = 0; a < here.size(); ++a) {
+      for (unsigned b = a + 1; b < here.size(); ++b) {
+        if (here[a].first != here[b].first &&
+            !take_turns(here[a].second, here[b].second) &&
+            (!short_of(here[a].first) ||
+             nested(here[a].second, here[b].second))) {
+          graph.add_edge(here[a].first, here[b].first,
+                         ConflictReason::same_loop);
+        }
+      }
+    }
+  }
+
+  // Streams. Two evt rops in one innermost loop each run once per iteration,
+  // so on one port of one instance the scheduler could only interleave them,
+  // and a DPU mode fed by either takes an operand every cycle
+  // (CreateConstraintsPass stream-step). Accesses to different storages on one
+  // port of one loop body need different memories. Sequential liveness never
+  // sees them together: each result dies at its consumer.
+  llvm::MapVector<std::pair<mlir::Operation *, int64_t>,
+                  llvm::SmallVector<unsigned>>
+      streams;
+  for (unsigned i = 0; i < graph.nodes_.size(); ++i) {
+    if (!graph.nodes_[i].storage) {
+      continue;
+    }
+    for (mlir::Operation *op : graph.nodes_[i].ops) {
+      auto loop = op->getParentOfType<mlir::affine::AffineForOp>();
+      if (loop && op->hasAttr("evt")) {
+        streams[{loop.getOperation(), evt_port(op)}].push_back(i);
+      }
+    }
+  }
+  for (auto &entry : streams) {
+    auto &here = entry.second;
+    for (unsigned a = 0; a < here.size(); ++a) {
+      for (unsigned b = a + 1; b < here.size(); ++b) {
+        graph.add_edge(here[a], here[b], ConflictReason::stream);
+      }
+    }
+  }
+
   // Two nodes claiming an instance at the same point may still not contend --
   // add_edge has the last word on that, since it is what knows which parts of
   // the resource each of them wanted. Walking the claims per point rather than
@@ -192,10 +302,10 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
   if (a == b) {
     return;
   }
-  // Different kinds never land on one instance, so there is nothing to say
-  // about them; a node whose kind selection did not write has nothing to
-  // compare against either.
-  if (!nodes_[a].kind || nodes_[a].kind != nodes_[b].kind) {
+  // Nodes bound from different pools never land on one instance, so there is
+  // nothing to say about them; a node whose kind selection did not write has
+  // nothing to compare against either.
+  if (!same_pool(a, b)) {
     return;
   }
 
@@ -203,10 +313,7 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
   auto found = edges_.find(key);
   if (found == edges_.end()) {
     llvm::SmallVector<mlir::StringAttr> shared;
-    bool distinct_storage = nodes_[a].storage && nodes_[b].storage &&
-                            nodes_[a].storage != nodes_[b].storage;
-    if (!distinct_storage && !nodes_[a].parts.empty() &&
-        !nodes_[b].parts.empty()) {
+    if (!nodes_[a].parts.empty() && !nodes_[b].parts.empty()) {
       // Same resource, same moment -- but a resource has parts, and two nodes
       // only contend when they want the same one. A node that declared no parts
       // is read as holding all of them, so it contends with everything of its
@@ -222,6 +329,20 @@ void ConflictGraph::add_edge(unsigned a, unsigned b, ConflictReason why) {
     adjacency_[b].insert(a);
   }
   found->second.why = found->second.why | why;
+}
+
+bool ConflictGraph::same_pool(unsigned a, unsigned b) const {
+  if (nodes_[a].storage || nodes_[b].storage) {
+    return nodes_[a].storage && nodes_[b].storage;
+  }
+  return nodes_[a].kind && nodes_[a].kind == nodes_[b].kind;
+}
+
+std::string ConflictGraph::pool_name(unsigned node) const {
+  if (nodes_[node].storage) {
+    return "memory";
+  }
+  return nodes_[node].kind ? nodes_[node].kind.getValue().str() : "";
 }
 
 ConflictReason ConflictGraph::reason(unsigned a, unsigned b) const {
@@ -308,26 +429,27 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
   os << "graph \"" << graph_name << "\" {\n";
   os << "  node [shape=box];\n";
 
-  // Nodes grouped by kind, which is also how they are grouped when bound: a
-  // cluster is the set of nodes competing for the same pool of instances.
-  llvm::SmallVector<mlir::StringAttr> kinds_seen;
-  for (const Node &node : nodes_) {
-    if (node.kind && !llvm::is_contained(kinds_seen, node.kind)) {
-      kinds_seen.push_back(node.kind);
+  // Nodes grouped by pool, which is also how they are grouped when bound: a
+  // cluster is the set of nodes competing for the same instances.
+  llvm::SmallVector<std::string> pools_seen;
+  for (unsigned i = 0; i < nodes_.size(); ++i) {
+    std::string pool = pool_name(i);
+    if (!pool.empty() && !llvm::is_contained(pools_seen, pool)) {
+      pools_seen.push_back(pool);
     }
   }
-  for (mlir::StringAttr kind : kinds_seen) {
-    os << "  subgraph \"cluster_" << kind.getValue() << "\" {\n";
-    os << "    label=\"" << kind.getValue() << "\";\n";
+  for (const std::string &pool : pools_seen) {
+    os << "  subgraph \"cluster_" << pool << "\" {\n";
+    os << "    label=\"" << pool << "\";\n";
     for (unsigned i = 0; i < nodes_.size(); ++i) {
-      if (nodes_[i].kind == kind) {
+      if (pool_name(i) == pool) {
         os << "    n" << i << " [label=\"" << node_label(i) << "\"];\n";
       }
     }
     os << "  }\n";
   }
   for (unsigned i = 0; i < nodes_.size(); ++i) {
-    if (!nodes_[i].kind) {
+    if (pool_name(i).empty()) {
       os << "  n" << i << " [label=\"" << node_label(i)
          << "\", style=dashed, color=gray];\n";
     }
@@ -347,17 +469,16 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
       std::string label;
       if (!shared.empty()) {
         label = join(shared);
-      } else if (has_reason(why, ConflictReason::distinct_storage)) {
-        label = "different storage";
       } else {
         label = "whole resource";
       }
 
       std::string reasons;
       for (auto [bit, text] :
-           {std::pair{ConflictReason::distinct_storage, "storage"},
-            std::pair{ConflictReason::data_flow, "data flow"},
-            std::pair{ConflictReason::live_overlap, "live"}}) {
+           {std::pair{ConflictReason::data_flow, "data flow"},
+            std::pair{ConflictReason::live_overlap, "live"},
+            std::pair{ConflictReason::same_loop, "loop"},
+            std::pair{ConflictReason::stream, "stream"}}) {
         if (has_reason(why, bit)) {
           reasons += reasons.empty() ? text : std::string(" + ") + text;
         }
@@ -369,6 +490,6 @@ void ConflictGraph::write_dot(llvm::raw_ostream &os,
   os << "}\n";
 }
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla

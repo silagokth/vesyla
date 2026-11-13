@@ -27,6 +27,10 @@ struct Anchor {
   // outermost first; `ir_idx` names the first pass through them. Empty when
   // the anchor stands for the whole nest. Not part of the anchor's identity.
   std::vector<uint32_t> pass_hi;
+  // The ids of those loops, to tell sibling nests apart.
+  std::vector<mlir::Attribute> loops;
+  // Program order of the transfer in its epoch; -1 without loops.
+  int32_t pos = -1;
 
   bool operator<(const Anchor &o) const;
   bool operator==(const Anchor &o) const;

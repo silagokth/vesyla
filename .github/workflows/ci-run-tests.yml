@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        frontend: [pasm, mlir]
+        frontend: [pasm, mlir, c]
     steps:
       - name: Install gh CLI
         run: |
@@ -95,12 +95,14 @@ jobs:
           token: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
 
       - name: Check drra-tests branch
+        # The runner reuses tests/ between runs, so local branches and
+        # remote-tracking refs can be stale: ask GitHub, and reset to what it has.
         run: |
           cd "${{ github.workspace }}/tests"
-          git fetch --all
-          if git show-ref --verify --quiet refs/remotes/origin/${{ inputs.branch }}; then
-            git checkout ${{ inputs.branch }}
-            echo "Switching to drra-tests@${{ inputs.branch }}"
+          if git ls-remote --exit-code --heads origin "${{ inputs.branch }}" >/dev/null; then
+            git fetch origin "${{ inputs.branch }}"
+            git checkout --force -B "${{ inputs.branch }}" FETCH_HEAD
+            echo "Switching to drra-tests@${{ inputs.branch }} ($(git rev-parse --short HEAD))"
           else
             echo "Using the drra-tests master branch"
           fi
@@ -142,8 +144,36 @@ jobs:
             exit 1
           fi
 
+      - name: Get Polygeist artifact
+        if: matrix.frontend == 'c'
+        uses: actions/download-artifact@v4
+        with:
+          name: polygeist
+          path: ${{ github.workspace }}/polygeist
+
+      - name: Add Polygeist to PATH
+        if: matrix.frontend == 'c'
+        run: |
+          set -e
+          chmod a+x polygeist/bin/*
+          echo "${{ github.workspace }}/polygeist/bin" >> $GITHUB_PATH
+          polygeist/bin/cgeist --version
+          polygeist/bin/polygeist-opt --version
+
+      # The c frontend only exists where the testcases carry c/ programs.
+      - name: Check for C programs
+        id: c_programs
+        run: |
+          if [ "${{ matrix.frontend }}" != c ] || ls -d tests/testcases/drra/*/*/c >/dev/null 2>&1; then
+            echo "present=true" >> $GITHUB_OUTPUT
+          else
+            echo "No c/ programs in drra-tests; skipping the c frontend"
+            echo "present=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run DRRA tests (${{ matrix.frontend }})
         id: run_tests
+        if: steps.c_programs.outputs.present == 'true'
         continue-on-error: true
         run: |
           cd tests
@@ -171,7 +201,7 @@ jobs:
           module add sst
           source .venv/bin/activate
           export VESYLA_SUITE_PATH_COMPONENTS=$(readlink -e ../library)
-          mkdir -p failed_logs
+          rm -rf failed_logs && mkdir failed_logs   # tests/ is reused between runs
           python3 - <<'PY'
           import os, re, subprocess, pathlib
           from xml.etree import ElementTree as ET
@@ -248,11 +278,11 @@ jobs:
           if-no-files-found: ignore
 
       - name: Compress test outputs
-        if: always()
+        if: always() && steps.run_tests.outcome != 'skipped'
         run: tar czf output.tar.gz tests/output
 
       - name: Upload test outputs
-        if: always()
+        if: always() && steps.run_tests.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: test-outputs-${{ matrix.frontend }}

@@ -118,6 +118,12 @@ public:
           send->setAttr("pass_hi", pass_hi);
           recv->setAttr("pass_hi", pass_hi);
         }
+        for (llvm::StringRef name : {"loops", "pos"}) {
+          if (mlir::Attribute attr = bulk->getAttr(name)) {
+            send->setAttr(name, attr);
+            recv->setAttr(name, attr);
+          }
+        }
       }
       rewriter.eraseOp(bulk);
     }

@@ -1,5 +1,5 @@
-#ifndef __VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES_HPP__
-#define __VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES_HPP__
+#ifndef __VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES_HPP__
+#define __VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES_HPP__
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -11,15 +11,15 @@
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 #define GEN_PASS_DECL
-#include "transformation/design_space_exploration/Passes.hpp.inc"
+#include "transformation/bind_resources/Passes.hpp.inc"
 
 #define GEN_PASS_REGISTRATION
-#include "transformation/design_space_exploration/Passes.hpp.inc"
+#include "transformation/bind_resources/Passes.hpp.inc"
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 
-#endif // __VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES_HPP__
+#endif // __VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES_HPP__

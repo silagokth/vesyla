@@ -1,9 +1,9 @@
-#ifndef VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
-#define VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
+#ifndef VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES
+#define VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::ModuleOp"> {
+def BindResourcesPass : Pass<"bind-resources-pass", "::mlir::ModuleOp"> {
   let summary = "Assign every selected instruction to a hardware resource.";
   let description = [{
     Runs on the module instruction selection produced, where every `drra.rop`
@@ -25,25 +25,17 @@ def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::
     built: a conflict graph can say two things must differ but never that two
     things must agree, so what must agree is merged rather than constrained.
 
-    Two nodes conflict when they are of the same `kind` -- two of different
-    kinds cannot share an instance whatever the program does -- and then either
-    of the following:
-
-      * they hold different storage. One instance holds one storage, so these
-        never share, whether or not they ever run at the same time. Two arrays
-        could in principle sit in one register file if their lifetimes were
-        disjoint or their addresses could not collide, but neither is
-        established here, so the conservative reading stands.
-      * their occupancies overlap *and* they want the same part of the
-        resource. Occupancy runs from where an operation runs until the last
-        reader of its results has taken them, so two nodes whose stretches do
-        not meet are never both running. Parts are what of the resource a node
-        holds: a dpu has config registers, narrow inputs and outputs, and an AGU
-        per event port, an rf has four access paths each with its own AGU and
-        data wires, and a mac and a rst want none of the same ones. Each
-        operation declares its parts in `uses`, written by the resource's own
-        description in the component library; one that declares none is read as
-        holding the whole resource.
+    Two nodes conflict when they compete for the same instances -- the same
+    `kind`, or both storage nodes, which compete for the memories (category
+    `memory`) -- and their occupancies overlap *and* they want the same part of
+    the resource. Occupancy runs from where an operation runs until the last
+    reader of its results has taken them, so two nodes whose stretches do not
+    meet are never both running. Parts are what of the resource a node holds: a
+    dpu has config registers, narrow inputs and outputs, and an AGU per event
+    port, an rf has four access paths each with its own AGU and data wires, and
+    a mac and a rst want none of the same ones. Each operation declares its
+    parts in `uses`, written by the resource's own description in the component
+    library; one that declares none is read as holding the whole resource.
 
     The graph is written out as Graphviz DOT under the `conflict_graph_dir`
     output path, one file per scope. Each node is labelled with what it is, the
@@ -52,7 +44,13 @@ def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::
     only that it is.
 
     Binding is then a colouring of that graph: the instances of a kind are the
-    colours, and two joined nodes must be given different ones. The colouring is
+    colours, and two joined nodes must be given different ones. A storage node
+    is coloured with a memory and a base row: the smallest memory it fits in
+    (RF_DEPTH), an idle one before one holding another storage over its
+    lifetime, and the lowest rows free there over that lifetime. A storage holds
+    its rows from its first write to its last read, in program points (top-level
+    operations of the epochs, a loop counting as one). The table of which rows
+    hold which storage is written as `memory_map.txt` next to the graph. The colouring is
     greedy, taking the most contended nodes first, which is not optimal but
     never puts two conflicting operations together. When a kind runs out of
     instances the pass says which one ran short, rather than overcommitting an
@@ -83,4 +81,4 @@ def DesignSpaceExplorationPass : Pass<"design-space-exploration-pass", "::mlir::
                            "::vesyla::pasm::PasmDialect"];
 }
 
-#endif // VESYLA_TRANSFORMATION_DESIGN_SPACE_EXPLORATION_PASSES
+#endif // VESYLA_TRANSFORMATION_BIND_RESOURCES_PASSES

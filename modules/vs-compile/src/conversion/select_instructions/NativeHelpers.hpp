@@ -22,6 +22,12 @@ bool is_iter_args_carry(mlir::Value acc);
 // for -- from claiming every constant in the program.
 bool feeds_iter_args_init(mlir::Operation *op);
 
+// True when `memref` is one of the program's IO buffers: a memref.alloc with
+// id @input_buffer or @output_buffer. The program names its IO buffers with an
+// id on the alloc, because MLIR drops SSA value names at parse time and
+// %input_buffer would otherwise be gone by the time the passes run.
+bool is_io_buffer(mlir::Value memref);
+
 // Number of affine.for ops enclosing `op`.
 unsigned enclosing_loop_depth(mlir::Operation *op);
 
@@ -29,6 +35,8 @@ unsigned enclosing_loop_depth(mlir::Operation *op);
 // sweeps:
 //   - an affine.apply feeding an index operand: reuse its map, which already
 //     carries both the stepping and the base.
+//   - a subscript the access's own map writes over enclosing loop counters:
+//     that expression, over the enclosing loops' dims (outermost first).
 //   - a constant subscript: that base alone, over the enclosing loops' dims
 //     but stepped by none of them. A load that says [1, 0] starts one bulk
 //     in, and that has to survive into the map because set_init_addr reads

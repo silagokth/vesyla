@@ -41,8 +41,9 @@ impl FabricLoader {
     }
 
     pub fn load(&mut self, arch_json_path: &Path) -> Result<Fabric, DRRAError> {
-        let input: serde_json::Value = serde_json::from_reader(fs::File::open(arch_json_path)?)
+        let mut input: serde_json::Value = serde_json::from_reader(fs::File::open(arch_json_path)?)
             .map_err(|e| DRRAError::Io(Error::new(std::io::ErrorKind::InvalidInput, e)))?;
+        size_instr_addr_width(&mut input);
 
         let mut fabric = Fabric::new();
         fabric.add_parameters(get_parameters(&input, None));
@@ -266,6 +267,48 @@ fn iram_depth(instr_count: u64) -> u64 {
         0
     } else {
         instr_count.max(2).next_power_of_two()
+    }
+}
+
+// A sized arch.json records how many instructions each cell loads; the
+// instruction address has to reach the memory sized for them. INSTR_ADDR_WIDTH
+// is raised to that wherever it is a parameter: the fabric (the testbench and
+// the load ports), the cells and the controllers.
+fn size_instr_addr_width(input: &mut serde_json::Value) {
+    let mut depth = 0;
+    if let Some(cells) = input.get("cells").and_then(|c| c.as_array()) {
+        for entry in cells {
+            if let Some(n) = entry
+                .pointer("/cell/controller/instr_count")
+                .and_then(|c| c.as_u64())
+            {
+                depth = depth.max(iram_depth(n));
+            }
+        }
+    }
+    if depth < 2 {
+        return;
+    }
+    let width = u64::from(depth.trailing_zeros());
+    fn raise(params: &mut serde_json::Value, width: u64) {
+        if let Some(w) = params.get_mut("INSTR_ADDR_WIDTH") {
+            if w.as_u64().unwrap_or(0) < width {
+                *w = serde_json::json!(width);
+            }
+        }
+    }
+    if let Some(p) = input.get_mut("parameters") {
+        raise(p, width);
+    }
+    if let Some(cells) = input.get_mut("cells").and_then(|c| c.as_array_mut()) {
+        for entry in cells {
+            if let Some(p) = entry.pointer_mut("/cell/parameters") {
+                raise(p, width);
+            }
+            if let Some(p) = entry.pointer_mut("/cell/controller/parameters") {
+                raise(p, width);
+            }
+        }
     }
 }
 

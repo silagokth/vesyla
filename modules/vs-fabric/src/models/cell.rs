@@ -222,7 +222,7 @@ impl Cell {
         if let Some(controller_isa) = controller.isa.as_mut() {
             if cell_isa.format.is_none() {
                 cell_isa.format = controller_isa.format.clone();
-            } else if controller_isa.format != cell_isa.format {
+            } else if !controller_isa.format.compatible(&cell_isa.format) {
                 log::error!(
                     "Controller ISA format: {:?}, Cell ISA format: {:?}",
                     controller_isa.format,
@@ -244,7 +244,7 @@ impl Cell {
                 return Err(DRRAError::ComponentWithoutISA);
             }
             if let Some(resource_isa) = resource.isa.as_mut() {
-                if cell_isa.format != resource_isa.format {
+                if !cell_isa.format.compatible(&resource_isa.format) {
                     log::error!(
                         "Resource ISA format: {:?}, Cell ISA format: {:?}",
                         resource_isa.format,

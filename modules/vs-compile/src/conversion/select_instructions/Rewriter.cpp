@@ -1,6 +1,7 @@
 #include "Rewriter.hpp"
 #include "NativeHelpers.hpp"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
@@ -62,6 +63,37 @@ mlir::FlatSymbolRefAttr storageName(mlir::Value storage) {
   return alloc->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
 }
 
+// The loop carry a stateful resource holds: the iter_arg the accumulator read
+// bound to, or the one the root initialises. Named after its loop, so every rop
+// on that carry gets the same `state` and is bound to one instance.
+mlir::FlatSymbolRefAttr liftState(const Pattern &pattern, mlir::Operation *root,
+                                  const MatchResult &match) {
+  if (!pattern.accumulator)
+    return {};
+  mlir::Value carry;
+  if (auto bound = match.bindings.find(pattern.accumulator);
+      bound != match.bindings.end())
+    carry = bound->second;
+  for (mlir::OpOperand &use : root->getUses()) {
+    auto loop = llvm::dyn_cast<mlir::affine::AffineForOp>(use.getOwner());
+    if (!carry && loop && use.getOperandNumber() >= loop.getNumControlOperands())
+      carry = loop.getRegionIterArgs()[use.getOperandNumber() -
+                                       loop.getNumControlOperands()];
+  }
+  auto arg = llvm::dyn_cast_or_null<mlir::BlockArgument>(carry);
+  if (!arg)
+    return {};
+  auto loop = llvm::dyn_cast_or_null<mlir::affine::AffineForOp>(
+      arg.getOwner()->getParentOp());
+  auto loop_id = loop ? loop->getAttrOfType<mlir::FlatSymbolRefAttr>("id")
+                      : mlir::FlatSymbolRefAttr();
+  if (!loop_id)
+    return {};
+  return mlir::FlatSymbolRefAttr::get(
+      root->getContext(), loop_id.getValue().str() + "_carry" +
+                              std::to_string(arg.getArgNumber() - 1));
+}
+
 } // namespace
 
 mlir::LogicalResult applyReplacement(const Pattern &pattern,
@@ -119,12 +151,14 @@ mlir::LogicalResult applyReplacement(const Pattern &pattern,
     }
   }
 
+  mlir::FlatSymbolRefAttr state = liftState(pattern, root, match);
+
   for (mlir::Operation &op : body.without_terminator()) {
     mlir::Operation *clone = builder.clone(op, mapping);
     clone->setLoc(root->getLoc());
     // Per-match, so the library cannot state them: which program operation this
-    // came from, the address the AGU sweeps for it, and the storage it lands
-    // in.
+    // came from, the address the AGU sweeps for it, the storage it lands in, and
+    // the words of the row an io write stores.
     if (llvm::isa<drra::RopOp>(clone)) {
       if (id) {
         clone->setAttr("id", id);
@@ -134,6 +168,12 @@ mlir::LogicalResult applyReplacement(const Pattern &pattern,
       }
       if (storage) {
         clone->setAttr("storage", storage);
+      }
+      if (state) {
+        clone->setAttr("state", state);
+      }
+      if (auto wrMask = root->getAttr("wr_mask")) {
+        clone->setAttr("wr_mask", wrMask);
       }
       clone->setAttr("kind", builder.getStringAttr(pattern.kind));
     }

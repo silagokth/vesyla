@@ -1,7 +1,11 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include <map>
+#include <optional>
 #include <string>
+#include <tuple>
 
 #include "DrraToPasmPass.hpp"
 #include "vesyla/Dialect/Drra/IR/DrraOps.hpp"
@@ -47,6 +51,157 @@ mlir::Operation *earliest_producer(drra::RopOp rop) {
     }
   }
   return target;
+}
+
+// Where a drra.rop runs. resource is a single ResourceAttr, which is what
+// BindResourcesPass writes, or an array of them on hand-written input;
+// either way the first resource.
+pasm::ResourceAttr resource_of(drra::RopOp rop) {
+  auto resource = rop->getAttrOfType<pasm::ResourceAttr>("resource");
+  if (!resource) {
+    if (auto resources = rop->getAttrOfType<mlir::ArrayAttr>("resource");
+        resources && !resources.empty()) {
+      resource = mlir::dyn_cast<pasm::ResourceAttr>(resources[0]);
+    }
+  }
+  return resource;
+}
+
+bool is_io_write(drra::RopOp rop) {
+  auto kind = rop->getAttrOfType<mlir::StringAttr>("kind");
+  if (!kind || kind.getValue() != "io" || !rop.getEvtAttr()) {
+    return false;
+  }
+  auto port = rop.getEvtAttr().getAs<mlir::IntegerAttr>("port");
+  return port && port.getInt() == 1; // output_buffer
+}
+
+int64_t wr_mask_of(drra::RopOp rop) {
+  auto mask = rop->getAttrOfType<mlir::IntegerAttr>("wr_mask");
+  return mask ? mask.getInt() : 0xFFFF;
+}
+
+// Cycles from a write's evt to the earliest conf that does not change the mask
+// under it (measured on SST and RTL: 3 passes, 2 does not).
+constexpr int64_t WR_MASK_GAP = 3;
+
+llvm::SmallVector<mlir::affine::AffineForOp> enclosing_loops(mlir::Operation *op) {
+  llvm::SmallVector<mlir::affine::AffineForOp> loops;
+  for (auto loop = op->getParentOfType<mlir::affine::AffineForOp>(); loop;
+       loop = loop->getParentOfType<mlir::affine::AffineForOp>()) {
+    loops.insert(loops.begin(), loop);
+  }
+  return loops;
+}
+
+// The first or last repeat of a rop.
+pasm::AnchorRangeAttr anchor_at(drra::RopOp rop, bool last) {
+  llvm::SmallVector<uint32_t> idx;
+  for (mlir::affine::AffineForOp loop : enclosing_loops(rop)) {
+    idx.push_back(static_cast<uint32_t>(last ? loop.getConstantUpperBound() - 1
+                                             : loop.getConstantLowerBound()));
+  }
+  return pasm::AnchorRangeAttr::get(
+      rop.getContext(), rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id"), {}, 0,
+      idx, {}, 0, idx);
+}
+
+mlir::FlatSymbolRefAttr wr_mask_symbol(drra::RopOp rop) {
+  auto id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
+  return mlir::FlatSymbolRefAttr::get(rop.getContext(),
+                                      id.getValue().str() + "_mask");
+}
+
+void add_order(mlir::OpBuilder &builder, drra::RopOp rop,
+               pasm::AnchorRangeAttr src, pasm::AnchorRangeAttr dst,
+               int64_t gap, llvm::StringRef rule) {
+  pasm::CstrOp::create(builder, rop.getLoc(), src, dst,
+                       pasm::DelayAttr::get(rop.getContext(), gap, std::nullopt),
+                       builder.getBoolAttr(false))
+      ->setAttr("debug", builder.getStrArrayAttr({"DrraToPasmPass", rule}));
+}
+
+// The io writes that set the io's wr_mask, and to what. The register holds
+// until the next conf, so an io's writes run in program order in stretches of
+// one mask: each stretch that needs another value starts with a conf, after the
+// last write of the stretch before and ahead of the first write of its own.
+//
+// In a program with a partial write, the first epoch states its mask even if
+// it is the reset value: NoReconfigurationPass then sees every mask used.
+mlir::LogicalResult
+plan_wr_masks(mlir::ModuleOp module,
+              llvm::DenseMap<mlir::Operation *, int64_t> &wr_masks) {
+  if (!module
+           .walk([](drra::RopOp rop) {
+             return rop->hasAttr("wr_mask") ? mlir::WalkResult::interrupt()
+                                            : mlir::WalkResult::advance();
+           })
+           .wasInterrupted()) {
+    return mlir::success();
+  }
+
+  using Key = std::tuple<int32_t, int32_t, int32_t>;
+  std::map<Key, int64_t> current;
+  llvm::SmallVector<pasm::EpochOp> epochs;
+  module.walk([&](pasm::EpochOp epoch) { epochs.push_back(epoch); });
+  for (pasm::EpochOp epoch : epochs) {
+    std::map<Key, llvm::SmallVector<drra::RopOp>> writes;
+    epoch.walk([&](drra::RopOp rop) {
+      pasm::ResourceAttr resource = resource_of(rop);
+      if (resource && is_io_write(rop)) {
+        writes[{resource.getRow(), resource.getCol(), resource.getSlot()}]
+            .push_back(rop);
+      }
+    });
+    mlir::OpBuilder builder(epoch.getBody().front().getTerminator());
+    for (auto &[key, rops] : writes) {
+      llvm::SmallVector<llvm::SmallVector<drra::RopOp>> stretches;
+      for (drra::RopOp rop : rops) {
+        if (stretches.empty() ||
+            wr_mask_of(stretches.back().front()) != wr_mask_of(rop)) {
+          stretches.emplace_back();
+        }
+        stretches.back().push_back(rop);
+      }
+      for (auto [s, stretch] : llvm::enumerate(stretches)) {
+        drra::RopOp head = stretch.front();
+        int64_t mask = wr_mask_of(head);
+        if (s > 0) {
+          for (drra::RopOp before : stretches[s - 1]) {
+            for (drra::RopOp rop : stretch) {
+              auto theirs = enclosing_loops(before);
+              if (llvm::any_of(enclosing_loops(rop), [&](auto loop) {
+                    return llvm::is_contained(theirs, loop);
+                  })) {
+                rop.emitError("drra-to-pasm: wr_mask changes inside a loop (")
+                    << wr_mask_of(before) << " and " << mask << ")";
+                return mlir::failure();
+              }
+            }
+          }
+        }
+        auto known = current.find(key);
+        if (known != current.end() && known->second == mask) {
+          continue;
+        }
+        current[key] = mask;
+        wr_masks[head] = mask;
+        auto conf = pasm::AnchorRangeAttr::get(
+            head.getContext(), wr_mask_symbol(head), {}, 0, {}, {}, 0, {});
+        if (s > 0) {
+          for (drra::RopOp before : stretches[s - 1]) {
+            add_order(builder, before, anchor_at(before, true), conf,
+                      WR_MASK_GAP, "wr-mask-after-last-write");
+          }
+        }
+        for (drra::RopOp rop : stretch) {
+          add_order(builder, rop, conf, anchor_at(rop, false), 1,
+                  "wr-mask-before-write");
+        }
+      }
+    }
+  }
+  return mlir::success();
 }
 
 // Rebuild an affine.for without its loop-carried values: drop the iter_args,
@@ -153,7 +308,8 @@ void build_instr_rop(mlir::OpBuilder &builder, drra::RopOp rop,
 }
 
 // Lower a single drra.rop into one pasm.rop per instruction it carries.
-mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
+mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder,
+                                std::optional<int64_t> wr_mask) {
   // id is a symbol reference (e.g. @input_r_b); use its bare name.
   auto id = rop->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
   // map is optional on the drra.rop; copy it through when present.
@@ -166,16 +322,7 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
   mlir::DictionaryAttr conf = rop.getConfAttr();
   mlir::DictionaryAttr evt = rop.getEvtAttr();
 
-  // resource is a single ResourceAttr, which is what design-space exploration
-  // writes, or an array of them on hand-written input; either way the pasm.rop
-  // takes its location from the first resource.
-  auto resource = rop->getAttrOfType<pasm::ResourceAttr>("resource");
-  if (!resource) {
-    if (auto resources = rop->getAttrOfType<mlir::ArrayAttr>("resource");
-        resources && !resources.empty()) {
-      resource = mlir::dyn_cast<pasm::ResourceAttr>(resources[0]);
-    }
-  }
+  pasm::ResourceAttr resource = resource_of(rop);
 
   if (!id || !resource) {
     rop.emitError("drra.rop is missing id or resource attribute");
@@ -195,7 +342,7 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
   // in.
   //
   // TODO: this places each conf on its own, without looking at the confs
-  // already placed on the same (row, col, slot). Design-space exploration only
+  // already placed on the same (row, col, slot). BindResourcesPass only
   // keeps apart operations whose `uses` overlap, so two that want different
   // config registers are put on one resource on purpose, and two that want the
   // same one are never bound together -- but nothing here checks either, so a
@@ -220,6 +367,17 @@ mlir::LogicalResult convert_rop(drra::RopOp rop, mlir::OpBuilder &builder) {
   if (evt) {
     builder.setInsertionPoint(rop);
     build_instr_rop(builder, rop, id, "evt", evt, resource, map, splits);
+    if (wr_mask) {
+      mlir::Operation *top = rop;
+      while (!llvm::isa<pasm::EpochOp>(top->getParentOp())) {
+        top = top->getParentOp();
+      }
+      builder.setInsertionPoint(top);
+      build_instr_rop(builder, rop, wr_mask_symbol(rop), "conf",
+                      builder.getDictionaryAttr(builder.getNamedAttr(
+                          "wr_mask", builder.getI32IntegerAttr(*wr_mask))),
+                      resource, mlir::AffineMapAttr(), false);
+    }
   }
 
   // Outputs are ignored; drop any dangling uses before erasing.
@@ -236,6 +394,12 @@ public:
 
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
+
+    llvm::DenseMap<mlir::Operation *, int64_t> wr_masks;
+    if (mlir::failed(plan_wr_masks(module, wr_masks))) {
+      signalPassFailure();
+      return;
+    }
 
     // First drop loop-carried values so no affine.for/affine.yield references a
     // drra.rop result. walk() is post-order, so inner loops are handled first.
@@ -254,7 +418,12 @@ public:
     module.walk([&](drra::RopOp rop) { rops.push_back(rop); });
     mlir::OpBuilder builder(&getContext());
     for (auto it = rops.rbegin(); it != rops.rend(); ++it) {
-      if (mlir::failed(convert_rop(*it, builder))) {
+      auto wr_mask = wr_masks.find(*it);
+      if (mlir::failed(convert_rop(
+              *it, builder,
+              wr_mask == wr_masks.end()
+                  ? std::nullopt
+                  : std::optional<int64_t>(wr_mask->second)))) {
         signalPassFailure();
         return;
       }

@@ -10,10 +10,11 @@
 #include "json/json.hpp"
 
 #include <string>
+#include <utility>
 
 namespace vesyla {
 namespace transformation {
-namespace dse {
+namespace bind_resources {
 
 // One physical resource instance in the fabric: what exists at (row, col,
 // slot), as the architecture file says.
@@ -28,10 +29,24 @@ struct ResourceInstance {
   int size = 1;
   bool io_input = false;
   bool io_output = false;
+  // The component's category ("memory", ...), "uncategorized" when it has none.
+  std::string category;
   // Elaborated parameters of this instance (RF_DEPTH, WORD_BITWIDTH, ...).
-  // Binding will need them to know a register file's capacity; nothing reads
-  // them yet.
   nlohmann::json parameters;
+  // The instructions it takes, as (name, port): one entry per port key of an
+  // instruction with a `port` segment, port -1 for one without.
+  llvm::SmallVector<std::pair<std::string, int>> instructions;
+
+  bool is_memory() const { return category == "memory"; }
+  // NUM_OPTIONS: the configurations the instance switches between within an
+  // epoch; 4 when the architecture gives none.
+  int num_options() const;
+  bool has_instruction(llvm::StringRef name, int port) const;
+  // A memory's capacity in words (RF_DEPTH), and the words in one of its rows
+  // (a bulk transfer: BULK_BITWIDTH / WORD_BITWIDTH). 0 when not given.
+  int depth() const;
+  int row_words() const;
+  int depth_rows() const;
 };
 
 // The set of resources the design may use -- the allocation.
@@ -62,6 +77,10 @@ public:
   // lists them (row-major over cells, then slot order within a cell).
   llvm::SmallVector<unsigned> instances_of_kind(llvm::StringRef kind) const;
 
+  // Indices of every memory instance, smallest depth first, then in file
+  // order.
+  llvm::SmallVector<unsigned> memory_instances() const;
+
   int rows() const { return rows_; }
   int cols() const { return cols_; }
 
@@ -71,7 +90,7 @@ private:
   int cols_ = 0;
 };
 
-} // namespace dse
+} // namespace bind_resources
 } // namespace transformation
 } // namespace vesyla
 

@@ -63,11 +63,11 @@ impl HierarchicalResolver {
         // fabric level -- the lowest priority -- rather than repeated in every
         // architecture description. 1 is the registered activation alone.
         parameters.entry("AGU_LATENCY".to_string()).or_insert(1);
-        // Options in the switchbox's configuration table. The RTL, the SST
-        // model and the no-reconfiguration pass size the table from it. A conf
-        // instruction can only name the first 4 (its option field is 2 bits),
-        // so more only help a fabric without reconfiguration, whose options
-        // are hardcoded. 4 is today's hardware.
+        // Configuration options of a resource (swb table entries, DPU config
+        // registers; 0 for a resource whose confs take no option). Each
+        // resource sets it in its arch.json; this is the fallback when it does
+        // not. A conf can only name the first 4 (its option field is 2 bits),
+        // so more only help a fabric without reconfiguration.
         parameters.entry("NUM_OPTIONS".to_string()).or_insert(4);
         fabric.add_parameters(parameters);
         Ok(fabric)

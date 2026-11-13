@@ -44,20 +44,6 @@ mlir::Type transferredType(mlir::Operation *op) {
                                       : op->getOperand(0).getType();
 }
 
-// The program names its IO buffers with an id on the alloc, because MLIR drops
-// SSA value names at parse time and %input_buffer would otherwise be gone by
-// the time this pass runs.
-bool isIoBuffer(mlir::Value memref) {
-  auto alloc =
-      llvm::dyn_cast_or_null<mlir::memref::AllocOp>(memref.getDefiningOp());
-  if (!alloc)
-    return false;
-  auto id = alloc->getAttrOfType<mlir::FlatSymbolRefAttr>("id");
-  if (!id)
-    return false;
-  return id.getValue() == "input_buffer" || id.getValue() == "output_buffer";
-}
-
 } // namespace
 
 bool Matcher::isAccumulatorRead(mlir::Value patternValue) const {
@@ -73,7 +59,7 @@ bool Matcher::matchMemref(mlir::Value patternMemref, mlir::Value inputMemref,
   // An io pattern only applies to a memref the program declared as an IO
   // buffer. rf carries no such guard, so it matches anything and picks up
   // whatever the higher tiers left -- which is what makes it the fallback.
-  if (pattern_.guardedByBufferRole() && !isIoBuffer(inputMemref))
+  if (pattern_.guardedByBufferRole() && !vesyla::sel::is_io_buffer(inputMemref))
     return false;
 
   // The memref's own type is deliberately not compared: the pattern states the
@@ -89,8 +75,12 @@ bool Matcher::matchValue(mlir::Value patternValue, mlir::Value inputValue,
   // register; in the program it arrives as an affine.for loop carry, which is
   // an SSA block argument with no defining op at all. Recursing would compare a
   // memref.load against nothing.
-  if (isAccumulatorRead(patternValue))
-    return vesyla::sel::is_iter_args_carry(inputValue);
+  if (isAccumulatorRead(patternValue)) {
+    if (!vesyla::sel::is_iter_args_carry(inputValue))
+      return false;
+    result.bindings.try_emplace(pattern_.accumulator, inputValue);
+    return true;
+  }
 
   if (llvm::isa<mlir::BlockArgument>(patternValue)) {
     auto [it, inserted] = result.bindings.try_emplace(patternValue, inputValue);

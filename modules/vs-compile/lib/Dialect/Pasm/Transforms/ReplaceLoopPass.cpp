@@ -33,7 +33,7 @@ public:
       std::string originalIdStr = op.getId().str();
       std::string newId = "epoch_derived_from_loop_" + originalIdStr;
       mlir::StringAttr newIdAttr = rewriter.getStringAttr(newId);
-      EpochOp epoch_op = rewriter.create<EpochOp>(op.getLoc(), newIdAttr);
+      EpochOp epoch_op = EpochOp::create(rewriter, op.getLoc(), newIdAttr);
       mlir::Region &epochBodyRegion = epoch_op.getBody();
       mlir::Block *entryBlock;
       if (epochBodyRegion.empty()) {

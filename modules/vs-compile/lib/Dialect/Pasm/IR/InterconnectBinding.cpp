@@ -6,6 +6,7 @@
 #include "llvm/ADT/StringSet.h"
 
 #include <cassert>
+#include <map>
 
 namespace vesyla::pasm {
 
@@ -45,33 +46,83 @@ bool InterconnectConfig::operator==(const InterconnectConfig &o) const {
   return config_key(*this) == config_key(o);
 }
 
-// How often the binding's sequence repeats: the trip count of each loop its
-// transfers release their routes across, outermost first. Empty when the
-// sequence covers the whole epoch. The transfers have to agree -- one that
-// repeats at a different depth would need a sequence of its own.
-static std::vector<uint32_t> pass_trips(const InterconnectBinding &binding) {
+// The trip count of each loop a transfer releases its route across,
+// outermost first. Empty for a transfer that runs once.
+static std::vector<uint32_t> own_trips(const Anchor &a) {
+  std::vector<uint32_t> own;
+  for (std::size_t k = 0; k < a.pass_hi.size() && k < a.ir_idx.size(); ++k) {
+    own.push_back(a.pass_hi[k] - a.ir_idx[k] + 1);
+  }
+  return own;
+}
+
+// Same loop nest: both run once, or one's loops enclose the other's. Sibling
+// nests (a main loop and its remainder) are not.
+static bool same_nest(llvm::ArrayRef<mlir::Attribute> a,
+                      llvm::ArrayRef<mlir::Attribute> b) {
+  if (a.empty() || b.empty()) {
+    return a.empty() == b.empty();
+  }
+  std::size_t n = std::min(a.size(), b.size());
+  return a.take_front(n) == b.take_front(n);
+}
+
+// How often the sequence of a binding in one part repeats: the trip count of
+// each loop its transfers release their routes across, outermost first. Its
+// transfers have to agree -- one that repeats over other loops would need a
+// part of its own, which is reported on `report` when there is one.
+static mlir::FailureOr<std::vector<uint32_t>>
+pass_trips(const InterconnectBinding &binding, mlir::Operation *report) {
   std::vector<uint32_t> trips;
   bool seeded = false;
-  for (const auto &slot : binding.slots) {
-    for (const InterconnectConfigOption &opt : slot) {
+  for (std::size_t j = 0; j < binding.sequence.size(); ++j) {
+    for (const InterconnectConfigOption &opt :
+         binding.slots[binding.sequence[j]]) {
       for (const Anchor &a : opt.first_anchors) {
-        std::vector<uint32_t> own;
-        for (std::size_t k = 0; k < a.pass_hi.size() && k < a.ir_idx.size();
-             ++k) {
-          own.push_back(a.pass_hi[k] - a.ir_idx[k] + 1);
-        }
+        std::vector<uint32_t> own = own_trips(a);
         if (!seeded) {
           trips = own;
           seeded = true;
         } else if (own != trips) {
-          llvm::errs() << "pass_trips: transfers repeating at different "
-                          "depths not implemented yet\n";
-          return {};
+          if (report) {
+            report->emitError("interconnect: transfers sharing a route repeat "
+                              "over different loops; not supported");
+          }
+          return mlir::failure();
         }
       }
     }
   }
   return trips;
+}
+
+// Whether loops `a` lead `b`: a transfer over `a` runs in the nest of `b`.
+static bool leads(llvm::ArrayRef<mlir::Attribute> a,
+                  llvm::ArrayRef<mlir::Attribute> b) {
+  return a.size() <= b.size() && a == b.take_front(a.size());
+}
+
+// A part that switches options replays them per pass of its loops. A transfer
+// over fewer of them runs before or after the deeper loops, so in one pass of
+// them (pinned_passes); one over more holds its option across the extra ones.
+static mlir::LogicalResult check_part_trips(const InterconnectBinding &binding,
+                                            const BindingPart &part,
+                                            mlir::Operation *report) {
+  if (part.end - part.begin < 2) {
+    return mlir::success();
+  }
+  for (std::size_t j = part.begin; j < part.end; ++j) {
+    for (const Anchor &a : binding.step_first[j]) {
+      // A deeper transfer holds its step's option across its own loops.
+      if (part.siblings ? !leads(part.loops, a.loops)
+                        : !leads(a.loops, part.loops) &&
+                              !leads(part.loops, a.loops)) {
+        return report->emitError("interconnect: transfers sharing a route "
+                                 "repeat over different loops; not supported");
+      }
+    }
+  }
+  return mlir::success();
 }
 
 static void print_anchor(const Anchor &a, llvm::raw_ostream &os) {
@@ -148,6 +199,13 @@ void dump_binding(const InterconnectBinding &b, llvm::raw_ostream &os) {
     os << b.sequence[i];
   }
   os << "]\n";
+  for (const BindingPart &p : b.parts) {
+    os << "  part [" << p.begin << "," << p.end << ") trips (";
+    for (std::size_t k = 0; k < p.trips.size(); ++k) {
+      os << (k ? "," : "") << p.trips[k];
+    }
+    os << ")\n";
+  }
 }
 
 // Whether two option sets hold the same configs. A set rather than a sequence:
@@ -177,8 +235,10 @@ static bool same_configs(const std::vector<InterconnectConfig> &a,
 }
 
 // Stash `current` into a binding slot (existing match preferred, else first
-// empty slot), record the slot index in `binding.sequence`, and return it.
-// Returns nullopt if no free slot is available.
+// empty slot), record the slot index in `binding.sequence` with the step's
+// transfers, and return it. Returns nullopt if no free slot is available.
+//
+// Slots are shared across parts; anchors are kept per step.
 static std::optional<std::size_t>
 save_current(InterconnectBinding &binding,
              const std::vector<InterconnectConfig> &current,
@@ -207,6 +267,8 @@ save_current(InterconnectBinding &binding,
     slot_idx = *free_slot;
   }
   binding.sequence.push_back(static_cast<int>(slot_idx));
+  binding.step_first.push_back(first_anchors);
+  binding.step_last.push_back(last_anchors);
   return slot_idx;
 }
 
@@ -437,6 +499,161 @@ static void release_children(RoutingDepGraph &graph, NodeKey parent,
   }
 }
 
+// Whether configs `a` and `b` can be one option: no swb target with two
+// sources, no route direction (sr) used twice.
+static bool fits_one_option(const std::vector<InterconnectConfig> &a,
+                            const std::vector<InterconnectConfig> &b,
+                            llvm::StringRef kind) {
+  for (const InterconnectConfig &y : b) {
+    if (llvm::is_contained(a, y)) {
+      continue;
+    }
+    for (const InterconnectConfig &x : a) {
+      if (kind == "bulk" ? x.sr == y.sr
+                         : config_key(x).target == config_key(y).target) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Renumber options in order of first use, sharing identical ones and dropping
+// unused ones.
+static void compact_slots(InterconnectBinding &binding) {
+  std::vector<std::vector<InterconnectConfigOption>> slots(
+      binding.slots.size());
+  std::vector<int> to(binding.slots.size(), -1);
+  std::size_t used = 0;
+  for (int &s : binding.sequence) {
+    if (to[s] < 0) {
+      for (std::size_t i = 0; i < used; ++i) {
+        if (same_configs(slots[i][0].configs, binding.slots[s][0].configs)) {
+          to[s] = static_cast<int>(i);
+        }
+      }
+      if (to[s] < 0) {
+        slots[used] = binding.slots[s];
+        to[s] = static_cast<int>(used++);
+      }
+    }
+    s = to[s];
+  }
+  binding.slots = std::move(slots);
+}
+
+// Merge adjacent one-step parts, and adjacent steps of sibling nests, whose
+// options fit one option (nothing switches between them); drop empty parts.
+static void merge_parts(InterconnectBinding &binding,
+                        std::vector<BindingPart> &parts,
+                        llvm::StringRef kind) {
+  InterconnectBinding merged;
+  std::vector<BindingPart> kept;
+  for (const BindingPart &p : parts) {
+    if (p.begin == p.end) {
+      continue;
+    }
+    int slot = binding.sequence[p.begin];
+    if (p.end - p.begin == 1 && !kept.empty() &&
+        kept.back().end - kept.back().begin == 1 &&
+        fits_one_option(binding.slots[merged.sequence.back()][0].configs,
+                        binding.slots[slot][0].configs, kind)) {
+      InterconnectConfigOption &opt = binding.slots[merged.sequence.back()][0];
+      for (const InterconnectConfig &c : binding.slots[slot][0].configs) {
+        if (!llvm::is_contained(opt.configs, c)) {
+          opt.configs.push_back(c);
+        }
+      }
+      for (const Anchor &a : binding.step_first[p.begin]) {
+        add_anchor(merged.step_first.back(), a);
+        add_anchor(opt.first_anchors, a);
+      }
+      for (const Anchor &a : binding.step_last[p.begin]) {
+        add_anchor(merged.step_last.back(), a);
+        add_anchor(opt.last_anchors, a);
+      }
+      if (kept.back().trips != p.trips) {
+        kept.back().trips.clear();
+        kept.back().loops.clear();
+      }
+      continue;
+    }
+    kept.push_back(
+        BindingPart{merged.sequence.size(), 0, p.trips, p.loops, p.siblings});
+    for (std::size_t j = p.begin; j < p.end; ++j) {
+      int at = binding.sequence[j];
+      if (p.siblings && j > p.begin &&
+          fits_one_option(binding.slots[merged.sequence.back()][0].configs,
+                          binding.slots[at][0].configs, kind)) {
+        InterconnectConfigOption &opt =
+            binding.slots[merged.sequence.back()][0];
+        for (const InterconnectConfig &c : binding.slots[at][0].configs) {
+          if (!llvm::is_contained(opt.configs, c)) {
+            opt.configs.push_back(c);
+          }
+        }
+        for (const Anchor &a : binding.step_first[j]) {
+          add_anchor(merged.step_first.back(), a);
+          add_anchor(opt.first_anchors, a);
+        }
+        for (const Anchor &a : binding.step_last[j]) {
+          add_anchor(merged.step_last.back(), a);
+          add_anchor(opt.last_anchors, a);
+        }
+        continue;
+      }
+      merged.sequence.push_back(at);
+      merged.step_first.push_back(binding.step_first[j]);
+      merged.step_last.push_back(binding.step_last[j]);
+    }
+    kept.back().end = merged.sequence.size();
+  }
+  binding.sequence = std::move(merged.sequence);
+  binding.step_first = std::move(merged.step_first);
+  binding.step_last = std::move(merged.step_last);
+  parts = std::move(kept);
+  compact_slots(binding);
+}
+
+// Split a part whose options do not step by one stride into runs that do,
+// each with an evt and a rep of its own (0,1,0,2: 0 to 1, then 0 to 2). A
+// part that replays per pass keeps its steps: its runs would each replay on
+// their own.
+static void split_strides(const InterconnectBinding &binding,
+                          std::vector<BindingPart> &parts) {
+  const std::vector<int> &seq = binding.sequence;
+  std::vector<BindingPart> split;
+  for (const BindingPart &p : parts) {
+    if (!p.trips.empty() || p.siblings) {
+      split.push_back(p);
+      continue;
+    }
+    std::size_t begin = p.begin;
+    for (std::size_t j = p.begin + 2; j < p.end; ++j) {
+      if (j >= begin + 2 &&
+          seq[j] - seq[j - 1] != seq[begin + 1] - seq[begin]) {
+        split.push_back(p);
+        split.back().begin = begin;
+        split.back().end = j;
+        begin = j;
+      }
+    }
+    split.push_back(p);
+    split.back().begin = begin;
+  }
+  parts = std::move(split);
+}
+
+// The error for a binding that ran out of configuration options.
+static mlir::FailureOr<InterconnectBinding>
+no_free_option(mlir::Operation *report, llvm::StringRef kind,
+               const InterconnectBinding &binding) {
+  report->emitError("interconnect: the ")
+      << kind << " transfers need more than the " << binding.slots.size()
+      << " configuration options the swb has (NUM_OPTIONS); not supported";
+  return mlir::failure();
+}
+
 bool has_conflict(const Node &candidate,
                   const std::vector<InterconnectConfig> &current,
                   llvm::StringRef kind) {
@@ -449,35 +666,77 @@ bool has_conflict(const Node &candidate,
     }
     return false;
   }
+  // The swb picks one source per target slot; one source may feed several.
+  int target = config_key({candidate.src, candidate.dst, std::nullopt}).target;
   for (const InterconnectConfig &c : current) {
-    if (c.src == candidate.src || c.dst == candidate.dst) {
+    if (config_key(c).target == target) {
       return true;
     }
   }
   return false;
 }
 
-InterconnectBinding bind_interconnect(RoutingDepGraph graph,
-                                      llvm::StringRef kind) {
+mlir::FailureOr<InterconnectBinding>
+bind_interconnect(RoutingDepGraph graph, llvm::StringRef kind,
+                  mlir::Operation *report, std::size_t num_options) {
   std::vector<Node> free_set;
   std::vector<ActiveConfig> active;
   std::vector<InterconnectConfig> current;
   std::vector<Anchor> current_first_anchors;
   std::vector<Anchor> current_last_anchors;
   InterconnectBinding binding{};
+  binding.slots.resize(num_options);
+
+  // Parts in walk order; `part_trips` is the current part's loops.
+  std::vector<BindingPart> parts;
+  std::optional<std::vector<uint32_t>> part_trips;
+  std::vector<mlir::Attribute> part_loops;
+  auto save = [&]() {
+    return save_current(binding, current, current_first_anchors,
+                        current_last_anchors)
+        .has_value();
+  };
 
   // Begin algorithm at start node
   release_children(graph, NodeKey{0, NodeKind::First}, free_set);
 
   // actual algorithm
   while (free_set.size() > 1 || (!free_set.empty() && free_set[0].id != 0)) {
-    // Priority: Last > First.
+    // Priority: Last > First of the current part > any First.
     std::size_t pick = free_set.size();
     for (std::size_t i = 0; i < free_set.size(); ++i) {
       if (free_set[i].kind == NodeKind::Last) {
         pick = i;
         break;
       }
+    }
+    // Then a First of the current part, else of the part that runs next; the
+    // earliest in program order, not one that is merely free (an io read
+    // waits on nothing).
+    auto earliest = [&](auto &&eligible) {
+      std::size_t best = free_set.size();
+      for (std::size_t i = 0; i < free_set.size(); ++i) {
+        const Node &n = free_set[i];
+        if (n.id == 0 || !eligible(n)) {
+          continue;
+        }
+        if (best == free_set.size() ||
+            (n.anchor.pos >= 0 &&
+             (free_set[best].anchor.pos < 0 ||
+              n.anchor.pos < free_set[best].anchor.pos))) {
+          best = i;
+        }
+      }
+      return best;
+    };
+    if (pick == free_set.size() && part_trips) {
+      pick = earliest([&](const Node &n) {
+        return same_nest(n.anchor.loops, part_loops);
+      });
+    }
+    if (pick == free_set.size()) {
+      pick = earliest(
+          [](const Node &n) { return n.kind == NodeKind::First && n.anchor.pos >= 0; });
     }
     if (pick == free_set.size()) {
       pick = 0;
@@ -490,6 +749,62 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
       InterconnectConfig cfg{candidate.src, candidate.dst, std::nullopt};
       if (kind == "bulk") {
         cfg.sr = (candidate.dir == "send") ? 0 : 1;
+      }
+      // Another loop nest starts the next part and closes the current option.
+      std::vector<uint32_t> trips = own_trips(candidate.anchor);
+      bool next_part =
+          part_trips && !same_nest(candidate.anchor.loops, part_loops);
+      // A sibling nest under loops the part shares stays in it: the part
+      // switches to the nest's option and replays per pass of those loops.
+      std::size_t shared = 0;
+      while (next_part && shared < part_loops.size() &&
+             shared < candidate.anchor.loops.size() &&
+             part_loops[shared] == candidate.anchor.loops[shared]) {
+        ++shared;
+      }
+      if (next_part && shared > 0 && active.empty() &&
+          (parts.back().siblings ||
+           binding.sequence.size() == parts.back().begin)) {
+        part_loops.resize(shared);
+        trips.resize(shared);
+        part_trips = trips;
+        parts.back().loops = part_loops;
+        parts.back().trips = trips;
+        parts.back().siblings = true;
+        next_part = false;
+        // Each nest its own step; steps that fit one option merge later.
+        if (!current.empty()) {
+          if (!save()) {
+            return no_free_option(report, kind, binding);
+          }
+          current.clear();
+          current_first_anchors.clear();
+          current_last_anchors.clear();
+        }
+      }
+      if (next_part) {
+        if (!active.empty()) {
+          report->emitError("interconnect: a ")
+              << kind
+              << " transfer is still in flight when the loops the transfers "
+                 "repeat over change; not supported";
+          return mlir::failure();
+        }
+        if (!current.empty()) {
+          if (!save()) {
+            return no_free_option(report, kind, binding);
+          }
+          current.clear();
+          current_first_anchors.clear();
+          current_last_anchors.clear();
+        }
+        parts.back().end = binding.sequence.size();
+      }
+      if (!part_trips || next_part) {
+        parts.push_back(
+            BindingPart{binding.sequence.size(), 0, trips, candidate.anchor.loops});
+        part_trips = trips;
+        part_loops = candidate.anchor.loops;
       }
       // A recv from a direction the current option already listens to widens
       // that config rather than opening one beside it.
@@ -506,11 +821,15 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
       }
       // if there is a conflict with the current configuration
       if (has_conflict(candidate, current, kind)) {
-        if (!save_current(binding, current, current_first_anchors,
-                          current_last_anchors)
-                 .has_value()) {
-          llvm::errs() << "bind_interconnect: no free binding slot\n";
-          return binding;
+        if (parts.back().siblings) {
+          report->emitError("interconnect: ")
+              << kind
+              << " options switch inside one of the sibling nests that "
+                 "replay per pass; not supported";
+          return mlir::failure();
+        }
+        if (!save()) {
+          return no_free_option(report, kind, binding);
         }
         // What is still in flight has to stay configured across the switch.
         current = active_configs(active);
@@ -548,11 +867,77 @@ InterconnectBinding bind_interconnect(RoutingDepGraph graph,
 
   // Flush any remaining `current` into the binding.
   if (!current.empty()) {
-    if (!save_current(binding, current, current_first_anchors,
-                      current_last_anchors)
-             .has_value()) {
-      llvm::errs() << "bind_interconnect: no free binding slot\n";
-      return binding;
+    if (!save()) {
+      return no_free_option(report, kind, binding);
+    }
+  }
+  if (!parts.empty()) {
+    parts.back().end = binding.sequence.size();
+  }
+  // A part repeats over the deepest loops holding transfers of two of its
+  // steps; a step alone in deeper loops (a stream inside the loop the steps
+  // take turns in) keeps its option across them.
+  bool mixed = false;
+  for (BindingPart &p : parts) {
+    if (p.siblings) {
+      continue;
+    }
+    std::vector<std::size_t> depth; // per step, its deepest transfer
+    const Anchor *deepest = nullptr;
+    for (std::size_t j = p.begin; j < p.end; ++j) {
+      std::size_t d = 0;
+      for (const Anchor &a : binding.step_first[j]) {
+        d = std::max(d, a.loops.size());
+        if (!deepest || a.loops.size() > deepest->loops.size()) {
+          deepest = &a;
+        }
+      }
+      depth.push_back(d);
+    }
+    if (!deepest) {
+      continue;
+    }
+    std::size_t d = deepest->loops.size();
+    if (depth.size() > 1) {
+      std::sort(depth.begin(), depth.end(), std::greater<>());
+      d = depth[1];
+    } else if (d <= p.loops.size()) {
+      continue;
+    }
+    std::vector<uint32_t> trips = own_trips(*deepest);
+    p.loops.assign(deepest->loops.begin(),
+                   deepest->loops.begin() + std::min(d, deepest->loops.size()));
+    p.trips.assign(trips.begin(),
+                   trips.begin() + std::min(d, trips.size()));
+  }
+  for (BindingPart &p : parts) {
+    for (std::size_t j = p.begin; j < p.end; ++j) {
+      for (const Anchor &a : binding.step_first[j]) {
+        mixed |= p.end - p.begin > 1 && a.loops != p.loops;
+      }
+    }
+  }
+  merge_parts(binding, parts, kind);
+  split_strides(binding, parts);
+  if (parts.size() > 1 || mixed) {
+    binding.parts = std::move(parts);
+  }
+
+  // A second source for a target in one option would silently replace the
+  // first in the swb.
+  for (std::size_t i = 0; kind == "word" && i < binding.slots.size(); ++i) {
+    for (const InterconnectConfigOption &opt : binding.slots[i]) {
+      std::map<int, int> source_of;
+      for (const InterconnectConfig &c : opt.configs) {
+        ConfigKey key = config_key(c);
+        auto [it, fresh] = source_of.emplace(key.target, key.source);
+        if (!fresh && it->second != key.source) {
+          report->emitError("interconnect: swb option ")
+              << i << " drives target " << key.target << " from both slot "
+              << it->second << " and slot " << key.source;
+          return mlir::failure();
+        }
+      }
     }
   }
 
@@ -681,46 +1066,66 @@ RopOp emit_route_instructions(const InterconnectBinding &binding, CellOp cell,
   return rop;
 }
 
-void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
-                                mlir::OpBuilder &builder) {
+// One instruction of the interconnect rop, at the builder's insertion point.
+static void add_instr(mlir::OpBuilder &builder, mlir::Location loc,
+                      llvm::StringRef type,
+                      llvm::ArrayRef<std::pair<llvm::StringRef, mlir::Attribute>>
+                          params) {
+  llvm::SmallVector<mlir::NamedAttribute> attrs;
+  for (auto [name, value] : params) {
+    attrs.push_back(builder.getNamedAttr(name, value));
+  }
+  InstrOp::create(
+      builder, loc,
+      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
+      builder.getStringAttr(type), builder.getDictionaryAttr(attrs));
+}
+
+// The rep stepping an evt through `steps` (options, in the order they are
+// switched in), when there is more than one. One rep steps by a fixed stride;
+// a sequence that changes stride (0, 1, 0) would need one rep per run.
+static mlir::LogicalResult emit_stride(llvm::ArrayRef<int> steps, RopOp rop,
+                                       mlir::OpBuilder &builder,
+                                       llvm::StringRef delay, int32_t port) {
+  if (steps.size() <= 1) {
+    return mlir::success();
+  }
+  int stride = steps[1] - steps[0];
+  for (std::size_t i = 2; i < steps.size(); ++i) {
+    if (steps[i] - steps[i - 1] != stride) {
+      return rop->emitError("interconnect: the route option sequence of this "
+                            "epoch is not one fixed stride; not supported");
+    }
+  }
+  add_instr(builder, rop.getLoc(), "rep",
+            {{"delay", builder.getStringAttr(delay)},
+             {"iter", builder.getI32IntegerAttr(
+                          static_cast<int32_t>(steps.size()))},
+             {"step", builder.getI32IntegerAttr(stride)},
+             {"port", builder.getI32IntegerAttr(port)}});
+  return mlir::success();
+}
+
+// One part that switches options every pass: each step its own evt and
+// trans, so the switches need not be evenly spaced, and the pass reps after
+// the trans replay the whole sequence.
+static bool steps_as_transitions(const InterconnectBinding &binding) {
+  if (binding.parts.size() != 1) {
+    return false;
+  }
+  const BindingPart &p = binding.parts.front();
+  return p.end - p.begin > 1 && !p.trips.empty() && !p.siblings;
+}
+
+mlir::LogicalResult
+emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
+                           mlir::OpBuilder &builder) {
   builder.setInsertionPoint(rop.getBody().front().getTerminator());
 
-  if (binding.sequence.size() <= 1) {
-    return;
-  }
-
-  std::vector<int> deltas;
-  for (std::size_t i = 1; i < binding.sequence.size(); ++i) {
-    deltas.push_back(binding.sequence[i] - binding.sequence[i - 1]);
-  }
-
-  llvm::errs() << "deltas: [";
-  for (std::size_t i = 0; i < deltas.size(); ++i) {
-    if (i) {
-      llvm::errs() << ", ";
-    }
-    llvm::errs() << deltas[i];
-  }
-  llvm::errs() << "]\n";
-
-  std::vector<std::pair<int, int>> runs;
-  int current = deltas[0];
-  int count = 1;
-  for (std::size_t i = 1; i < deltas.size(); ++i) {
-    if (deltas[i] == current) {
-      ++count;
-    } else {
-      runs.push_back({current, count});
-      current = deltas[i];
-      count = 1;
-    }
-  }
-  runs.push_back({current, count});
-
-  if (runs.size() != 1) {
-    llvm::errs() << "emit_sequence_instructions: multiple runs not implemented "
-                    "yet\n";
-    return;
+  std::size_t n = binding.sequence.size();
+  bool parts = !binding.parts.empty();
+  if (n <= 1 && !parts) {
+    return mlir::success();
   }
 
   mlir::Location loc = rop.getLoc();
@@ -735,40 +1140,109 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
                            std::to_string(rop.getRow()) + "_" +
                            std::to_string(rop.getCol());
 
-  llvm::SmallVector<mlir::NamedAttribute> rep_attrs;
-  rep_attrs.push_back(
-      builder.getNamedAttr("delay", builder.getStringAttr(delay_name)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("iter",
-                          builder.getI32IntegerAttr(runs[0].second + 1)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("step", builder.getI32IntegerAttr(runs[0].first)));
-  rep_attrs.push_back(
-      builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-  InstrOp::create(
-      builder, loc,
-      builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-      builder.getStringAttr("rep"), builder.getDictionaryAttr(rep_attrs));
-
-  // One level per pass loop, innermost first, replaying the sequence. Each has
-  // a delay of its own: the route fires fewer events per pass than the rops it
-  // serves, so it cannot share their period.
-  std::vector<uint32_t> trips = pass_trips(binding);
-  for (std::size_t k = trips.size(); k-- > 0;) {
-    llvm::SmallVector<mlir::NamedAttribute> pass_attrs;
-    pass_attrs.push_back(builder.getNamedAttr(
-        "delay", builder.getStringAttr(delay_name + "_" + std::to_string(k))));
-    pass_attrs.push_back(builder.getNamedAttr(
-        "iter", builder.getI32IntegerAttr(static_cast<int32_t>(trips[k]))));
-    pass_attrs.push_back(
-        builder.getNamedAttr("step", builder.getI32IntegerAttr(0)));
-    pass_attrs.push_back(
-        builder.getNamedAttr("port", builder.getI32IntegerAttr(port)));
-    InstrOp::create(
-        builder, loc,
-        builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
-        builder.getStringAttr("rep"), builder.getDictionaryAttr(pass_attrs));
+  // The parts in the order they run: [begin, end) of the sequence, and the
+  // loops it repeats over with every pass.
+  struct Span {
+    std::size_t begin, end;
+    std::vector<uint32_t> trips;
+    std::string delay;
+  };
+  llvm::SmallVector<Span> spans;
+  if (!parts) {
+    mlir::FailureOr<std::vector<uint32_t>> trips = pass_trips(binding, rop);
+    if (mlir::failed(trips)) {
+      return mlir::failure();
+    }
+    spans.push_back({0, n, *trips, delay_name});
   }
+  for (std::size_t s = 0; s < binding.parts.size(); ++s) {
+    const BindingPart &p = binding.parts[s];
+    if (mlir::failed(check_part_trips(binding, p, rop))) {
+      return mlir::failure();
+    }
+    spans.push_back(
+        {p.begin, p.end, p.trips, delay_name + "_part" + std::to_string(s)});
+  }
+
+  if (steps_as_transitions(binding)) {
+    const Span &span = spans.front();
+    if (mlir::failed(check_part_trips(binding, binding.parts.front(), rop))) {
+      return mlir::failure();
+    }
+    if (binding.sequence.front() != 0) {
+      return rop->emitError("interconnect: the first route option is not "
+                            "option 0");
+    }
+    for (std::size_t j = 1; j < n; ++j) {
+      add_instr(builder, loc, "evt",
+                {{"port", builder.getI32IntegerAttr(port)},
+                 {"init_addr", builder.getI32IntegerAttr(binding.sequence[j])}});
+    }
+    for (std::size_t j = 1; j < n; ++j) {
+      add_instr(builder, loc, "trans",
+                {{"delay", builder.getStringAttr(delay_name + "_trans" +
+                                                 std::to_string(j))},
+                 {"port", builder.getI32IntegerAttr(port)}});
+    }
+    for (std::size_t k = span.trips.size(); k-- > 0;) {
+      add_instr(builder, loc, "rep",
+                {{"delay", builder.getStringAttr(span.delay + "_" +
+                                                 std::to_string(k))},
+                 {"iter", builder.getI32IntegerAttr(
+                              static_cast<int32_t>(span.trips[k]))},
+                 {"step", builder.getI32IntegerAttr(0)},
+                 {"port", builder.getI32IntegerAttr(port)}});
+    }
+    return mlir::success();
+  }
+
+  // One evt plus reps per part, then all trans: the AGU reads a rep after a
+  // trans as repeating every part.
+  for (std::size_t s = 0; s < spans.size(); ++s) {
+    const Span &span = spans[s];
+    llvm::ArrayRef<int> steps(binding.sequence.data() + span.begin,
+                              span.end - span.begin);
+    if (s > 0) {
+      add_instr(builder, loc, "evt",
+                {{"port", builder.getI32IntegerAttr(port)},
+                 {"init_addr", builder.getI32IntegerAttr(steps.front())}});
+    } else if (parts && steps.front() != 0) {
+      return rop->emitError("interconnect: the first route option is not "
+                            "option 0");
+    }
+    if (mlir::failed(emit_stride(steps, rop, builder, span.delay, port))) {
+      return mlir::failure();
+    }
+
+    // One level per pass loop, innermost first, replaying the repeated part.
+    // Each has a delay of its own: the route fires fewer events per pass than
+    // the rops it serves, so it cannot share their period. A part of one
+    // option stays configured across every pass and needs none.
+    if (steps.size() > 1) {
+      for (std::size_t k = span.trips.size(); k-- > 0;) {
+        add_instr(builder, loc, "rep",
+                  {{"delay", builder.getStringAttr(span.delay + "_" +
+                                                   std::to_string(k))},
+                   {"iter", builder.getI32IntegerAttr(
+                                static_cast<int32_t>(span.trips[k]))},
+                   {"step", builder.getI32IntegerAttr(0)},
+                   {"port", builder.getI32IntegerAttr(port)}});
+      }
+    }
+  }
+  for (std::size_t s = 1; s < spans.size(); ++s) {
+    add_instr(builder, loc, "trans",
+              {{"delay", builder.getStringAttr(delay_name + "_trans" +
+                                               std::to_string(s))},
+               {"port", builder.getI32IntegerAttr(port)}});
+  }
+  return mlir::success();
+}
+
+// From a transfer to a later step: the data is on the route `a.delay` cycles
+// after the anchor's event.
+static DelayAttr after(mlir::MLIRContext *ctx, const Anchor &a) {
+  return DelayAttr::get(ctx, 1 + a.delay, std::nullopt);
 }
 
 // What the debug dumps show against a constraint: the pass that emitted it and
@@ -776,6 +1250,237 @@ void emit_sequence_instructions(const InterconnectBinding &binding, RopOp rop,
 static mlir::ArrayAttr debug_attr(mlir::OpBuilder &builder,
                                   llvm::StringRef rule) {
   return builder.getStrArrayAttr({"InterconnectPass", rule});
+}
+
+// Route constraints of a binding in parts (part = MT index on `rop`). Within a
+// part as for one part; between parts, the last pass of one is done before the
+// next part's evt.
+static void emit_part_constraints(const InterconnectBinding &binding,
+                                  RopOp rop, mlir::OpBuilder &builder,
+                                  const llvm::StringSet<> &config_rops) {
+  mlir::Location loc = rop.getLoc();
+  mlir::MLIRContext *ctx = builder.getContext();
+  auto rop_ref = mlir::FlatSymbolRefAttr::get(ctx, rop.getSymName());
+  auto delay = DelayAttr::get(ctx, 1, std::nullopt);
+  std::size_t n = binding.sequence.size();
+  llvm::ArrayRef<uint32_t> none;
+
+  auto part_of = [&](std::size_t j) {
+    std::size_t p = 0;
+    while (j >= binding.parts[p].end) {
+      ++p;
+    }
+    return p;
+  };
+  // Whether the rop repeats part `p`'s evt over its passes: only a part that
+  // switches between options does (emit_sequence_instructions).
+  auto has_passes = [&](std::size_t p) {
+    const BindingPart &part = binding.parts[p];
+    return part.end - part.begin > 1 && !part.trips.empty();
+  };
+  auto first_pass = [](llvm::ArrayRef<uint32_t> trips) {
+    return std::vector<uint32_t>(trips.size(), 0);
+  };
+  auto last_pass = [](llvm::ArrayRef<uint32_t> trips) {
+    std::vector<uint32_t> last;
+    for (uint32_t trip : trips) {
+      last.push_back(trip - 1);
+    }
+    return last;
+  };
+
+  auto range = [&](mlir::FlatSymbolRefAttr id, llvm::ArrayRef<uint32_t> or_idx,
+                   uint32_t mt, llvm::ArrayRef<uint32_t> base,
+                   llvm::ArrayRef<uint32_t> from, llvm::ArrayRef<uint32_t> to,
+                   llvm::ArrayRef<uint32_t> tail) {
+    std::vector<uint32_t> lo;
+    std::vector<uint32_t> hi;
+    for (std::size_t k = 0; k < from.size(); ++k) {
+      lo.push_back(base[k] + from[k]);
+      hi.push_back(base[k] + to[k]);
+    }
+    lo.insert(lo.end(), tail.begin(), tail.end());
+    hi.insert(hi.end(), tail.begin(), tail.end());
+    return AnchorRangeAttr::get(ctx, id, or_idx, mt, lo, or_idx, mt, hi);
+  };
+  // Step `j` of the rop over passes `from`..`to` of its part (ignored for an
+  // evt that does not repeat over them).
+  auto step_at = [&](std::size_t j, llvm::ArrayRef<uint32_t> from,
+                     llvm::ArrayRef<uint32_t> to) {
+    std::size_t p = part_of(j);
+    const BindingPart &part = binding.parts[p];
+    if (steps_as_transitions(binding)) {
+      return range(rop_ref, {}, static_cast<uint32_t>(j - part.begin),
+                   first_pass(part.trips), from, to, none);
+    }
+    std::vector<uint32_t> tail;
+    if (part.end - part.begin > 1) {
+      tail.push_back(static_cast<uint32_t>(j - part.begin));
+    }
+    uint32_t mt = static_cast<uint32_t>(p);
+    if (!has_passes(p)) {
+      return range(rop_ref, {}, mt, none, none, none, tail);
+    }
+    return range(rop_ref, {}, mt, first_pass(part.trips), from, to, tail);
+  };
+  // A transfer over passes `from`..`to` of its loops; a transfer that runs
+  // once has none. Its loops inside those at their first pass, or with
+  // `last` at their last.
+  auto use_at = [&](const Anchor &a, llvm::ArrayRef<uint32_t> from,
+                    llvm::ArrayRef<uint32_t> to, bool last = false) {
+    llvm::ArrayRef<uint32_t> ir(a.ir_idx);
+    if (own_trips(a).empty()) {
+      return range(a.instr_id, a.or_idx, a.mt, none, none, none, ir);
+    }
+    std::vector<uint32_t> tail(ir.begin() + std::min(from.size(), ir.size()),
+                               ir.end());
+    for (std::size_t k = 0; last && k < tail.size(); ++k) {
+      if (from.size() + k < a.pass_hi.size()) {
+        tail[k] = a.pass_hi[from.size() + k];
+      }
+    }
+    return range(a.instr_id, a.or_idx, a.mt, ir, from, to, tail);
+  };
+  // A transfer's first or last pass through its own loops.
+  auto use_first = [&](const Anchor &a) {
+    std::vector<uint32_t> first = first_pass(own_trips(a));
+    return use_at(a, first, first);
+  };
+  auto use_last = [&](const Anchor &a) {
+    std::vector<uint32_t> last = last_pass(own_trips(a));
+    return use_at(a, last, last);
+  };
+  // Transfer `a` over passes `from`..`to` of part `p`, and the passes of the
+  // part to pair it with. One over fewer loops than the part runs before or
+  // after the deeper ones, so only in their first or last pass; nothing when
+  // that pass is outside `from`..`to`.
+  struct Paired {
+    AnchorRangeAttr use;
+    std::vector<uint32_t> from, to;
+  };
+  auto pair_use = [&](const Anchor &a, std::size_t p,
+                      llvm::ArrayRef<uint32_t> from,
+                      llvm::ArrayRef<uint32_t> to,
+                      bool last = false) -> std::optional<Paired> {
+    const BindingPart &part = binding.parts[p];
+    std::size_t d = std::min(a.loops.size(), from.size());
+    bool after = false;
+    for (std::size_t j = part.begin; j < part.end && d < from.size(); ++j) {
+      for (const Anchor &x : binding.step_first[j]) {
+        after |= x.loops.size() > d && x.pos < a.pos;
+      }
+    }
+    Paired out{use_at(a, from.take_front(d), to.take_front(d), last),
+               std::vector<uint32_t>(from.begin(), from.end()),
+               std::vector<uint32_t>(to.begin(), to.end())};
+    for (std::size_t k = d; k < from.size(); ++k) {
+      uint32_t at = after ? part.trips[k] - 1 : 0;
+      if (at < from[k] || at > to[k]) {
+        return std::nullopt;
+      }
+      out.from[k] = out.to[k] = at;
+    }
+    return out;
+  };
+  auto add = [&](AnchorRangeAttr src, AnchorRangeAttr dst, llvm::StringRef rule,
+                 DelayAttr d = {}) {
+    CstrOp::create(builder, loc, src, dst, d ? d : delay,
+                   builder.getBoolAttr(false))
+        ->setAttr("debug", debug_attr(builder, rule));
+  };
+
+  // config -> first_use: the step that switches an option in comes before the
+  // transfers that use it -- on every pass when the step repeats, and before
+  // the first pass when its option stays on through all of them.
+  for (std::size_t j = 0; j < n; ++j) {
+    std::size_t p = part_of(j);
+    const BindingPart &part = binding.parts[p];
+    for (const Anchor &a : binding.step_first[j]) {
+      if (a.instr_id && config_rops.contains(a.instr_id.getValue())) {
+        continue;
+      }
+      if (has_passes(p)) {
+        std::vector<uint32_t> first = first_pass(part.trips);
+        std::vector<uint32_t> last = last_pass(part.trips);
+        if (auto u = pair_use(a, p, first, last)) {
+          add(step_at(j, u->from, u->to), u->use, "route-first-use");
+        }
+      } else {
+        add(step_at(j, none, none), use_first(a), "route-first-use");
+      }
+    }
+  }
+
+  // last_use -> next config: per pass within a part, last pass across parts.
+  for (std::size_t j = 1; j < n; ++j) {
+    std::size_t p = part_of(j);
+    bool same_part = part_of(j - 1) == p;
+    if (same_part && binding.sequence[j - 1] == binding.sequence[j]) {
+      continue;
+    }
+    for (const Anchor &a : binding.step_last[j - 1]) {
+      // A transfer carried into the next option spans the switch; see the
+      // rule of the same name in emit_interconnect_constraints.
+      if (llvm::is_contained(binding.step_first[j], a)) {
+        continue;
+      }
+      if (same_part && has_passes(p)) {
+        const BindingPart &part = binding.parts[p];
+        std::vector<uint32_t> first = first_pass(part.trips);
+        std::vector<uint32_t> last = last_pass(part.trips);
+        if (auto u = pair_use(a, p, first, last, /*last=*/true)) {
+          add(u->use, step_at(j, u->from, u->to), "route-last-use",
+              after(ctx, a));
+        }
+      } else if (same_part) {
+        add(use_at(a, none, none), step_at(j, none, none), "route-last-use",
+            after(ctx, a));
+      } else {
+        std::vector<uint32_t> first = first_pass(binding.parts[p].trips);
+        add(use_last(a), step_at(j, first, first), "route-last-use",
+            after(ctx, a));
+      }
+    }
+  }
+
+  // A part that repeats starts over on the next pass, so its last option's
+  // last use is done before that pass's first step; one constraint per pass
+  // loop, as in emit_interconnect_constraints.
+  for (std::size_t p = 0; p < binding.parts.size(); ++p) {
+    if (!has_passes(p)) {
+      continue;
+    }
+    const BindingPart &part = binding.parts[p];
+    std::vector<uint32_t> first = first_pass(part.trips);
+    std::vector<uint32_t> last = last_pass(part.trips);
+    for (std::size_t k = 0; k < part.trips.size(); ++k) {
+      if (part.trips[k] < 2) {
+        continue;
+      }
+      std::vector<uint32_t> src_from = first;
+      std::vector<uint32_t> src_to = last;
+      src_to[k] = last[k] - 1;
+      for (std::size_t inner = k + 1; inner < part.trips.size(); ++inner) {
+        src_from[inner] = last[inner];
+      }
+      for (const Anchor &a : binding.step_last[part.end - 1]) {
+        auto u = pair_use(a, p, src_from, src_to, /*last=*/true);
+        if (!u) {
+          continue;
+        }
+        // The pass after: one on in loop k, loops inside it at their first.
+        std::vector<uint32_t> dst_from = u->from;
+        std::vector<uint32_t> dst_to = u->to;
+        ++dst_from[k];
+        ++dst_to[k];
+        for (std::size_t inner = k + 1; inner < part.trips.size(); ++inner) {
+          dst_from[inner] = dst_to[inner] = 0;
+        }
+        add(u->use, step_at(part.begin, dst_from, dst_to), "route-next-pass",
+            after(ctx, a));
+      }
+    }
+  }
 }
 
 void emit_interconnect_constraints(const InterconnectBinding &binding,
@@ -790,8 +1495,8 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
   // The passes the sequence repeats over; none without a sequence, the route
   // rop having no repetition to index then.
   std::vector<uint32_t> trips;
-  if (has_sequence) {
-    trips = pass_trips(binding);
+  if (has_sequence && binding.parts.empty()) {
+    trips = *pass_trips(binding, /*report=*/nullptr);
   }
   std::vector<uint32_t> first_pass(trips.size(), 0);
   std::vector<uint32_t> last_pass;
@@ -842,6 +1547,11 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         }
       }
     });
+  }
+
+  if (!binding.parts.empty()) {
+    emit_part_constraints(binding, rop, builder, config_rops);
+    return;
   }
 
   // config -> first_use: rop sequence step must happen before first use
@@ -905,7 +1615,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
         auto src_ar = of_use(a, first_pass, last_pass);
         std::vector<uint32_t> dst_idx = {static_cast<uint32_t>(j)};
         auto dst_ar = of_step(dst_idx, first_pass, last_pass);
-        CstrOp::create(builder, loc, src_ar, dst_ar, delay,
+        CstrOp::create(builder, loc, src_ar, dst_ar, after(ctx, a),
                        builder.getBoolAttr(false))
             ->setAttr("debug", debug_attr(builder, "route-last-use"));
       }
@@ -933,7 +1643,7 @@ void emit_interconnect_constraints(const InterconnectBinding &binding,
       }
       for (const Anchor &a : binding.slots[final_slot][0].last_anchors) {
         CstrOp::create(builder, loc, of_use(a, src_from, src_to),
-                       of_step(first_step, dst_from, dst_to), delay,
+                       of_step(first_step, dst_from, dst_to), after(ctx, a),
                        builder.getBoolAttr(false))
             ->setAttr("debug", debug_attr(builder, "route-next-pass"));
       }

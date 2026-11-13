@@ -5,8 +5,9 @@
 # Options: see the USAGE text below (./run.sh --help). `vesyla testcase generate`
 # prints the same text, so keep it in that heredoc.
 #
-# Every testcase has a pasm variant, and an mlir variant when it carries
-# mlir/*.mlir; --frontend picks which of them run by their frontend:<name> tag.
+# Every testcase has a pasm variant, an mlir variant when it carries
+# mlir/*.mlir and a c variant when it carries c/*.c; --frontend picks which of
+# them run by their frontend:<name> tag.
 # --rtl-target is handed to the testcases' rtl_sim.sh through
 # VESYLA_RTL_TARGETS, which adds it to the Bender targets on top of `sim`.
 # --no-cleanup keeps the work/ directory of every testcase; without it only the
@@ -48,7 +49,8 @@ while [ $# -gt 0 ]; do
 Usage: ./run.sh [options] [pabot/robot options...]
   --frontend=pasm          run the testcases' pasm/*.pasm programs (default)
   --frontend=mlir          run the testcases' mlir/*.mlir programs
-  --frontend=all           run both
+  --frontend=c             run the testcases' c/*.c programs (lowered with Polygeist: cgeist, polygeist-opt)
+  --frontend=all           run all three
   --rtl-target=TARGET      add a Bender target to the RTL simulation on top of sim,
                            e.g. freepdk45 for the OpenRAM macro models; repeatable
                            (default: sim only, flip-flop memories)
@@ -70,10 +72,10 @@ USAGE
 done
 
 case "$frontend" in
-pasm | mlir) frontend_filter="--include frontend:$frontend" ;;
+pasm | mlir | c) frontend_filter="--include frontend:$frontend" ;;
 all) frontend_filter="" ;;
 *)
-  echo "ERROR: unknown --frontend '$frontend' (choose from pasm, mlir, all)" >&2
+  echo "ERROR: unknown --frontend '$frontend' (choose from pasm, mlir, c, all)" >&2
   exit 1
   ;;
 esac

@@ -65,8 +65,8 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 # Bison-generated PasmParser.hpp lands directly in this subproject's build dir
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Vendored third-party headers
-include_directories(${PROJECT_SOURCE_DIR}/third_party/plog)
-include_directories(${PROJECT_SOURCE_DIR}/third_party)
+include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third_party/plog)
+include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third_party)
 
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
@@ -173,7 +173,7 @@ set(SOURCES_SCHEDULE
     ${SOURCES_PARSER}
     ${SOURCES_CODEGEN})
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -pedantic -lpthread -g -O3 -fPIC")
+set(CMAKE_CXX_FLAGS "-pedantic -pthread -g -O3 -fPIC")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -265,6 +265,26 @@ add_mlir_library(
   VesylaPasm
   VesylaDrra)
 
+# A C kernel as cgeist emits it -- a func.func over the io buffers -- into the
+# epoch form the rest of the mlir pipeline compiles.
+add_custom_mlir_pass_dir(conversion/func_to_pasm VesylaFuncToPasm)
+file(GLOB SOURCE_FUNC_TO_PASM "src/conversion/func_to_pasm/*.cpp")
+add_mlir_library(
+  VesylaFuncToPasm
+  ${SOURCE_FUNC_TO_PASM}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaFuncToPasmIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  VesylaPasm)
+
 # Instruction selector: affine + arith -> drra. The patterns are not compiled in
 # -- they are loaded at run time from the component library, so adding a
 # resource does not rebuild this.
@@ -296,18 +316,198 @@ add_mlir_library(
   VesylaDrra
   VesylaUtil)
 
-# Design space exploration: allocation, binding and scheduling over the module
-# instruction selection produced. Allocation is read from the architecture file;
-# binding and scheduling are still being written.
-add_custom_mlir_pass_dir(transformation/design_space_exploration VesylaDse)
-
-file(GLOB SOURCE_DSE "src/transformation/design_space_exploration/*.cpp")
+# Names every buffer, access and arith op the program left unnamed, so the
+# passes below can key on their ids.
+add_custom_mlir_pass_dir(transformation/assign_ids VesylaAssignIds)
+file(GLOB SOURCE_ASSIGN_IDS "src/transformation/assign_ids/*.cpp")
 add_mlir_library(
-  VesylaDse
-  ${SOURCE_DSE}
+  VesylaAssignIds
+  ${SOURCE_ASSIGN_IDS}
   DISABLE_INSTALL
   DEPENDS
-  VesylaDseIncGen
+  VesylaAssignIdsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRMemRefDialect)
+
+# Undoes C integer promotion: arithmetic under an arith.trunci is computed in
+# the narrow type, so a kernel lowered from C reaches the 16-bit patterns.
+add_custom_mlir_pass_dir(transformation/narrow_integers VesylaNarrowIntegers)
+file(GLOB SOURCE_NARROW_INTEGERS "src/transformation/narrow_integers/*.cpp")
+add_mlir_library(
+  VesylaNarrowIntegers
+  ${SOURCE_NARROW_INTEGERS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaNarrowIntegersIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRArithDialect)
+
+# Moves io rows through a staging buffer, so a kernel lowered from C that reads
+# and writes the io buffers word by word reaches the bulk io patterns.
+add_custom_mlir_pass_dir(transformation/stage_io VesylaStageIo)
+file(GLOB SOURCE_STAGE_IO "src/transformation/stage_io/*.cpp")
+add_mlir_library(
+  VesylaStageIo
+  ${SOURCE_STAGE_IO}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaStageIoIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRMemRefDialect
+  MLIRVectorDialect
+  VesylaSelectInstr)
+
+# Reorders a loop nest so every io write's row stays fixed over its words.
+add_custom_mlir_pass_dir(transformation/interchange_loops VesylaInterchangeLoops)
+file(GLOB SOURCE_INTERCHANGE_LOOPS "src/transformation/interchange_loops/*.cpp")
+add_mlir_library(
+  VesylaInterchangeLoops
+  ${SOURCE_INTERCHANGE_LOOPS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaInterchangeLoopsIncGen
+  VesylaPasmIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRAffineUtils
+  VesylaStageIo)
+
+# Rewrites affine.for loops to start at 0 with step 1.
+add_custom_mlir_pass_dir(transformation/normalize_loops VesylaNormalizeLoops)
+file(GLOB SOURCE_NORMALIZE_LOOPS "src/transformation/normalize_loops/*.cpp")
+add_mlir_library(
+  VesylaNormalizeLoops
+  ${SOURCE_NORMALIZE_LOOPS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaNormalizeLoopsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRAffineUtils
+  MLIRTransformUtils)
+
+# Re-reads a scalar loaded outside a loop inside every loop that uses it, so
+# the operation it feeds gets one element per iteration.
+add_custom_mlir_pass_dir(transformation/double_buffer VesylaDoubleBuffer)
+file(GLOB SOURCE_DOUBLE_BUFFER "src/transformation/double_buffer/*.cpp")
+add_mlir_library(
+  VesylaDoubleBuffer
+  ${SOURCE_DOUBLE_BUFFER}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaDoubleBufferIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRAffineUtils
+  MLIRMemRefDialect
+  VesylaSelectInstr)
+
+add_custom_mlir_pass_dir(transformation/sink_scalar_loads VesylaSinkScalarLoads)
+file(GLOB SOURCE_SINK_SCALAR_LOADS "src/transformation/sink_scalar_loads/*.cpp")
+add_mlir_library(
+  VesylaSinkScalarLoads
+  ${SOURCE_SINK_SCALAR_LOADS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSinkScalarLoadsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRArithDialect
+  MLIRMemRefDialect
+  VesylaSelectInstr)
+
+# Splits a loop nest that needs more DPUs than the fabric has into nests.
+add_custom_mlir_pass_dir(transformation/fission_loops VesylaFissionLoops)
+file(GLOB SOURCE_FISSION_LOOPS "src/transformation/fission_loops/*.cpp")
+add_mlir_library(
+  VesylaFissionLoops
+  ${SOURCE_FISSION_LOOPS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaFissionLoopsIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRAffineDialect
+  MLIRMemRefDialect
+  VesylaSelectInstr
+  VesylaBindResources)
+
+# Copies a storage read twice in the same cycle, one copy per reader.
+add_custom_mlir_pass_dir(transformation/copy_storages VesylaCopyStorages)
+file(GLOB SOURCE_COPY_STORAGES "src/transformation/copy_storages/*.cpp")
+add_mlir_library(
+  VesylaCopyStorages
+  ${SOURCE_COPY_STORAGES}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaCopyStoragesIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRMemRefDialect
+  VesylaDrraToPasm)
+
+# Cuts an epoch where a DPU would run out of config registers.
+add_custom_mlir_pass_dir(transformation/split_epochs VesylaSplitEpochs)
+file(GLOB SOURCE_SPLIT_EPOCHS "src/transformation/split_epochs/*.cpp")
+add_mlir_library(
+  VesylaSplitEpochs
+  ${SOURCE_SPLIT_EPOCHS}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaSplitEpochsIncGen
+  VesylaPasmIncGen
+  VesylaDrraIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  VesylaPasm
+  VesylaDrra
+  VesylaBindResources)
+
+# Resource binding: which instance each operation of instruction selection
+# runs on. Allocation is read from the architecture file.
+add_custom_mlir_pass_dir(transformation/bind_resources VesylaBindResources)
+
+file(GLOB SOURCE_BIND_RESOURCES "src/transformation/bind_resources/*.cpp")
+add_mlir_library(
+  VesylaBindResources
+  ${SOURCE_BIND_RESOURCES}
+  DISABLE_INSTALL
+  DEPENDS
+  VesylaBindResourcesIncGen
   VesylaPasmIncGen
   VesylaDrraIncGen
   LINK_LIBS
@@ -318,8 +518,10 @@ add_mlir_library(
   MLIRTransforms
   MLIRTransformUtils
   MLIRRewrite
+  MLIRAffineDialect
   VesylaPasm
   VesylaDrra
+  VesylaDrraToPasm
   VesylaUtil)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
@@ -336,7 +538,7 @@ add_library(VesylaSchedule
 add_dependencies(VesylaSchedule VesylaPasmIncGen)
 
 set(LIBS VesylaSchedule VesylaPasm VesylaDrra VesylaAffineToPasm VesylaDrraToPasm
-         VesylaSelectInstr VesylaDse VesylaTm VesylaUtil
+         VesylaFuncToPasm VesylaNormalizeLoops VesylaNarrowIntegers VesylaInterchangeLoops VesylaStageIo VesylaDoubleBuffer VesylaSinkScalarLoads VesylaAssignIds VesylaSelectInstr VesylaFissionLoops VesylaCopyStorages VesylaBindResources VesylaSplitEpochs VesylaTm VesylaUtil
          ${dialect_libs} ${conversion_libs})
 
 file(COPY scripts/script.py DESTINATION ${CMAKE_BINARY_DIR}/scripts)

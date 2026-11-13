@@ -259,7 +259,7 @@ ROP_OP:
 
             // Clean up param_map
             delete param_map;
-            auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
+            auto rop_op = vesyla::pasm::RopOp::create(builder, loc,
                 builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
@@ -293,7 +293,7 @@ ROP_OP:
             // Clean up instr_list
             delete $6;
             // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
+            vesyla::pasm::YieldOp::create(builder, loc);
             op->op = rop_op.getOperation();
         }
         else {
@@ -340,7 +340,7 @@ ROP_OP:
 
             // Clean up param_map
             delete param_map;
-            auto rop_op = builder.create<vesyla::pasm::RopOp>(loc,
+            auto rop_op = vesyla::pasm::RopOp::create(builder, loc,
                 builder.getStringAttr($3),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col),
@@ -374,7 +374,7 @@ ROP_OP:
             // Clean up instr_list
             delete $9;
             // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
+            vesyla::pasm::YieldOp::create(builder, loc);
             op->op = rop_op.getOperation();
         }
         else {
@@ -414,7 +414,7 @@ COP_OP:
 
             // Clean up param_map
             delete param_map;
-            auto cop_op = builder.create<vesyla::pasm::CopOp>(loc,
+            auto cop_op = vesyla::pasm::CopOp::create(builder, loc,
                 builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col));
@@ -466,7 +466,7 @@ COP_OP:
 
             // Clean up param_map
             delete param_map;
-            auto cop_op = builder.create<vesyla::pasm::CopOp>(loc,
+            auto cop_op = vesyla::pasm::CopOp::create(builder, loc,
                 builder.getStringAttr($3),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col));
@@ -522,7 +522,7 @@ RAW_OP:
 
             // Clean up param_map
             delete param_map;
-            auto raw_op = builder.create<vesyla::pasm::RawOp>(loc,
+            auto raw_op = vesyla::pasm::RawOp::create(builder, loc,
                 builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col));
@@ -539,7 +539,7 @@ RAW_OP:
             // Clean up instr_list
             delete $6;
             // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
+            vesyla::pasm::YieldOp::create(builder, loc);
             op->op = raw_op.getOperation();
         }
         else {
@@ -576,7 +576,7 @@ RAW_OP:
 
             // Clean up param_map
             delete param_map;
-            auto raw_op = builder.create<vesyla::pasm::RawOp>(loc,
+            auto raw_op = vesyla::pasm::RawOp::create(builder, loc,
                 builder.getStringAttr($3),
                 builder.getIntegerAttr(builder.getI32Type(), row),
                 builder.getIntegerAttr(builder.getI32Type(), col));
@@ -593,7 +593,7 @@ RAW_OP:
             // Clean up instr_list
             delete $9;
             // add a yield operation
-            builder.create<vesyla::pasm::YieldOp>(loc);
+            vesyla::pasm::YieldOp::create(builder, loc);
             op->op = raw_op.getOperation();
         }
         else {
@@ -655,7 +655,7 @@ INSTR:
         // create a InstrOp
         mlir::OpBuilder builder(epoch_op->getBody());
         auto loc = builder.getUnknownLoc();
-        auto instrOp = builder.create<vesyla::pasm::InstrOp>(loc,
+        auto instrOp = vesyla::pasm::InstrOp::create(builder, loc,
             builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
             builder.getStringAttr(std::string($1)),
             builder.getDictionaryAttr({}));
@@ -705,7 +705,7 @@ INSTR:
 
         // Clean up param_map
         delete param_map;
-        auto instrOp = builder.create<vesyla::pasm::InstrOp>(loc,
+        auto instrOp = vesyla::pasm::InstrOp::create(builder, loc,
             builder.getStringAttr(vesyla::util::Common::gen_random_string(8)),
             builder.getStringAttr(std::string($1)),
             dictionary_attr);
@@ -752,7 +752,7 @@ INSTR:
         auto dictionary_attr = builder.getDictionaryAttr(attributes);
         // Clean up param_map
         delete param_map;
-        auto instrOp = builder.create<vesyla::pasm::InstrOp>(loc,
+        auto instrOp = vesyla::pasm::InstrOp::create(builder, loc,
             builder.getStringAttr($3),
             builder.getStringAttr(std::string($1)),
             dictionary_attr);

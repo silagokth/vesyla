@@ -11,10 +11,14 @@ jobs:
     uses: ./.github/workflows/ci-build-appimage.yml
     secrets: inherit
 
+  ci-polygeist:
+    name: Install Polygeist
+    uses: ./.github/workflows/ci-polygeist-install.yml
+
   ci-run-tests:
     name: Run DRRA Tests
     uses: ./.github/workflows/ci-run-tests.yml
-    needs: ci-build-vesyla
+    needs: [ci-build-vesyla, ci-polygeist]
     secrets: inherit
     with:
       version: ${{ needs.ci-build-vesyla.outputs.version }}

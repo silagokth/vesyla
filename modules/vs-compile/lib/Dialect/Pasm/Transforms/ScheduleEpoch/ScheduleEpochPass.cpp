@@ -133,7 +133,26 @@ void dump_schedule_table(
       return ::mlir::failure();
     } else if (auto cstr_op =
                    llvm::dyn_cast<::vesyla::pasm::CstrOp>(&child_op)) {
+      // A rop that takes over a port from another (CoalesceRopsPass) also
+      // needs its setup issued after that one's last event: its ACT lead and
+      // its instructions, with room for an extension word per rep.
+      int lead = 0;
+      if (cstr_op->hasAttr("port_exclusive")) {
+        lead = act_lead();
+        for (::mlir::Operation &other : *entryBlock) {
+          auto rop = llvm::dyn_cast<::vesyla::pasm::RopOp>(&other);
+          if (!rop || rop.getSymName() != cstr_op.getDst().getInstr().getValue()) {
+            continue;
+          }
+          for (auto instr : rop.getBody().front().getOps<::vesyla::pasm::InstrOp>()) {
+            lead += instr.getType() == "rep" ? 2 : 1;
+          }
+        }
+      }
       for (auto &c : ::vesyla::tm::Constraint::from_cstr_op(cstr_op)) {
+        if (lead && c.min_delay) {
+          *c.min_delay += lead;
+        }
         model.add_constraint(c);
       }
     } else if (auto yield_op =

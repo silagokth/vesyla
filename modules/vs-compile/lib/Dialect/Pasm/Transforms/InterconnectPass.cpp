@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "vesyla/Dialect/Pasm/IR/InterconnectBinding.hpp"
+#include "vesyla/Dialect/Pasm/IR/OptionLimit.hpp"
 #include "vesyla/Dialect/Pasm/Transforms/InterconnectPass.hpp"
 #include "vesyla/Dialect/Pasm/IR/RoutingDepGraph.hpp"
 #include "vesyla/Support/Config.hpp"
@@ -112,6 +113,13 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
       first_anchor.pass_hi = to_u(pass_hi.asArrayRef());
       last_anchor.pass_hi = first_anchor.pass_hi;
     }
+    if (auto loops = icdep->getAttrOfType<mlir::ArrayAttr>("loops")) {
+      first_anchor.loops.assign(loops.begin(), loops.end());
+      last_anchor.loops = first_anchor.loops;
+    }
+    if (auto pos = icdep->getAttrOfType<mlir::IntegerAttr>("pos")) {
+      first_anchor.pos = last_anchor.pos = static_cast<int32_t>(pos.getInt());
+    }
 
     llvm::StringRef dir = icdep.getDir().value_or(llvm::StringRef());
     graph.insert_node(first_anchor, current_id, NodeKind::First, dir,
@@ -191,9 +199,13 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
           llvm::ArrayRef<uint32_t> src_hi = src_ar.getIrHi();
           llvm::ArrayRef<uint32_t> dst_lo_ar = dst_ar.getIrLo();
           llvm::ArrayRef<uint32_t> current_lo_ar(current.lo);
-          std::size_t n = std::min(src_lo.size(), dst_lo_ar.size());
-          if (range_strictly_after(current_lo_ar.take_front(n),
-                                   src_hi.take_front(n))) {
+          // A dst without indices propagates nothing, so src is gated on its
+          // own dims.
+          std::size_t n = std::min(src_lo.size(), dst_lo_ar.empty()
+                                                      ? current_lo_ar.size()
+                                                      : dst_lo_ar.size());
+          if (n > 0 && range_strictly_after(current_lo_ar.take_front(n),
+                                            src_hi.take_front(n))) {
             continue;
           }
 
@@ -284,7 +296,11 @@ void populate_routes(RoutingDepGraph &graph, mlir::Block &icdep_block,
 //===----------------------------------------------------------------------===//
 class InterconnectPassRewriter : public OpRewritePattern<EpochOp> {
 public:
-  using OpRewritePattern<EpochOp>::OpRewritePattern;
+  // `failed` is set when a cell's transfers cannot be bound or sequenced; the
+  // error is already reported on the epoch or the rop by then. A pattern that
+  // has rewritten the IR cannot report failure itself, so the pass checks it.
+  InterconnectPassRewriter(MLIRContext *context, bool &failed)
+      : OpRewritePattern<EpochOp>(context), failed_(failed) {}
 
   LogicalResult matchAndRewrite(EpochOp op,
                                 PatternRewriter &rewriter) const final {
@@ -319,6 +335,8 @@ public:
       std::string cell_label = op.getId().str() + "_r" +
                                std::to_string(cell.getRow()) + "c" +
                                std::to_string(cell.getCol());
+      // The swb is slot 0 of its cell.
+      std::size_t num_options = option_limit_at(cell.getRow(), cell.getCol(), 0);
 
       auto build_and_dump = [&](llvm::StringRef kind, llvm::StringRef prefix) {
         llvm::errs() << "\n========================================\n"
@@ -338,19 +356,28 @@ public:
         reduced.transitive_reduce();
         reduced.dump_dot(dot_path);
 
-        InterconnectBinding binding = bind_interconnect(graph, kind);
+        mlir::FailureOr<InterconnectBinding> binding =
+            bind_interconnect(graph, kind, op, num_options);
+        if (mlir::failed(binding)) {
+          failed_ = true;
+          return;
+        }
         llvm::errs() << "binding (" << kind << "):\n";
-        dump_binding(binding, llvm::errs());
+        dump_binding(*binding, llvm::errs());
 
         RopOp rop = nullptr;
         if (kind == "word") {
-          rop = emit_swb_instructions(binding, cell, rewriter);
+          rop = emit_swb_instructions(*binding, cell, rewriter);
         } else {
-          rop = emit_route_instructions(binding, cell, rewriter);
+          rop = emit_route_instructions(*binding, cell, rewriter);
         }
         if (rop) {
-          emit_sequence_instructions(binding, rop, rewriter);
-          emit_interconnect_constraints(binding, rop, rewriter);
+          if (mlir::failed(
+                  emit_sequence_instructions(*binding, rop, rewriter))) {
+            failed_ = true;
+            return;
+          }
+          emit_interconnect_constraints(*binding, rop, rewriter);
         }
 
         // Best-effort rendering via graphviz, producing both an SVG (preferred,
@@ -386,6 +413,9 @@ public:
 
     return any_processed ? success() : failure();
   }
+
+private:
+  bool &failed_;
 };
 
 class InterconnectPass : public impl::InterconnectPassBase<InterconnectPass> {
@@ -395,10 +425,11 @@ public:
   void runOnOperation() final {
     mlir::ModuleOp module = getOperation();
 
+    bool binding_failed = false;
     RewritePatternSet patterns(&getContext());
-    patterns.add<InterconnectPassRewriter>(&getContext());
+    patterns.add<InterconnectPassRewriter>(&getContext(), binding_failed);
     FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsGreedily(module, patternSet))) {
+    if (failed(applyPatternsGreedily(module, patternSet)) || binding_failed) {
       signalPassFailure();
     }
     module.dump();

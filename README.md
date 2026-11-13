@@ -14,6 +14,7 @@ Synthesis and compilation tool suite for DRRA hardware accelerator platform.
 - [bender](https://github.com/pulp-platform/bender) (used by `vesyla fabric`)
 - [minizinc](https://www.minizinc.org/) (used by `vesyla compile`)
 - `g++` (used by `vesyla testcase`)
+- [Polygeist](https://github.com/llvm/Polygeist) (`cgeist` and `polygeist-opt`), only for the C frontend (`vesyla testcase run --frontend c`): `cgeist` lowers a testcase's `c/*.c` to MLIR and `polygeist-opt` raises it to affine. They are taken from `PATH`, or from `$CGEIST` and `$POLYGEIST_OPT`. Polygeist is built against its own LLVM; vesyla only reads the textual MLIR it prints
 - `xdg-open` (from `xdg-utils`) (used by `vesyla show` to open the selected image)
 - [graphviz](https://graphviz.org/) (`dot`) (used by `vesyla compile` to render the constraint and interconnect graphs that `vesyla show` displays)
 - [gtkwave](https://gtkwave.sourceforge.net/) (used by `vesyla show wave` to open the simulation waveform `trace.vcd`)

@@ -32,7 +32,7 @@ def RopOp : Drra_Op<"rop"> {
     dpu rst.
     A resource is not indivisible, and two operations on one instance only
     contend when they want the same part of it, so this is what the conflict
-    graph in design-space exploration intersects to decide whether they can
+    graph in BindResourcesPass intersects to decide whether they can
     share. The strings are opaque to the compiler: two parts are the same part
     when they are spelled the same, so the resource author owns the vocabulary.
     It is written by the resource's own description in the component library --
@@ -56,7 +56,7 @@ def RopOp : Drra_Op<"rop"> {
     a channel by slot and knows nothing of ports, so two operands left on one
     slot would share one channel and only one of them would arrive. `uses`
     cannot answer this: those names belong to the resource author and are
-    compared only against each other. Design-space exploration reads it to write
+    compared only against each other. BindResourcesPass reads it to write
     the `resource` attribute as the [results..., operands...] array
     GenerateIcdepPass indexes, rather than as a single endpoint. Absent means
     every endpoint sits on the instance's first slot, which is what a
@@ -68,7 +68,7 @@ def RopOp : Drra_Op<"rop"> {
     `id` symbol of the memref's alloc, lifted by instruction selection, which is
     the only place it is still known: the replacement leaves the memref argument
     unused, because the AGU sweeps the address and the memref is not an
-    instruction operand. Design-space exploration binds every operation sharing
+    instruction operand. BindResourcesPass binds every operation sharing
     a `storage` to one instance, since every access to one register file has to
     land on one register file. Absent on a resource that computes rather than
     stores.
