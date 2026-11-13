@@ -95,12 +95,14 @@ jobs:
           token: ${{ secrets.DRRA_TESTS_PAT_VESYLA_READ_ONLY }}
 
       - name: Check drra-tests branch
+        # The runner reuses tests/ between runs, so local branches and
+        # remote-tracking refs can be stale: ask GitHub, and reset to what it has.
         run: |
           cd "${{ github.workspace }}/tests"
-          git fetch --all
-          if git show-ref --verify --quiet refs/remotes/origin/${{ inputs.branch }}; then
-            git checkout ${{ inputs.branch }}
-            echo "Switching to drra-tests@${{ inputs.branch }}"
+          if git ls-remote --exit-code --heads origin "${{ inputs.branch }}" >/dev/null; then
+            git fetch origin "${{ inputs.branch }}"
+            git checkout --force -B "${{ inputs.branch }}" FETCH_HEAD
+            echo "Switching to drra-tests@${{ inputs.branch }} ($(git rev-parse --short HEAD))"
           else
             echo "Using the drra-tests master branch"
           fi
@@ -199,7 +201,7 @@ jobs:
           module add sst
           source .venv/bin/activate
           export VESYLA_SUITE_PATH_COMPONENTS=$(readlink -e ../library)
-          mkdir -p failed_logs
+          rm -rf failed_logs && mkdir failed_logs   # tests/ is reused between runs
           python3 - <<'PY'
           import os, re, subprocess, pathlib
           from xml.etree import ElementTree as ET
